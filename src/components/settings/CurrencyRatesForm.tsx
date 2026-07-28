@@ -115,14 +115,17 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
                           <>
                             <input
                               name={`rate.${rate.code}`}
-                              defaultValue={rate.rate > 0 ? String(rate.rate) : ''}
+                              // Four places, like the base row above it: 1.0000
+                              // beside 10.3 reads as two different precisions
+                              // of the same quantity.
+                              defaultValue={rate.rate > 0 ? rate.rate.toFixed(4) : ''}
                               inputMode="decimal"
                               disabled={!canManage}
                               placeholder="0.0000"
                               aria-label={`${BASE_CURRENCY} to ${rate.code} rate`}
                               aria-invalid={state.errors?.[rate.code] ? true : undefined}
                               className={cn(
-                                'h-10 w-36 rounded-md border bg-surface-raised px-3 text-body tabular-nums',
+                                'h-11 w-36 rounded-md border bg-surface-raised px-3.5 text-body tabular-nums',
                                 'text-content-primary transition-colors disabled:cursor-not-allowed disabled:opacity-60',
                                 state.errors?.[rate.code]
                                   ? 'border-state-danger'

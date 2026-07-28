@@ -1,6 +1,6 @@
 'use client'
-import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { forwardRef, useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 /**
@@ -66,8 +66,16 @@ type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'className'> & {
 }
 
 export const TextField = forwardRef<HTMLInputElement, InputProps>(function TextField(
-  { label, hint, error, className, required, prefix, ...rest }, ref,
+  { label, hint, error, className, required, prefix, type, ...rest }, ref,
 ) {
+  // A password field you cannot read is where typos go to hide, and the
+  // recovery from one is retyping the whole thing. Every password field gets a
+  // reveal; it is never on by default, and the button says which state it will
+  // move you to rather than which state you are in.
+  const [revealed, setRevealed] = useState(false)
+  const isPassword = type === 'password'
+  const resolvedType = isPassword && revealed ? 'text' : type
+
   return (
     <Field label={label} hint={hint} error={error} required={required} className={className}>
       {({ id, describedBy, invalid: bad }) => (
@@ -80,12 +88,24 @@ export const TextField = forwardRef<HTMLInputElement, InputProps>(function TextF
           <input
             ref={ref}
             id={id}
+            type={resolvedType}
             required={required}
             aria-invalid={bad || undefined}
             aria-describedby={describedBy}
-            className={cn(control, bad ? invalid : normal, prefix && 'pl-8')}
+            className={cn(control, bad ? invalid : normal, prefix && 'pl-8', isPassword && 'pr-11')}
             {...rest}
           />
+          {isPassword && (
+            <button
+              type="button"
+              onClick={() => setRevealed((value) => !value)}
+              aria-label={revealed ? 'Hide password' : 'Show password'}
+              aria-pressed={revealed}
+              className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-sm text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary"
+            >
+              {revealed ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+            </button>
+          )}
         </div>
       )}
     </Field>

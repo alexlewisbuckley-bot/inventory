@@ -18,7 +18,12 @@ export function toDateInput(value: Date | string | null | undefined): string {
 
 export function relativeTime(value: Date | string | null | undefined, fallback = '—'): string {
   const date = toDate(value)
-  return date ? `${formatDistanceToNowStrict(date)} ago` : fallback
+  if (!date) return fallback
+  // "0 seconds ago" is a sentence nobody writes. Anything inside the last few
+  // seconds is, to a reader, now.
+  const elapsed = Date.now() - date.getTime()
+  if (elapsed >= 0 && elapsed < 10_000) return 'Just now'
+  return `${formatDistanceToNowStrict(date)} ago`
 }
 
 /** Whole days a watch has been held, used for ageing reports. */
