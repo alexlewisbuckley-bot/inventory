@@ -36,7 +36,7 @@ export function SalesTable({ result }: {
             <TH width="110px" align="right">Cost</TH>
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
             <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>
-            <TH width="110px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>
+            <TH width="140px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>
           </TR>
         </THead>
         <TBody>
@@ -65,7 +65,9 @@ export function SalesTable({ result }: {
                   {formatPct(sale.marginBps / 100)}
                 </span>
                 {sale.vsEstimateGbp !== null && sale.vsEstimateGbp !== 0 && (
-                  <span className="block text-micro text-content-secondary">
+                  // On one line: "vs est." wrapping alone under the figure read
+                  // as a second, unrelated number.
+                  <span className="block whitespace-nowrap text-micro text-content-secondary">
                     {sale.vsEstimateGbp > 0 ? '↑' : '↓'} {money(Math.abs(sale.vsEstimateGbp))} vs est.
                   </span>
                 )}

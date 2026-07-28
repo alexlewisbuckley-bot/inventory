@@ -1,11 +1,12 @@
 'use client'
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Building2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Card, Table, THead, TBody, TR, TD, TH, Button, Modal, TextField, SelectField,
   TextareaField, Checkbox, Chip, ConfirmDialog, EmptyState, useToast, useCurrency, useCreateFlag,
+  ToolbarRow, ToolbarSearch, ToolbarSelect,
 } from '@/components/ui'
 import { saveSupplierAction, deleteSupplierAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
@@ -86,7 +87,30 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  const [search, setSearch] = useState('')
+  const [view, setView] = useState<'all' | 'incomplete' | 'inactive'>('all')
+
   const incomplete = suppliers.filter((s) => s.isActive && missingFields(s).length > 0).length
+
+  /**
+   * Filtered in the browser, not on the server: the whole list is already here
+   * because the totals in the header are computed across all of it, and a
+   * supplier list is tens of rows rather than thousands. Searching the
+   * representative and the legal name too — you are as likely to remember the
+   * person you deal with as the trading name on the invoice.
+   */
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    return suppliers.filter((supplier) => {
+      if (view === 'incomplete' && (!supplier.isActive || missingFields(supplier).length === 0)) return false
+      if (view === 'inactive' && supplier.isActive) return false
+      if (!needle) return true
+      return [
+        supplier.name, supplier.legalName, supplier.contactName,
+        supplier.contactEmail, supplier.city, supplier.country,
+      ].some((field) => field?.toLowerCase().includes(needle))
+    })
+  }, [suppliers, search, view])
 
   const confirmDelete = async () => {
     if (!deleting) return
@@ -105,6 +129,27 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
           <span className="font-bold text-state-gold">{incomplete}</span> of {suppliers.length} suppliers
           are missing details you would need to raise a purchase order or pay an invoice.
         </p>
+      )}
+
+      {suppliers.length > 0 && (
+        <ToolbarRow className="mb-4">
+          <ToolbarSearch
+            value={search}
+            onChange={setSearch}
+            label="Search suppliers"
+            placeholder="Search by name, representative, email or country…"
+          />
+          <ToolbarSelect
+            label="Show"
+            value={view}
+            onChange={(value) => setView(value as typeof view)}
+            options={[
+              { value: 'all', label: 'All suppliers' },
+              { value: 'incomplete', label: 'Missing details' },
+              { value: 'inactive', label: 'Inactive' },
+            ]}
+          />
+        </ToolbarRow>
       )}
 
       <Card className="overflow-hidden">
@@ -131,7 +176,14 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
               </TR>
             </THead>
             <TBody>
-              {suppliers.map((supplier) => {
+              {visible.length === 0 && (
+                <TR>
+                  <TD colSpan={canManage ? 9 : 8} className="py-10 text-center text-content-secondary">
+                    No supplier matches that. <button type="button" onClick={() => { setSearch(''); setView('all') }} className="font-bold text-content-accent hover:underline">Clear the filters</button>
+                  </TD>
+                </TR>
+              )}
+              {visible.map((supplier) => {
                 const gaps = missingFields(supplier)
                 const isOpen = expanded === supplier.id
                 return (
@@ -149,8 +201,10 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
                         </button>
                       </TD>
                       <TD>
-                        <span className="block font-bold text-content-primary">{supplier.name}</span>
-                        <span className="block text-caption text-content-secondary">
+                        <span className="block truncate font-bold text-content-primary">{supplier.name}</span>
+                        {/* One line: "Journey Trading Ltd · Limited" then
+                            "company" underneath read as a second supplier. */}
+                        <span className="block truncate text-caption text-content-secondary" title={supplier.legalName ?? undefined}>
                           {[
                             supplier.legalName && supplier.legalName !== supplier.name ? supplier.legalName : null,
                             supplier.entityType !== 'UNKNOWN' ? ENTITY_TYPE_LABELS[supplier.entityType] : null,
