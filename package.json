@@ -2,7 +2,7 @@
   "name": "bluecroft-stock",
   "version": "1.0.0",
   "private": true,
-  "description": "Bluecroft Stock \u2014 internal luxury watch inventory management platform",
+  "description": "Bluecroft Stock — internal luxury watch inventory management platform",
   "engines": {
     "node": ">=20"
   },
@@ -23,6 +23,7 @@
     "test:journeys": "node tests/journeys/index.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "drizzle-orm": "^0.36.4",

@@ -209,6 +209,19 @@ await check('keyboard reachable', async (page) => {
   }
 })
 
+// 14b. Nothing may be fetched from a third party.
+await check('no third-party requests', async (page) => {
+  const foreign = new Set()
+  page.on('request', (request) => {
+    const url = request.url()
+    if (!url.startsWith(BASE) && !url.startsWith('data:') && !url.startsWith('blob:')) foreign.add(new URL(url).host)
+  })
+  for (const path of ['/', '/inventory', '/settings/profile']) await go(page, path)
+  if (foreign.size > 0) {
+    throw new Error(`the browser was sent to ${[...foreign].join(', ')} — a font or script is not self-hosted`)
+  }
+})
+
 // 15. Refreshing a filtered view must return the same view.
 await check('filters survive a refresh', async (page) => {
   await go(page, '/inventory')

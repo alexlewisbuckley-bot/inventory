@@ -1,6 +1,17 @@
 import type { Metadata, Viewport } from 'next'
 import { ThemeProvider, themeScript } from '@/components/ui/ThemeProvider'
 import { ToastProvider } from '@/components/ui/Toast'
+/**
+ * The typeface, self-hosted.
+ *
+ * It used to be fetched from Google's CDN by every browser on every cold load:
+ * a third-party request in the critical path, a privacy exposure for a company
+ * trading in the EU, and a silent fall back to the system stack whenever the
+ * request was blocked — which is what happens behind a corporate proxy, and
+ * what was happening here. The weight-variable woff2 ships in the package and
+ * is served from this origin, so it is either present or the build fails.
+ */
+import '@fontsource-variable/plus-jakarta-sans/wght.css'
 import '@/styles/globals.css'
 
 export const metadata: Metadata = {
@@ -24,17 +35,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Applied before paint so dark-mode users never see a light flash. */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Requested by the browser at runtime, not inlined at build time, so
-            the build never depends on an external host. `display=swap` plus the
-            system fallback stack in tailwind.config.ts means text is readable
-            immediately and correct if the request fails.
-            Production hardening: self-host the woff2 files and remove this. */}
-        <link
-          href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
       </head>
       <body>
         <a
