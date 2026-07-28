@@ -1,91 +1,133 @@
-import { DatabaseSync } from 'node:sqlite'
-import { drizzle } from 'drizzle-orm/sqlite-proxy'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
 import * as schema from './schema'
 import { logger } from '@/lib/logger'
 
 /**
  * Database connection.
  *
- * `node:sqlite` provides the driver (zero dependencies, ships with Node 22+)
- * and Drizzle's `sqlite-proxy` adapter provides the typed query builder.
- * See docs/adr/0001-data-layer.md for why this combination was chosen.
+ * Postgres via postgres.js. The application runs on serverless platforms where
+ * every instance opens its own pool, so the pool is deliberately small and
+ * idle connections are reaped quickly; point `DATABASE_URL` at a pooled
+ * endpoint (Neon/Supabase "-pooler", Vercel Postgres, PgBouncer) in production.
+ *
+ * See docs/adr/0002-postgres.md for why the original SQLite layer was replaced.
  */
 
-function resolveFile(): string {
-  const url = process.env.DATABASE_URL ?? 'file:./data/app.db'
-  return url.startsWith('file:') ? url.slice('file:'.length) : url
+function connectionString(): string {
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not set. Copy .env.example to .env and point it at your Postgres database.',
+    )
+  }
+  if (url.startsWith('file:')) {
+    throw new Error(
+      'DATABASE_URL points at a SQLite file. This application now requires Postgres — ' +
+      'see docs/deployment.md. A file-backed database cannot work on serverless hosting.',
+    )
+  }
+  return url
 }
 
-function connect(): DatabaseSync {
-  const file = resolveFile()
-  const conn = new DatabaseSync(file)
-  // WAL dramatically improves concurrent read throughput; foreign_keys is off
-  // by default in SQLite and must be enabled per connection.
-  conn.exec('PRAGMA journal_mode = WAL')
-  conn.exec('PRAGMA foreign_keys = ON')
-  conn.exec('PRAGMA busy_timeout = 5000')
-  logger.debug('database connected', { file })
-  return conn
+function createClient() {
+  const url = connectionString()
+  return postgres(url, {
+    // Serverless: many short-lived instances, each needing very few connections.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+    idle_timeout: 20,
+    connect_timeout: 15,
+    // Managed Postgres providers terminate plaintext connections.
+    ssl: url.includes('localhost') || url.includes('127.0.0.1') || url.includes('/tmp')
+      ? undefined
+      : 'require',
+    onnotice: () => {},
+  })
 }
 
-// Next.js recreates modules on hot reload; a global keeps one connection.
-const globalForDb = globalThis as unknown as { __sqlite?: DatabaseSync }
-export const connection: DatabaseSync = globalForDb.__sqlite ?? connect()
-if (process.env.NODE_ENV !== 'production') globalForDb.__sqlite = connection
+/**
+ * The connection is created lazily on first use, never at module scope.
+ *
+ * ES module imports are hoisted, so anything created at module scope runs
+ * before a CLI entrypoint has had a chance to call `loadEnv()` — the seed
+ * would then read a DATABASE_URL that was not yet set. Deferring creation
+ * until the first query removes that ordering hazard entirely, and also means
+ * importing this module in a test never opens a socket.
+ */
+const globalForDb = globalThis as unknown as {
+  __pg?: ReturnType<typeof createClient>
+  __db?: PostgresJsDatabase<typeof schema>
+}
 
-export const db = drizzle(
-  async (query, params, method) => {
-    try {
-      const stmt = connection.prepare(query)
-      if (method === 'run') {
-        stmt.run(...(params as never[]))
-        return { rows: [] }
-      }
+type Sql = ReturnType<typeof createClient>
 
-      // `sqlite-proxy` maps results positionally, so rows MUST come back as
-      // arrays. Object rows are unsafe here: a join that selects the same
-      // column name from two tables (`sessions.id` and `users.id`) collapses
-      // into a single object key, silently dropping columns and misaligning
-      // every value after it. `setReturnArrays` returns the true column
-      // vector, duplicates included.
-      stmt.setReturnArrays(true)
-      const rows = stmt.all(...(params as never[])) as unknown as unknown[][]
-      return method === 'get' ? { rows: rows[0] ?? [] } : { rows }
-    } catch (error) {
-      logger.error('query failed', { query, error: (error as Error).message })
-      throw error
-    }
+function getSql(): Sql {
+  if (!globalForDb.__pg) globalForDb.__pg = createClient()
+  return globalForDb.__pg
+}
+
+function getDb(): PostgresJsDatabase<typeof schema> {
+  if (!globalForDb.__db) globalForDb.__db = drizzle(getSql(), { schema, casing: 'snake_case' })
+  return globalForDb.__db
+}
+
+/** Raw postgres.js tag, for migrations and health checks. */
+export const sql = new Proxy((() => {}) as unknown as Sql, {
+  apply: (_target, _thisArg, args) => (getSql() as unknown as (...a: unknown[]) => unknown)(...args),
+  get: (_target, property) => Reflect.get(getSql() as object, property),
+}) as Sql
+
+type Tx = Parameters<Parameters<PostgresJsDatabase<typeof schema>['transaction']>[0]>[0]
+
+/**
+ * Holds the active transaction for the current async context.
+ *
+ * Services import `db` directly and call it inside `withTransaction`. Binding
+ * the transaction here — rather than threading a `tx` argument through every
+ * service — means a nested repository call cannot accidentally run outside the
+ * transaction its caller opened, which is the classic way a "transactional"
+ * write ends up half-applied.
+ */
+const transactionContext = new AsyncLocalStorage<Tx>()
+
+/**
+ * The database handle.
+ *
+ * Transparently resolves to the active transaction when one is open, and to
+ * the pool otherwise.
+ */
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, property, receiver) {
+    const active = transactionContext.getStore()
+    return Reflect.get(active ?? getDb(), property, receiver)
   },
-  { schema, casing: 'snake_case' },
-)
+}) as PostgresJsDatabase<typeof schema>
 
 export type Database = typeof db
 
 /**
- * Run `fn` inside a SQLite transaction.
+ * Run `fn` inside a transaction.
  *
- * `sqlite-proxy` cannot express transactions, so they are driven directly on
- * the underlying connection. Every service performing more than one write must
- * use this — e.g. recording a sale writes to `sales`, `watches` and
- * `audit_logs` and must not half-apply.
- *
- * Nested calls join the outer transaction rather than starting a second one,
- * because SQLite does not support nested BEGIN.
+ * Nested calls join the outer transaction rather than opening a second one, so
+ * a service that calls another transactional service still commits atomically.
  */
-let depth = 0
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
-  if (depth > 0) return fn()
-  depth += 1
-  connection.exec('BEGIN IMMEDIATE')
+  const existing = transactionContext.getStore()
+  if (existing) return fn()
+  return getDb().transaction(async (tx) => transactionContext.run(tx, fn))
+}
+
+/** Verify connectivity and that migrations have been applied. */
+export async function checkDatabase(): Promise<{ ok: boolean; migrated: boolean }> {
   try {
-    const result = await fn()
-    connection.exec('COMMIT')
-    return result
+    const rows = await sql`
+      SELECT to_regclass('public.users') IS NOT NULL AS migrated
+    `
+    return { ok: true, migrated: Boolean(rows[0]?.migrated) }
   } catch (error) {
-    connection.exec('ROLLBACK')
-    throw error
-  } finally {
-    depth -= 1
+    logger.error('database unreachable', { error: (error as Error).message })
+    return { ok: false, migrated: false }
   }
 }
 

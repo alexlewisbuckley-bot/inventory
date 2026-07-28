@@ -1,28 +1,30 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { connection } from './client'
+import { sql as client } from './client'
 import { logger } from '@/lib/logger'
 
 /**
- * Minimal forward-only migration runner.
+ * Forward-only migration runner.
  *
- * Migrations are plain `.sql` files applied in lexical filename order and
- * recorded in `_migrations`. Keeping them as reviewable SQL (rather than
- * generated at runtime) means the exact statements that will hit production
- * are the ones in code review.
+ * Migrations are plain, reviewable `.sql` files applied in filename order and
+ * recorded in a `_migrations` ledger. Keeping them as SQL means the exact
+ * statements that reach production are the ones that went through code review.
+ *
+ * Each file runs inside its own transaction, so a failure leaves the database
+ * on the last complete migration rather than half-applied.
  */
 const DIR = join(process.cwd(), 'src', 'server', 'db', 'migrations')
 
-export function runMigrations(): { applied: string[]; skipped: number } {
-  connection.exec(`
+export async function runMigrations(): Promise<{ applied: string[]; skipped: number }> {
+  await client`
     CREATE TABLE IF NOT EXISTS _migrations (
       name       TEXT PRIMARY KEY,
-      applied_at INTEGER NOT NULL
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
-  `)
+  `
 
   const done = new Set(
-    (connection.prepare('SELECT name FROM _migrations').all() as { name: string }[]).map((r) => r.name),
+    (await client<{ name: string }[]>`SELECT name FROM _migrations`).map((row) => row.name),
   )
 
   const files = readdirSync(DIR).filter((f) => f.endsWith('.sql')).sort()
@@ -30,16 +32,15 @@ export function runMigrations(): { applied: string[]; skipped: number } {
 
   for (const file of files) {
     if (done.has(file)) continue
-    const sql = readFileSync(join(DIR, file), 'utf8')
-    connection.exec('BEGIN IMMEDIATE')
+    const statements = readFileSync(join(DIR, file), 'utf8')
     try {
-      connection.exec(sql)
-      connection.prepare('INSERT INTO _migrations (name, applied_at) VALUES (?, ?)').run(file, Date.now())
-      connection.exec('COMMIT')
+      await client.begin(async (tx) => {
+        await tx.unsafe(statements)
+        await tx`INSERT INTO _migrations (name) VALUES (${file})`
+      })
       applied.push(file)
       logger.info('migration applied', { file })
     } catch (error) {
-      connection.exec('ROLLBACK')
       logger.error('migration failed', { file, error: (error as Error).message })
       throw error
     }

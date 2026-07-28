@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { eq, sql } from 'drizzle-orm'
-import { db, connection, withTransaction } from '../client'
+import { db, sql as client, withTransaction } from '../client'
 import { runMigrations } from '../migrate'
 import {
   appSettings, auditLogs, brands, locations, notifications, sales,
@@ -18,6 +18,12 @@ import {
 import { hashPassword } from '../../auth/password'
 import { newId, initialsOf, slugify } from '@/lib/ids'
 import type { Role } from '@/lib/enums'
+import { loadEnv } from '@/lib/load-env'
+
+// Imports are hoisted, so this runs before the first query rather than before
+// the client module is evaluated — which is safe because the connection in
+// client.ts is created lazily on first use, not at module scope.
+loadEnv()
 
 interface SeedWatch {
   stockNo: number; brand: string; model: string; nickname: string | null
@@ -52,7 +58,7 @@ const SETTINGS: Record<string, string> = {
 }
 
 export async function seed(): Promise<void> {
-  runMigrations()
+  await runMigrations()
 
   await withTransaction(async () => {
     // --- Users -------------------------------------------------------------
@@ -181,14 +187,16 @@ export async function seed(): Promise<void> {
 // Executed directly via `npm run db:seed`.
 if (process.argv[1]?.includes('seed')) {
   seed()
-    .then(() => {
-      const count = connection.prepare('SELECT COUNT(*) as c FROM watches').get() as { c: number }
-      console.log(`Seed complete — ${count.c} watches in stock.`)
+    .then(async () => {
+      const rows = await client<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM watches`
+      console.log(`Seed complete — ${rows[0]?.count ?? 0} watches in stock.`)
       console.log('Sign in with alex@bluecroft.co.uk / Bluecroft2026!')
+      await client.end()
       process.exit(0)
     })
-    .catch((error) => {
-      console.error('Seed failed:', error)
+    .catch(async (error) => {
+      console.error('Seed failed:', error instanceof Error ? error.message : error)
+      await client.end().catch(() => {})
       process.exit(1)
     })
 }

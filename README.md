@@ -8,12 +8,22 @@ purchase through location transfers to sale, with a full audit trail.
 
 ## Quick start
 
+You need **Node 20+** and a **PostgreSQL database**. A free Neon or Supabase
+database works fine, and is the quickest way to get started — no local Postgres
+install required.
+
 ```bash
 npm install
-cp .env.example .env      # then set AUTH_SECRET to 32+ random characters
-npm run db:seed           # applies migrations and loads reference + demo data
+cp .env.example .env
+#  → set DATABASE_URL to your Postgres connection string
+#  → set AUTH_SECRET: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+
+npm run db:migrate        # create the schema
+npm run db:seed           # reference data, demo users, the 26 migrated watches
 npm run dev               # http://localhost:3000
 ```
+
+To deploy, see **[docs/deployment.md](docs/deployment.md)**.
 
 Seeded sign-ins (all use the password `Bluecroft2026!`):
 
@@ -164,12 +174,13 @@ the tab order; `prefers-reduced-motion` disables animation.
 
 ## Deployment
 
-Set `DATABASE_URL`, a strong `AUTH_SECRET`, and `NODE_ENV=production`, then
-`npm run build && npm start`. `/api/health` reports process and database
-liveness for load-balancer probes.
+Set `DATABASE_URL` (pooled endpoint) and a strong `AUTH_SECRET`, then
+`npm run build && npm start`. `/api/health` reports connectivity and migration
+status separately, so a misconfigured deployment is diagnosable from the
+response. Full instructions are in **[docs/deployment.md](docs/deployment.md)**.
 
-Moving to Postgres means changing the driver in `src/server/db/client.ts` and
-translating the migration SQL — the query layer, services and UI are unchanged.
+Any host running Node 20+ with access to a Postgres database will work;
+nothing in the codebase is tied to a specific platform.
 
 ---
 

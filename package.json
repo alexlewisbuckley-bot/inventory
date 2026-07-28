@@ -2,7 +2,7 @@
   "name": "bluecroft-stock",
   "version": "1.0.0",
   "private": true,
-  "description": "Bluecroft Stock — internal luxury watch inventory management platform",
+  "description": "Bluecroft Stock \u2014 internal luxury watch inventory management platform",
   "engines": {
     "node": ">=20"
   },
@@ -16,8 +16,8 @@
     "test:watch": "vitest",
     "db:migrate": "tsx src/server/db/cli-migrate.ts",
     "db:seed": "tsx src/server/db/seed/index.ts",
-    "db:reset": "rm -f data/app.db data/app.db-wal data/app.db-shm && npm run db:seed",
-    "setup": "npm install && npm run db:seed"
+    "db:reset": "npm run db:migrate && npm run db:seed",
+    "setup": "npm install && npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -26,6 +26,7 @@
     "jose": "^5.9.6",
     "lucide-react": "^0.454.0",
     "next": "14.2.18",
+    "postgres": "^3.4.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.4",

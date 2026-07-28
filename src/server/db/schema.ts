@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm'
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import {
+  boolean, index, integer, pgTable, text, timestamp, uniqueIndex,
+} from 'drizzle-orm/pg-core'
 import {
   AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, LOCATION_TYPES,
   NOTIFICATION_TYPES, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
@@ -7,22 +9,24 @@ import {
 
 /**
  * Schema conventions
- *  - Primary keys are application-generated CUID-ish strings (see `newId`).
- *  - Money is INTEGER minor units (pence / cents). Never floats.
- *  - Timestamps are INTEGER unix-millis, surfaced as JS `Date` by the driver.
+ *  - Primary keys are application-generated sortable string ids (see `newId`).
+ *  - Money is INTEGER minor units (pence / cents). Never floats. The int4 range
+ *    tops out around £21m per row, comfortably above any single watch.
+ *  - Enum-like columns are `text` with a TypeScript union, declared once in
+ *    src/lib/enums.ts, rather than native pg enums — adding a value is then a
+ *    code change with no migration and no lock.
  *  - Destroyable entities carry `deletedAt`; repositories filter it out.
  */
 
-const now = sql`(unixepoch() * 1000)`
-const createdAt = () => integer('created_at', { mode: 'timestamp_ms' }).notNull().default(now)
-const updatedAt = () => integer('updated_at', { mode: 'timestamp_ms' }).notNull().default(now)
-const deletedAt = () => integer('deleted_at', { mode: 'timestamp_ms' })
+const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+const updatedAt = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+const deletedAt = () => timestamp('deleted_at', { withTimezone: true })
 
 // ---------------------------------------------------------------------------
 // Identity & access
 // ---------------------------------------------------------------------------
 
-export const users = sqliteTable(
+export const users = pgTable(
   'users',
   {
     id: text('id').primaryKey(),
@@ -33,8 +37,8 @@ export const users = sqliteTable(
     jobTitle: text('job_title'),
     phone: text('phone'),
     initials: text('initials').notNull(),
-    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-    lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
+    isActive: boolean('is_active').notNull().default(true),
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     /** Bumped on password change so every previously issued session dies. */
     tokenVersion: integer('token_version').notNull().default(0),
     createdAt: createdAt(),
@@ -48,7 +52,7 @@ export const users = sqliteTable(
   }),
 )
 
-export const sessions = sqliteTable(
+export const sessions = pgTable(
   'sessions',
   {
     id: text('id').primaryKey(),
@@ -57,9 +61,9 @@ export const sessions = sqliteTable(
     tokenHash: text('token_hash').notNull(),
     userAgent: text('user_agent'),
     ipAddress: text('ip_address'),
-    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: createdAt(),
-    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull().default(now),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     tokenIdx: uniqueIndex('sessions_token_idx').on(t.tokenHash),
@@ -68,14 +72,14 @@ export const sessions = sqliteTable(
   }),
 )
 
-export const userPreferences = sqliteTable('user_preferences', {
+export const userPreferences = pgTable('user_preferences', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   theme: text('theme', { enum: THEMES }).notNull().default('SYSTEM'),
   density: text('density', { enum: DENSITIES }).notNull().default('COMFORTABLE'),
   displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('GBP'),
   defaultLocationId: text('default_location_id').references(() => locations.id, { onDelete: 'set null' }),
-  emailNotifications: integer('email_notifications', { mode: 'boolean' }).notNull().default(true),
-  inAppNotifications: integer('in_app_notifications', { mode: 'boolean' }).notNull().default(true),
+  emailNotifications: boolean('email_notifications').notNull().default(true),
+  inAppNotifications: boolean('in_app_notifications').notNull().default(true),
   updatedAt: updatedAt(),
 })
 
@@ -83,7 +87,7 @@ export const userPreferences = sqliteTable('user_preferences', {
 // Reference data
 // ---------------------------------------------------------------------------
 
-export const locations = sqliteTable(
+export const locations = pgTable(
   'locations',
   {
     id: text('id').primaryKey(),
@@ -94,7 +98,7 @@ export const locations = sqliteTable(
     city: text('city'),
     country: text('country'),
     notes: text('notes'),
-    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    isActive: boolean('is_active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -106,7 +110,7 @@ export const locations = sqliteTable(
   }),
 )
 
-export const suppliers = sqliteTable(
+export const suppliers = pgTable(
   'suppliers',
   {
     id: text('id').primaryKey(),
@@ -116,7 +120,7 @@ export const suppliers = sqliteTable(
     phone: text('phone'),
     country: text('country'),
     notes: text('notes'),
-    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
@@ -127,7 +131,7 @@ export const suppliers = sqliteTable(
   }),
 )
 
-export const brands = sqliteTable(
+export const brands = pgTable(
   'brands',
   {
     id: text('id').primaryKey(),
@@ -142,7 +146,7 @@ export const brands = sqliteTable(
 // Core inventory
 // ---------------------------------------------------------------------------
 
-export const watches = sqliteTable(
+export const watches = pgTable(
   'watches',
   {
     id: text('id').primaryKey(),
@@ -158,7 +162,7 @@ export const watches = sqliteTable(
     year: integer('year'),
 
     supplierId: text('supplier_id').notNull().references(() => suppliers.id),
-    purchaseDate: integer('purchase_date', { mode: 'timestamp_ms' }).notNull(),
+    purchaseDate: timestamp('purchase_date', { withTimezone: true }).notNull(),
     /** Contractual purchase price, GBP minor units. */
     purchasePriceGbp: integer('purchase_price_gbp').notNull(),
     /** Derived USD minor units at the rate captured on the purchase date. */
@@ -194,7 +198,7 @@ export const watches = sqliteTable(
   }),
 )
 
-export const watchPhotos = sqliteTable(
+export const watchPhotos = pgTable(
   'watch_photos',
   {
     id: text('id').primaryKey(),
@@ -207,13 +211,13 @@ export const watchPhotos = sqliteTable(
   (t) => ({ watchIdx: index('watch_photos_watch_idx').on(t.watchId) }),
 )
 
-export const sales = sqliteTable(
+export const sales = pgTable(
   'sales',
   {
     id: text('id').primaryKey(),
     watchId: text('watch_id').notNull().references(() => watches.id, { onDelete: 'cascade' }),
     invoiceNo: text('invoice_no').notNull(),
-    saleDate: integer('sale_date', { mode: 'timestamp_ms' }).notNull(),
+    saleDate: timestamp('sale_date', { withTimezone: true }).notNull(),
     saleAmountUsd: integer('sale_amount_usd').notNull(),
     saleAmountGbp: integer('sale_amount_gbp').notNull(),
     saleFxRate: integer('sale_fx_rate'),
@@ -239,7 +243,7 @@ export const sales = sqliteTable(
   }),
 )
 
-export const stockMovements = sqliteTable(
+export const stockMovements = pgTable(
   'stock_movements',
   {
     id: text('id').primaryKey(),
@@ -260,7 +264,7 @@ export const stockMovements = sqliteTable(
 // Observability & platform
 // ---------------------------------------------------------------------------
 
-export const auditLogs = sqliteTable(
+export const auditLogs = pgTable(
   'audit_logs',
   {
     id: text('id').primaryKey(),
@@ -281,7 +285,7 @@ export const auditLogs = sqliteTable(
   }),
 )
 
-export const notifications = sqliteTable(
+export const notifications = pgTable(
   'notifications',
   {
     id: text('id').primaryKey(),
@@ -291,7 +295,7 @@ export const notifications = sqliteTable(
     body: text('body'),
     entityType: text('entity_type'),
     entityId: text('entity_id'),
-    readAt: integer('read_at', { mode: 'timestamp_ms' }),
+    readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => ({
@@ -300,11 +304,13 @@ export const notifications = sqliteTable(
   }),
 )
 
-export const appSettings = sqliteTable('app_settings', {
+export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
   updatedAt: updatedAt(),
 })
+
+void sql
 
 // --- Inferred model types --------------------------------------------------
 
