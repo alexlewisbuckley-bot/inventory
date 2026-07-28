@@ -26,8 +26,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Loaded at runtime rather than build time so the build has no
-            external network dependency. */}
+        {/* Requested by the browser at runtime, not inlined at build time, so
+            the build never depends on an external host. `display=swap` plus the
+            system fallback stack in tailwind.config.ts means text is readable
+            immediately and correct if the request fails.
+            Production hardening: self-host the woff2 files and remove this. */}
         <link
           href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"

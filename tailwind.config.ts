@@ -38,6 +38,10 @@ const config: Config = {
           subtle: 'rgb(var(--c-border-subtle) / <alpha-value>)',
           strong: 'rgb(var(--c-border-strong) / <alpha-value>)',
         },
+        series: {
+          1: 'rgb(var(--c-series-1) / <alpha-value>)',
+          2: 'rgb(var(--c-series-2) / <alpha-value>)',
+        },
         state: {
           success: 'rgb(var(--c-success) / <alpha-value>)',
           gold: 'rgb(var(--c-gold) / <alpha-value>)',
@@ -50,7 +54,14 @@ const config: Config = {
         1: '4px', 2: '8px', 3: '12px', 4: '16px', 5: '20px', 6: '24px',
         8: '32px', 10: '40px', 12: '48px', 16: '64px', 20: '80px', 24: '96px', 30: '120px',
       },
-      fontFamily: { sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+      fontFamily: {
+        // The webfont leads, but the fallback stack is a deliberate, complete
+        // system stack — if the CDN is blocked the app still renders correctly.
+        sans: [
+          'var(--font-jakarta)', 'ui-sans-serif', 'system-ui', '-apple-system',
+          'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif',
+        ],
+      },
       fontSize: {
         micro: ['11px', { lineHeight: '16px', letterSpacing: '0.04em' }],
         caption: ['12px', { lineHeight: '18px' }],

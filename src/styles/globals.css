@@ -29,6 +29,12 @@
     --c-gold: 245 184 65;
     --c-danger: 214 69 69;
     --c-shadow: 10 31 68;
+
+    /* Chart series. Validated for CVD separation and contrast against the
+       light surface (scripts/validate_palette.js). Dark mode below uses its
+       own steps from the same ramps, not an automatic flip. */
+    --c-series-1: 30 78 157;   /* #1E4E9D */
+    --c-series-2: 0 194 203;   /* #00C2CB */
   }
 
   .dark {
@@ -53,6 +59,9 @@
     --c-gold: 245 184 65;
     --c-danger: 240 113 113;
     --c-shadow: 0 0 0;
+
+    --c-series-1: 63 114 204;  /* #3F72CC — re-stepped for the dark surface */
+    --c-series-2: 15 166 174;  /* #0FA6AE */
   }
 
   * { @apply border-line-subtle; }
