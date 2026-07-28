@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useTransition } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Monitor, ShieldCheck } from 'lucide-react'
 import {
@@ -7,7 +7,7 @@ import {
   Checkbox, Avatar, Chip, useToast,
 } from '@/components/ui'
 import { changePasswordAction } from '@/app/actions/auth'
-import { updatePreferencesAction } from '@/app/actions/admin'
+import { signOutOtherDevicesAction, updatePreferencesAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
 import { useTheme } from '@/components/ui/ThemeProvider'
 import { relativeTime, formatDateTime } from '@/lib/dates'
@@ -27,7 +27,7 @@ export interface ProfilePreferences {
 
 export interface SessionSummary {
   id: string; userAgent: string | null; ipAddress: string | null
-  lastSeenAt: string; createdAt: string
+  lastSeenAt: string; createdAt: string; isCurrent: boolean
 }
 
 const THEME_LABELS: Record<string, string> = { LIGHT: 'Light', DARK: 'Dark', SYSTEM: 'Match my system' }
@@ -41,7 +41,9 @@ export function ProfilePanel({ user, preferences, locations, sessions }: {
 }) {
   return (
     <div className="grid items-start gap-6 lg:grid-cols-3">
-      <div className="lg:col-span-1">
+      {/* The identity card is a third the height of the column beside it, so it
+          follows you down rather than leaving a long empty gutter. */}
+      <div className="lg:sticky lg:top-[84px] lg:col-span-1">
         <Card>
           <CardBody className="flex flex-col items-center py-8 text-center">
             <Avatar initials={user.initials} id={user.id} size="lg" />
@@ -161,31 +163,61 @@ function PasswordForm() {
   )
 }
 
+/**
+ * Signed-in devices.
+ *
+ * Two things this list has to get right. The device you are reading it on
+ * belongs at the top and says so, because every other row is only meaningful
+ * relative to it. And the list is bounded: it used to render every row the
+ * table held — fifty near-identical entries pushing the page past ten thousand
+ * pixels — which hides the one unfamiliar device it exists to reveal.
+ */
 function SessionsCard({ sessions }: { sessions: SessionSummary[] }) {
+  const toast = useToast()
+  const [pending, start] = useTransition()
+
+  // This device first; everything else by recency, which the query already did.
+  const ordered = [...sessions].sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent))
+  const others = sessions.filter((session) => !session.isCurrent).length
+
+  const signOutOthers = () => {
+    start(async () => {
+      const result = await signOutOtherDevicesAction()
+      if (result.ok) toast.success('Other devices signed out', result.message)
+      else toast.error('Could not sign out the other devices', result.message)
+    })
+  }
+
   return (
     <Card as="section">
       <CardHeader
         title="Signed-in devices"
-        description="Sessions currently valid for your account."
+        description="Sessions currently valid for your account, most recently used first."
       />
       <ul className="divide-y divide-line-subtle">
-        {sessions.length === 0 && (
+        {ordered.length === 0 && (
           <li className="px-6 py-5 text-small text-content-secondary">No active sessions found.</li>
         )}
-        {sessions.map((session) => (
+        {ordered.map((session) => (
           <li key={session.id} className="flex items-center gap-4 px-6 py-4">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-subtle text-content-secondary" aria-hidden>
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md ${
+                session.isCurrent ? 'bg-teal-500/10 text-teal-600' : 'bg-surface-subtle text-content-secondary'
+              }`}
+              aria-hidden
+            >
               <Monitor className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-small font-bold text-content-primary">
-                {describeAgent(session.userAgent)}
+              <p className="flex items-center gap-2 text-small font-bold text-content-primary">
+                <span className="truncate">{describeAgent(session.userAgent)}</span>
+                {session.isCurrent && <Chip tone="success">This device</Chip>}
               </p>
-              <p className="text-caption text-content-secondary">
+              <p className="truncate text-caption text-content-secondary">
                 {session.ipAddress ?? 'Unknown address'} · last active {relativeTime(session.lastSeenAt)}
               </p>
             </div>
-            <p className="shrink-0 text-caption text-content-secondary" title={formatDateTime(session.createdAt)}>
+            <p className="hidden shrink-0 text-caption text-content-secondary sm:block" title={formatDateTime(session.createdAt)}>
               since {relativeTime(session.createdAt)}
             </p>
           </li>
@@ -193,10 +225,18 @@ function SessionsCard({ sessions }: { sessions: SessionSummary[] }) {
       </ul>
       <CardFooter>
         <p className="flex items-center gap-2 text-caption text-content-secondary">
-          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
           Changing your password ends every session except this one.
         </p>
-        <span />
+        <Button
+          variant="secondary"
+          onClick={signOutOthers}
+          loading={pending}
+          disabled={others === 0}
+          title={others === 0 ? 'This is your only signed-in device.' : undefined}
+        >
+          Sign out other devices
+        </Button>
       </CardFooter>
     </Card>
   )

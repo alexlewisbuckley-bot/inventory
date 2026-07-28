@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { cookies, headers } from 'next/headers'
 import { SignJWT, jwtVerify } from 'jose'
-import { and, eq, gt, isNull, lt } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, lt, ne } from 'drizzle-orm'
 import { db } from '../db/client'
 import { sessions, users, type User } from '../db/schema'
 import { newId } from '@/lib/ids'
@@ -37,6 +37,56 @@ function maxAge(): number {
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 
+/**
+ * How many signed-in devices we keep on record per user.
+ *
+ * A row is written per sign-in, and signing in again on the same laptop does
+ * not retire the previous one, so the list grows without bound: a working
+ * account reached fifty near-identical "Chrome on Linux" entries, which
+ * defeats the only job that screen has — spotting the device you do not
+ * recognise. Ten is more than anyone genuinely uses at once, and the oldest
+ * are the least interesting.
+ */
+export const MAX_SESSIONS_PER_USER = 10
+
+/** The hash of the session token on this request, if it carries a valid one. */
+async function currentTokenHash(): Promise<string | null> {
+  const cookie = cookies().get(COOKIE)?.value
+  if (!cookie) return null
+  try {
+    const { payload } = await jwtVerify(cookie, secret(), { algorithms: [ALG] })
+    const token = payload.tok as string | undefined
+    return token ? hashToken(token) : null
+  } catch {
+    // An unreadable cookie is the same as no cookie for every caller here.
+    return null
+  }
+}
+
+/** The id of the session row this request is authenticated by, if any. */
+export async function currentSessionId(): Promise<string | null> {
+  const hash = await currentTokenHash()
+  if (!hash) return null
+  const [row] = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(eq(sessions.tokenHash, hash))
+    .limit(1)
+  return row?.id ?? null
+}
+
+/** Retire the oldest rows once a user is over the cap. */
+async function capSessions(userId: string): Promise<void> {
+  const live = await db
+    .select({ id: sessions.id })
+    .from(sessions)
+    .where(eq(sessions.userId, userId))
+    .orderBy(desc(sessions.lastSeenAt))
+
+  const excess = live.slice(MAX_SESSIONS_PER_USER).map((row) => row.id)
+  if (excess.length > 0) await db.delete(sessions).where(inArray(sessions.id, excess))
+}
+
 export interface SessionUser {
   id: string
   email: string
@@ -65,6 +115,7 @@ export async function createSession(user: User): Promise<void> {
     ipAddress: headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
     expiresAt,
   })
+  await capSessions(user.id)
 
   const jwt = await new SignJWT({ sub: user.id, tv: user.tokenVersion, tok: token })
     .setProtectedHeader({ alg: ALG })
@@ -150,6 +201,25 @@ export async function destroySession(): Promise<void> {
 /** Revoke every session for a user (deactivation, password change, "sign out everywhere"). */
 export async function revokeAllSessions(userId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.userId, userId))
+}
+
+/**
+ * End every session except the one making the request.
+ *
+ * The obvious "sign out everywhere" would log you out too, which nobody wants
+ * when the reason for pressing it is a laptop left on a train.
+ */
+export async function revokeOtherSessions(userId: string): Promise<number> {
+  const keep = await currentTokenHash()
+
+  const removed = await db
+    .delete(sessions)
+    .where(keep
+      ? and(eq(sessions.userId, userId), ne(sessions.tokenHash, keep))
+      : eq(sessions.userId, userId))
+    .returning({ id: sessions.id })
+
+  return removed.length
 }
 
 /** Housekeeping: drop expired rows. Called opportunistically on sign-in. */

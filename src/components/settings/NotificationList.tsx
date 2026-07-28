@@ -30,21 +30,10 @@ const ICONS: Record<NotificationType, typeof Bell> = {
 }
 
 /** Notification feed with per-item and bulk read handling. */
-export function NotificationList({ items, hasUnread }: { items: NotificationView[]; hasUnread: boolean }) {
+export function NotificationList({ items }: { items: NotificationView[] }) {
   const router = useRouter()
-  const toast = useToast()
-  const [busy, setBusy] = useState(false)
   // Optimistic: mark read in the UI immediately, reconcile on refresh.
   const [readLocally, setReadLocally] = useState<Set<string>>(new Set())
-
-  const markAll = async () => {
-    setBusy(true)
-    const result = await markAllNotificationsReadAction()
-    setBusy(false)
-    setReadLocally(new Set(items.map((i) => i.id)))
-    toast.success('Marked as read', result.message)
-    router.refresh()
-  }
 
   const open = async (item: NotificationView) => {
     if (!item.readAt && !readLocally.has(item.id)) {
@@ -55,16 +44,7 @@ export function NotificationList({ items, hasUnread }: { items: NotificationView
   }
 
   return (
-    <>
-      {hasUnread && (
-        <div className="flex justify-end border-b border-line-subtle px-6 py-3">
-          <Button variant="ghost" size="sm" onClick={markAll} loading={busy} icon={<CheckCheck className="h-4 w-4" />}>
-            Mark all as read
-          </Button>
-        </div>
-      )}
-
-      <ul className="divide-y divide-line-subtle">
+    <ul className="divide-y divide-line-subtle">
         {items.map((item) => {
           const Icon = ICONS[item.type]
           const unread = !item.readAt && !readLocally.has(item.id)
@@ -81,14 +61,15 @@ export function NotificationList({ items, hasUnread }: { items: NotificationView
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className={cn('text-body text-content-primary', unread && 'font-bold')}>
+                <p className={cn('flex items-center gap-2 text-body text-content-primary', unread && 'font-bold')}>
+                  {unread && <span className="h-1.5 w-1.5 shrink-0 rounded-pill bg-teal-500" aria-hidden />}
                   {item.title}
                   {unread && <span className="sr-only"> (unread)</span>}
                 </p>
                 {item.body && <p className="mt-0.5 text-small text-content-secondary">{item.body}</p>}
                 <p className="mt-1 text-caption text-content-secondary">{relativeTime(item.createdAt)}</p>
               </div>
-              {unread && <span className="mt-2 h-2 w-2 shrink-0 rounded-pill bg-teal-500" aria-hidden />}
+
             </div>
           )
 
@@ -105,8 +86,28 @@ export function NotificationList({ items, hasUnread }: { items: NotificationView
               )}
             </li>
           )
-        })}
-      </ul>
-    </>
+      })}
+    </ul>
+  )
+}
+
+/** The bulk action, rendered into the page header. */
+export function MarkAllReadButton() {
+  const router = useRouter()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+
+  const markAll = async () => {
+    setBusy(true)
+    const result = await markAllNotificationsReadAction()
+    setBusy(false)
+    toast.success('Marked as read', result.message)
+    router.refresh()
+  }
+
+  return (
+    <Button variant="secondary" onClick={markAll} loading={busy} icon={<CheckCheck className="h-4 w-4" />}>
+      Mark all as read
+    </Button>
   )
 }

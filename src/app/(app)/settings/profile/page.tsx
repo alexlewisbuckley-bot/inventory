@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { asc, isNull } from 'drizzle-orm'
-import { requireUser } from '@/server/auth/session'
+import { currentSessionId, requireUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { locations } from '@/server/db/schema'
 import { getPreferencesFor } from '@/server/services/settings-service'
@@ -12,9 +12,10 @@ export const dynamic = 'force-dynamic'
 
 export default async function ProfilePage() {
   const user = await requireUser()
-  const [preferences, sessions, locationRows] = await Promise.all([
+  const [preferences, sessions, thisSessionId, locationRows] = await Promise.all([
     getPreferencesFor(user.id),
     listSessions(user.id),
+    currentSessionId(),
     db.select({ id: locations.id, name: locations.name }).from(locations)
       .where(isNull(locations.deletedAt)).orderBy(asc(locations.sortOrder)),
   ])
@@ -37,6 +38,7 @@ export default async function ProfilePage() {
         ipAddress: s.ipAddress,
         lastSeenAt: s.lastSeenAt.toISOString(),
         createdAt: s.createdAt.toISOString(),
+        isCurrent: s.id === thisSessionId,
       }))}
     />
   )

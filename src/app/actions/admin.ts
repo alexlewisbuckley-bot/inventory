@@ -162,3 +162,27 @@ export async function updateRatesAction(_prev: ActionState, formData: FormData):
     return toState(error, 'Could not update the rates.')
   }
 }
+
+/**
+ * End every session except this one.
+ *
+ * "Sign out everywhere" that includes the device you are asking from is not
+ * what anyone means by it — the reason for pressing this is usually a laptop
+ * left somewhere, and being logged out yourself is a punishment for noticing.
+ */
+export async function signOutOtherDevicesAction(): Promise<ActionState> {
+  const user = await requireUser()
+  try {
+    const { revokeOtherSessions } = await import('@/server/auth/session')
+    const ended = await revokeOtherSessions(user.id)
+    revalidatePath('/settings/profile')
+    return {
+      ok: true,
+      message: ended === 0
+        ? 'This is your only signed-in device.'
+        : `Signed out of ${ended} other ${ended === 1 ? 'device' : 'devices'}.`,
+    }
+  } catch (error) {
+    return toState(error, 'Could not sign out the other devices.')
+  }
+}

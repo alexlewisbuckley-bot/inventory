@@ -77,7 +77,7 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
         />
         <CardBody className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-4">
-            <LinkButton href="/api/import/template" icon={<FileSpreadsheet className="h-4 w-4" />}>
+            <LinkButton href="/api/import/template" variant="secondary" icon={<FileSpreadsheet className="h-4 w-4" />}>
               Download the Excel template
             </LinkButton>
             <a
@@ -372,7 +372,7 @@ function IssueList({ issues }: {
 function PreviewButton() {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" variant="secondary" loading={pending} icon={<FileUp className="h-4 w-4" />}>
+    <Button type="submit" loading={pending} icon={<FileUp className="h-4 w-4" />}>
       Check my file
     </Button>
   )

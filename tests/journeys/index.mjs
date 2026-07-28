@@ -18,6 +18,7 @@
  * Signs in through the login form rather than minting a token, so the session
  * path is covered too.
  */
+import { existsSync } from 'node:fs'
 import { chromium } from 'playwright'
 
 const BASE = process.env.JOURNEY_URL ?? 'http://localhost:3000'
@@ -26,8 +27,12 @@ const PASSWORD = process.env.JOURNEY_PASSWORD ?? 'Bluecroft2026!'
 const only = process.argv[2]
 const results = []
 
+// The bundled browser moves with the Playwright version; a pinned copy in the
+// sandbox is used when the default download is not present.
+const FALLBACK_CHROMIUM = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
+  executablePath: process.env.CHROMIUM_PATH
+    || (existsSync(FALLBACK_CHROMIUM) ? FALLBACK_CHROMIUM : undefined),
   args: ['--no-proxy-server'],
 })
 
@@ -294,7 +299,28 @@ await journey('saved views', async (page) => {
   if (filtered >= total) throw new Error(`view did not filter (${total} -> ${filtered})`)
 })
 
-// --- 10. Mobile navigation sheet -------------------------------------------
+// --- 10. Sign out of other devices -----------------------------------------
+await journey('sign out other devices', async (page) => {
+  await go(page, '/settings/profile')
+  const button = page.locator('button:has-text("Sign out other devices")')
+  if (await button.count() === 0) throw new Error('the control is missing from the profile page')
+
+  const current = page.locator('li:has-text("This device")')
+  if (await current.count() !== 1) throw new Error('exactly one session should be marked as this device')
+
+  if (!(await button.isDisabled())) {
+    await button.click()
+    await page.waitForTimeout(2500)
+    if (await page.locator('[role="status"], [role="alert"]').count() === 0) {
+      throw new Error('no confirmation was shown')
+    }
+  }
+  // Whatever happened, the session reading the page must survive it.
+  await go(page, '/settings/profile')
+  if (page.url().includes('/login')) throw new Error('it signed the current device out too')
+})
+
+// --- 11. Mobile navigation sheet -------------------------------------------
 if (!only || 'mobile nav'.includes(only)) {
   const { ctx, page } = await newPage(390, 844)
   try {

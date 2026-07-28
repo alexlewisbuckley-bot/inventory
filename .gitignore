@@ -20,3 +20,6 @@ next-env.d.ts
 /s2.mjs
 /probe.mjs
 /shot.mjs
+/shots.mjs
+/audit.mjs
+/probe2.mjs

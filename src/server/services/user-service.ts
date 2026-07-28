@@ -1,8 +1,8 @@
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { sessions, userPreferences, users } from '../db/schema'
 import { hashPassword, assessPassword } from '../auth/password'
-import { revokeAllSessions } from '../auth/session'
+import { MAX_SESSIONS_PER_USER, revokeAllSessions } from '../auth/session'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, initialsOf } from '@/lib/ids'
@@ -176,6 +176,9 @@ export async function listSessions(userId: string) {
       createdAt: sessions.createdAt, lastSeenAt: sessions.lastSeenAt, expiresAt: sessions.expiresAt,
     })
     .from(sessions)
-    .where(eq(sessions.userId, userId))
+    // "Currently valid" has to mean it: an expired row is not a device someone
+    // can still be signed in on, and listing it invites a pointless panic.
+    .where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, new Date())))
     .orderBy(desc(sessions.lastSeenAt))
+    .limit(MAX_SESSIONS_PER_USER)
 }
