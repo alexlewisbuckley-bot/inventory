@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
+import { liveSale } from '../db/predicates'
 import { appSettings, locations, notifications, sales, stockMovements, users, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
@@ -236,8 +237,11 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     if (!watch || watch.deletedAt) throw new NotFoundError('Watch')
     if (watch.status === 'SOLD') throw new ConflictError('This watch has already been sold.')
 
+    // Voided invoices free their number: the commonest reason to void is
+    // having booked the sale against the wrong watch, and the invoice the
+    // customer is holding has not changed.
     const duplicate = await db.select({ id: sales.id }).from(sales)
-      .where(eq(sales.invoiceNo, input.invoiceNo)).limit(1)
+      .where(and(eq(sales.invoiceNo, input.invoiceNo), liveSale())).limit(1)
     if (duplicate[0]) {
       throw new ConflictError('That invoice number has already been used.', {
         invoiceNo: 'Invoice number must be unique.',

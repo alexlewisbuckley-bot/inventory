@@ -104,6 +104,11 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
     <button
       type="button"
       onClick={begin}
+      // The visible text is a number, so on its own the accessible name is
+      // "£14,980" — which says nothing about what pressing it does.
+      aria-label={baseMinor === null
+        ? 'Set the estimated sale price'
+        : `Estimated sale price ${money(baseMinor)}. Edit it.`}
       title="Click to set the estimated sale price"
       className={cn(
         'group/price inline-flex items-center justify-end gap-1.5 rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',

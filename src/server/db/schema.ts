@@ -309,8 +309,19 @@ export const sales = pgTable(
     deletedAt: deletedAt(),
   },
   (t) => ({
-    watchIdx: uniqueIndex('sales_watch_idx').on(t.watchId),
-    invoiceIdx: uniqueIndex('sales_invoice_idx').on(t.invoiceNo),
+    /**
+     * One *live* sale per watch, and one live sale per invoice number.
+     *
+     * Both were unqualified unique indexes, written when a sale was a one-way
+     * door. Voiding made that false: the watch comes back into stock and is
+     * sold again, or the same invoice is re-entered against the right stock
+     * number, and the insert failed on a constraint. Drizzle cannot express a
+     * partial index, so these are declared in migration 0005 and mirrored here
+     * as non-unique so the schema still documents the columns that are
+     * indexed.
+     */
+    watchIdx: index('sales_watch_live_idx').on(t.watchId),
+    invoiceIdx: index('sales_invoice_live_idx').on(t.invoiceNo),
     dateIdx: index('sales_date_idx').on(t.saleDate),
     channelIdx: index('sales_channel_idx').on(t.channel),
   }),
