@@ -286,7 +286,7 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
   const query = useListQuery()
   const { money, signed } = useCurrency()
   const sold = watch.status === 'SOLD'
-  const profit = sold ? watch.actualProfitUsd : watch.estProfitGbp
+  const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
 
   return (
     <li className={cn('px-4 py-3.5', watch.deletedAt && 'opacity-50')}>
@@ -322,7 +322,9 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
         <div className="min-w-0">
           <dt className="text-content-secondary">{sold ? 'Sold for' : 'Est. sale'}</dt>
           <dd className="truncate font-bold tabular-nums text-content-primary">
-            {watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'No price'}
+            {sold && watch.soldAmountGbp !== null
+              ? money(watch.soldAmountGbp)
+              : watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'No price'}
           </dd>
         </div>
         <div className="min-w-0">
@@ -359,7 +361,7 @@ function Row({
   const { money, signed } = useCurrency()
   const sold = watch.status === 'SOLD'
   // Sold rows show realised figures; everything else shows the estimate.
-  const profit = sold ? watch.actualProfitUsd : watch.estProfitGbp
+  const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
 
   return (
     <TR selected={selected} className={cn('group', watch.deletedAt && 'opacity-50')}>
@@ -392,8 +394,10 @@ function Row({
       {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
       {show('estSale') && (
         <TD align="right">
+          {/* A sold watch shows what it actually made, not what somebody once
+              hoped it would. */}
           {sold
-            ? money(watch.estSaleGbp)
+            ? money(watch.soldAmountGbp ?? watch.estSaleGbp)
             : <InlinePriceCell watchId={watch.id} baseMinor={watch.estSaleGbp} editable={canPrice} />}
         </TD>
       )}

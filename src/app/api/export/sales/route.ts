@@ -24,16 +24,26 @@ export async function GET(request: NextRequest) {
   if (!can(user.role, 'report:export')) return new Response('Forbidden', { status: 403 })
   rateLimit({ key: `export:${user.id}`, ...LIMITS.export })
 
+  // Paged to the end: a CSV that stops at 200 rows looks complete.
+  const PAGE_SIZE = 200
+  const MAX_ROWS = 20_000
+
   const params = request.nextUrl.searchParams
-  const { items } = await findSales({
+  const filters = {
     q: params.get('q') ?? undefined,
     from: params.get('from') ? new Date(params.get('from')!) : undefined,
     to: params.get('to') ? new Date(params.get('to')!) : undefined,
-    sort: 'saleDate',
-    dir: 'asc',
-    perPage: 200,
-    page: 1,
-  })
+    sort: 'saleDate' as const,
+    dir: 'asc' as const,
+    perPage: PAGE_SIZE,
+  }
+
+  let items: Awaited<ReturnType<typeof findSales>>['items'] = []
+  for (let page = 1; items.length < MAX_ROWS; page += 1) {
+    const result = await findSales({ ...filters, page })
+    items = items.concat(result.items)
+    if (page >= result.pages || result.items.length === 0) break
+  }
 
   const csv = toCsv(COLUMNS, items.map((s) => [
     s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,

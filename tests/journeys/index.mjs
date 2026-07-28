@@ -187,7 +187,19 @@ await journey('mark as sold', async (page) => {
   await go(page, '/sales')
   const row = page.locator(`tr:has-text("${invoice}")`)
   if (await row.count() === 0) throw new Error(`sale ${invoice} is not in the ledger`)
-  if (!(await row.innerText()).includes('Journey Test Buyer')) throw new Error('the buyer was not saved')
+  const ledger = await row.innerText()
+  if (!ledger.includes('Journey Test Buyer')) throw new Error('the buyer was not saved')
+
+  // The same sale, seen from the inventory. The profit was being read from the
+  // USD column and printed through the GBP formatter, so the two screens
+  // disagreed by the exchange rate.
+  const profit = ledger.split('\n').map((s) => s.trim()).find((s) => /^\+?£[\d,]+$/.test(s) && s.includes('+'))
+  await go(page, '/inventory?status=SOLD')
+  const stockRow = page.locator(`tbody tr:has-text("${invoice.slice(-4)}"), tbody tr`).first()
+  const shown = await stockRow.innerText()
+  if (profit && !shown.includes(profit.replace('+', ''))) {
+    throw new Error(`inventory and the ledger disagree on profit: ledger ${profit}, inventory row "${shown.replace(/\n/g, ' / ')}"`)
+  }
 })
 
 // --- 4. Void that sale, from the status menu -------------------------------

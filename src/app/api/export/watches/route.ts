@@ -40,6 +40,13 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const ids = params.getAll('id')
 
+  // An export that quietly stops at the first page is worse than no export:
+  // the file looks complete and the missing stock is invisible. Paged through
+  // to the end, with a ceiling that exists only so a runaway query cannot hold
+  // the process open.
+  const PAGE_SIZE = 200
+  const MAX_ROWS = 20_000
+
   const query = watchQuerySchema.parse({
     q: params.get('q') ?? undefined,
     status: params.getAll('status').length ? params.getAll('status') : undefined,
@@ -48,11 +55,16 @@ export async function GET(request: NextRequest) {
     unpricedOnly: params.get('unpricedOnly') ?? undefined,
     sort: params.get('sort') ?? 'stockNo',
     dir: params.get('dir') ?? 'asc',
-    perPage: 200,
+    perPage: PAGE_SIZE,
     page: 1,
   })
 
-  let rows = (await findWatches(query)).items
+  let rows: Awaited<ReturnType<typeof findWatches>>['items'] = []
+  for (let page = 1; rows.length < MAX_ROWS; page += 1) {
+    const result = await findWatches({ ...query, page })
+    rows = rows.concat(result.items)
+    if (page >= result.pages || result.items.length === 0) break
+  }
   if (ids.length > 0) {
     const selected = await db.select({ id: watches.id }).from(watches).where(inArray(watches.id, ids))
     const allowed = new Set(selected.map((row) => row.id))

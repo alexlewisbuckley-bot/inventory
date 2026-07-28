@@ -36,8 +36,14 @@ export interface WatchListItem {
   status: WatchStatus
   version: number
   deletedAt: Date | null
-  soldAmountUsd: number | null
-  actualProfitUsd: number | null
+  /**
+   * What the watch actually sold for, and the profit realised, both in GBP
+   * minor units. These were carried as the USD columns and then rendered
+   * through the GBP formatter, which inflated every sold row by the exchange
+   * rate — a watch sold for £12,500 at £8,084 profit reported £10,752.
+   */
+  soldAmountGbp: number | null
+  actualProfitGbp: number | null
 }
 
 export interface WatchListResult {
@@ -69,8 +75,8 @@ const listSelection = {
   supplierId: suppliers.id,
   locationName: locations.name,
   locationId: locations.id,
-  soldAmountUsd: sales.saleAmountUsd,
-  actualProfitUsd: sales.profitUsd,
+  soldAmountGbp: sales.saleAmountGbp,
+  actualProfitGbp: sales.profitGbp,
 } as const
 
 function buildFilters(query: WatchQuery): SQL | undefined {
