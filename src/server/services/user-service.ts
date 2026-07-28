@@ -32,8 +32,8 @@ export async function listUsers(): Promise<UserRow[]> {
       jobTitle: users.jobTitle, phone: users.phone, initials: users.initials,
       isActive: users.isActive, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt,
       activeSessions: sql<number>`(
-        select count(*) from sessions
-        where sessions.user_id = users.id and sessions.expires_at > (unixepoch() * 1000)
+        SELECT count(*) FROM sessions
+        WHERE sessions.user_id = users.id AND sessions.expires_at > now()
       )`,
     })
     .from(users)

@@ -13,7 +13,11 @@ export default async function ApplicationSettingsPage() {
 
   return (
     <SettingsForm
-      specs={SETTING_SPECS}
+      // Strip the validators: functions cannot be serialised across the
+      // server/client boundary, and validation runs server-side regardless.
+      specs={SETTING_SPECS.map(({ key, label, description, group, type }) => ({
+        key, label, description, group, type,
+      }))}
       values={values}
       canManage={can(user.role, 'settings:manage')}
     />

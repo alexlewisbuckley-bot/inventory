@@ -154,15 +154,15 @@ export async function salesByMonth(months = 12) {
   since.setMonth(since.getMonth() - months)
   return db
     .select({
-      month: sql<string>`strftime('%Y-%m', ${sales.saleDate} / 1000, 'unixepoch')`,
+      month: sql<string>`to_char(${sales.saleDate}, 'YYYY-MM')`,
       count: count(),
       revenue: sql<number>`coalesce(sum(${sales.saleAmountUsd}), 0)`,
       profit: sql<number>`coalesce(sum(${sales.profitUsd}), 0)`,
     })
     .from(sales)
     .where(and(isNull(sales.deletedAt), gte(sales.saleDate, since)))
-    .groupBy(sql`strftime('%Y-%m', ${sales.saleDate} / 1000, 'unixepoch')`)
-    .orderBy(asc(sql`strftime('%Y-%m', ${sales.saleDate} / 1000, 'unixepoch')`))
+    .groupBy(sql`to_char(${sales.saleDate}, 'YYYY-MM')`)
+    .orderBy(asc(sql`to_char(${sales.saleDate}, 'YYYY-MM')`))
 }
 
 /** Purchase volume and realised margin grouped by supplier. */

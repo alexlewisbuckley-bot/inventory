@@ -5,7 +5,22 @@ import { Lock } from 'lucide-react'
 import { Card, CardHeader, CardBody, CardFooter, Button, TextField, useToast } from '@/components/ui'
 import { updateSettingsAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
-import type { SettingSpec } from '@/lib/settings-specs'
+
+/**
+ * The serialisable half of a SettingSpec.
+ *
+ * `SettingSpec.validate` is a function, and functions cannot cross the
+ * server/client boundary — passing the full spec crashed this page with
+ * "Functions cannot be passed directly to Client Components". Validation is a
+ * server concern anyway; the client only needs the labels.
+ */
+export interface SettingField {
+  key: string
+  label: string
+  description: string
+  group: string
+  type: 'text' | 'number' | 'currency'
+}
 
 const INITIAL: ActionState = { ok: false }
 
@@ -16,7 +31,7 @@ const INITIAL: ActionState = { ok: false }
  * FX rate matters even if you cannot change it.
  */
 export function SettingsForm({ specs, values, canManage }: {
-  specs: SettingSpec[]
+  specs: SettingField[]
   values: Record<string, string>
   canManage: boolean
 }) {

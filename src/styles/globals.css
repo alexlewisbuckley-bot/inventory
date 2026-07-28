@@ -8,6 +8,12 @@
  */
 @layer base {
   :root {
+    /* Declared here rather than in an inline <style> in the layout: inline
+       style text containing apostrophes is HTML-escaped by the server but not
+       by the client, and the resulting text mismatch made React discard the
+       server-rendered document and re-render the whole page on every load. */
+    --font-jakarta: 'Plus Jakarta Sans';
+
     --c-navy-900: 4 23 58;
     --c-navy-700: 1 45 104;
     --c-navy-500: 30 78 157;
