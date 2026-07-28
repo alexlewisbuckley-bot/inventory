@@ -43,7 +43,7 @@ export function MetricTile({
         {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
       </div>
       <p className={cn(
-        'mt-2 text-h2 font-extrabold tabular-nums',
+        'mt-2 text-h3 font-extrabold tabular-nums sm:text-h2',
         tone === 'accent' ? 'text-content-accent' : 'text-content-primary',
       )}>
         {value}
@@ -60,7 +60,7 @@ export function MetricTile({
     </>
   )
 
-  const shell = 'rounded-lg border border-line-subtle bg-surface-raised px-5 py-4 shadow-card'
+  const shell = 'rounded-lg border border-line-subtle bg-surface-raised px-4 py-3.5 shadow-card sm:px-5 sm:py-4'
 
   if (!href) return <div className={shell}>{body}</div>
 

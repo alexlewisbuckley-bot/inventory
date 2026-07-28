@@ -42,20 +42,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ? preferences.displayCurrency
     : BASE_CURRENCY
 
+  const counts = {
+    inStock: stock.inStockCount,
+    unpriced,
+    ageing: ageing.length,
+    sales: Number(saleCount[0]?.value ?? 0),
+  }
+
   return (
     <CurrencyProvider initial={displayCurrency} rates={rates}>
       <div className="flex min-h-screen bg-surface-subtle">
-        <AppSidebar
-          role={user.role as Role}
-          counts={{
-            inStock: stock.inStockCount,
-            unpriced,
-            ageing: ageing.length,
-            sales: Number(saleCount[0]?.value ?? 0),
-          }}
-        />
+        <AppSidebar role={user.role as Role} counts={counts} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar user={user} unreadCount={Number(unread[0]?.value ?? 0)} />
+          <TopBar user={user} unreadCount={Number(unread[0]?.value ?? 0)} counts={counts} />
           <main id="main" className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-7 lg:px-8">
             {children}
           </main>

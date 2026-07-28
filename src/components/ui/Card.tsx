@@ -46,13 +46,13 @@ export function StatCard({ label, value, caption, tone = 'default', icon }: {
   icon?: ReactNode
 }) {
   return (
-    <div className="rounded-lg bg-surface-raised border border-line-subtle shadow-card px-6 py-5">
+    <div className="rounded-lg bg-surface-raised border border-line-subtle shadow-card px-4 py-4 sm:px-6 sm:py-5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">{label}</p>
         {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
       </div>
       <p className={cn(
-        'mt-2 text-h2 font-extrabold tabular-nums',
+        'mt-2 text-h3 font-extrabold tabular-nums sm:text-h2',
         tone === 'accent' && 'text-content-accent',
         tone === 'danger' && 'text-state-danger',
         tone === 'default' && 'text-content-primary',

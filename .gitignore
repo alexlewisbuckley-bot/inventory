@@ -17,3 +17,5 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 /dev-session.mjs
+/s2.mjs
+/probe.mjs

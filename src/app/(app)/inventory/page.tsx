@@ -100,7 +100,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         }
       />
 
-      <section aria-label="Summary of the current view" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
         <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
         <StatCard label="Est. sale value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />

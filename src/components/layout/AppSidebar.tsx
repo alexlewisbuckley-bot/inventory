@@ -2,31 +2,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  BarChart3, Building2, ChevronsLeft, Clock, Coins, LayoutDashboard,
-  MapPin, Package, Receipt, Settings, ShieldCheck, type LucideIcon,
-} from 'lucide-react'
+import { ChevronsLeft } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { can, type Capability } from '@/lib/permissions'
+import { isActive, navGroups, type SidebarCounts } from './nav-model'
 import type { Role } from '@/lib/enums'
 
-export interface SidebarCounts {
-  inStock: number
-  unpriced: number
-  ageing: number
-  sales: number
-}
-
-interface NavItem {
-  href: string
-  label: string
-  icon: LucideIcon
-  capability?: Capability
-  match?: string
-  /** Rendered as a muted count, or an amber pill when it needs attention. */
-  count?: number
-  attention?: boolean
-}
+export type { SidebarCounts }
 
 /**
  * Primary navigation.
@@ -75,38 +56,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
     })
   }
 
-  const groups: Array<{ heading: string | null; items: NavItem[] }> = [
-    {
-      heading: null,
-      items: [
-        { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-        { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
-        { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
-      ],
-    },
-    {
-      heading: 'Needs attention',
-      items: [
-        { href: '/inventory?unpricedOnly=true', label: 'Unpriced stock', icon: Coins, capability: 'watch:read', count: counts.unpriced, attention: counts.unpriced > 0 },
-        { href: '/reports/ageing', label: 'Ageing stock', icon: Clock, capability: 'report:read', count: counts.ageing, attention: counts.ageing > 0 },
-      ],
-    },
-    {
-      heading: 'Manage',
-      items: [
-        { href: '/suppliers', label: 'Suppliers', icon: Building2, capability: 'supplier:read', match: '/suppliers' },
-        { href: '/locations', label: 'Locations', icon: MapPin, capability: 'location:read', match: '/locations' },
-        { href: '/reports', label: 'Reports', icon: BarChart3, capability: 'report:read', match: '/reports' },
-      ],
-    },
-    {
-      heading: 'System',
-      items: [
-        { href: '/settings', label: 'Settings', icon: Settings, capability: 'settings:read', match: '/settings' },
-        { href: '/settings/users', label: 'Users', icon: ShieldCheck, capability: 'user:read' },
-      ],
-    },
-  ]
+  const groups = navGroups(role, counts)
 
   return (
     <aside
@@ -126,8 +76,6 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
 
       <nav aria-label="Main" className="flex-1 overflow-y-auto px-2.5 py-4">
         {groups.map((group, index) => {
-          const visible = group.items.filter((item) => !item.capability || can(role, item.capability))
-          if (visible.length === 0) return null
           return (
             <div key={group.heading ?? `group-${index}`} className={index > 0 ? 'mt-6' : undefined}>
               {group.heading && !collapsed && (
@@ -136,10 +84,8 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
                 </p>
               )}
               <ul className="flex flex-col gap-0.5">
-                {visible.map((item) => {
-                  const active = item.match
-                    ? pathname.startsWith(item.match) && !item.href.includes('?')
-                    : pathname === item.href
+                {group.items.map((item) => {
+                  const active = isActive(item, pathname)
                   const Icon = item.icon
                   return (
                     <li key={item.href}>

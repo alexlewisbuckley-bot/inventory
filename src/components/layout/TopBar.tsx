@@ -3,7 +3,8 @@ import { Bell } from 'lucide-react'
 import { UserMenu } from './UserMenu'
 import { CommandTrigger } from './CommandTrigger'
 import { CurrencySwitcher } from './CurrencySwitcher'
-import { MobileNav } from './TopNav'
+import { MobileNav } from './MobileNav'
+import type { SidebarCounts } from './nav-model'
 import { ThemeToggle } from '@/components/ui'
 import type { SessionUser } from '@/server/auth/session'
 import type { Role } from '@/lib/enums'
@@ -15,12 +16,18 @@ import type { Role } from '@/lib/enums'
  * that apply everywhere: search, display currency, notifications and account.
  * Kept to 60px so vertical space goes to the data.
  */
-export function TopBar({ user, unreadCount }: { user: SessionUser; unreadCount: number }) {
+export function TopBar({ user, unreadCount, counts }: {
+  user: SessionUser
+  unreadCount: number
+  counts: SidebarCounts
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-line-subtle bg-surface-page/95 backdrop-blur">
-      <div className="flex h-[60px] items-center gap-3 px-5 lg:px-7">
-        {/* The wordmark only appears here when the sidebar is hidden. */}
-        <Link href="/" className="flex items-center gap-2 lg:hidden" aria-label="Bluecroft Stock — dashboard">
+      <div className="flex h-[60px] items-center gap-2 px-4 sm:gap-3 sm:px-5 lg:px-7">
+        <MobileNav role={user.role as Role} counts={counts} />
+        {/* The wordmark appears only where the sidebar is hidden and there is
+            room for it: on the narrowest screens the controls win. */}
+        <Link href="/" className="hidden items-center gap-2 sm:flex lg:hidden" aria-label="Bluecroft Stock — dashboard">
           <span className="h-2 w-2 rounded-full bg-teal-500" aria-hidden />
           <span className="text-body-lg font-extrabold text-content-primary">bluecroft</span>
         </Link>
@@ -44,8 +51,6 @@ export function TopBar({ user, unreadCount }: { user: SessionUser; unreadCount: 
           <UserMenu user={user} />
         </div>
       </div>
-      {/* Sections stay reachable on small screens where the sidebar is hidden. */}
-      <div className="lg:hidden"><MobileNav role={user.role as Role} /></div>
     </header>
   )
 }

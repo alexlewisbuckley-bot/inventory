@@ -119,4 +119,21 @@
   .sr-only-focusable:not(:focus):not(:focus-within) {
     @apply sr-only;
   }
+
+  /* Grid and flex children default to `min-width: auto`, which means a child
+     refuses to shrink below the intrinsic width of its content. Any card
+     holding a long stock reference or supplier name therefore widened its
+     track, which widened the page, which pushed the entire layout off a phone
+     screen — the symptom being a document nearly three times the viewport and
+     content rendered in a narrow strip down the left. Normalising it here
+     fixes every layout at once rather than one `min-w-0` at a time. Opt out
+     with `min-w-fit` where a child genuinely should size the track.
+
+     Deliberately limited to grid children. The same default applies to flex
+     items, but there `min-width: auto` is load-bearing — it is what stops a
+     row of buttons squashing — so those are handled case by case with
+     `min-w-0` and `shrink-0`. */
+  .grid > * {
+    min-width: 0;
+  }
 }

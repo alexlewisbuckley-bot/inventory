@@ -197,7 +197,7 @@ export default async function DashboardPage() {
           : undefined}
       />
 
-      <section aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Key figures" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <MetricTile
           label="Capital invested"
           value={money(summary.totalCostGbp)}
@@ -245,18 +245,18 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-8 grid items-start gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+        <div className="min-w-0 lg:col-span-3">
           <AttentionQueue items={attentionItems} />
         </div>
 
-        <Card className="lg:col-span-2">
+        <Card className="min-w-0 lg:col-span-2">
           <CardHeader title="Stock health" description={`Age of the ${liveTotal} watches you hold`} />
           <InventoryHealth buckets={healthBuckets} total={liveTotal} />
         </Card>
       </section>
 
       <section className="mt-8 grid items-start gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="min-w-0 lg:col-span-3">
           <CardHeader
             title="Stock flow"
             description="Watches bought against watches sold, by month"
@@ -265,7 +265,7 @@ export default async function DashboardPage() {
           <StockFlowChart data={flowPoints} />
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="min-w-0 lg:col-span-2">
           <CardHeader
             title="Where capital sits"
             description={concentration !== null && topBrand
@@ -315,7 +315,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-8 grid items-start gap-6 lg:grid-cols-2">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader
             title="Recent sales"
             description={trading.count > 0
@@ -355,7 +355,7 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader
             title={ageing.length > 0 ? 'Oldest stock' : 'Recent activity'}
             description={ageing.length > 0

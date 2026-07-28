@@ -14,7 +14,17 @@ export function Table({ children, className, density = 'COMFORTABLE' }: {
   density?: 'COMFORTABLE' | 'COMPACT'
 }) {
   return (
-    <div className="w-full overflow-x-auto" data-density={density === 'COMPACT' ? 'compact' : undefined}>
+    // `relative` is load-bearing, not decoration. Tailwind's `sr-only` is
+    // `position: absolute`, and an absolutely-positioned descendant is only
+    // clipped by an ancestor that is itself its containing block. Without this
+    // the screen-reader label in the actions column resolved against the
+    // viewport, sat at its static position ~950px to the right, and stretched
+    // the whole document — every page with a table scrolled sideways on a
+    // phone and rendered at a third of its width.
+    <div
+      className="relative w-full overflow-x-auto"
+      data-density={density === 'COMPACT' ? 'compact' : undefined}
+    >
       <table className={cn('w-full border-collapse text-left', className)}>{children}</table>
     </div>
   )
