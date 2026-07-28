@@ -143,7 +143,15 @@ export async function seed(): Promise<void> {
         purchasePriceGbp: w.purchasePriceGbp,
         purchasePriceUsd: w.purchasePriceUsd ?? Math.round(w.purchasePriceGbp * DEFAULT_FX),
         purchaseFxRate: fx,
+        purchaseAmount: w.purchasePriceGbp,
+        purchaseCurrency: 'GBP',
         estSaleUsd: w.estSaleUsd,
+        // The GBP base is what every report aggregates. Seeding only the dollar
+        // figure left demo stock counting as unpriced, which is exactly the bug
+        // the importer had.
+        estSaleGbp: w.estSaleUsd === null ? null : Math.round(w.estSaleUsd / DEFAULT_FX),
+        estSaleAmount: w.estSaleUsd === null ? null : Math.round(w.estSaleUsd / DEFAULT_FX),
+        estSaleCurrency: 'GBP',
         locationId: locationIds.get(locationName)!,
         status: 'IN_STOCK',
         condition: 'EXCELLENT',

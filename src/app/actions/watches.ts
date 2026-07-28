@@ -161,14 +161,14 @@ export async function restoreWatchAction(id: string): Promise<ActionState> {
   }
 }
 
-// --- CSV import ------------------------------------------------------------
+// --- Spreadsheet import ----------------------------------------------------
 
 export interface ImportPreviewState extends ActionState {
   preview?: import('@/server/services/import-service').ImportPreview
 }
 
 /**
- * Validate a pasted or uploaded CSV without writing anything.
+ * Validate an uploaded or pasted file without writing anything.
  *
  * Kept separate from the commit so the user always sees exactly what will be
  * created, and which rows will be rejected and why, before any change.
@@ -182,17 +182,29 @@ export async function previewImportAction(
 
   const file = formData.get('file')
   const pasted = formData.get('csv')?.toString() ?? ''
-  const text = file instanceof File && file.size > 0 ? await file.text() : pasted
+  const hasFile = file instanceof File && file.size > 0
 
-  if (!text.trim()) return { ok: false, message: 'Paste some CSV or choose a file first.' }
-  if (text.length > 2_000_000) return { ok: false, message: 'That file is too large. Split it into smaller batches.' }
+  if (!hasFile && !pasted.trim()) {
+    return { ok: false, message: 'Choose a file, or paste your rows below.' }
+  }
+  const MAX_BYTES = 5_000_000
+  if (hasFile && file.size > MAX_BYTES) {
+    return { ok: false, message: 'That file is over 5 MB. Split it into smaller batches.' }
+  }
+  if (!hasFile && pasted.length > MAX_BYTES) {
+    return { ok: false, message: 'That is more text than the importer will take in one go. Split it into batches.' }
+  }
 
   try {
     const { parseImport } = await import('@/server/services/import-service')
-    const preview = await parseImport(text)
+    // A spreadsheet has to reach the parser as bytes; decoding it as text first
+    // is how an .xlsx arrives as a page of binary and reports 400 errors.
+    const preview = hasFile
+      ? await parseImport({ name: file.name, buffer: await file.arrayBuffer() })
+      : await parseImport(pasted)
     return { ok: preview.errorCount === 0, preview }
   } catch (error) {
-    return toState(error, 'Could not read that file.')
+    return toState(error, 'Could not read that file. If it is a spreadsheet, make sure it is .xlsx rather than the older .xls.')
   }
 }
 

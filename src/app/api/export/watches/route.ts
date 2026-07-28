@@ -14,13 +14,14 @@ import { watches } from '@/server/db/schema'
 export const dynamic = 'force-dynamic'
 
 /**
- * Column order matches the import parser's expectations, so a file exported
- * here can be edited in Excel and imported straight back.
+ * Column names and order match the import template exactly, so a file exported
+ * here can be edited and imported straight back — which is the only reason to
+ * offer both. Everything is in the GBP base the rest of the system reports in.
  */
 const COLUMNS = [
   'Stock No', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
-  'Purchase Date', 'Purchase Price (GBP)', 'Purchase Price (USD)',
-  'Est Sale (USD)', 'Est Profit (USD)', 'Status',
+  'Purchase Date', 'Purchase Price (GBP)', 'Est Sale (GBP)', 'Est Profit (GBP)',
+  'Status',
 ] as const
 
 /**
@@ -62,9 +63,8 @@ export async function GET(request: NextRequest) {
     w.stockNo, w.brandName, w.model, w.serial, w.supplierName, w.locationName,
     w.purchaseDate.toISOString().slice(0, 10),
     toMajor(w.purchasePriceGbp).toFixed(2),
-    w.purchasePriceUsd !== null ? toMajor(w.purchasePriceUsd).toFixed(2) : '',
-    w.estSaleUsd !== null ? toMajor(w.estSaleUsd).toFixed(2) : '',
-    w.estProfitUsd !== null ? toMajor(w.estProfitUsd).toFixed(2) : '',
+    w.estSaleGbp !== null ? toMajor(w.estSaleGbp).toFixed(2) : '',
+    w.estSaleGbp !== null ? toMajor(w.estSaleGbp - w.purchasePriceGbp).toFixed(2) : '',
     w.status,
   ]))
 

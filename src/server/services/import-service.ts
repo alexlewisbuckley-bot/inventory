@@ -6,15 +6,20 @@ import { newId, slugify } from '@/lib/ids'
 import { toMinor } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
+import { REQUIRED_HEADERS, normaliseHeader } from '@/lib/import-columns'
 import type { SessionUser } from '../auth/session'
 
 /**
- * CSV import for stock.
+ * Spreadsheet import for stock.
  *
  * Deliberately two-phase: `parseImport` validates and reports, `commitImport`
- * writes. Users pasting a spreadsheet export need to see exactly what will
- * happen before anything changes — a half-applied import of 200 watches is
- * far worse than a rejected one.
+ * writes. Anyone bringing in a spreadsheet export needs to see exactly what
+ * will happen before anything changes — a half-applied import of 200 watches
+ * is far worse than a rejected one.
+ *
+ * Accepts .xlsx as well as .csv, because the stock list this replaced was a
+ * spreadsheet and asking somebody to save-as-CSV first is a step at which
+ * people quietly give up.
  */
 
 export interface ImportRow {
@@ -22,13 +27,13 @@ export interface ImportRow {
   stockNo: number | null
   brand: string
   model: string
-  nickname: string | null
   serial: string | null
   supplier: string
   location: string
   purchaseDate: string
   purchasePriceGbp: number | null
-  estSaleUsd: number | null
+  /** Estimate in GBP minor-unit major form, i.e. pounds. */
+  estSaleGbp: number | null
 }
 
 export interface ImportIssue {
@@ -48,10 +53,64 @@ export interface ImportPreview {
   errorCount: number
 }
 
-const REQUIRED = ['brand', 'model', 'supplier', 'location', 'purchase date', 'purchase price (gbp)'] as const
+const REQUIRED = REQUIRED_HEADERS.map((h) => normaliseHeader(h))
 
-export async function parseImport(text: string): Promise<ImportPreview> {
-  const table = parseCsv(text)
+/**
+ * Read a spreadsheet or CSV into a table of strings.
+ *
+ * Excel is read cell by cell rather than through a CSV round-trip: a date cell
+ * comes back as a Date and a price as a number, and stringifying those with
+ * the default locale is how "08/04/2026" became "April 8" and then failed to
+ * parse. Dates are normalised to ISO here so the row parser sees one shape.
+ */
+export async function readTable(file: { name: string; buffer: ArrayBuffer }): Promise<string[][]> {
+  const isExcel = /\.xlsx?$/i.test(file.name)
+  if (!isExcel) {
+    return parseCsv(new TextDecoder().decode(file.buffer))
+  }
+
+  const ExcelJS = (await import('exceljs')).default
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(file.buffer)
+
+  // The template ships a second sheet of instructions, so take the first sheet
+  // with data rather than whichever one happened to be active on save.
+  const sheet = workbook.worksheets.find((w) => w.actualRowCount > 1) ?? workbook.worksheets[0]
+  if (!sheet) return []
+
+  const table: string[][] = []
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    const cells: string[] = []
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      cells[colNumber - 1] = cellToText(cell.value)
+    })
+    for (let i = 0; i < cells.length; i += 1) cells[i] ??= ''
+    table.push(cells)
+  })
+  return table
+}
+
+function cellToText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) {
+    // ISO, because the row parser already understands it and it cannot be
+    // misread as day-first or month-first.
+    return value.toISOString().slice(0, 10)
+  }
+  if (typeof value === 'object') {
+    const rich = value as { text?: string; result?: unknown; richText?: Array<{ text: string }> }
+    if (typeof rich.text === 'string') return rich.text
+    if (Array.isArray(rich.richText)) return rich.richText.map((part) => part.text).join('')
+    if (rich.result !== undefined) return cellToText(rich.result)
+    return ''
+  }
+  return String(value)
+}
+
+export async function parseImport(input: string | { name: string; buffer: ArrayBuffer }): Promise<ImportPreview> {
+  const table = typeof input === 'string' ? parseCsv(input) : await readTable(input)
+  // Only needed for sheets still quoting the estimate in dollars.
+  const usdRate = Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
   const issues: ImportIssue[] = []
   const rows: ImportRow[] = []
 
@@ -62,7 +121,7 @@ export async function parseImport(text: string): Promise<ImportPreview> {
     }
   }
 
-  const header = table[0]!.map((h) => h.trim().toLowerCase())
+  const header = table[0]!.map((h) => normaliseHeader(h))
   const index = (name: string): number => header.indexOf(name)
   for (const required of REQUIRED) {
     if (index(required) === -1) {
@@ -92,14 +151,24 @@ export async function parseImport(text: string): Promise<ImportPreview> {
     const cells = table[r]!
     const value = (name: string): string => (cells[index(name)] ?? '').trim()
 
+    // The downloaded template carries a row of hints under the headers. People
+    // leave it in, so recognise and skip it rather than reporting it as six
+    // validation errors on the first row of their file.
+    if (cells.some((cell) => /^(Required|Optional)\s·/.test(cell.trim()))) continue
+    // A wholly blank row is trailing formatting, not a mistake worth reporting.
+    if (cells.every((cell) => cell.trim() === '')) continue
+
     const brand = value('brand')
-    const model = value('model')
+    const model = value('reference')
     const supplier = value('supplier')
     const location = value('location')
     const serial = value('serial') || null
     const rawDate = value('purchase date')
     const rawPrice = value('purchase price (gbp)')
-    const rawEst = value('est sale (usd)')
+    const rawEst = value('est sale (gbp)') || value('est sale (usd)')
+    // A sheet written before the change to sterling still says "(USD)". Honour
+    // its header rather than reading dollars as pounds.
+    const estIsUsd = !value('est sale (gbp)') && Boolean(value('est sale (usd)'))
 
     let errored = false
     const fail = (field: string, message: string) => {
@@ -108,7 +177,7 @@ export async function parseImport(text: string): Promise<ImportPreview> {
     }
 
     if (!brand) fail('brand', 'Brand is required.')
-    if (!model) fail('model', 'Model is required.')
+    if (!model) fail('reference', 'Reference number is required.')
     if (!supplier) fail('supplier', 'Supplier is required.')
 
     const date = parseDate(rawDate)
@@ -119,9 +188,17 @@ export async function parseImport(text: string): Promise<ImportPreview> {
     if (price === null) fail('purchase price (gbp)', `Could not read the price "${rawPrice}".`)
     else if (price <= 0) fail('purchase price (gbp)', 'Purchase price must be greater than zero.')
 
-    const est = rawEst ? parseAmount(rawEst) : null
-    if (rawEst && est === null) {
-      issues.push({ line, field: 'est sale (usd)', message: `Ignoring unreadable sale price "${rawEst}".`, severity: 'warning' })
+    const rawEstAmount = rawEst ? parseAmount(rawEst) : null
+    if (rawEst && rawEstAmount === null) {
+      issues.push({ line, field: 'est sale', message: `Ignoring unreadable sale price "${rawEst}".`, severity: 'warning' })
+    }
+    const est = rawEstAmount === null ? null : estIsUsd ? rawEstAmount / usdRate : rawEstAmount
+    if (estIsUsd && rawEstAmount !== null) {
+      issues.push({
+        line, field: 'est sale (usd)',
+        message: `Converted $${rawEstAmount} to £${est!.toFixed(2)} at ${usdRate}.`,
+        severity: 'warning',
+      })
     }
 
     if (location && !locationNames.has(location.toLowerCase())) {
@@ -144,10 +221,9 @@ export async function parseImport(text: string): Promise<ImportPreview> {
 
     if (!errored) {
       rows.push({
-        line, stockNo: null, brand, model,
-        nickname: value('nickname') || null, serial,
+        line, stockNo: null, brand, model, serial,
         supplier, location, purchaseDate: date!.toISOString(),
-        purchasePriceGbp: price, estSaleUsd: est,
+        purchasePriceGbp: price, estSaleGbp: est,
       })
     }
   }
@@ -210,14 +286,13 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
     for (const row of rows) {
       const id = newId('wch')
       const priceMinor = toMinor(row.purchasePriceGbp!)
-      const { usd: estUsd, gbp: estGbp } = estimateFromSheet(row.estSaleUsd, fx)
+      const { gbp: estGbp, usd: estUsd } = estimateFromSheet(row.estSaleGbp, fx)
       const locationId = locationIds.get(row.location.toLowerCase())!
       await db.insert(watches).values({
         id,
         stockNo: nextStock,
         brandId: brandIds.get(row.brand.toLowerCase())!,
         model: row.model,
-        nickname: row.nickname,
         serial: row.serial,
         supplierId: supplierIds.get(row.supplier.toLowerCase())!,
         purchaseDate: new Date(row.purchaseDate),
@@ -274,17 +349,19 @@ function parseAmount(raw: string): number | null {
 }
 
 /**
- * The estimate as it must be stored, from the sheet's dollar column.
+ * The estimate as it must be stored.
  *
- * Exported so the null case is covered by a test: a blank estimate has to stay
- * null rather than becoming zero, or the watch reports a total loss instead of
- * appearing on the "needs a price" worklist.
+ * The sheet quotes sterling, which is the base every report aggregates; the
+ * dollar figure is derived for the legacy column so historic exports still
+ * reconcile. Exported so the null case is covered by a test: a blank estimate
+ * has to stay null rather than becoming zero, or the watch reports a total
+ * loss instead of appearing on the "needs a price" worklist.
  */
 export function estimateFromSheet(
-  estSaleUsdMajor: number | null,
+  estSaleGbpMajor: number | null,
   fx: number,
-): { usd: number | null; gbp: number | null } {
-  if (estSaleUsdMajor === null) return { usd: null, gbp: null }
-  const usd = toMinor(estSaleUsdMajor)
-  return { usd, gbp: Math.round(usd / fx) }
+): { gbp: number | null; usd: number | null } {
+  if (estSaleGbpMajor === null) return { gbp: null, usd: null }
+  const gbp = toMinor(estSaleGbpMajor)
+  return { gbp, usd: Math.round(gbp * fx) }
 }
