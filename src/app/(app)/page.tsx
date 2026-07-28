@@ -28,7 +28,7 @@ import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY } from '@/lib/enums'
 import { formatDate, relativeTime, daysHeld } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
-import { LOCATION_TYPE_LABELS, AUDIT_ACTION_LABELS, type LocationType, type AuditAction } from '@/lib/enums'
+import { locationTypeCaption, AUDIT_ACTION_LABELS, type LocationType, type AuditAction } from '@/lib/enums'
 import { watchQuerySchema } from '@/lib/validation'
 import { can } from '@/lib/permissions'
 
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
       id: 'images',
       count: attention.withoutImages,
       title: attention.withoutImages === 1 ? 'watch has no photographs' : 'watches have no photographs',
-      description: 'Photographs of the watch and its card make listing and authentication far quicker.',
+      description: 'Photographs of the watch and its card make listing and authentication quicker.',
       href: '/inventory',
       cta: 'Add photos',
       severity: 'info',
@@ -282,9 +282,11 @@ export default async function DashboardPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-small font-bold text-content-primary">{row.locationName}</p>
-                      <p className="text-caption text-content-secondary">
-                        {LOCATION_TYPE_LABELS[row.type as LocationType]}
-                      </p>
+                      {locationTypeCaption(row.locationName, row.type as LocationType) && (
+                        <p className="text-caption text-content-secondary">
+                          {locationTypeCaption(row.locationName, row.type as LocationType)}
+                        </p>
+                      )}
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-small font-bold tabular-nums text-content-primary">{Number(row.count)}</p>

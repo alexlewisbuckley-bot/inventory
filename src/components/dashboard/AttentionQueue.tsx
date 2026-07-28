@@ -77,7 +77,9 @@ export function AttentionQueue({ items }: { items: AttentionItem[] }) {
                       <span className="shrink-0 text-body font-bold tabular-nums text-content-primary">{item.count}</span>
                       <span className="min-w-0 truncate text-body font-bold text-content-primary">{item.title}</span>
                     </span>
-                    <span className="mt-0.5 block truncate text-caption text-content-secondary">{item.description}</span>
+                    {/* Two lines rather than one: a sentence cut off at "make listing and
+                        authentication far…" tells the reader less than no sentence at all. */}
+                    <span className="mt-0.5 block text-caption text-content-secondary line-clamp-2">{item.description}</span>
                   </span>
                   <span className="hidden shrink-0 items-center gap-1 text-small font-bold text-content-accent group-hover:underline sm:inline-flex">
                     {item.cta} <ArrowRight className="h-3.5 w-3.5" aria-hidden />

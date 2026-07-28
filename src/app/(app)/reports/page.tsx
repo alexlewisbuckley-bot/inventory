@@ -12,7 +12,7 @@ import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { BASE_CURRENCY, LOCATION_TYPE_LABELS, type LocationType } from '@/lib/enums'
+import { BASE_CURRENCY, locationTypeCaption, type LocationType } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Reports' }
 export const dynamic = 'force-dynamic'
@@ -84,7 +84,9 @@ export default async function ReportsPage() {
               <li key={row.locationId} className="flex items-center justify-between gap-3 px-6 py-4">
                 <div className="min-w-0">
                   <p className="truncate text-body font-bold text-content-primary">{row.locationName}</p>
-                  <p className="text-caption text-content-secondary">{LOCATION_TYPE_LABELS[row.type as LocationType]}</p>
+                  {locationTypeCaption(row.locationName, row.type as LocationType) && (
+                    <p className="text-caption text-content-secondary">{locationTypeCaption(row.locationName, row.type as LocationType)}</p>
+                  )}
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-body font-bold tabular-nums text-content-primary">{money(Number(row.valueGbp))}</p>

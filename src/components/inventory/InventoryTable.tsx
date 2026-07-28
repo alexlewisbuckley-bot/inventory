@@ -129,6 +129,8 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
             </span>
           )}
         </p>
+        {/* The picker chooses table columns, and below sm there is no table. */}
+        <div className="hidden sm:block">
         <ColumnPicker
           columns={INVENTORY_COLUMNS}
           isHidden={columns.isHidden}
@@ -136,9 +138,39 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
           onReset={columns.showAll}
           hiddenCount={columns.hiddenCount}
         />
+        </div>
       </div>
 
       <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
+        {/* Below sm the table would need to be scrolled sideways to reach any
+            figure, so the same rows are rendered as cards instead: the two
+            numbers that matter and the status, in one tap-sized target. */}
+        <ul className="divide-y divide-line-subtle sm:hidden">
+          {result.items.map((watch) => (
+            <MobileRow
+              key={watch.id}
+              watch={watch}
+              canEditStatus={capabilities['watch:update']}
+              canSell={capabilities['sale:create']}
+              canVoid={capabilities['sale:delete']}
+              onVoid={() => setVoidTarget({
+                id: watch.id,
+                stockNo: watch.stockNo,
+                label: `${watch.brandName} ${watch.model}`,
+              })}
+              onSell={() => setSellTarget({
+                id: watch.id,
+                stockNo: watch.stockNo,
+                model: watch.model,
+                brandName: watch.brandName,
+                purchasePriceGbp: watch.purchasePriceGbp,
+                estSaleGbp: watch.estSaleGbp,
+              })}
+            />
+          ))}
+        </ul>
+
+        <div className="hidden sm:block">
         <Table>
           <THead>
             <TR>
@@ -196,6 +228,7 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
             ))}
           </TBody>
         </Table>
+        </div>
 
         <Pagination
           page={result.page}
@@ -231,6 +264,78 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
         onVoided={() => router.refresh()}
       />
     </>
+  )
+}
+
+/**
+ * One watch as a card, for phones.
+ *
+ * The desktop row carries ten columns. On a 390px screen the same markup can
+ * only show two of them without a sideways scroll, which means the price — the
+ * reason anyone opens this list — is off-screen. The card keeps the identity,
+ * both figures and the status visible, and the whole card opens the record.
+ */
+function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
+  watch: WatchListItem
+  canEditStatus: boolean
+  canSell: boolean
+  canVoid: boolean
+  onSell: () => void
+  onVoid: () => void
+}) {
+  const query = useListQuery()
+  const { money, signed } = useCurrency()
+  const sold = watch.status === 'SOLD'
+  const profit = sold ? watch.actualProfitUsd : watch.estProfitGbp
+
+  return (
+    <li className={cn('px-4 py-3.5', watch.deletedAt && 'opacity-50')}>
+      <div className="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => query.set('watch', watch.id)}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="block truncate text-body font-bold text-content-primary">
+            {watch.brandName} {watch.model}
+          </span>
+          <span className="mt-0.5 block truncate text-caption text-content-secondary">
+            Stock {watch.stockNo} · {watch.locationName}
+          </span>
+        </button>
+        <StatusCell
+          watchId={watch.id}
+          status={watch.status as WatchStatus}
+          editable={canEditStatus && !watch.deletedAt}
+          canSell={canSell}
+          onSell={onSell}
+          canVoid={canVoid}
+          onVoid={onVoid}
+        />
+      </div>
+
+      <dl className="mt-2.5 flex items-baseline gap-4 text-caption">
+        <div className="min-w-0">
+          <dt className="text-content-secondary">Cost</dt>
+          <dd className="truncate font-bold tabular-nums text-content-primary">{money(watch.purchasePriceGbp)}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-content-secondary">{sold ? 'Sold for' : 'Est. sale'}</dt>
+          <dd className="truncate font-bold tabular-nums text-content-primary">
+            {watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'No price'}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-content-secondary">{sold ? 'Profit' : 'Est. profit'}</dt>
+          <dd className={cn(
+            'truncate font-bold tabular-nums',
+            profit !== null && profit >= 0 ? 'text-content-accent' : profit !== null ? 'text-state-danger' : 'text-content-secondary',
+          )}>
+            {profit !== null ? signed(profit) : '—'}
+          </dd>
+        </div>
+      </dl>
+    </li>
   )
 }
 

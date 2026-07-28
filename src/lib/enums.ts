@@ -160,6 +160,18 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   CONSIGNMENT: 'On consignment',
 }
 
+/**
+ * The type caption for a location, or nothing when it only repeats the name.
+ *
+ * The transit location is called "In transit" and is of type "In transit", so
+ * printing both put the same two words on consecutive lines wherever a
+ * location was listed.
+ */
+export function locationTypeCaption(name: string, type: LocationType): string | null {
+  const label = LOCATION_TYPE_LABELS[type]
+  return label.toLowerCase() === name.trim().toLowerCase() ? null : label
+}
+
 export const CONDITION_LABELS: Record<Condition, string> = {
   UNKNOWN: 'Not recorded',
   UNWORN: 'Unworn',

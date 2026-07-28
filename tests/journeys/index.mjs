@@ -126,7 +126,7 @@ await journey('status change', async (page) => {
 // --- 2. The menu gets out of the way when the page scrolls -----------------
 await journey('menu on scroll', async (page) => {
   await go(page, '/inventory')
-  await page.locator('button[aria-label^="Status:"]').first().click()
+  await page.locator('tbody button[aria-label^="Status:"]').first().click()
   await page.waitForTimeout(300)
   if (await page.locator('[role="menu"]').count() === 0) throw new Error('the menu did not open')
 
@@ -141,7 +141,7 @@ await journey('menu on scroll', async (page) => {
 // --- 2b. It opens upwards when there is no room below ----------------------
 await journey('menu flips near the bottom', async (page) => {
   await go(page, '/inventory')
-  const triggers = page.locator('button[aria-label^="Status:"]')
+  const triggers = page.locator('tbody button[aria-label^="Status:"]')
   const last = triggers.nth(await triggers.count() - 1)
   await last.scrollIntoViewIfNeeded()
   await page.waitForTimeout(300)
@@ -159,7 +159,9 @@ await journey('menu flips near the bottom', async (page) => {
 // --- 3. Mark as sold, from the status menu ---------------------------------
 await journey('mark as sold', async (page) => {
   await go(page, '/inventory?status=IN_STOCK')
-  const trigger = page.locator('button[aria-label^="Status:"]').first()
+  // Scoped to the table: the same rows are also rendered as cards for phones,
+  // hidden at this width but still in the DOM and first in document order.
+  const trigger = page.locator('tbody button[aria-label^="Status:"]').first()
   await trigger.click()
   await page.waitForTimeout(300)
   await page.locator('[role="menu"] button:has-text("Mark as sold")').click()
@@ -191,7 +193,7 @@ await journey('mark as sold', async (page) => {
 // --- 4. Void that sale, from the status menu -------------------------------
 await journey('void a sale', async (page) => {
   await go(page, '/inventory?status=SOLD')
-  const trigger = page.locator('button[aria-label^="Status:"]').filter({ hasText: 'Sold' }).first()
+  const trigger = page.locator('tbody button[aria-label^="Status:"]').filter({ hasText: 'Sold' }).first()
   if (await trigger.count() === 0) throw new Error('no sold watch to void')
 
   const stockNo = await page.locator('tbody tr').first().locator('td').nth(1).innerText()
@@ -320,7 +322,34 @@ await journey('sign out other devices', async (page) => {
   if (page.url().includes('/login')) throw new Error('it signed the current device out too')
 })
 
-// --- 11. Mobile navigation sheet -------------------------------------------
+// --- 11. The inventory list on a phone -------------------------------------
+if (!only || 'inventory on a phone'.includes(only)) {
+  const { ctx, page } = await newPage(390, 844)
+  try {
+    await go(page, '/inventory')
+    const cards = page.locator('main ul > li:has-text("Est. sale")')
+    if (await cards.count() === 0) throw new Error('no cards rendered; the table would need a sideways scroll')
+
+    const first = cards.first()
+    const text = await first.innerText()
+    if (!/£|\$|AED|HK\$/.test(text)) throw new Error(`no figure on the card: ${text.replace(/\n/g, ' / ')}`)
+
+    // Tapping the card opens the record.
+    await first.locator('button').first().click()
+    await page.waitForTimeout(1600)
+    if (await page.locator('[role="dialog"]').count() === 0) throw new Error('tapping a card did not open the record')
+
+    results.push('PASS  inventory on a phone')
+  } catch (error) {
+    results.push(`FAIL  inventory on a phone\n      ${error.message.split('\n')[0]}`)
+    await page.screenshot({ path: '/tmp/journey-fail-mobile-inventory.png', fullPage: true })
+  } finally {
+    await page.close()
+    await ctx.close()
+  }
+}
+
+// --- 12. Mobile navigation sheet -------------------------------------------
 if (!only || 'mobile nav'.includes(only)) {
   const { ctx, page } = await newPage(390, 844)
   try {
