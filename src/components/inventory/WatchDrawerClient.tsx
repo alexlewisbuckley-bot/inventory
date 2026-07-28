@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { ArrowRightLeft, Pencil, Receipt } from 'lucide-react'
 import { Drawer, Button, LinkButton, StatusChip, Chip, useToast, useCurrency } from '@/components/ui'
 import { formatPct } from '@/lib/money'
-import { formatDate, relativeTime } from '@/lib/dates'
+import { formatDate } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
   AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS,
   type AuditAction, type BoxPapers, type Condition, type WatchStatus,
@@ -167,7 +168,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
                     {entry.summary ?? AUDIT_ACTION_LABELS[entry.action as AuditAction]}
                   </p>
                   <p className="text-caption text-content-secondary">
-                    {entry.actorName} · {relativeTime(entry.createdAt)}
+                    {entry.actorName} · <RelativeTime value={entry.createdAt} />
                   </p>
                 </div>
               </li>

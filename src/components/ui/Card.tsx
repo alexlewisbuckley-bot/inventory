@@ -31,7 +31,10 @@ export function CardBody({ children, className }: { children: ReactNode; classNa
 
 export function CardFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('flex items-center justify-between gap-4 px-6 py-4 border-t border-line-subtle', className)}>
+    // Wrapping matters on a narrow phone: a footer holding explanatory text and
+    // a button is wider than 320px, and without it the whole page scrolls
+    // sideways to reach a button nobody could see.
+    <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-4 border-t border-line-subtle', className)}>
       {children}
     </div>
   )

@@ -9,7 +9,8 @@ import {
 import { cn } from '@/lib/cn'
 import { updateRatesAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
-import { formatDateTime, relativeTime } from '@/lib/dates'
+import { formatDateTime } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { BASE_CURRENCY, CURRENCY_LABELS, type CurrencyCode } from '@/lib/enums'
 
 export interface RateView {
@@ -143,7 +144,7 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
                             ? 'Never set'
                             : (
                               <span title={formatDateTime(rate.updatedAt)}>
-                                {relativeTime(rate.updatedAt)}
+                                <RelativeTime value={rate.updatedAt} />
                                 {rate.updatedByName ? ` · ${rate.updatedByName}` : ''}
                               </span>
                             )}

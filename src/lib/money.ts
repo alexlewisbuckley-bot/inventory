@@ -84,9 +84,11 @@ export function parseMoneyInput(raw: string): number | null {
 export function formatMoneyInput(raw: string): string {
   if (!raw) return ''
 
-  const negative = raw.trim().startsWith('-')
+  // No price in this system is negative: a cost, an asking price and a sale
+  // price are all amounts. Accepting a minus sign here only defers the
+  // rejection to the server, after the operator has typed the whole figure.
   const cleaned = raw.replace(/[^\d.]/g, '')
-  if (!cleaned) return negative ? '-' : ''
+  if (!cleaned) return ''
 
   // Only the first decimal point counts; the rest are typos.
   const [whole, ...rest] = cleaned.split('.')
@@ -94,8 +96,7 @@ export function formatMoneyInput(raw: string): string {
   const hasPoint = cleaned.includes('.')
 
   const grouped = whole ? Number(whole).toLocaleString('en-GB') : ''
-  const sign = negative ? '-' : ''
 
-  if (!hasPoint) return `${sign}${grouped}`
-  return `${sign}${grouped || '0'}.${fraction}`
+  if (!hasPoint) return grouped
+  return `${grouped || '0'}.${fraction}`
 }

@@ -27,6 +27,7 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY } from '@/lib/enums'
 import { formatDate, relativeTime, daysHeld } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { LOCATION_TYPE_LABELS, AUDIT_ACTION_LABELS, type LocationType, type AuditAction } from '@/lib/enums'
 import { watchQuerySchema } from '@/lib/validation'
 import { can } from '@/lib/permissions'
@@ -439,7 +440,7 @@ function ActivityList({ activity }: { activity: Awaited<ReturnType<typeof auditT
             </p>
           </div>
           <p className="shrink-0 text-caption text-content-secondary sm:ml-auto">
-            {entry.actor?.name ?? 'System'} · {relativeTime(entry.createdAt)}
+            {entry.actor?.name ?? 'System'} · <RelativeTime value={entry.createdAt} />
           </p>
         </li>
       ))}

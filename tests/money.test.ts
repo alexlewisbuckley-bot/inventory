@@ -76,5 +76,8 @@ describe('formatMoneyInput', () => {
   it('returns empty for empty rather than a zero the user did not type', () => {
     expect(formatMoneyInput('')).toBe('')
     expect(formatMoneyInput('abc')).toBe('')
+    // Prices are amounts, never signed: the minus is dropped as it is typed.
+    expect(formatMoneyInput('-5')).toBe('5')
+    expect(formatMoneyInput('-')).toBe('')
   })
 })

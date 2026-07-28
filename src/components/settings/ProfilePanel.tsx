@@ -10,7 +10,7 @@ import { changePasswordAction } from '@/app/actions/auth'
 import { signOutOtherDevicesAction, updatePreferencesAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
 import { useTheme } from '@/components/ui/ThemeProvider'
-import { relativeTime, formatDateTime } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { ROLE_LABELS, ROLE_DESCRIPTIONS, THEMES, DENSITIES, CURRENCIES, type Role, type Theme } from '@/lib/enums'
 import type { SessionUser } from '@/server/auth/session'
 
@@ -214,11 +214,11 @@ function SessionsCard({ sessions }: { sessions: SessionSummary[] }) {
                 {session.isCurrent && <Chip tone="success">This device</Chip>}
               </p>
               <p className="truncate text-caption text-content-secondary">
-                {session.ipAddress ?? 'Unknown address'} · last active {relativeTime(session.lastSeenAt)}
+                {session.ipAddress ?? 'Unknown address'} · last active <RelativeTime value={session.lastSeenAt} />
               </p>
             </div>
-            <p className="hidden shrink-0 text-caption text-content-secondary sm:block" title={formatDateTime(session.createdAt)}>
-              since {relativeTime(session.createdAt)}
+            <p className="hidden shrink-0 text-caption text-content-secondary sm:block">
+              since <RelativeTime value={session.createdAt} />
             </p>
           </li>
         ))}

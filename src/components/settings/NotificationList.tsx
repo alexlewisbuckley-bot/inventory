@@ -6,7 +6,7 @@ import { AlertTriangle, ArrowRightLeft, Bell, CheckCheck, PackagePlus, Receipt }
 import { cn } from '@/lib/cn'
 import { Button, useToast } from '@/components/ui'
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/actions/admin'
-import { relativeTime } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import type { NotificationType } from '@/lib/enums'
 
 export interface NotificationView {
@@ -67,7 +67,7 @@ export function NotificationList({ items }: { items: NotificationView[] }) {
                   {unread && <span className="sr-only"> (unread)</span>}
                 </p>
                 {item.body && <p className="mt-0.5 text-small text-content-secondary">{item.body}</p>}
-                <p className="mt-1 text-caption text-content-secondary">{relativeTime(item.createdAt)}</p>
+                <p className="mt-1 text-caption text-content-secondary"><RelativeTime value={item.createdAt} /></p>
               </div>
 
             </div>

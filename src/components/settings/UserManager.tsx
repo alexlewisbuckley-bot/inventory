@@ -8,7 +8,7 @@ import {
 } from '@/components/ui'
 import { createUserAction, updateUserAction, deleteUserAction, resetPasswordAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
-import { relativeTime } from '@/lib/dates'
+import { RelativeTime } from '@/components/ui/RelativeTime'
 import { ROLE_LABELS, ROLE_DESCRIPTIONS, type Role } from '@/lib/enums'
 import { ROLE_CAPABILITIES } from '@/lib/permissions'
 
@@ -86,7 +86,7 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                     </TD>
                     <TD><Chip tone={user.role === 'OWNER' ? 'accent' : 'neutral'}>{ROLE_LABELS[user.role]}</Chip></TD>
                     <TD className="text-content-secondary">
-                      {user.lastLoginAt ? relativeTime(user.lastLoginAt) : 'Never'}
+                      <RelativeTime value={user.lastLoginAt} fallback="Never" />
                     </TD>
                     <TD align="right" className="text-content-secondary">{user.activeSessions}</TD>
                     <TD>
