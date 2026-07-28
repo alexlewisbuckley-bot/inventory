@@ -64,9 +64,9 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                   <TH>Name</TH>
                   <TH width="150px">Role</TH>
                   <TH width="160px">Last signed in</TH>
-                  <TH width="110px">Devices</TH>
+                  <TH width="120px" align="right">Sessions</TH>
                   <TH width="110px">Status</TH>
-                  {canManage && <TH width="130px"><span className="sr-only">Actions</span></TH>}
+                  {canManage && <TH width="130px" align="right"><span className="sr-only">Actions</span></TH>}
                 </TR>
               </THead>
               <TBody>
@@ -88,7 +88,7 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                     <TD className="text-content-secondary">
                       {user.lastLoginAt ? relativeTime(user.lastLoginAt) : 'Never'}
                     </TD>
-                    <TD className="text-content-secondary">{user.activeSessions}</TD>
+                    <TD align="right" className="text-content-secondary">{user.activeSessions}</TD>
                     <TD>
                       <Chip tone={user.isActive ? 'accent' : 'neutral'} dot={user.isActive}>
                         {user.isActive ? 'Active' : 'Disabled'}
@@ -96,7 +96,7 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                     </TD>
                     {canManage && (
                       <TD>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => setEditing(user)} aria-label={`Edit ${user.name}`}
                             className="rounded-sm p-1.5 text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
                             <Pencil className="h-4 w-4" />
@@ -129,9 +129,21 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                   <Chip tone={role === 'OWNER' ? 'accent' : 'neutral'}>{ROLE_LABELS[role]}</Chip>
                   <p className="text-small text-content-secondary">{ROLE_DESCRIPTIONS[role]}</p>
                 </div>
-                <p className="mt-2 text-caption text-content-secondary">
-                  {ROLE_CAPABILITIES[role].length} capabilities
-                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-caption font-semibold text-content-accent hover:underline">
+                    {ROLE_CAPABILITIES[role].length} capabilities
+                  </summary>
+                  <ul className="mt-2 flex flex-wrap gap-1.5">
+                    {ROLE_CAPABILITIES[role].map((capability) => (
+                      <li
+                        key={capability}
+                        className="rounded-xs bg-surface-subtle px-1.5 py-0.5 text-micro text-content-secondary"
+                      >
+                        {capability}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               </li>
             ))}
           </ul>

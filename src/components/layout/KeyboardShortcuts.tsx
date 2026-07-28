@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useMounted } from '@/hooks/useMounted'
+import { SHORTCUTS } from '@/lib/shortcuts'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { useRef } from 'react'
 
@@ -18,20 +19,6 @@ const GO_TO: Record<string, string> = {
   n: '/notifications',
 }
 
-const SHORTCUTS: Array<{ keys: string[]; action: string; group: string }> = [
-  { keys: ['⌘', 'K'], action: 'Search stock and jump anywhere', group: 'General' },
-  { keys: ['/'], action: 'Focus the search box on this page', group: 'General' },
-  { keys: ['?'], action: 'Show this list', group: 'General' },
-  { keys: ['['], action: 'Collapse or expand the sidebar', group: 'General' },
-  { keys: ['Esc'], action: 'Close any dialog, drawer or menu', group: 'General' },
-  { keys: ['N'], action: 'Add a watch', group: 'Actions' },
-  { keys: ['G', 'D'], action: 'Go to dashboard', group: 'Navigation' },
-  { keys: ['G', 'I'], action: 'Go to inventory', group: 'Navigation' },
-  { keys: ['G', 'S'], action: 'Go to sales', group: 'Navigation' },
-  { keys: ['G', 'U'], action: 'Go to suppliers', group: 'Navigation' },
-  { keys: ['G', 'L'], action: 'Go to locations', group: 'Navigation' },
-  { keys: ['G', 'R'], action: 'Go to reports', group: 'Navigation' },
-]
 
 /**
  * Global keyboard layer.

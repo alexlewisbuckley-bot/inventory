@@ -5,7 +5,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Card, Button, Modal, TextField, TextareaField, SelectField, Checkbox,
-  Chip, ConfirmDialog, EmptyState, useToast,
+  Chip, ConfirmDialog, EmptyState, useToast, useCreateFlag,
 } from '@/components/ui'
 import { saveLocationAction, deleteLocationAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
@@ -36,7 +36,9 @@ const INITIAL: ActionState = { ok: false }
 export function LocationManager({ locations, canManage }: { locations: LocationRow[]; canManage: boolean }) {
   const toast = useToast()
   const [editing, setEditing] = useState<LocationRow | null>(null)
-  const [creating, setCreating] = useState(false)
+  // Opening state lives in the URL so the header button, the empty state
+  // and a deep link all reach the same form.
+  const create = useCreateFlag()
   const [deleting, setDeleting] = useState<LocationRow | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -54,23 +56,17 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
 
   return (
     <>
-      {canManage && (
-        <div className="mb-6 flex justify-end">
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>Add location</Button>
-        </div>
-      )}
-
       {locations.length === 0 ? (
         <Card>
           <EmptyState
             icon={<MapPin className="h-6 w-6" />}
             title="No locations yet"
             description="Add your stores and vaults so stock can be assigned and transfers tracked."
-            action={canManage ? <Button onClick={() => setCreating(true)}>Add location</Button> : undefined}
+            action={canManage ? <Button onClick={() => create.openIt()}>Add location</Button> : undefined}
           />
         </Card>
       ) : (
-        <div className="grid items-start gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {locations.map((location) => {
             const share = totalValue > 0 ? (location.valueGbp / totalValue) * 100 : 0
             return (
@@ -78,8 +74,19 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                 <div className="flex items-start justify-between gap-3 px-6 pt-5">
                   <div className="min-w-0">
                     <h2 className="truncate text-h3 font-extrabold text-content-primary">{location.name}</h2>
-                    <p className="mt-0.5 text-caption text-content-secondary">
-                      {[LOCATION_TYPE_LABELS[location.type], location.city, location.country].filter(Boolean).join(' · ')}
+                    {/* One line, so every card in the row reserves the same
+                        header height and the figures below line up across
+                        them. The full value is on hover. */}
+                    <p className="mt-0.5 truncate text-caption text-content-secondary" title={[
+                      LOCATION_TYPE_LABELS[location.type], location.city, location.country,
+                    ].filter(Boolean).join(' · ')}>
+                      {[
+                        LOCATION_TYPE_LABELS[location.type] === location.name
+                          ? null
+                          : LOCATION_TYPE_LABELS[location.type],
+                        location.city,
+                        location.country,
+                      ].filter(Boolean).join(' · ') || 'No address recorded'}
                     </p>
                   </div>
                   <Chip tone={location.isActive ? 'accent' : 'neutral'} dot={location.isActive}>
@@ -137,10 +144,10 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
       )}
 
       <LocationFormModal
-        open={creating || editing !== null}
+        open={create.open || editing !== null}
         location={editing}
-        onClose={() => { setCreating(false); setEditing(null) }}
-        onSaved={(message) => { toast.success(message); setCreating(false); setEditing(null) }}
+        onClose={() => { create.close(); setEditing(null) }}
+        onSaved={(message) => { toast.success(message); create.close(); setEditing(null) }}
       />
 
       <ConfirmDialog

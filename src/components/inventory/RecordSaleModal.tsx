@@ -9,7 +9,7 @@ import { SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode } from '@/lib/enu
 import type { DrawerRecord } from './WatchDrawerClient'
 
 /**
- * Record a sale.
+ * Mark a watch as sold.
  *
  * Profit is recalculated live as the user types so they see the outcome before
  * committing — the single most important number in the workflow, and the one
@@ -79,7 +79,7 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
     <Modal
       open={open}
       onClose={onClose}
-      title="Record a sale"
+      title="Mark as sold"
       description={`Stock No. ${watch.stockNo} · ${watch.brandName} ${watch.model} — this moves the watch to Sold`}
       size="lg"
       dismissible={false}
@@ -87,7 +87,7 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button onClick={submit} loading={busy} disabled={!amount || !invoiceNo}>
-            Record sale — move to Sold
+            Record the sale
           </Button>
         </>
       }

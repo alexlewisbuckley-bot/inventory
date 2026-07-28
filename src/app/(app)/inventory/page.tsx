@@ -8,6 +8,7 @@ import { brands, locations, suppliers } from '@/server/db/schema'
 import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/inventory/FilterBar'
 import { SavedViews } from '@/components/inventory/SavedViews'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
@@ -83,19 +84,34 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         description={`${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${money(summary.totalCostGbp)} invested`}
         actions={
           <>
-            {capabilities['data:import'] && (
-              <LinkButton href="/inventory/import" variant="ghost" icon={<Upload className="h-4 w-4" />}>
-                Import
-              </LinkButton>
-            )}
-            {capabilities['report:export'] && (
-              <LinkButton href="/api/export/watches" variant="secondary" icon={<Download className="h-4 w-4" />}>
-                Export CSV
-              </LinkButton>
-            )}
-            {capabilities['watch:create'] && (
-              <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add watch</LinkButton>
-            )}
+            {/* Visible from sm upwards; below that they fold into the overflow
+                menu so the primary action is not buried under two lines of
+                secondary buttons. */}
+            <span className="hidden sm:contents">
+              {capabilities['data:import'] && (
+                <LinkButton href="/inventory/import" variant="ghost" icon={<Upload className="h-4 w-4" />}>
+                  Import
+                </LinkButton>
+              )}
+              {capabilities['report:export'] && (
+                <LinkButton href="/api/export/watches" variant="secondary" icon={<Download className="h-4 w-4" />}>
+                  Export CSV
+                </LinkButton>
+              )}
+            </span>
+            <PageActions
+              secondary={[
+                ...(capabilities['data:import']
+                  ? [{ id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> }]
+                  : []),
+                ...(capabilities['report:export']
+                  ? [{ id: 'export', label: 'Export as CSV', href: '/api/export/watches', icon: <Download className="h-3.5 w-3.5" /> }]
+                  : []),
+              ]}
+              primary={capabilities['watch:create']
+                ? <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add watch</LinkButton>
+                : undefined}
+            />
           </>
         }
       />

@@ -108,7 +108,7 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button onClick={submit} loading={busy} disabled={!amount || !invoiceNo}>Record sale</Button>
+          <Button onClick={submit} loading={busy} disabled={!amount || !invoiceNo}>Record the sale</Button>
         </>
       }
     >

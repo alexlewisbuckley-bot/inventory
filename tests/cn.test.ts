@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { cn } from '@/lib/cn'
 
 /**
@@ -57,3 +59,40 @@ describe('radius scale', () => {
     expect(cn('rounded-md border-line-subtle')).toBe('rounded-md border-line-subtle')
   })
 })
+
+/**
+ * The same action must have the same name everywhere.
+ *
+ * It was "Mark as sold" in the row menu, "Record sale" in the drawer and
+ * "Record a sale" on the dashboard — three names for one thing, which is how
+ * the help page ended up telling people to click a button that did not exist.
+ */
+describe('action naming', () => {
+  const files = sourceFiles(join(process.cwd(), 'src'))
+
+  it('never calls marking a watch sold anything else in the interface', () => {
+    const offenders: string[] = []
+    for (const file of files) {
+      if (file.includes('RecordSaleModal')) continue // the component's own name
+      const source = readFileSync(file, 'utf8')
+      for (const [index, line] of source.split('\n').entries()) {
+        if (line.trimStart().startsWith('*') || line.trimStart().startsWith('//')) continue
+        if (/>\s*Record (a )?sale|"Record (a )?sale|'Record (a )?sale/.test(line)) {
+          offenders.push(`${file.replace(process.cwd() + '/', '')}:${index + 1}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
+function sourceFiles(dir: string, acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry)
+    if (statSync(path).isDirectory()) {
+      if (entry === 'node_modules' || entry === '.next') continue
+      sourceFiles(path, acc)
+    } else if (/\.tsx?$/.test(entry)) acc.push(path)
+  }
+  return acc
+}

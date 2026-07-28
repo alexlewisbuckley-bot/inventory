@@ -56,7 +56,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppSidebar role={user.role as Role} counts={counts} />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar user={user} unreadCount={Number(unread[0]?.value ?? 0)} counts={counts} />
-          <main id="main" className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-7 lg:px-8">
+          <main
+            id="main"
+            // Focusable only as a skip-link target, never in the tab order.
+            tabIndex={-1}
+            className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-7 outline-none lg:px-8"
+          >
             {children}
           </main>
         </div>

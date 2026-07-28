@@ -143,7 +143,7 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
           <THead>
             <TR>
               {selectable && (
-                <TH width="44px">
+                <TH width="44px" className="hidden sm:table-cell">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -259,7 +259,7 @@ function Row({
   return (
     <TR selected={selected} className={cn('group', watch.deletedAt && 'opacity-50')}>
       {selectable && (
-        <TD>
+        <TD className="hidden sm:table-cell">
           <input
             type="checkbox"
             checked={selected}

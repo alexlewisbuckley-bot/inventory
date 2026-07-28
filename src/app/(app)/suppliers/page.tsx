@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { requireCapability } from '@/server/auth/session'
 import { listSuppliers } from '@/server/services/reference-service'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { CreateAction } from '@/components/ui'
 import { SupplierManager } from '@/components/reference/SupplierManager'
 import { can } from '@/lib/permissions'
 
@@ -17,6 +18,7 @@ export default async function SuppliersPage() {
       <PageHeader
         title="Suppliers"
         description="Who you buy from, what you have bought, and how it has performed."
+        actions={can(user.role, 'supplier:manage') ? <CreateAction label="Add supplier" /> : undefined}
       />
       <SupplierManager
         suppliers={suppliers.map((s) => ({

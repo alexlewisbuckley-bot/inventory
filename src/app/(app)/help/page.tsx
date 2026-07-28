@@ -3,22 +3,16 @@ import Link from 'next/link'
 import { BookOpen, Keyboard, LifeBuoy } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody } from '@/components/ui'
+import { SHORTCUTS, SHORTCUT_GROUPS } from '@/lib/shortcuts'
 
 export const metadata: Metadata = { title: 'Help' }
 
-const SHORTCUTS = [
-  { keys: ['⌘', 'K'], action: 'Open search and commands', note: 'Ctrl-K on Windows' },
-  { keys: ['↑', '↓'], action: 'Move through search results' },
-  { keys: ['↵'], action: 'Open the highlighted result' },
-  { keys: ['Esc'], action: 'Close any dialog, drawer or panel' },
-  { keys: ['Tab'], action: 'Move forward through controls' },
-  { keys: ['⇧', 'Tab'], action: 'Move backward through controls' },
-]
 
 const TASKS = [
   { title: 'Add a watch', body: 'Inventory → Add watch. Leave the sale price blank if you have not priced it yet; it will be flagged for review.', href: '/inventory/new' },
   { title: 'Move stock between stores', body: 'Open a watch and choose Move, or tick several rows in the inventory and use the bulk Move action. Every transfer is logged.', href: '/inventory' },
-  { title: 'Record a sale', body: 'Open the watch and choose Record sale. Profit and margin are calculated as you type, and the watch moves to Sold.', href: '/inventory' },
+  { title: 'Mark a watch as sold', body: 'Click the status chip on any row and choose “Mark as sold”, or open the watch first. Profit and margin are worked out as you type.', href: '/inventory' },
+  { title: 'Undo a sale recorded by mistake', body: 'Click the status chip on the sold row and choose “Void the sale”. The watch returns to stock and the invoice is kept, marked void.', href: '/inventory?status=SOLD' },
   { title: 'Find slow-moving stock', body: 'Reports → Ageing stock lists everything held longer than the warning threshold, oldest first.', href: '/reports/ageing' },
   { title: 'Export for the accountant', body: 'Export CSV on the inventory or sales page. The export honours whatever filters you have applied.', href: '/sales' },
 ]
@@ -28,7 +22,7 @@ export default function HelpPage() {
     <>
       <PageHeader title="Help" description="How to get things done, and the shortcuts worth learning." />
 
-      <div className="grid max-w-5xl gap-6 lg:grid-cols-3">
+      <div className="grid max-w-5xl items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Common tasks" />
           <ul className="divide-y divide-line-subtle">
@@ -47,7 +41,7 @@ export default function HelpPage() {
           <Card>
             <CardHeader title="Keyboard shortcuts" />
             <ul className="divide-y divide-line-subtle">
-              {SHORTCUTS.map((shortcut) => (
+              {SHORTCUT_GROUPS.flatMap((group) => SHORTCUTS.filter((s) => s.group === group)).map((shortcut) => (
                 <li key={shortcut.action} className="flex items-center justify-between gap-4 px-6 py-3">
                   <div className="min-w-0">
                     <p className="text-small text-content-primary">{shortcut.action}</p>

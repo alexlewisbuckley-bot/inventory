@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { isActive, navGroups, type SidebarCounts } from './nav-model'
+import { flattenNav, isActive, navGroups, type SidebarCounts } from './nav-model'
 import type { Role } from '@/lib/enums'
 
 /**
@@ -28,7 +28,8 @@ export function MobileNav({ role, counts }: { role: Role; counts: SidebarCounts 
   useEffect(() => { setMounted(true) }, [])
 
   const groups = navGroups(role, counts)
-  const current = groups.flatMap((g) => g.items).find((item) => isActive(item, pathname))
+  const allItems = flattenNav(groups)
+  const current = allItems.find((item) => isActive(item, pathname, allItems))
 
   // Route changes come from tapping a link in here, so the sheet must stand down.
   useEffect(() => { setOpen(false) }, [pathname])
@@ -110,7 +111,7 @@ export function MobileNav({ role, counts }: { role: Role; counts: SidebarCounts 
                   )}
                   <ul className="flex flex-col gap-0.5">
                     {group.items.map((item) => {
-                      const active = isActive(item, pathname)
+                      const active = isActive(item, pathname, allItems)
                       const Icon = item.icon
                       return (
                         <li key={item.href}>

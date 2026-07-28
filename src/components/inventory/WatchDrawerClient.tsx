@@ -85,7 +85,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
           <div className="flex flex-wrap items-center gap-2.5">
             {capabilities['sale:create'] && !sold && (
               <Button size="sm" icon={<Receipt className="h-4 w-4" />} onClick={() => setSaleOpen(true)}>
-                Record sale
+                Mark as sold
               </Button>
             )}
             {capabilities['watch:move'] && !sold && (

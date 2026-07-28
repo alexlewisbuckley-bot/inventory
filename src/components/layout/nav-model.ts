@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, Clock, Coins, LayoutDashboard,
-  MapPin, Package, Receipt, Settings, ShieldCheck, type LucideIcon,
+  LifeBuoy, MapPin, Package, Receipt, Settings, ShieldCheck, type LucideIcon,
 } from 'lucide-react'
 import { can, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -66,6 +66,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
       items: [
         { href: '/settings', label: 'Settings', icon: Settings, capability: 'settings:read', match: '/settings' },
         { href: '/settings/users', label: 'Users', icon: ShieldCheck, capability: 'user:read' },
+        { href: '/help', label: 'Help', icon: LifeBuoy },
       ],
     },
   ]
@@ -78,10 +79,29 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
 /**
  * Whether a nav item represents the current page.
  *
- * Items carrying a query string (the saved-view shortcuts) never match on
- * prefix, or "Unpriced stock" would light up for the whole inventory section.
+ * Two rules, both learned from getting it wrong. Items carrying a query string
+ * (the saved-view shortcuts) never match on prefix, or "Unpriced stock" would
+ * light up for the whole inventory section. And the most specific item wins:
+ * `/settings/users` is matched by both "Settings" and "Users", which lit two
+ * rows of the sidebar at once and left the user unsure which section they were
+ * actually in.
  */
-export function isActive(item: NavItem, pathname: string): boolean {
-  if (item.match) return pathname.startsWith(item.match) && !item.href.includes('?')
-  return pathname === item.href
+export function isActive(item: NavItem, pathname: string, all?: NavItem[]): boolean {
+  const matches = (candidate: NavItem): boolean => {
+    if (candidate.href.includes('?')) return false
+    if (candidate.match) return pathname.startsWith(candidate.match)
+    return pathname === candidate.href
+  }
+
+  if (!matches(item)) return false
+  if (!all) return true
+
+  // Yield to any other item that also matches and is more specific.
+  const specificity = (candidate: NavItem) => (candidate.match ?? candidate.href).length
+  return !all.some((other) => other !== item && matches(other) && specificity(other) > specificity(item))
+}
+
+/** Every item across every group, for specificity comparisons. */
+export function flattenNav(groups: NavGroup[]): NavItem[] {
+  return groups.flatMap((group) => group.items)
 }

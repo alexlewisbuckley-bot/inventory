@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsLeft } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { isActive, navGroups, type SidebarCounts } from './nav-model'
+import { flattenNav, isActive, navGroups, type SidebarCounts } from './nav-model'
 import type { Role } from '@/lib/enums'
 
 export type { SidebarCounts }
@@ -57,6 +57,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
   }
 
   const groups = navGroups(role, counts)
+  const allItems = flattenNav(groups)
 
   return (
     <aside
@@ -85,7 +86,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
               )}
               <ul className="flex flex-col gap-0.5">
                 {group.items.map((item) => {
-                  const active = isActive(item, pathname)
+                  const active = isActive(item, pathname, allItems)
                   const Icon = item.icon
                   return (
                     <li key={item.href}>

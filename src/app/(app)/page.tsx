@@ -159,7 +159,7 @@ export default async function DashboardPage() {
       href: '/inventory/new', label: 'Add a watch', hint: 'Book new stock in', icon: <Package className="h-4 w-4" />,
     },
     can(user.role, 'sale:create') && {
-      href: '/inventory?status=SALE_AGREED', label: 'Record a sale', hint: 'Close an agreed deal', icon: <Receipt className="h-4 w-4" />,
+      href: '/inventory?status=SALE_AGREED', label: 'Mark one as sold', hint: 'Close an agreed deal', icon: <Receipt className="h-4 w-4" />,
     },
     can(user.role, 'watch:create') && {
       href: '/inventory/import', label: 'Import stock', hint: 'Bring in a spreadsheet', icon: <Upload className="h-4 w-4" />,

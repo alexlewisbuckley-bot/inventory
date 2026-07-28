@@ -5,7 +5,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { Building2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Card, Table, THead, TBody, TR, TD, TH, Button, Modal, TextField, SelectField,
-  TextareaField, Checkbox, Chip, ConfirmDialog, EmptyState, useToast, useCurrency,
+  TextareaField, Checkbox, Chip, ConfirmDialog, EmptyState, useToast, useCurrency, useCreateFlag,
 } from '@/components/ui'
 import { saveSupplierAction, deleteSupplierAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
@@ -79,7 +79,9 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
   const toast = useToast()
   const { money } = useCurrency()
   const [editing, setEditing] = useState<SupplierRow | null>(null)
-  const [creating, setCreating] = useState(false)
+  // Opening state lives in the URL so the header button, the empty state
+  // and a deep link all reach the same form.
+  const create = useCreateFlag()
   const [deleting, setDeleting] = useState<SupplierRow | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -98,17 +100,12 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        {incomplete > 0 ? (
-          <p className="text-small text-content-secondary">
-            <span className="font-bold text-state-gold">{incomplete}</span> of {suppliers.length} suppliers
-            are missing details you would need to raise a purchase order or pay an invoice.
-          </p>
-        ) : <span />}
-        {canManage && (
-          <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>Add supplier</Button>
-        )}
-      </div>
+      {incomplete > 0 && (
+        <p className="mb-4 text-small text-content-secondary">
+          <span className="font-bold text-state-gold">{incomplete}</span> of {suppliers.length} suppliers
+          are missing details you would need to raise a purchase order or pay an invoice.
+        </p>
+      )}
 
       <Card className="overflow-hidden">
         {suppliers.length === 0 ? (
@@ -116,7 +113,7 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
             icon={<Building2 className="h-6 w-6" />}
             title="No suppliers yet"
             description="Add the dealers, auction houses and private sellers you buy from so purchases can be attributed."
-            action={canManage ? <Button onClick={() => setCreating(true)}>Add supplier</Button> : undefined}
+            action={canManage ? <Button onClick={() => create.openIt()}>Add supplier</Button> : undefined}
           />
         ) : (
           <Table>
@@ -130,7 +127,7 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
                 <TH width="100px" align="right">In stock</TH>
                 <TH width="130px" align="right">Total spend</TH>
                 <TH width="120px">Status</TH>
-                {canManage && <TH width="96px"><span className="sr-only">Actions</span></TH>}
+                {canManage && <TH width="96px" align="right"><span className="sr-only">Actions</span></TH>}
               </TR>
             </THead>
             <TBody>
@@ -191,7 +188,7 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
                       </TD>
                       {canManage && (
                         <TD>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center justify-end gap-1">
                             <button type="button" onClick={() => setEditing(supplier)} aria-label={`Edit ${supplier.name}`}
                               className="rounded-sm p-1.5 text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
                               <Pencil className="h-4 w-4" />
@@ -221,10 +218,10 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
       </Card>
 
       <SupplierFormModal
-        open={creating || editing !== null}
+        open={create.open || editing !== null}
         supplier={editing}
-        onClose={() => { setCreating(false); setEditing(null) }}
-        onSaved={(message) => { toast.success(message); setCreating(false); setEditing(null) }}
+        onClose={() => { create.close(); setEditing(null) }}
+        onSaved={(message) => { toast.success(message); create.close(); setEditing(null) }}
       />
 
       <ConfirmDialog

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { requireCapability } from '@/server/auth/session'
 import { listLocations } from '@/server/services/reference-service'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { CreateAction } from '@/components/ui'
 import { LocationManager } from '@/components/reference/LocationManager'
 import { can } from '@/lib/permissions'
 import type { LocationType } from '@/lib/enums'
@@ -18,6 +19,7 @@ export default async function LocationsPage() {
       <PageHeader
         title="Locations"
         description="Stores, vaults and transit. Every watch sits in exactly one, and every move is logged."
+        actions={can(user.role, 'location:manage') ? <CreateAction label="Add location" /> : undefined}
       />
       <LocationManager
         locations={locations.map((l) => ({

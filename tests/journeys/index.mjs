@@ -167,7 +167,7 @@ await journey('mark as sold', async (page) => {
   await page.locator('[role="dialog"] input[inputmode="decimal"]').first().fill('12500')
   await page.fill('input[placeholder="INV-2026-001"]', invoice)
   await page.fill('input[placeholder="Who took the watch"]', 'Journey Test Buyer')
-  await page.locator('[role="dialog"] button:has-text("Record sale")').click()
+  await page.locator('[role="dialog"] button:has-text("Record the sale")').click()
   await page.waitForTimeout(3000)
 
   // Surface whatever the form said rather than only reporting the absence.
