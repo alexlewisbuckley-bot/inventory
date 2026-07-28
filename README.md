@@ -24,6 +24,19 @@ Seeded sign-ins (all use the password `Bluecroft2026!`):
 | `omar@bluecroft.co.uk`    | Staff   | Add/edit stock, move watches, record sales     |
 | `priya@bluecroft.co.uk`   | Viewer  | Read-only                                      |
 
+## What it does
+
+| Area | Capability |
+| --- | --- |
+| **Inventory** | Search, multi-select filters, sortable columns, pagination, bulk move/export/delete, detail drawer, full record page, create/edit, soft delete and restore |
+| **Sales** | Record a sale with live profit and margin, ledger with channel and date filters, variance against the pre-sale estimate |
+| **Stock control** | Locations with live counts and capital held, every transfer logged as a stock movement |
+| **Suppliers** | CRUD with trading history; deletion refused while stock references them |
+| **Reports** | Capital deployed, lifetime revenue and profit, sell-through, monthly chart, supplier performance, ageing stock |
+| **Import / export** | Two-phase CSV import (validate, review, commit) and CSV export that honours the active filters and round-trips back through import |
+| **Administration** | Users and roles, application settings, full audit trail, notifications, profile and preferences |
+| **Throughout** | Light/dark themes, command palette (⌘K), keyboard operable, loading skeletons, empty and error states |
+
 ## Commands
 
 | Command | Purpose |
@@ -35,6 +48,10 @@ Seeded sign-ins (all use the password `Bluecroft2026!`):
 | `npm run db:migrate` | Apply pending SQL migrations |
 | `npm run db:seed` | Migrate, then seed idempotently |
 | `npm run db:reset` | Drop the local database and re-seed |
+
+> `.env` is loaded explicitly by the CLI scripts as well as by Next, so the
+> seed and the application always resolve the same `DATABASE_URL`. They used
+> not to, and a fresh checkout seeded one database while serving another.
 
 ---
 
@@ -153,3 +170,40 @@ liveness for load-balancer probes.
 
 Moving to Postgres means changing the driver in `src/server/db/client.ts` and
 translating the migration SQL — the query layer, services and UI are unchanged.
+
+---
+
+## Testing
+
+```bash
+npm test          # 52 unit tests
+npm run typecheck # strict TypeScript, no emit
+npm run build     # production build
+```
+
+Tests concentrate on the logic that is expensive to get wrong: money
+arithmetic, the permission matrix, password hashing, audit diffing, settings
+validation, request validation, CSV round-tripping, and a regression guard on
+the database adapter.
+
+Three of those tests exist because they caught real bugs during development,
+and each is worth knowing about if you extend this codebase:
+
+**The database adapter must return array rows.** Drizzle's `sqlite-proxy`
+driver maps result columns positionally, but `node:sqlite` returns objects by
+default. A join selecting the same column name from two tables — `sessions.id`
+and `users.id` — collapses into a single object key, dropping columns and
+misaligning every value after the collision. Every joined query was silently
+returning corrupt data. `setReturnArrays(true)` in `src/server/db/client.ts`
+fixes it; `tests/db-adapter.test.ts` pins the behaviour.
+
+**Never put a coercing schema first in a Zod union.** `z.coerce.number()` turns
+both `''` and `null` into `0`, and `0` satisfies `.min(0)`. A blank estimated
+sale price was therefore stored as zero rather than "not yet priced", which
+broke the unpriced worklist and reported large false losses. The null branch
+now precedes coercion in `src/lib/validation.ts`.
+
+**Pure logic does not belong in modules that import the database.** Anything
+imported by a test must not transitively pull in `node:sqlite`. Money, dates,
+permissions, diffing, CSV and the settings registry all live in `src/lib/` for
+exactly this reason — it keeps them testable and reusable on the client.

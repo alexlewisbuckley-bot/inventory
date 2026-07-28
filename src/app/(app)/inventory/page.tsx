@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { asc, eq, isNull } from 'drizzle-orm'
-import { Download, Plus } from 'lucide-react'
+import { Download, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, suppliers } from '@/server/db/schema'
@@ -72,6 +72,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         description={`${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${formatMoney(summary.totalCostGbp, 'GBP')} invested`}
         actions={
           <>
+            {capabilities['data:import'] && (
+              <LinkButton href="/inventory/import" variant="ghost" icon={<Upload className="h-4 w-4" />}>
+                Import
+              </LinkButton>
+            )}
             {capabilities['report:export'] && (
               <LinkButton href="/api/export/watches" variant="secondary" icon={<Download className="h-4 w-4" />}>
                 Export CSV

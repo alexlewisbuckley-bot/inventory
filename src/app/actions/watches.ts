@@ -143,3 +143,54 @@ export async function restoreWatchAction(id: string): Promise<ActionState> {
     return toState(error, 'Could not restore the watch.')
   }
 }
+
+// --- CSV import ------------------------------------------------------------
+
+export interface ImportPreviewState extends ActionState {
+  preview?: import('@/server/services/import-service').ImportPreview
+}
+
+/**
+ * Validate a pasted or uploaded CSV without writing anything.
+ *
+ * Kept separate from the commit so the user always sees exactly what will be
+ * created, and which rows will be rejected and why, before any change.
+ */
+export async function previewImportAction(
+  _prev: ImportPreviewState,
+  formData: FormData,
+): Promise<ImportPreviewState> {
+  const actor = await requireCapability('data:import')
+  rateLimit({ key: `import:${actor.id}`, ...LIMITS.import })
+
+  const file = formData.get('file')
+  const pasted = formData.get('csv')?.toString() ?? ''
+  const text = file instanceof File && file.size > 0 ? await file.text() : pasted
+
+  if (!text.trim()) return { ok: false, message: 'Paste some CSV or choose a file first.' }
+  if (text.length > 2_000_000) return { ok: false, message: 'That file is too large. Split it into smaller batches.' }
+
+  try {
+    const { parseImport } = await import('@/server/services/import-service')
+    const preview = await parseImport(text)
+    return { ok: preview.errorCount === 0, preview }
+  } catch (error) {
+    return toState(error, 'Could not read that file.')
+  }
+}
+
+export async function commitImportAction(
+  rows: import('@/server/services/import-service').ImportRow[],
+): Promise<ActionState> {
+  const actor = await requireCapability('data:import')
+  rateLimit({ key: `import:${actor.id}`, ...LIMITS.import })
+
+  try {
+    const { commitImport } = await import('@/server/services/import-service')
+    const count = await commitImport(rows, actor)
+    refreshInventory()
+    return { ok: true, message: `${count} ${count === 1 ? 'watch' : 'watches'} imported.` }
+  } catch (error) {
+    return toState(error, 'Could not complete the import.')
+  }
+}

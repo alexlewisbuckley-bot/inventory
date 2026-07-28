@@ -5,6 +5,7 @@ import { findSales } from '@/server/repositories/sale-repository'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { toMajor } from '@/lib/money'
+import { toCsv } from '@/lib/csv'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,13 +14,7 @@ const COLUMNS = [
   'Cost (USD)', 'Sale (USD)', 'Sale (GBP)', 'Profit (USD)', 'Margin %',
 ] as const
 
-function csvCell(value: unknown): string {
-  if (value === null || value === undefined) return ''
-  const text = String(value)
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-/** CSV export of the sales ledger, for the accountant. */
+/** CSV export of the sales ledger, honouring the current filters. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorised', { status: 401 })
@@ -37,16 +32,13 @@ export async function GET(request: NextRequest) {
     page: 1,
   })
 
-  const lines = [
-    COLUMNS.join(','),
-    ...items.map((s) => [
-      s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,
-      s.supplierName, s.customerName, s.channel,
-      s.costUsd !== null ? toMajor(s.costUsd).toFixed(2) : '',
-      toMajor(s.amountUsd).toFixed(2), toMajor(s.amountGbp).toFixed(2),
-      toMajor(s.profitUsd).toFixed(2), (s.marginBps / 100).toFixed(2),
-    ].map(csvCell).join(',')),
-  ]
+  const csv = toCsv(COLUMNS, items.map((s) => [
+    s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,
+    s.supplierName, s.customerName, s.channel,
+    s.costUsd !== null ? toMajor(s.costUsd).toFixed(2) : '',
+    toMajor(s.amountUsd).toFixed(2), toMajor(s.amountGbp).toFixed(2),
+    toMajor(s.profitUsd).toFixed(2), (s.marginBps / 100).toFixed(2),
+  ]))
 
   await recordAudit({
     entityType: 'Sale', entityId: 'bulk', action: 'EXPORT', actorId: user.id,
@@ -54,7 +46,7 @@ export async function GET(request: NextRequest) {
   })
 
   const stamp = new Date().toISOString().slice(0, 10)
-  return new Response(`﻿${lines.join('\r\n')}`, {
+  return new Response(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': `attachment; filename="bluecroft-sales-${stamp}.csv"`,
