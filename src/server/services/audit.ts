@@ -2,7 +2,11 @@ import { desc, eq, and, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { auditLogs, users } from '../db/schema'
 import { newId } from '@/lib/ids'
+import { diff, type ChangeSet } from '@/lib/diff'
 import type { AuditAction } from '@/lib/enums'
+
+export { diff }
+export type { ChangeSet }
 
 export interface AuditInput {
   entityType: string
@@ -11,7 +15,7 @@ export interface AuditInput {
   summary?: string
   actorId?: string | null
   ipAddress?: string | null
-  changes?: Record<string, { from: unknown; to: unknown }>
+  changes?: ChangeSet
 }
 
 /**
@@ -33,29 +37,6 @@ export async function recordAudit(input: AuditInput): Promise<void> {
   })
 }
 
-/**
- * Field-level diff between two versions of an entity, limited to `fields`.
- * Returns undefined when nothing changed so no-op saves write no audit noise.
- */
-export function diff<T extends Record<string, unknown>>(
-  before: T,
-  after: Partial<T>,
-  fields: (keyof T)[],
-): Record<string, { from: unknown; to: unknown }> | undefined {
-  const changes: Record<string, { from: unknown; to: unknown }> = {}
-  for (const field of fields) {
-    if (!(field in after)) continue
-    const from = before[field]
-    const to = after[field]
-    const same = from instanceof Date && to instanceof Date
-      ? from.getTime() === to.getTime()
-      : from === to
-    if (!same) changes[String(field)] = { from: normalise(from), to: normalise(to) }
-  }
-  return Object.keys(changes).length > 0 ? changes : undefined
-}
-
-const normalise = (value: unknown): unknown => (value instanceof Date ? value.toISOString() : value)
 
 export interface AuditEntry {
   id: string
@@ -63,7 +44,7 @@ export interface AuditEntry {
   entityId: string
   action: AuditAction
   summary: string | null
-  changes: Record<string, { from: unknown; to: unknown }> | null
+  changes: ChangeSet | null
   createdAt: Date
   actor: { id: string; name: string; initials: string } | null
 }
