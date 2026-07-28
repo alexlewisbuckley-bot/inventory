@@ -43,6 +43,15 @@ export const NOTIFICATION_TYPES = [
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
+export const IMAGE_KINDS = ['WATCH', 'CARD', 'DOCUMENT'] as const
+export type ImageKind = (typeof IMAGE_KINDS)[number]
+
+export const IMAGE_KIND_LABELS: Record<ImageKind, string> = {
+  WATCH: 'Watch',
+  CARD: 'Warranty card',
+  DOCUMENT: 'Document',
+}
+
 export const THEMES = ['LIGHT', 'DARK', 'SYSTEM'] as const
 export type Theme = (typeof THEMES)[number]
 

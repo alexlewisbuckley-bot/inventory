@@ -1,10 +1,10 @@
 import { sql } from 'drizzle-orm'
 import {
-  boolean, index, integer, pgTable, text, timestamp, uniqueIndex,
+  boolean, customType, index, integer, pgTable, text, timestamp, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import {
-  AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, LOCATION_TYPES,
-  NOTIFICATION_TYPES, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
+  AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, IMAGE_KINDS,
+  LOCATION_TYPES, NOTIFICATION_TYPES, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -206,17 +206,36 @@ export const watches = pgTable(
   }),
 )
 
-export const watchPhotos = pgTable(
-  'watch_photos',
+/** Postgres BYTEA mapped to a Node Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+})
+
+/**
+ * Image bytes stored in the database.
+ *
+ * Deliberately not object storage: at a few images per watch this avoids a
+ * second service and a second set of credentials, and it makes a database
+ * backup a complete backup. Uploads are downscaled in the browser first, so
+ * rows stay well under a megabyte.
+ */
+export const watchImages = pgTable(
+  'watch_images',
   {
     id: text('id').primaryKey(),
     watchId: text('watch_id').notNull().references(() => watches.id, { onDelete: 'cascade' }),
-    url: text('url').notNull(),
+    kind: text('kind', { enum: IMAGE_KINDS }).notNull().default('WATCH'),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    data: bytea('data').notNull(),
     caption: text('caption'),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   },
-  (t) => ({ watchIdx: index('watch_photos_watch_idx').on(t.watchId) }),
+  (t) => ({ watchIdx: index('watch_images_watch_idx').on(t.watchId, t.kind, t.sortOrder) }),
 )
 
 export const sales = pgTable(
@@ -351,7 +370,7 @@ export type NewSupplier = typeof suppliers.$inferInsert
 export type Brand = typeof brands.$inferSelect
 export type Watch = typeof watches.$inferSelect
 export type NewWatch = typeof watches.$inferInsert
-export type WatchPhoto = typeof watchPhotos.$inferSelect
+export type WatchImage = typeof watchImages.$inferSelect
 export type Sale = typeof sales.$inferSelect
 export type NewSale = typeof sales.$inferInsert
 export type StockMovement = typeof stockMovements.$inferSelect

@@ -5,6 +5,8 @@ import { Pencil } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { auditForEntity } from '@/server/services/audit'
+import { listImages } from '@/server/services/image-service'
+import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
 import { formatMoney, formatSigned, formatPct } from '@/lib/money'
@@ -33,7 +35,10 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   const record = await getWatchDetail(params.id).catch(() => null)
   if (!record) notFound()
 
-  const timeline = await auditForEntity('Watch', params.id, 100)
+  const [timeline, images] = await Promise.all([
+    auditForEntity('Watch', params.id, 100),
+    listImages(params.id),
+  ])
   const { watch, brand, supplier, location, sale } = record
 
   const estProfit = watch.estSaleUsd !== null && watch.purchasePriceUsd !== null
@@ -101,6 +106,19 @@ export default async function WatchDetailPage({ params }: { params: { id: string
         </Card>
 
         <div className="flex flex-col gap-6 lg:col-span-2">
+          <Card>
+            <CardHeader title="Images" description="Photographs of the watch and its paperwork" />
+            <CardBody>
+              <ImageGallery
+                watchId={watch.id}
+                initial={images.map((image) => ({
+                  id: image.id, kind: image.kind, caption: image.caption, byteSize: image.byteSize,
+                }))}
+                canEdit={can(user.role, 'watch:update')}
+              />
+            </CardBody>
+          </Card>
+
           {sale && (
             <Card>
               <CardHeader title="Sale" description={`Invoice ${sale.invoiceNo}`} />

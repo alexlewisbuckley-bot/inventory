@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { auditForEntity } from '@/server/services/audit'
+import { listImages } from '@/server/services/image-service'
 import { WatchDrawerClient } from './WatchDrawerClient'
 import type { Capability } from '@/lib/permissions'
 
@@ -18,7 +19,10 @@ export async function WatchDrawer({ watchId, capabilities }: {
   const record = await getWatchDetail(watchId).catch(() => null)
   if (!record) notFound()
 
-  const timeline = await auditForEntity('Watch', watchId, 12)
+  const [timeline, images] = await Promise.all([
+    auditForEntity('Watch', watchId, 12),
+    listImages(watchId),
+  ])
 
   return (
     <WatchDrawerClient
@@ -53,6 +57,9 @@ export async function WatchDrawer({ watchId, capabilities }: {
             }
           : null,
       }}
+      images={images.map((image) => ({
+        id: image.id, kind: image.kind, caption: image.caption, byteSize: image.byteSize,
+      }))}
       timeline={timeline.map((entry) => ({
         id: entry.id,
         action: entry.action,

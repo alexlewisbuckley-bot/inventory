@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRightLeft, Camera, Pencil, Receipt } from 'lucide-react'
+import { ArrowRightLeft, Pencil, Receipt } from 'lucide-react'
 import { Drawer, Button, LinkButton, StatusChip, Chip, useToast } from '@/components/ui'
 import { formatMoney, formatSigned, formatPct } from '@/lib/money'
 import { formatDate, relativeTime } from '@/lib/dates'
@@ -12,6 +12,7 @@ import {
 } from '@/lib/enums'
 import type { Capability } from '@/lib/permissions'
 import { MoveWatchModal } from './MoveWatchModal'
+import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { RecordSaleModal } from './RecordSaleModal'
 
 export interface DrawerRecord {
@@ -43,9 +44,10 @@ export interface TimelineEntry {
 }
 
 /** Detail panel: facts, financials, actions and the full change history. */
-export function WatchDrawerClient({ record, timeline, capabilities }: {
+export function WatchDrawerClient({ record, timeline, images, capabilities }: {
   record: DrawerRecord
   timeline: TimelineEntry[]
+  images: GalleryImage[]
   capabilities: Record<Capability, boolean>
 }) {
   const router = useRouter()
@@ -105,11 +107,12 @@ export function WatchDrawerClient({ record, timeline, capabilities }: {
           </div>
         }
       >
-        {/* Photo slot — upload is planned; the placeholder keeps the layout
-            honest rather than pretending the feature exists. */}
-        <div className="mb-6 flex h-44 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-line-subtle bg-surface-subtle text-content-secondary">
-          <Camera className="h-7 w-7" aria-hidden />
-          <p className="text-small font-medium">No photos yet</p>
+        <div className="mb-6">
+          <ImageGallery
+            watchId={record.id}
+            initial={images}
+            canEdit={capabilities['watch:update']}
+          />
         </div>
 
         <dl className="mb-6">
