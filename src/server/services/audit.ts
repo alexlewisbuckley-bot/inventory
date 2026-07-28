@@ -68,6 +68,8 @@ export interface AuditQuery {
   page?: number
   perPage?: number
   entityType?: string
+  /** One record's history, for a "see everything that happened to this" link. */
+  entityId?: string
   action?: AuditAction
   actorId?: string
   /** Exclude sign-in events, for feeds that are about stock rather than access. */
@@ -81,6 +83,7 @@ export async function auditTrail(query: AuditQuery = {}): Promise<{ entries: Aud
 
   const filters = [
     query.entityType ? eq(auditLogs.entityType, query.entityType) : undefined,
+    query.entityId ? eq(auditLogs.entityId, query.entityId) : undefined,
     query.action ? eq(auditLogs.action, query.action) : undefined,
     query.actorId ? eq(auditLogs.actorId, query.actorId) : undefined,
     // Sign-ins belong in the audit trail, not in a feed headed "every change

@@ -8,7 +8,7 @@ import { auditForEntity } from '@/server/services/audit'
 import { listImages } from '@/server/services/image-service'
 import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Card, CardHeader, CardBody, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
+import { Card, CardHeader, CardBody, CardFooter, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, describeRate, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -22,6 +22,9 @@ import { changeValue, fieldLabel } from '@/lib/audit-format'
 import { can } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
+
+/** How much of a watch's history belongs on the record itself. */
+const TIMELINE_SHOWN = 20
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const record = await getWatchDetail(params.id).catch(() => null)
@@ -40,7 +43,8 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   if (!record) notFound()
 
   const [timeline, images, rates, preferences] = await Promise.all([
-    auditForEntity('Watch', params.id, 100),
+    // One more than we show, so the footer knows whether to offer the rest.
+    auditForEntity('Watch', params.id, TIMELINE_SHOWN + 1),
     listImages(params.id),
     getRateTable(),
     getPreferencesFor(user.id),
@@ -156,9 +160,14 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           )}
 
           <Card>
-            <CardHeader title="History" description="Every change to this watch, newest first" />
+            <CardHeader
+              title="History"
+              description={timeline.length > TIMELINE_SHOWN
+                ? `The ${TIMELINE_SHOWN} most recent changes to this watch`
+                : 'Every change to this watch, newest first'}
+            />
             <ol className="divide-y divide-line-subtle">
-              {timeline.map((entry) => (
+              {timeline.slice(0, TIMELINE_SHOWN).map((entry) => (
                 <li key={entry.id} className="flex items-start gap-4 px-6 py-4">
                   <Chip tone="neutral">{AUDIT_ACTION_LABELS[entry.action as AuditAction]}</Chip>
                   <div className="min-w-0 flex-1">
@@ -180,6 +189,20 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                 </li>
               ))}
             </ol>
+            {/* A watch that has been repriced fifty times rendered fifty
+                entries and a page nine thousand pixels tall. The rest are one
+                click away rather than in front of you. */}
+            {timeline.length > TIMELINE_SHOWN && (
+              <CardFooter>
+                <span className="text-caption text-content-secondary">Older changes are kept in full.</span>
+                <Link
+                  href={`/settings/audit?entityType=Watch&entityId=${watch.id}`}
+                  className="text-small font-bold text-content-accent hover:underline"
+                >
+                  See this watch&rsquo;s full history →
+                </Link>
+              </CardFooter>
+            )}
           </Card>
         </div>
       </div>

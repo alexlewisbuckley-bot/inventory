@@ -17,7 +17,7 @@ const TONES: Partial<Record<AuditAction, 'accent' | 'gold' | 'danger' | 'neutral
 }
 
 export default async function AuditPage({ searchParams }: {
-  searchParams: { page?: string; entityType?: string; action?: string }
+  searchParams: { page?: string; entityType?: string; entityId?: string; action?: string }
 }) {
   await requireCapability('audit:read')
 
@@ -30,12 +30,17 @@ export default async function AuditPage({ searchParams }: {
     page,
     perPage: 50,
     entityType: searchParams.entityType || undefined,
+    entityId: searchParams.entityId || undefined,
     action,
   })
 
   return (
     <>
-      <AuditFilters />
+      <AuditFilters
+        recordLabel={searchParams.entityId
+          ? `Only this ${(entries[0]?.entityType ?? 'record').toLowerCase()}`
+          : undefined}
+      />
 
       <Card className="overflow-hidden">
         {entries.length === 0 ? (
