@@ -96,7 +96,7 @@ export default async function DashboardPage() {
       </section>
 
       {(unpriced > 0 || ageing.length > 0) && (
-        <section aria-label="Needs attention" className="mt-8 grid gap-6 lg:grid-cols-2">
+        <section aria-label="Needs attention" className="mt-8 grid items-start gap-6 lg:grid-cols-2">
           {unpriced > 0 && (
             <Card className="border-state-gold/40">
               <CardBody className="flex items-start gap-4">
