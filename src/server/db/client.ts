@@ -15,20 +15,44 @@ import { logger } from '@/lib/logger'
  * See docs/adr/0002-postgres.md for why the original SQLite layer was replaced.
  */
 
+/**
+ * Query-string parameters that are meaningful to `libpq` and to other ORMs,
+ * but which postgres.js forwards to the server as startup configuration.
+ *
+ * Postgres rejects unknown startup parameters outright, so leaving these in
+ * place makes every connection fail with `unrecognized configuration
+ * parameter`. Neon's default connection string contains `channel_binding`, and
+ * Supabase/Prisma strings commonly carry the rest — so a copy-pasted URL from
+ * any of them would otherwise be unusable. TLS is configured explicitly below
+ * rather than inferred from `sslmode`.
+ */
+const CLIENT_ONLY_PARAMS = [
+  'channel_binding', 'sslmode', 'connect_timeout', 'pgbouncer',
+  'connection_limit', 'pool_timeout', 'schema', 'sslcert', 'sslkey', 'sslrootcert',
+]
+
 function connectionString(): string {
-  const url = process.env.DATABASE_URL
-  if (!url) {
+  const raw = process.env.DATABASE_URL
+  if (!raw) {
     throw new Error(
       'DATABASE_URL is not set. Copy .env.example to .env and point it at your Postgres database.',
     )
   }
-  if (url.startsWith('file:')) {
+  if (raw.startsWith('file:')) {
     throw new Error(
       'DATABASE_URL points at a SQLite file. This application now requires Postgres — ' +
       'see docs/deployment.md. A file-backed database cannot work on serverless hosting.',
     )
   }
-  return url
+
+  try {
+    const url = new URL(raw)
+    for (const param of CLIENT_ONLY_PARAMS) url.searchParams.delete(param)
+    return url.toString()
+  } catch {
+    // Not parseable as a URL — hand it to the driver unchanged and let it report.
+    return raw
+  }
 }
 
 function createClient() {
