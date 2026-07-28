@@ -22,7 +22,6 @@ export interface WatchFormValues {
   version?: number
   brandId: string
   model: string
-  nickname: string
   serial: string
   year: string
   condition: string
@@ -38,7 +37,7 @@ export interface WatchFormValues {
 }
 
 const EMPTY: WatchFormValues = {
-  brandId: '', model: '', nickname: '', serial: '', year: '',
+  brandId: '', model: '', serial: '', year: '',
   condition: 'UNKNOWN', boxPapers: 'UNKNOWN', supplierId: '',
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
@@ -125,15 +124,10 @@ export function WatchForm({ mode, initial, brands, suppliers, locations }: {
             error={state.errors?.brandId}
           />
           <TextField
-            name="model" label="Model reference" required
+            name="model" label="Reference number" required
             value={values.model} onChange={set('model')}
-            placeholder="e.g. 126711CHNR" error={state.errors?.model}
-          />
-          <TextField
-            name="nickname" label="Nickname"
-            hint="How the team refers to it, e.g. “Root Beer”."
-            value={values.nickname} onChange={set('nickname')}
-            error={state.errors?.nickname}
+            hint="The manufacturer's reference, e.g. 126711CHNR."
+            placeholder="126711CHNR" error={state.errors?.model}
           />
           <TextField
             name="serial" label="Serial number"

@@ -4,7 +4,7 @@ import { useId } from 'react'
 import { useCurrency } from './CurrencyProvider'
 import { CURRENCIES, BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import { formatBase, symbolFor, toBase } from '@/lib/currency'
-import { parseMoneyInput } from '@/lib/money'
+import { formatMoneyInput, parseMoneyInput } from '@/lib/money'
 import { cn } from '@/lib/cn'
 
 /**
@@ -64,7 +64,7 @@ export function MoneyField({
 
       <div
         className={cn(
-          'flex items-stretch overflow-hidden rounded-md border bg-surface-page transition-colors',
+          'focus-ring-none flex items-stretch overflow-hidden rounded-md border bg-surface-page transition-colors',
           'focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/25',
           error ? 'border-state-danger' : 'border-line-strong',
           disabled && 'opacity-60',
@@ -82,7 +82,9 @@ export function MoneyField({
           id={id}
           name={amountName}
           value={amount}
-          onChange={(event) => onAmountChange(event.target.value)}
+          // Grouped as it is typed: 13105.51 read at a glance is one
+          // mis-scan away from a ten-times pricing error.
+          onChange={(event) => onAmountChange(formatMoneyInput(event.target.value))}
           inputMode="decimal"
           autoFocus={autoFocus}
           disabled={disabled}

@@ -39,7 +39,7 @@ export function MetricTile({
   const body = (
     <>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">{label}</p>
+        <p className="text-caption font-semibold text-content-secondary">{label}</p>
         {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
       </div>
       <p className={cn(
@@ -69,7 +69,7 @@ export function MetricTile({
       href={href}
       className={cn(
         shell,
-        'block transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500',
+        'block transition-colors hover:border-line-strong',
       )}
     >
       {body}

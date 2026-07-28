@@ -8,8 +8,8 @@ const control =
   'placeholder:text-content-secondary transition-colors ' +
   'disabled:opacity-60 disabled:cursor-not-allowed'
 
-const normal = 'border-line-subtle hover:border-line-strong focus:border-teal-500'
-const invalid = 'border-state-danger focus:border-state-danger'
+const normal = 'border-line-subtle hover:border-line-strong'
+const invalid = 'border-state-danger'
 
 interface WrapperProps {
   label?: string

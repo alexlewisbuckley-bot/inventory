@@ -3,8 +3,8 @@ import {
   boolean, customType, index, integer, pgTable, text, timestamp, uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import {
-  AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, IMAGE_KINDS,
-  LOCATION_TYPES, NOTIFICATION_TYPES, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
+  AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, ENTITY_TYPES, IMAGE_KINDS,
+  LOCATION_TYPES, NOTIFICATION_TYPES, PAYMENT_TERMS, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -110,15 +110,45 @@ export const locations = pgTable(
   }),
 )
 
+/**
+ * A supplier as a counterparty, not a label.
+ *
+ * Everything beyond the trading name is nullable so a supplier can still be
+ * created in one keystroke from the watch form — the detail is filled in when
+ * the paperwork arrives, not demanded before the first purchase can be booked.
+ */
 export const suppliers = pgTable(
   'suppliers',
   {
     id: text('id').primaryKey(),
+    /** The name the team uses day to day. */
     name: text('name').notNull(),
+    /** The entity on the invoice, where it differs from the trading name. */
+    legalName: text('legal_name'),
+    entityType: text('entity_type', { enum: ENTITY_TYPES }).notNull().default('UNKNOWN'),
+    registrationNo: text('registration_no'),
+    vatNo: text('vat_no'),
+    website: text('website'),
+
+    /** The named individual dealt with. */
     contactName: text('contact_name'),
+    contactRole: text('contact_role'),
+    contactPhone: text('contact_phone'),
+    contactEmail: text('contact_email'),
+
+    /** Retained from the original shape; the contact fields supersede these. */
     email: text('email'),
     phone: text('phone'),
+
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    city: text('city'),
+    postcode: text('postcode'),
     country: text('country'),
+
+    paymentTerms: text('payment_terms', { enum: PAYMENT_TERMS }).notNull().default('UNKNOWN'),
+    defaultCurrency: text('default_currency', { enum: CURRENCIES }).notNull().default('GBP'),
+
     notes: text('notes'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -128,6 +158,7 @@ export const suppliers = pgTable(
   (t) => ({
     nameIdx: uniqueIndex('suppliers_name_idx').on(t.name),
     activeIdx: index('suppliers_active_idx').on(t.isActive),
+    countryIdx: index('suppliers_country_idx').on(t.country),
   }),
 )
 
@@ -253,6 +284,9 @@ export const sales = pgTable(
     saleCurrency: text('sale_currency', { enum: CURRENCIES }).notNull().default('USD'),
     customerName: text('customer_name'),
     customerEmail: text('customer_email'),
+    customerPhone: text('customer_phone'),
+    customerCompany: text('customer_company'),
+    customerCountry: text('customer_country'),
     channel: text('channel', { enum: SALE_CHANNELS }).notNull().default('RETAIL'),
     /** Realised profit, denormalised for fast reporting. */
     profitUsd: integer('profit_usd').notNull(),
@@ -261,6 +295,15 @@ export const sales = pgTable(
     marginBps: integer('margin_bps').notNull(),
     notes: text('notes'),
     recordedById: text('recorded_by_id').notNull().references(() => users.id),
+
+    /**
+     * A voided sale is kept, not deleted. An invoice that was issued and then
+     * cancelled is a fact; reports exclude voided rows so the figures move as
+     * if it never completed, while the correction stays explicable.
+     */
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedById: text('voided_by_id').references(() => users.id, { onDelete: 'set null' }),
+    voidReason: text('void_reason'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),

@@ -32,6 +32,43 @@ export type BoxPapers = (typeof BOX_PAPERS)[number]
 export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT'] as const
 export type SaleChannel = (typeof SALE_CHANNELS)[number]
 
+/**
+ * What kind of counterparty a supplier is.
+ *
+ * Determines what paperwork applies: a limited company has a registration
+ * number, a sole trader does not, and a private seller has neither.
+ */
+export const ENTITY_TYPES = [
+  'UNKNOWN', 'LIMITED_COMPANY', 'SOLE_TRADER', 'PARTNERSHIP', 'PRIVATE_SELLER', 'AUCTION_HOUSE',
+] as const
+export type EntityType = (typeof ENTITY_TYPES)[number]
+
+export const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+  UNKNOWN: 'Not recorded',
+  LIMITED_COMPANY: 'Limited company',
+  SOLE_TRADER: 'Sole trader',
+  PARTNERSHIP: 'Partnership',
+  PRIVATE_SELLER: 'Private seller',
+  AUCTION_HOUSE: 'Auction house',
+}
+
+/** When the supplier expects to be paid. */
+export const PAYMENT_TERMS = [
+  'UNKNOWN', 'PREPAID', 'ON_COLLECTION', 'NET_7', 'NET_14', 'NET_30', 'NET_60', 'CONSIGNMENT',
+] as const
+export type PaymentTerms = (typeof PAYMENT_TERMS)[number]
+
+export const PAYMENT_TERMS_LABELS: Record<PaymentTerms, string> = {
+  UNKNOWN: 'Not agreed',
+  PREPAID: 'Paid in advance',
+  ON_COLLECTION: 'On collection',
+  NET_7: '7 days',
+  NET_14: '14 days',
+  NET_30: '30 days',
+  NET_60: '60 days',
+  CONSIGNMENT: 'On consignment — paid when sold',
+}
+
 export const AUDIT_ACTIONS = [
   'CREATE', 'UPDATE', 'DELETE', 'RESTORE', 'LOGIN', 'LOGOUT',
   'EXPORT', 'IMPORT', 'MOVE', 'SELL', 'PASSWORD_CHANGE',

@@ -108,7 +108,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search stock number, model or serial…"
+            placeholder="Search stock number, reference or serial…"
             aria-label="Search"
             aria-controls="command-results"
             className="w-full bg-transparent py-4 text-body-lg text-content-primary outline-none placeholder:text-content-secondary"

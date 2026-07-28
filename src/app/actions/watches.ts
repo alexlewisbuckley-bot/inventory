@@ -4,6 +4,7 @@ import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import {
   createWatch, updateWatch, moveWatches, recordSale, deleteWatch, restoreWatch,
+  setWatchStatus, voidSale,
 } from '@/server/services/watch-service'
 import {
   watchCreateSchema, watchUpdateSchema, watchMoveSchema, watchPriceSchema,
@@ -11,7 +12,7 @@ import {
 } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
-import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
+import { BASE_CURRENCY, WATCH_STATUSES, WATCH_STATUS_LABELS, type CurrencyCode, type WatchStatus } from '@/lib/enums'
 import type { ActionState } from './auth'
 
 /** Convert a thrown error into the serialisable shape forms expect. */
@@ -208,5 +209,46 @@ export async function commitImportAction(
     return { ok: true, message: `${count} ${count === 1 ? 'watch' : 'watches'} imported.` }
   } catch (error) {
     return toState(error, 'Could not complete the import.')
+  }
+}
+
+/**
+ * Change a watch's status from the table or the drawer.
+ *
+ * Kept separate from updateWatchAction because it carries no optimistic
+ * concurrency token: this is a one-click control on a list, and demanding the
+ * caller hold a version it never read would make the common case fail.
+ */
+export async function setStatusAction(id: string, status: string): Promise<ActionState> {
+  const actor = await requireCapability('watch:update')
+  if (!WATCH_STATUSES.includes(status as WatchStatus)) {
+    return { ok: false, message: 'That is not a status this system recognises.' }
+  }
+
+  try {
+    await setWatchStatus(id, status as WatchStatus, actor)
+    refreshInventory()
+    return { ok: true, message: `Marked ${WATCH_STATUS_LABELS[status as WatchStatus].toLowerCase()}.` }
+  } catch (error) {
+    return toState(error, 'Could not change the status.')
+  }
+}
+
+/**
+ * Void a sale and return the watch to stock.
+ *
+ * Gated on sale:delete rather than watch:update — reversing an invoice is a
+ * financial correction, not an inventory edit.
+ */
+export async function voidSaleAction(watchId: string, reason: string): Promise<ActionState> {
+  const actor = await requireCapability('sale:delete')
+
+  try {
+    await voidSale(watchId, reason.trim() || null, actor)
+    refreshInventory()
+    revalidatePath('/sales')
+    return { ok: true, message: 'Sale voided. The watch is back in stock.' }
+  } catch (error) {
+    return toState(error, 'Could not void the sale.')
   }
 }

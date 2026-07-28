@@ -89,7 +89,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
           return (
             <section key={kind} aria-label={IMAGE_KIND_LABELS[kind]}>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <h3 className="text-micro font-semibold uppercase tracking-wide text-content-secondary">
+                <h3 className="text-caption font-semibold text-content-secondary">
                   {IMAGE_KIND_LABELS[kind]}
                   {forKind.length > 0 && <span className="ml-1.5 text-content-primary">({forKind.length})</span>}
                 </h3>

@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
 // because historic exports were denominated that way and downstream
 // spreadsheets still reconcile against the column.
 const COLUMNS = [
-  'Invoice', 'Sale Date', 'Stock No', 'Brand', 'Model', 'Supplier', 'Customer', 'Channel',
+  'Invoice', 'Sale Date', 'Stock No', 'Brand', 'Reference', 'Supplier', 'Customer', 'Channel',
   'Cost (GBP)', 'Sale (GBP)', 'Profit (GBP)', 'Margin %', 'Sale (USD)',
 ] as const
 

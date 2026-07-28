@@ -10,6 +10,7 @@
 
 import { and, count, eq, gte, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client'
+import { liveSale } from '../db/predicates'
 import { fxRates, sales, watchImages, watches } from '../db/schema'
 import { BASE_CURRENCY } from '@/lib/enums'
 
@@ -123,7 +124,7 @@ export async function stockFlow(months = 6): Promise<FlowMonth[]> {
         profitGbp: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
       })
       .from(sales)
-      .where(and(isNull(sales.deletedAt), gte(sales.saleDate, since)))
+      .where(and(liveSale(), gte(sales.saleDate, since)))
       .groupBy(sql`1`),
   ])
 
@@ -193,7 +194,7 @@ export async function salesComparison(days = 30): Promise<PeriodComparison> {
       previousProfitGbp: sql<number>`coalesce(sum(case when ${sales.saleDate} < ${start}::timestamptz then ${sales.profitGbp} else 0 end), 0)`,
     })
     .from(sales)
-    .where(and(isNull(sales.deletedAt), gte(sales.saleDate, new Date(previousStart))))
+    .where(and(liveSale(), gte(sales.saleDate, new Date(previousStart))))
 
   return {
     count: Number(row?.count ?? 0),

@@ -64,7 +64,7 @@ export function AttentionQueue({ items }: { items: AttentionItem[] }) {
               <li key={item.id}>
                 <Link
                   href={item.href}
-                  className="group relative flex items-center gap-3 py-3.5 pl-4 pr-4 transition-colors hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-500 sm:gap-4 sm:pl-6 sm:pr-6"
+                  className="group relative flex items-center gap-3 py-3.5 pl-4 pr-4 transition-colors hover:bg-surface-subtle sm:gap-4 sm:pl-6 sm:pr-6"
                 >
                   <span className={cn('absolute inset-y-0 left-0 w-0.5', styles.rail)} aria-hidden />
                   <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-md', styles.chip)} aria-hidden>

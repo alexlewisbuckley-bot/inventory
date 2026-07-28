@@ -10,6 +10,7 @@ import { convert, marginPct } from '@/lib/money'
 import { toBase } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
+import { WATCH_STATUS_LABELS, type WatchStatus } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 import type { WatchCreateInput, WatchUpdateInput, SaleCreateInput } from '@/lib/validation'
 
@@ -268,7 +269,10 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       saleAmount: saleMinor,
       saleCurrency: input.saleCurrency,
       customerName: input.customerName ?? null,
+      customerCompany: input.customerCompany ?? null,
       customerEmail: input.customerEmail ?? null,
+      customerPhone: input.customerPhone ?? null,
+      customerCountry: input.customerCountry ?? null,
       channel: input.channel,
       profitUsd,
       profitGbp,
@@ -293,6 +297,111 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
 
     logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
     return id
+  })
+}
+
+/**
+ * Which statuses a watch can move to from where it is now.
+ *
+ * SOLD is deliberately absent from every list: reaching it requires a sale
+ * record — an invoice, an amount, a buyer — so it is set by recordSale and
+ * left by voidSale, never by picking it from a menu. Leaving it selectable
+ * would let someone mark a watch sold with no money attached to it, which is
+ * exactly the hole that made the sales figures untrustworthy in the
+ * spreadsheet this replaced.
+ */
+export const STATUS_TRANSITIONS: Record<WatchStatus, WatchStatus[]> = {
+  IN_STOCK: ['RESERVED', 'SALE_AGREED', 'WRITTEN_OFF'],
+  RESERVED: ['IN_STOCK', 'SALE_AGREED', 'WRITTEN_OFF'],
+  SALE_AGREED: ['IN_STOCK', 'RESERVED', 'WRITTEN_OFF'],
+  SOLD: [],
+  RETURNED: ['IN_STOCK', 'WRITTEN_OFF'],
+  WRITTEN_OFF: ['IN_STOCK'],
+}
+
+/**
+ * Move a watch between the states that do not involve money changing hands.
+ *
+ * Every change is a stock event in its own right, so it is audited with both
+ * the old and new value rather than overwriting the field silently.
+ */
+export async function setWatchStatus(
+  id: string,
+  status: WatchStatus,
+  actor: SessionUser,
+): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(watches).where(eq(watches.id, id)).limit(1)
+    const watch = rows[0]
+    if (!watch || watch.deletedAt) throw new NotFoundError('Watch')
+    if (watch.status === status) return
+
+    const allowed = STATUS_TRANSITIONS[watch.status as WatchStatus] ?? []
+    if (!allowed.includes(status)) {
+      throw new ValidationError(
+        watch.status === 'SOLD'
+          ? 'This watch is sold. Void the sale first to bring it back into stock.'
+          : `A watch cannot go straight from ${WATCH_STATUS_LABELS[watch.status as WatchStatus].toLowerCase()} to ${WATCH_STATUS_LABELS[status].toLowerCase()}.`,
+      )
+    }
+
+    await db.update(watches)
+      .set({ status, updatedAt: new Date(), version: watch.version + 1 })
+      .where(eq(watches.id, id))
+
+    await recordAudit({
+      entityType: 'Watch', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Stock ${watch.stockNo} marked ${WATCH_STATUS_LABELS[status].toLowerCase()}`,
+      changes: { status: { from: watch.status, to: status } },
+    })
+  })
+}
+
+/**
+ * Void a sale and bring the watch back into stock.
+ *
+ * The sale row is kept and marked void rather than deleted: an invoice that
+ * was issued and then cancelled is a thing that happened, and every margin
+ * report that has already been read needs to remain explicable. Reports filter
+ * voided rows out, so the figures move as if the sale never completed while
+ * the trail of what was corrected survives.
+ */
+export async function voidSale(
+  watchId: string,
+  reason: string | null,
+  actor: SessionUser,
+): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(watches).where(eq(watches.id, watchId)).limit(1)
+    const watch = rows[0]
+    if (!watch) throw new NotFoundError('Watch')
+    if (watch.status !== 'SOLD') {
+      throw new ValidationError('This watch is not marked as sold.')
+    }
+
+    const saleRows = await db.select().from(sales)
+      .where(and(eq(sales.watchId, watchId), isNull(sales.deletedAt), isNull(sales.voidedAt)))
+      .limit(1)
+    const sale = saleRows[0]
+    if (!sale) {
+      throw new ValidationError('No live sale was found against this watch.')
+    }
+
+    await db.update(sales)
+      .set({ voidedAt: new Date(), voidedById: actor.id, voidReason: reason })
+      .where(eq(sales.id, sale.id))
+
+    await db.update(watches)
+      .set({ status: 'IN_STOCK', updatedAt: new Date(), version: watch.version + 1 })
+      .where(eq(watches.id, watchId))
+
+    await recordAudit({
+      entityType: 'Watch', entityId: watchId, action: 'UPDATE', actorId: actor.id,
+      summary: `Sale ${sale.invoiceNo} voided — stock ${watch.stockNo} returned to stock`,
+      changes: { status: { from: 'SOLD', to: 'IN_STOCK' } },
+    })
+
+    logger.info('sale voided', { saleId: sale.id, watchId, actorId: actor.id })
   })
 }
 

@@ -69,3 +69,33 @@ export function parseMoneyInput(raw: string): number | null {
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? toMinor(parsed) : null
 }
+
+/**
+ * Group an amount as it is typed, without fighting the person typing it.
+ *
+ * A price of 13105.51 shown as "13105.51" is genuinely hard to read at a
+ * glance, and misreading it by a factor of ten is a real mistake with real
+ * money attached. Grouping the integer part fixes that, but only if the
+ * formatter stays out of the way: a trailing decimal point survives so "13."
+ * does not snap back to "13", digits after the point are left exactly as typed
+ * so a half-entered "13.0" is not rounded to "13", and anything that is not a
+ * number is returned untouched rather than silently blanked.
+ */
+export function formatMoneyInput(raw: string): string {
+  if (!raw) return ''
+
+  const negative = raw.trim().startsWith('-')
+  const cleaned = raw.replace(/[^\d.]/g, '')
+  if (!cleaned) return negative ? '-' : ''
+
+  // Only the first decimal point counts; the rest are typos.
+  const [whole, ...rest] = cleaned.split('.')
+  const fraction = rest.join('').slice(0, 2)
+  const hasPoint = cleaned.includes('.')
+
+  const grouped = whole ? Number(whole).toLocaleString('en-GB') : ''
+  const sign = negative ? '-' : ''
+
+  if (!hasPoint) return `${sign}${grouped}`
+  return `${sign}${grouped || '0'}.${fraction}`
+}

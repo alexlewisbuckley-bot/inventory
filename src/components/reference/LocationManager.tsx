@@ -89,11 +89,11 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
 
                 <div className="flex items-end gap-8 px-6 pt-5">
                   <div>
-                    <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">Watches</p>
+                    <p className="text-caption font-semibold text-content-secondary">Watches</p>
                     <p className="mt-1 text-h2 font-extrabold tabular-nums text-content-primary">{location.watchCount}</p>
                   </div>
                   <div>
-                    <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">Capital held</p>
+                    <p className="text-caption font-semibold text-content-secondary">Capital held</p>
                     <p className="mt-1 text-h3 font-extrabold tabular-nums text-content-primary">
                       {formatMoney(location.valueGbp, 'GBP')}
                     </p>

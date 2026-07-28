@@ -68,7 +68,7 @@ export function StockFlowChart({ data }: { data: FlowPoint[] }) {
                 {/* A full-height hit target: the bars themselves are too thin to aim at. */}
                 <button
                   type="button"
-                  className="absolute inset-0 z-10 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                  className="absolute inset-0 z-10 rounded-sm"
                   onFocus={() => setActive(point.month)}
                   onBlur={() => setActive((current) => (current === point.month ? null : current))}
                   aria-label={`${point.label}: bought ${point.boughtCount} (${point.boughtValue}), sold ${point.soldCount} (${point.soldValue})`}

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { getSessionUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
+import { liveSale } from '@/server/db/predicates'
 import { notifications } from '@/server/db/schema'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
@@ -35,7 +36,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     summariseInventory(activeQuery),
     countUnpriced(),
     findAgeingStock(90, 500),
-    db.select({ value: count() }).from(sales).where(isNull(sales.deletedAt)),
+    db.select({ value: count() }).from(sales).where(liveSale()),
   ])
 
   const displayCurrency = isCurrency(preferences?.displayCurrency)

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { requireUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
+import { liveSale } from '@/server/db/predicates'
 import { brands, sales, watches } from '@/server/db/schema'
 import { countUnpriced, findAgeingStock, stockByLocation, summariseInventory } from '@/server/repositories/watch-repository'
 import {
@@ -59,7 +60,7 @@ export default async function DashboardPage() {
       .from(sales)
       .innerJoin(watches, eq(watches.id, sales.watchId))
       .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(isNull(sales.deletedAt))
+      .where(liveSale())
       .orderBy(desc(sales.saleDate))
       .limit(5),
     auditTrail({ perPage: 6 }),
@@ -298,7 +299,7 @@ export default async function DashboardPage() {
           </ul>
           {brandMix.length > 0 && (
             <div className="border-t border-line-subtle px-6 py-4">
-              <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">By brand</p>
+              <p className="text-caption font-semibold text-content-secondary">By brand</p>
               <ul className="mt-2.5 space-y-1.5">
                 {brandMix.map((brand) => (
                   <li key={brand.brandId} className="flex items-baseline justify-between gap-3">

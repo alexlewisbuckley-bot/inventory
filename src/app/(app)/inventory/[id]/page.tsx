@@ -69,7 +69,6 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           <span className="flex flex-wrap items-center gap-2">
             <StatusChip status={watch.status as WatchStatus} />
             <span>Stock No. {watch.stockNo}</span>
-            {watch.nickname && <span>· {watch.nickname}</span>}
             {watch.serial && <span>· Serial {watch.serial}</span>}
           </span>
         }
@@ -108,8 +107,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           <CardBody>
             <dl className="flex flex-col">
               <Row label="Brand" value={brand.name} />
-              <Row label="Model reference" value={watch.model} />
-              <Row label="Nickname" value={watch.nickname ?? '—'} />
+              <Row label="Reference number" value={watch.model} />
               <Row label="Serial" value={watch.serial ?? 'Not recorded'} />
               <Row label="Year" value={watch.year ? String(watch.year) : '—'} />
               <Row label="Condition" value={CONDITION_LABELS[watch.condition as Condition]} />
@@ -121,7 +119,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
             </dl>
             {watch.notes && (
               <div className="mt-5 border-t border-line-subtle pt-4">
-                <h3 className="mb-1.5 text-micro font-semibold uppercase tracking-wide text-content-secondary">Notes</h3>
+                <h3 className="mb-1.5 text-caption font-semibold text-content-secondary">Notes</h3>
                 <p className="whitespace-pre-wrap text-small text-content-primary">{watch.notes}</p>
               </div>
             )}

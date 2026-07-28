@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { toMinor, toMajor, formatMoney, formatSigned, convert, marginPct, parseMoneyInput } from '@/lib/money'
+import {
+  toMinor, toMajor, formatMoney, formatSigned, convert, marginPct,
+  parseMoneyInput, formatMoneyInput,
+} from '@/lib/money'
 
 describe('money', () => {
   it('round-trips decimals through minor units without drift', () => {
@@ -36,5 +39,42 @@ describe('money', () => {
     expect(parseMoneyInput('$18,900')).toBe(1890000)
     expect(parseMoneyInput('')).toBeNull()
     expect(parseMoneyInput('not a number')).toBeNull()
+  })
+})
+
+describe('formatMoneyInput', () => {
+  it('groups the integer part as it is typed', () => {
+    expect(formatMoneyInput('13105')).toBe('13,105')
+    expect(formatMoneyInput('251046')).toBe('251,046')
+  })
+
+  it('keeps a trailing decimal point so typing does not fight back', () => {
+    // Snapping "13." to "13" would delete the point the moment it was typed.
+    expect(formatMoneyInput('13.')).toBe('13.')
+  })
+
+  it('leaves entered decimals exactly as typed rather than rounding them', () => {
+    expect(formatMoneyInput('13105.5')).toBe('13,105.5')
+    expect(formatMoneyInput('13105.51')).toBe('13,105.51')
+  })
+
+  it('ignores a second decimal point and anything past two places', () => {
+    expect(formatMoneyInput('13.10.5')).toBe('13.10')
+    expect(formatMoneyInput('13.5199')).toBe('13.51')
+  })
+
+  it('tolerates already-formatted input, so paste and re-edit are stable', () => {
+    expect(formatMoneyInput('13,105.51')).toBe('13,105.51')
+    expect(formatMoneyInput(formatMoneyInput('48000'))).toBe('48,000')
+  })
+
+  it('round-trips through the parser', () => {
+    expect(parseMoneyInput(formatMoneyInput('13105.51'))).toBe(1_310_551)
+    expect(parseMoneyInput(formatMoneyInput('48000'))).toBe(4_800_000)
+  })
+
+  it('returns empty for empty rather than a zero the user did not type', () => {
+    expect(formatMoneyInput('')).toBe('')
+    expect(formatMoneyInput('abc')).toBe('')
   })
 })

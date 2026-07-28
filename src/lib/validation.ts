@@ -63,7 +63,7 @@ export const changePasswordSchema = z.object({
 
 export const watchCreateSchema = z.object({
   brandId: trimmed.min(1, 'Choose a brand.'),
-  model: trimmed.min(1, 'Model reference is required.').max(80),
+  model: trimmed.min(1, 'Reference number is required.').max(80),
   nickname: optionalText(80),
   serial: optionalText(60),
   // Same null-branch-first rule as optionalMoney above.
@@ -122,8 +122,16 @@ export const saleCreateSchema = z.object({
   saleAmount: money('Sale amount'),
   saleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   channel: z.enum(SALE_CHANNELS).default('RETAIL'),
+  /**
+   * Who bought it. Required in substance if not in schema — the quick-sell path
+   * asks for it, because "who has this watch now?" is the first question when
+   * one comes back and the ledger could not previously answer it.
+   */
   customerName: optionalText(120),
+  customerCompany: optionalText(160),
   customerEmail: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),
+  customerPhone: optionalText(40),
+  customerCountry: optionalText(80),
   notes: optionalText(1000),
 })
 export type SaleCreateInput = z.infer<typeof saleCreateSchema>

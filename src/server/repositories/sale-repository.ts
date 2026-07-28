@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/client'
+import { liveSale } from '../db/predicates'
 import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
 import type { SaleChannel } from '@/lib/enums'
 
@@ -38,7 +39,7 @@ export interface SaleQuery {
 }
 
 function filters(query: SaleQuery): SQL | undefined {
-  const clauses: (SQL | undefined)[] = [isNull(sales.deletedAt)]
+  const clauses: (SQL | undefined)[] = [liveSale()]
   if (query.q) {
     const term = `%${query.q.toLowerCase()}%`
     clauses.push(or(
@@ -161,7 +162,7 @@ export async function salesByMonth(months = 12) {
       profit: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
     })
     .from(sales)
-    .where(and(isNull(sales.deletedAt), gte(sales.saleDate, since)))
+    .where(and(liveSale(), gte(sales.saleDate, since)))
     .groupBy(sql`to_char(${sales.saleDate}, 'YYYY-MM')`)
     .orderBy(asc(sql`to_char(${sales.saleDate}, 'YYYY-MM')`))
 }
@@ -179,7 +180,7 @@ export async function supplierPerformance() {
     })
     .from(suppliers)
     .leftJoin(watches, and(eq(watches.supplierId, suppliers.id), isNull(watches.deletedAt)))
-    .leftJoin(sales, and(eq(sales.watchId, watches.id), isNull(sales.deletedAt)))
+    .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))
     .where(isNull(suppliers.deletedAt))
     .groupBy(suppliers.id)
     .orderBy(desc(sql`coalesce(sum(${watches.purchasePriceGbp}), 0)`))

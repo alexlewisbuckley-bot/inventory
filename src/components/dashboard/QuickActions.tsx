@@ -23,7 +23,7 @@ export function QuickActions({ actions }: { actions: QuickAction[] }) {
         <li key={action.href}>
           <Link
             href={action.href}
-            className="flex h-full items-center gap-3 rounded-md border border-line-subtle bg-surface-raised px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+            className="flex h-full items-center gap-3 rounded-md border border-line-subtle bg-surface-raised px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-subtle"
           >
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-500/12 text-content-accent" aria-hidden>
               {action.icon}

@@ -19,7 +19,6 @@ export interface DrawerRecord {
   id: string
   stockNo: number
   model: string
-  nickname: string | null
   serial: string | null
   status: string
   version: number
@@ -81,7 +80,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
           </>
         }
         title={record.model}
-        subtitle={[record.brandName, record.nickname, record.year].filter(Boolean).join(' · ')}
+        subtitle={[record.brandName, record.year].filter(Boolean).join(' · ')}
         footer={
           <div className="flex flex-wrap items-center gap-2.5">
             {capabilities['sale:create'] && !sold && (
@@ -124,7 +123,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
         </dl>
 
         <section aria-label="Financials" className="mb-6 rounded-md bg-surface-subtle p-4">
-          <h3 className="mb-3 text-micro font-semibold uppercase tracking-wide text-content-secondary">Financials</h3>
+          <h3 className="mb-3 text-caption font-semibold text-content-secondary">Financials</h3>
           <dl className="flex flex-col gap-2.5">
             <Money label="Purchase price" value={money(record.purchasePriceGbp)} />
             <Money label="Est. sale price" value={record.estSaleGbp !== null ? money(record.estSaleGbp) : 'Not set'} muted={record.estSaleGbp === null} />
@@ -152,13 +151,13 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
 
         {record.notes && (
           <section aria-label="Notes" className="mb-6">
-            <h3 className="mb-2 text-micro font-semibold uppercase tracking-wide text-content-secondary">Notes</h3>
+            <h3 className="mb-2 text-caption font-semibold text-content-secondary">Notes</h3>
             <p className="whitespace-pre-wrap text-small text-content-primary">{record.notes}</p>
           </section>
         )}
 
         <section aria-label="Activity">
-          <h3 className="mb-3 text-micro font-semibold uppercase tracking-wide text-content-secondary">Activity</h3>
+          <h3 className="mb-3 text-caption font-semibold text-content-secondary">Activity</h3>
           <ol className="flex flex-col gap-3.5">
             {timeline.map((entry) => (
               <li key={entry.id} className="flex gap-3">

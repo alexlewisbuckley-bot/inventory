@@ -30,7 +30,6 @@ export async function WatchDrawer({ watchId, capabilities }: {
         id: record.watch.id,
         stockNo: record.watch.stockNo,
         model: record.watch.model,
-        nickname: record.watch.nickname,
         serial: record.watch.serial,
         status: record.watch.status,
         version: record.watch.version,

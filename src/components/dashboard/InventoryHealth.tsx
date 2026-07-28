@@ -57,7 +57,7 @@ export function InventoryHealth({ buckets, total }: { buckets: HealthBucket[]; t
               <li key={bucket.key}>
                 <Link
                   href={bucket.href}
-                  className="-mx-2 flex items-center gap-3 rounded-sm px-2 py-1 transition-colors hover:bg-surface-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
+                  className="-mx-2 flex items-center gap-3 rounded-sm px-2 py-1 transition-colors hover:bg-surface-subtle"
                 >
                   <span className={cn('h-2.5 w-2.5 shrink-0 rounded-sm', SHADES[bucket.key] ?? 'bg-navy-500')} aria-hidden />
                   <span className="min-w-0 flex-1 truncate text-small text-content-primary">{bucket.label}</span>

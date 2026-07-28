@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
 import {
-  Table, THead, TBody, TR, TD, TH, Pagination, StatusChip, UnpricedChip,
+  Table, THead, TBody, TR, TD, TH, Pagination, UnpricedChip,
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
 } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
@@ -16,6 +16,9 @@ import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
 import { SavedViews } from './SavedViews'
 import { QuickSellModal, type QuickSellTarget } from './QuickSellModal'
 import { InlinePriceCell } from './InlinePriceCell'
+import { StatusCell } from './StatusCell'
+import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
+import type { WatchStatus } from '@/lib/enums'
 import type { WatchListItem, WatchListResult } from '@/server/repositories/watch-repository'
 import type { Capability } from '@/lib/permissions'
 import type { FilterOption } from './FilterBar'
@@ -29,7 +32,7 @@ import type { FilterOption } from './FilterBar'
  */
 export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'stockNo', label: 'Stock no', locked: true },
-  { key: 'watch', label: 'Watch', locked: true },
+  { key: 'watch', label: 'Reference', locked: true },
   { key: 'serial', label: 'Serial' },
   { key: 'supplier', label: 'Supplier' },
   { key: 'purchased', label: 'Purchased' },
@@ -62,6 +65,7 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sellTarget, setSellTarget] = useState<QuickSellTarget | null>(null)
+  const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
 
   const columnKeys = useMemo(() => INVENTORY_COLUMNS.map((c) => c.key), [])
   const columns = useColumnPreferences(STORAGE_KEY, columnKeys, DEFAULT_HIDDEN)
@@ -173,6 +177,13 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
                 onToggle={() => toggleOne(watch.id)}
                 canSell={capabilities['sale:create']}
                 canPrice={capabilities['watch:price']}
+                canEditStatus={capabilities['watch:update']}
+                canVoid={capabilities['sale:delete']}
+                onVoid={() => setVoidTarget({
+                  id: watch.id,
+                  stockNo: watch.stockNo,
+                  label: `${watch.brandName} ${watch.model}`,
+                })}
                 onSell={() => setSellTarget({
                   id: watch.id,
                   stockNo: watch.stockNo,
@@ -212,11 +223,21 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
         onClose={() => setSellTarget(null)}
         onSold={() => router.refresh()}
       />
+
+      <VoidSaleModal
+        open={voidTarget !== null}
+        target={voidTarget}
+        onClose={() => setVoidTarget(null)}
+        onVoided={() => router.refresh()}
+      />
     </>
   )
 }
 
-function Row({ watch, show, selectable, selected, onToggle, canSell, canPrice, onSell }: {
+function Row({
+  watch, show, selectable, selected, onToggle,
+  canSell, canPrice, canEditStatus, canVoid, onSell, onVoid,
+}: {
   watch: WatchListItem
   show: (key: string) => boolean
   selectable: boolean
@@ -224,7 +245,10 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, canPrice, o
   onToggle: () => void
   canSell: boolean
   canPrice: boolean
+  canEditStatus: boolean
+  canVoid: boolean
   onSell: () => void
+  onVoid: () => void
 }) {
   const query = useListQuery()
   const { money, signed } = useCurrency()
@@ -250,9 +274,7 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, canPrice, o
       <TD>
         <button type="button" onClick={() => query.set('watch', watch.id)} className="text-left">
           <span className="block font-bold text-content-primary hover:underline">{watch.model}</span>
-          <span className="block text-caption text-content-secondary">
-            {watch.brandName}{watch.nickname ? ` · ${watch.nickname}` : ''}
-          </span>
+          <span className="block text-caption text-content-secondary">{watch.brandName}</span>
         </button>
       </TD>
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
@@ -273,7 +295,20 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, canPrice, o
       )}
       {show('location') && <TD className="text-content-secondary">{watch.locationName}</TD>}
       {show('status') && (
-        <TD>{watch.estSaleUsd === null && !sold ? <UnpricedChip /> : <StatusChip status={watch.status} />}</TD>
+        <TD>
+          <div className="flex items-center gap-1.5">
+            <StatusCell
+              watchId={watch.id}
+              status={watch.status as WatchStatus}
+              editable={canEditStatus && !watch.deletedAt}
+              canSell={canSell}
+              onSell={onSell}
+              canVoid={canVoid}
+              onVoid={onVoid}
+            />
+            {watch.estSaleGbp === null && !sold && <UnpricedChip />}
+          </div>
+        </TD>
       )}
       <TD>
         <div className="flex items-center justify-end gap-0.5">

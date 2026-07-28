@@ -5,7 +5,7 @@ import { Check, Loader2, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useToast, useCurrency } from '@/components/ui'
 import { setPriceAction } from '@/app/actions/watches'
-import { parseMoneyInput } from '@/lib/money'
+import { formatMoneyInput, parseMoneyInput } from '@/lib/money'
 import { toBase } from '@/lib/currency'
 
 /**
@@ -38,7 +38,7 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
   }, [editing])
 
   const begin = () => {
-    setValue(baseMinor !== null ? String(convert(baseMinor) / 100) : '')
+    setValue(baseMinor !== null ? formatMoneyInput(String(convert(baseMinor) / 100)) : '')
     setEditing(true)
   }
 
@@ -74,7 +74,7 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
           value={value}
           inputMode="decimal"
           aria-label="Estimated sale price"
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => setValue(formatMoneyInput(event.target.value))}
           onKeyDown={(event) => {
             if (event.key === 'Enter') { event.preventDefault(); void save() }
             if (event.key === 'Escape') { event.preventDefault(); cancel() }

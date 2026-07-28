@@ -51,7 +51,6 @@ export default async function EditWatchPage({ params }: { params: { id: string }
             version: watch.version,
             brandId: watch.brandId,
             model: watch.model,
-            nickname: watch.nickname ?? '',
             serial: watch.serial ?? '',
             year: watch.year ? String(watch.year) : '',
             condition: watch.condition,

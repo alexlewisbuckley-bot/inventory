@@ -36,6 +36,10 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
   const [invoiceNo, setInvoiceNo] = useState('')
   const [saleDate, setSaleDate] = useState(toDateInput(new Date()))
   const [channel, setChannel] = useState('RETAIL')
+  const [customerName, setCustomerName] = useState('')
+  const [customerCompany, setCustomerCompany] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -48,6 +52,10 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
     setAmount(watch.estSaleGbp !== null ? String(fromBase(watch.estSaleGbp, display, rates) / 100) : '')
     setInvoiceNo('')
     setSaleDate(toDateInput(new Date()))
+    setCustomerName('')
+    setCustomerCompany('')
+    setCustomerEmail('')
+    setCustomerPhone('')
     setErrors({})
   }
 
@@ -74,6 +82,10 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
     data.set('saleAmount', minor !== null ? String(minor / 100) : '')
     data.set('saleCurrency', currency)
     data.set('channel', channel)
+    data.set('customerName', customerName)
+    data.set('customerCompany', customerCompany)
+    data.set('customerEmail', customerEmail)
+    data.set('customerPhone', customerPhone)
     const result = await recordSaleAction({ ok: false }, data)
     setBusy(false)
     if (result.ok) {
@@ -92,7 +104,7 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
       onClose={onClose}
       title="Mark as sold"
       description={`Stock ${watch.stockNo} · ${watch.brandName} ${watch.model}`}
-      size="md"
+      size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -131,9 +143,46 @@ export function QuickSellModal({ open, watch, onClose, onSold }: {
         />
         <SelectField
           label="Channel" value={channel} onChange={(e) => setChannel(e.target.value)}
+          hint={channel === 'TRADE' ? 'Sold to another dealer.' : channel === 'RETAIL' ? 'Sold to an end customer.' : undefined}
           options={SALE_CHANNELS.map((c) => ({ value: c, label: SALE_CHANNEL_LABELS[c] }))}
         />
       </div>
+
+      {/* Who bought it. Not schema-required — a walk-in paying cash may leave
+          no details — but asked for every time, because a watch that comes back
+          under warranty is unfindable without it. */}
+      <fieldset className="mt-5 border-t border-line-subtle pt-4">
+        <legend className="sr-only">Buyer</legend>
+        <p className="mb-3 text-caption font-semibold text-content-secondary">
+          Buyer{channel === 'TRADE' ? ' — the dealer you sold to' : ''}
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label={channel === 'TRADE' ? 'Contact name' : 'Customer name'}
+            value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="Who took the watch"
+            error={errors.customerName}
+          />
+          <TextField
+            label={channel === 'TRADE' ? 'Dealer or company' : 'Company'}
+            value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)}
+            placeholder="Optional"
+            error={errors.customerCompany}
+          />
+          <TextField
+            label="Email" type="email"
+            value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+            placeholder="Optional"
+            error={errors.customerEmail}
+          />
+          <TextField
+            label="Phone"
+            value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="Optional"
+            error={errors.customerPhone}
+          />
+        </div>
+      </fieldset>
 
       <div className="mt-4 flex items-center justify-between gap-4 rounded-md bg-teal-100 px-4 py-3" aria-live="polite">
         <span className="text-caption font-semibold text-content-accent">Profit on this sale</span>

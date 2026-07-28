@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
  * here can be edited in Excel and imported straight back.
  */
 const COLUMNS = [
-  'Stock No', 'Brand', 'Model', 'Nickname', 'Serial', 'Supplier', 'Location',
+  'Stock No', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
   'Purchase Date', 'Purchase Price (GBP)', 'Purchase Price (USD)',
   'Est Sale (USD)', 'Est Profit (USD)', 'Status',
 ] as const
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
   }
 
   const csv = toCsv(COLUMNS, rows.map((w) => [
-    w.stockNo, w.brandName, w.model, w.nickname, w.serial, w.supplierName, w.locationName,
+    w.stockNo, w.brandName, w.model, w.serial, w.supplierName, w.locationName,
     w.purchaseDate.toISOString().slice(0, 10),
     toMajor(w.purchasePriceGbp).toFixed(2),
     w.purchasePriceUsd !== null ? toMajor(w.purchasePriceUsd).toFixed(2) : '',

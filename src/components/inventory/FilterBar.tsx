@@ -43,9 +43,9 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
           <input
             value={term}
             onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search by stock no., model or serial…"
+            placeholder="Search by stock number, reference or serial…"
             aria-label="Search inventory"
-            className="w-full rounded-md border border-line-subtle bg-surface-raised py-3 pl-11 pr-10 text-body text-content-primary placeholder:text-content-secondary hover:border-line-strong focus:border-teal-500"
+            className="w-full rounded-md border border-line-subtle bg-surface-raised py-3 pl-11 pr-10 text-body text-content-primary placeholder:text-content-secondary hover:border-line-strong"
           />
           {term && (
             <button
@@ -82,35 +82,46 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
       </div>
 
       {advanced && (
+        // Every cell carries a label above a control of the same height, so the
+        // row lines up. Previously the brand picker had its label inside the
+        // control and the checkbox was bottom-aligned with a magic padding,
+        // which left three different baselines across four columns.
         <div className="grid gap-4 rounded-md border border-line-subtle bg-surface-raised p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MultiSelect label="Brand" name="brandId" options={brands} block />
-          <label className="flex flex-col gap-1.5">
-            <span className="text-caption font-semibold text-content-secondary">Purchased from</span>
+          <FilterField label="Brand">
+            <MultiSelect label="Brand" name="brandId" options={brands} block hideLabel />
+          </FilterField>
+
+          <FilterField label="Purchased from" htmlFor="filter-from">
             <input
+              id="filter-from"
               type="date"
               defaultValue={query.get('purchasedFrom') ?? ''}
               onChange={(e) => query.set('purchasedFrom', e.target.value || null)}
-              className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-body"
+              className={DATE_INPUT}
             />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-caption font-semibold text-content-secondary">Purchased to</span>
+          </FilterField>
+
+          <FilterField label="Purchased to" htmlFor="filter-to">
             <input
+              id="filter-to"
               type="date"
               defaultValue={query.get('purchasedTo') ?? ''}
               onChange={(e) => query.set('purchasedTo', e.target.value || null)}
-              className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-body"
+              className={DATE_INPUT}
             />
-          </label>
-          <label className="flex items-end gap-2.5 pb-2">
-            <input
-              type="checkbox"
-              checked={query.get('unpricedOnly') === 'true'}
-              onChange={(e) => query.set('unpricedOnly', e.target.checked ? 'true' : null)}
-              className="h-4 w-4 rounded-[4px] accent-teal-500"
-            />
-            <span className="text-body text-content-primary">Only watches with no price</span>
-          </label>
+          </FilterField>
+
+          <FilterField label="Pricing">
+            <label className="flex h-11 cursor-pointer items-center gap-2.5 rounded-md border border-line-subtle bg-surface-raised px-3.5 transition-colors hover:border-line-strong">
+              <input
+                type="checkbox"
+                checked={query.get('unpricedOnly') === 'true'}
+                onChange={(e) => query.set('unpricedOnly', e.target.checked ? 'true' : null)}
+                className="h-4 w-4 rounded-[4px] accent-teal-500"
+              />
+              <span className="truncate text-small text-content-primary">Only watches with no price</span>
+            </label>
+          </FilterField>
         </div>
       )}
 
@@ -119,8 +130,28 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
   )
 }
 
-function MultiSelect({ label, name, options, block }: {
-  label: string; name: string; options: FilterOption[]; block?: boolean
+const DATE_INPUT =
+  'h-11 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 text-small text-content-primary ' +
+  'transition-colors hover:border-line-strong'
+
+/** A labelled cell in the advanced filter grid, so every column shares a baseline. */
+function FilterField({ label, htmlFor, children }: {
+  label: string
+  htmlFor?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label htmlFor={htmlFor} className="text-caption font-semibold text-content-secondary">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function MultiSelect({ label, name, options, block, hideLabel }: {
+  label: string; name: string; options: FilterOption[]; block?: boolean; hideLabel?: boolean
 }) {
   const query = useListQuery()
   const selected = query.getAll(name)
@@ -138,7 +169,7 @@ function MultiSelect({ label, name, options, block }: {
           block && 'w-full justify-between',
         )}
       >
-        <span>{label}:</span>
+        {hideLabel ? <span className="sr-only">{label}</span> : <span>{label}:</span>}
         <span className="font-bold text-navy-700">
           {selected.length === 0 ? 'All' : selected.length === 1
             ? options.find((o) => o.id === selected[0])?.name ?? '1 selected'

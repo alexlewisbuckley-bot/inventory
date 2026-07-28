@@ -48,7 +48,7 @@ export function StatCard({ label, value, caption, tone = 'default', icon }: {
   return (
     <div className="rounded-lg bg-surface-raised border border-line-subtle shadow-card px-4 py-4 sm:px-6 sm:py-5">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-micro font-semibold uppercase tracking-wide text-content-secondary">{label}</p>
+        <p className="text-caption font-semibold text-content-secondary">{label}</p>
         {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
       </div>
       <p className={cn(

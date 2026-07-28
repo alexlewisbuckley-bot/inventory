@@ -29,6 +29,9 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
   const [saleDate, setSaleDate] = useState(toDateInput(new Date()))
   const [channel, setChannel] = useState('RETAIL')
   const [customerName, setCustomerName] = useState('')
+  const [customerCompany, setCustomerCompany] = useState('')
+  const [customerEmail, setCustomerEmail] = useState('')
+  const [customerPhone, setCustomerPhone] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -59,6 +62,9 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
     data.set('saleCurrency', currency)
     data.set('channel', channel)
     data.set('customerName', customerName)
+    data.set('customerCompany', customerCompany)
+    data.set('customerEmail', customerEmail)
+    data.set('customerPhone', customerPhone)
     data.set('notes', notes)
     const result = await recordSaleAction({ ok: false }, data)
     setBusy(false)
@@ -127,9 +133,26 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
           options={SALE_CHANNELS.map((c) => ({ value: c, label: SALE_CHANNEL_LABELS[c] }))}
         />
         <TextField
-          label="Customer name" className="sm:col-span-2"
+          label={channel === 'TRADE' ? 'Contact name' : 'Customer name'}
           value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+          placeholder="Who took the watch"
+          error={errors.customerName}
+        />
+        <TextField
+          label={channel === 'TRADE' ? 'Dealer or company' : 'Company'}
+          value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)}
           placeholder="Optional"
+          error={errors.customerCompany}
+        />
+        <TextField
+          label="Email" type="email"
+          value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+          placeholder="Optional" error={errors.customerEmail}
+        />
+        <TextField
+          label="Phone"
+          value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+          placeholder="Optional" error={errors.customerPhone}
         />
       </div>
 

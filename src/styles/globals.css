@@ -79,9 +79,22 @@
     font-feature-settings: 'cv11', 'ss01';
   }
 
-  /* Visible, consistent focus ring for keyboard users only. */
+  /* Focus, for keyboard users only, in exactly one place.
+     An `outline` rather than a ring: a ring offset has to paint a solid colour
+     into the gap, which was hard-coded to the page white and therefore showed
+     as a white halo anywhere the element sat on a tinted surface — the search
+     box on the inventory toolbar being the obvious one. An outline offset
+     leaves whatever is behind it showing through, and follows the element's
+     own border radius instead of a fixed one, so the ring stops disagreeing
+     with the corner it is drawn around. */
   :focus-visible {
-    @apply outline-none ring-2 ring-teal-500 ring-offset-2 ring-offset-surface-page rounded-sm;
+    outline: 2px solid rgb(var(--c-teal-500));
+    outline-offset: 2px;
+  }
+  /* Controls that render their own focus treatment opt out by name. */
+  .focus-ring-none:focus-visible,
+  .focus-ring-none :focus-visible {
+    outline: none;
   }
 
   ::selection { @apply bg-teal-500/25; }
