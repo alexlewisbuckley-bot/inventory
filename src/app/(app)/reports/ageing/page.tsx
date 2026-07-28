@@ -63,7 +63,7 @@ export default async function AgeingReportPage() {
                 <TH width="130px">Purchased</TH>
                 <TH width="100px" align="right">Days held</TH>
                 <TH width="130px">Age band</TH>
-                <TH width="150px">Location</TH>
+                <TH width="180px">Location</TH>
                 <TH width="120px" align="right">Cost</TH>
               </TR>
             </THead>
@@ -82,7 +82,13 @@ export default async function AgeingReportPage() {
                     <TD className="text-content-secondary">{formatDate(row.purchaseDate)}</TD>
                     <TD align="right" className="font-bold">{days}</TD>
                     <TD><Chip tone={tone}>{label}</Chip></TD>
-                    <TD className="text-content-secondary">{row.locationName}</TD>
+                    {/* Truncated rather than wrapped: a location name breaking onto a
+                        second line made that row taller than the ones around
+                        it, and a table of uneven rows is harder to scan than
+                        one with a name cut short. */}
+                    <TD className="text-content-secondary">
+                      <span className="block truncate" title={row.locationName}>{row.locationName}</span>
+                    </TD>
                     <TD align="right" className="font-bold">{formatMoney(row.purchasePriceGbp, 'GBP')}</TD>
                   </TR>
                 )

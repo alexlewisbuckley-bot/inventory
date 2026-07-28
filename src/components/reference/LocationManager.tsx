@@ -10,7 +10,7 @@ import {
 import { saveLocationAction, deleteLocationAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
 import { formatMoney } from '@/lib/money'
-import { LOCATION_TYPES, LOCATION_TYPE_LABELS, type LocationType } from '@/lib/enums'
+import { LOCATION_TYPES, LOCATION_TYPE_LABELS, locationTypeCaption, type LocationType } from '@/lib/enums'
 
 export interface LocationRow {
   id: string
@@ -74,16 +74,14 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                 <div className="flex items-start justify-between gap-3 px-6 pt-5">
                   <div className="min-w-0">
                     <h2 className="truncate text-h3 font-extrabold text-content-primary">{location.name}</h2>
-                    {/* One line, so every card in the row reserves the same
-                        header height and the figures below line up across
-                        them. The full value is on hover. */}
-                    <p className="mt-0.5 truncate text-caption text-content-secondary" title={[
+                    {/* Two lines, always: every card in the row reserves the
+                        same header height so the figures below line up, and an
+                        address no longer ends in "United Kingdo…". */}
+                    <p className="mt-0.5 line-clamp-2 min-h-[2.4em] text-caption text-content-secondary" title={[
                       LOCATION_TYPE_LABELS[location.type], location.city, location.country,
                     ].filter(Boolean).join(' · ')}>
                       {[
-                        LOCATION_TYPE_LABELS[location.type] === location.name
-                          ? null
-                          : LOCATION_TYPE_LABELS[location.type],
+                        locationTypeCaption(location.name, location.type),
                         location.city,
                         location.country,
                       ].filter(Boolean).join(' · ') || 'No address recorded'}
