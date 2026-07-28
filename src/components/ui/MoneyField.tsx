@@ -57,16 +57,16 @@ export function MoneyField({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-small font-semibold text-content-primary">
+      <label htmlFor={id} className="text-caption font-semibold text-content-secondary">
         {label}
         {required && <span className="ml-0.5 text-state-danger" aria-hidden>*</span>}
       </label>
 
       <div
         className={cn(
-          'focus-ring-none flex items-stretch overflow-hidden rounded-md border bg-surface-page transition-colors',
+          'focus-ring-none flex items-stretch overflow-hidden rounded-md border bg-surface-raised transition-colors',
           'focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/25',
-          error ? 'border-state-danger' : 'border-line-strong',
+          error ? 'border-state-danger' : 'border-line-subtle hover:border-line-strong',
           disabled && 'opacity-60',
         )}
       >
@@ -74,7 +74,7 @@ export function MoneyField({
             no glyph in common use, so `symbolFor` returns the code — printing
             it here would read "AED 55000  [AED]" beside the selector. */}
         {symbolFor(currency) !== currency && (
-          <span className="flex select-none items-center pl-3 pr-1 text-body text-content-secondary" aria-hidden>
+          <span className="flex select-none items-center pl-3.5 pr-1 text-body text-content-secondary" aria-hidden>
             {symbolFor(currency)}
           </span>
         )}
@@ -92,8 +92,8 @@ export function MoneyField({
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'min-w-0 flex-1 bg-transparent py-2 pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-secondary',
-            symbolFor(currency) === currency && 'pl-3',
+            'min-w-0 flex-1 bg-transparent py-3 pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-secondary',
+            symbolFor(currency) === currency && 'pl-3.5',
           )}
           placeholder="0.00"
         />

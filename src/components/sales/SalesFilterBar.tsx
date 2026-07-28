@@ -6,6 +6,10 @@ import { useDebounced } from '@/hooks/useDebounced'
 import { Button } from '@/components/ui'
 import { SALE_CHANNELS, SALE_CHANNEL_LABELS } from '@/lib/enums'
 
+const DATE_INPUT =
+  'h-11 rounded-md border border-line-subtle bg-surface-raised px-3 text-small text-content-primary ' +
+  'transition-colors hover:border-line-strong'
+
 /** Search, channel and date-range filtering for the sales ledger. */
 export function SalesFilterBar() {
   const query = useListQuery()
@@ -24,9 +28,9 @@ export function SalesFilterBar() {
         <input
           value={term}
           onChange={(e) => setTerm(e.target.value)}
-          placeholder="Search invoice, customer, model or stock no…"
+          placeholder="Search invoice, customer, reference or stock number…"
           aria-label="Search sales"
-          className="w-full rounded-md border border-line-subtle bg-surface-raised py-3 pl-11 pr-10 text-body text-content-primary placeholder:text-content-secondary hover:border-line-strong focus:border-teal-500"
+          className="w-full rounded-md border border-line-subtle bg-surface-raised py-3 pl-11 pr-10 text-body text-content-primary placeholder:text-content-secondary hover:border-line-strong"
         />
         {term && (
           <button type="button" onClick={() => setTerm('')} aria-label="Clear search"
@@ -57,24 +61,26 @@ export function SalesFilterBar() {
         })}
       </div>
 
-      <label className="flex items-center gap-2 text-caption text-content-secondary">
-        <span className="sr-only">Sold from</span>
+      {/* Two unlabelled date boxes side by side is a guess about which is
+          which. The label is visible, not screen-reader-only. */}
+      <div className="flex items-center gap-2">
+        <label htmlFor="sales-from" className="text-caption font-semibold text-content-secondary">Sold from</label>
         <input
+          id="sales-from"
           type="date"
           defaultValue={query.get('from') ?? ''}
           onChange={(e) => query.set('from', e.target.value || null)}
-          className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-small"
+          className={DATE_INPUT}
         />
-      </label>
-      <label className="flex items-center gap-2 text-caption text-content-secondary">
-        <span className="sr-only">Sold to</span>
+        <label htmlFor="sales-to" className="text-caption font-semibold text-content-secondary">to</label>
         <input
+          id="sales-to"
           type="date"
           defaultValue={query.get('to') ?? ''}
           onChange={(e) => query.set('to', e.target.value || null)}
-          className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-small"
+          className={DATE_INPUT}
         />
-      </label>
+      </div>
 
       {query.activeFilterCount > 0 && (
         <Button variant="ghost" size="sm" onClick={query.clearAll}>Clear</Button>

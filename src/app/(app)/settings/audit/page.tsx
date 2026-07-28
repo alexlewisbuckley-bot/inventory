@@ -6,6 +6,7 @@ import { Card, Table, THead, TBody, TR, TD, TH, Chip, Avatar, EmptyState } from 
 import { AuditFilters, AuditPaginationClient } from '@/components/settings/AuditFilters'
 import { formatDateTime } from '@/lib/dates'
 import { AUDIT_ACTION_LABELS, AUDIT_ACTIONS, type AuditAction } from '@/lib/enums'
+import { changeValue, fieldLabel } from '@/lib/audit-format'
 import { History } from 'lucide-react'
 
 export const metadata: Metadata = { title: 'Audit trail' }
@@ -78,7 +79,8 @@ export default async function AuditPage({ searchParams }: {
                         <ul className="mt-1 flex flex-col gap-0.5">
                           {Object.entries(entry.changes).slice(0, 3).map(([field, change]) => (
                             <li key={field} className="text-caption text-content-secondary">
-                              <span className="font-semibold">{field}</span>: {String(change.from ?? '—')} → {String(change.to ?? '—')}
+                              <span className="font-semibold">{fieldLabel(field)}</span>:{' '}
+                              {changeValue(change.from)} → {changeValue(change.to)}
                             </li>
                           ))}
                         </ul>

@@ -18,6 +18,7 @@ import {
   AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
   type AuditAction, type BoxPapers, type Condition, type WatchStatus,
 } from '@/lib/enums'
+import { changeValue, fieldLabel } from '@/lib/audit-format'
 import { can } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
@@ -166,7 +167,8 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                       <ul className="mt-1.5 flex flex-col gap-0.5">
                         {Object.entries(entry.changes).map(([field, change]) => (
                           <li key={field} className="text-caption text-content-secondary">
-                            <span className="font-semibold">{field}</span>: {String(change.from ?? '—')} → {String(change.to ?? '—')}
+                            <span className="font-semibold">{fieldLabel(field)}</span>:{' '}
+                            {changeValue(change.from)} → {changeValue(change.to)}
                           </li>
                         ))}
                       </ul>

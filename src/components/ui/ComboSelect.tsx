@@ -97,7 +97,7 @@ export function ComboSelect({
             aria-describedby={describedBy}
             className={cn(
               'flex w-full items-center justify-between gap-2 rounded-md border bg-surface-raised px-3.5 py-3 text-left text-body transition-colors',
-              invalid ? 'border-state-danger' : 'border-line-subtle hover:border-line-strong focus:border-teal-500',
+              invalid ? 'border-state-danger' : 'border-line-subtle hover:border-line-strong',
               selected ? 'text-content-primary' : 'text-content-secondary',
             )}
           >
