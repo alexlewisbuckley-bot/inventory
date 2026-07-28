@@ -92,3 +92,47 @@ export async function deleteLocationAction(id: string): Promise<ActionState> {
     return toState(error, 'Could not delete the location.')
   }
 }
+
+// --- Inline creation from the watch form -----------------------------------
+
+/**
+ * Create a brand from within the add-watch form.
+ *
+ * Returns the new id so the calling form can select it immediately, rather
+ * than sending the user to another page and losing what they had typed.
+ * Matching an existing brand case-insensitively avoids "Rolex" and "rolex"
+ * becoming two brands.
+ */
+export async function createBrandAction(name: string): Promise<ActionState & { id?: string; name?: string }> {
+  const actor = await requireCapability('watch:create')
+  const trimmed = name.trim()
+  if (trimmed.length < 1) return { ok: false, message: 'Enter a brand name.' }
+  if (trimmed.length > 80) return { ok: false, message: 'That brand name is too long.' }
+
+  try {
+    const { createOrFindBrand } = await import('@/server/services/reference-service')
+    const brand = await createOrFindBrand(trimmed, actor)
+    revalidatePath('/inventory/new')
+    return { ok: true, id: brand.id, name: brand.name, message: brand.created ? `Added ${brand.name}.` : undefined }
+  } catch (error) {
+    return toState(error, 'Could not add that brand.')
+  }
+}
+
+/** Create a supplier from within the add-watch form. */
+export async function createSupplierInlineAction(name: string): Promise<ActionState & { id?: string; name?: string }> {
+  const actor = await requireCapability('watch:create')
+  const trimmed = name.trim()
+  if (trimmed.length < 1) return { ok: false, message: 'Enter a supplier name.' }
+  if (trimmed.length > 120) return { ok: false, message: 'That supplier name is too long.' }
+
+  try {
+    const { createOrFindSupplier } = await import('@/server/services/reference-service')
+    const supplier = await createOrFindSupplier(trimmed, actor)
+    revalidatePath('/inventory/new')
+    revalidatePath('/suppliers')
+    return { ok: true, id: supplier.id, name: supplier.name, message: supplier.created ? `Added ${supplier.name}.` : undefined }
+  } catch (error) {
+    return toState(error, 'Could not add that supplier.')
+  }
+}

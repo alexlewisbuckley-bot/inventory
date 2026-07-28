@@ -1,6 +1,6 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { locations, sales, suppliers, watches } from '../db/schema'
+import { brands, locations, sales, suppliers, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
@@ -182,3 +182,51 @@ export async function deleteLocation(id: string, actor: SessionUser): Promise<vo
 }
 
 export { sales }
+
+// --- Find-or-create, for inline creation from the watch form ---------------
+
+/**
+ * Return the brand with this name, creating it if absent.
+ *
+ * Matching is case-insensitive so "Rolex" typed twice with different casing
+ * cannot split one brand into two.
+ */
+export async function createOrFindBrand(
+  name: string,
+  actor: SessionUser,
+): Promise<{ id: string; name: string; created: boolean }> {
+  const slug = slugify(name)
+  const existing = await db.select({ id: brands.id, name: brands.name }).from(brands)
+    .where(eq(brands.slug, slug)).limit(1)
+  if (existing[0]) return { ...existing[0], created: false }
+
+  return withTransaction(async () => {
+    const id = newId('brd')
+    await db.insert(brands).values({ id, name, slug })
+    await recordAudit({
+      entityType: 'Brand', entityId: id, action: 'CREATE', actorId: actor.id,
+      summary: `Brand ${name} added`,
+    })
+    return { id, name, created: true }
+  })
+}
+
+/** Return the supplier with this name, creating it if absent. */
+export async function createOrFindSupplier(
+  name: string,
+  actor: SessionUser,
+): Promise<{ id: string; name: string; created: boolean }> {
+  const existing = await db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
+    .where(and(eq(suppliers.name, name), isNull(suppliers.deletedAt))).limit(1)
+  if (existing[0]) return { ...existing[0], created: false }
+
+  return withTransaction(async () => {
+    const id = newId('sup')
+    await db.insert(suppliers).values({ id, name })
+    await recordAudit({
+      entityType: 'Supplier', entityId: id, action: 'CREATE', actorId: actor.id,
+      summary: `Supplier ${name} added`,
+    })
+    return { id, name, created: true }
+  })
+}

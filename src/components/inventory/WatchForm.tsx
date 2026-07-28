@@ -3,8 +3,10 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, useToast } from '@/components/ui'
+import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, useToast } from '@/components/ui'
 import { createWatchAction, updateWatchAction } from '@/app/actions/watches'
+import { createBrandAction, createSupplierInlineAction } from '@/app/actions/reference'
+import { ChevronDown } from 'lucide-react'
 import type { ActionState } from '@/app/actions/auth'
 import { CONDITIONS, CONDITION_LABELS, BOX_PAPERS, BOX_PAPERS_LABELS } from '@/lib/enums'
 import { toMajor, parseMoneyInput, formatMoney } from '@/lib/money'
@@ -32,7 +34,7 @@ export interface WatchFormValues {
 
 const EMPTY: WatchFormValues = {
   brandId: '', model: '', nickname: '', serial: '', year: '',
-  condition: 'EXCELLENT', boxPapers: 'UNKNOWN', supplierId: '',
+  condition: 'UNKNOWN', boxPapers: 'UNKNOWN', supplierId: '',
   purchaseDate: toDateInput(new Date()), purchasePriceGbp: '', estSaleUsd: '',
   locationId: '', notes: '',
 }
@@ -59,6 +61,14 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
   const action = mode === 'create' ? createWatchAction : updateWatchAction
   const [state, formAction] = useFormState(action, INITIAL)
   const [values, setValues] = useState<WatchFormValues>({ ...EMPTY, ...initial })
+  // Opened automatically when editing a record that already has these set.
+  const [showOptional, setShowOptional] = useState(
+    Boolean(initial && (
+      (initial.condition && initial.condition !== 'UNKNOWN') ||
+      (initial.boxPapers && initial.boxPapers !== 'UNKNOWN') ||
+      initial.year
+    )),
+  )
 
   useEffect(() => {
     if (!state.ok) return
@@ -96,11 +106,19 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
 
       <Card>
         <CardBody className="grid gap-5 sm:grid-cols-2">
-          <SelectField
+          <ComboSelect
             name="brandId" label="Brand" required
-            value={values.brandId} onChange={set('brandId')}
+            value={values.brandId}
+            onChange={(v) => setValues((c) => ({ ...c, brandId: v }))}
             placeholder="Choose a brand…"
             options={brands.map((b) => ({ value: b.id, label: b.name }))}
+            onCreate={async (label) => {
+              const result = await createBrandAction(label)
+              if (!result.ok || !result.id) { toast.error('Could not add brand', result.message); return null }
+              if (result.message) toast.success(result.message)
+              return { value: result.id, label: result.name ?? label }
+            }}
+            createLabel="Add brand"
             error={state.errors?.brandId}
           />
           <TextField
@@ -120,11 +138,19 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
             value={values.serial} onChange={set('serial')}
             error={state.errors?.serial}
           />
-          <SelectField
+          <ComboSelect
             name="supplierId" label="Supplier" required
-            value={values.supplierId} onChange={set('supplierId')}
+            value={values.supplierId}
+            onChange={(v) => setValues((c) => ({ ...c, supplierId: v }))}
             placeholder="Choose a supplier…"
             options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+            onCreate={async (label) => {
+              const result = await createSupplierInlineAction(label)
+              if (!result.ok || !result.id) { toast.error('Could not add supplier', result.message); return null }
+              if (result.message) toast.success(result.message)
+              return { value: result.id, label: result.name ?? label }
+            }}
+            createLabel="Add supplier"
             error={state.errors?.supplierId}
           />
           <TextField
@@ -155,21 +181,6 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
             options={locations.map((l) => ({ value: l.id, label: l.name }))}
             error={state.errors?.locationId}
           />
-          <SelectField
-            name="condition" label="Condition"
-            value={values.condition} onChange={set('condition')}
-            options={CONDITIONS.map((c) => ({ value: c, label: CONDITION_LABELS[c] }))}
-          />
-          <SelectField
-            name="boxPapers" label="Box & papers"
-            value={values.boxPapers} onChange={set('boxPapers')}
-            options={BOX_PAPERS.map((b) => ({ value: b, label: BOX_PAPERS_LABELS[b] }))}
-          />
-          <TextField
-            name="year" label="Year" inputMode="numeric"
-            value={values.year} onChange={set('year')}
-            placeholder="e.g. 2021" error={state.errors?.year}
-          />
           <TextareaField
             name="notes" label="Notes" className="sm:col-span-2"
             value={values.notes} onChange={set('notes')}
@@ -177,6 +188,48 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
           />
         </CardBody>
 
+        {/* Everything below is optional and can be filled in later from the
+            watch record. Collapsed by default so the required path is short. */}
+        <div className="border-t border-line-subtle">
+          <button
+            type="button"
+            onClick={() => setShowOptional((v) => !v)}
+            aria-expanded={showOptional}
+            className="flex w-full items-center justify-between px-6 py-4 text-left"
+          >
+            <span>
+              <span className="block text-body font-bold text-content-primary">Additional details</span>
+              <span className="block text-caption text-content-secondary">
+                Condition, box &amp; papers and year — all optional, and editable later.
+              </span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-content-secondary transition-transform ${showOptional ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
+
+          {showOptional && (
+            <div className="grid gap-5 px-6 pb-6 sm:grid-cols-2">
+              <SelectField
+                name="condition" label="Condition"
+                hint="Leave as “Not recorded” if you have not assessed it yet."
+                value={values.condition} onChange={set('condition')}
+                options={CONDITIONS.map((c) => ({ value: c, label: CONDITION_LABELS[c] }))}
+              />
+              <SelectField
+                name="boxPapers" label="Box & papers"
+                value={values.boxPapers} onChange={set('boxPapers')}
+                options={BOX_PAPERS.map((b) => ({ value: b, label: BOX_PAPERS_LABELS[b] }))}
+              />
+              <TextField
+                name="year" label="Year" inputMode="numeric"
+                value={values.year} onChange={set('year')}
+                placeholder="e.g. 2021" error={state.errors?.year}
+              />
+            </div>
+          )}
+        </div>
         <CardFooter>
           <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
           <SubmitButton mode={mode} />
