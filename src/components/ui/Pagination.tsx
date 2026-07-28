@@ -36,7 +36,7 @@ export function Pagination({ page, perPage, total, onPage, onPerPage, noun = 're
             <select
               value={perPage}
               onChange={(e) => onPerPage(Number(e.target.value))}
-              className="rounded-sm border border-line-subtle bg-surface-raised px-2 py-1 text-small"
+              className="h-8 cursor-pointer rounded-sm border border-line-subtle bg-surface-raised px-2 text-small text-content-primary transition-colors hover:border-line-strong"
             >
               {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n} per page</option>)}
             </select>

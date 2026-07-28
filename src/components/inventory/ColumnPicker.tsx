@@ -89,7 +89,7 @@ export function ColumnPicker({ columns, isHidden, onToggle, onReset, hiddenCount
                       checked={visible}
                       disabled={column.locked}
                       onChange={() => onToggle(column.key)}
-                      className="h-4 w-4 rounded-[4px] accent-teal-500"
+                      className="h-4 w-4 rounded-xs accent-teal-500"
                     />
                     <span className="truncate text-content-primary">{column.label}</span>
                     {column.locked && <span className="ml-auto text-micro text-content-secondary">always</span>}

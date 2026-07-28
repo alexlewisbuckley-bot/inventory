@@ -78,7 +78,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           : undefined}
       />
 
-      <section aria-label="Financial summary" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Financial summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard
           label="Purchase price"
           value={money(watch.purchasePriceGbp)}
@@ -102,7 +102,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
         <StatCard label="Days held" value={held ?? '—'} caption={`Purchased ${formatDate(watch.purchaseDate)}`} />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">
           <CardHeader title="Details" />
           <CardBody>

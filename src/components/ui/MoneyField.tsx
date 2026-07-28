@@ -64,7 +64,7 @@ export function MoneyField({
 
       <div
         className={cn(
-          'focus-ring-none flex items-stretch overflow-hidden rounded-md border bg-surface-raised transition-colors',
+          'focus-ring-none flex h-11 items-stretch overflow-hidden rounded-md border bg-surface-raised transition-colors',
           'focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/25',
           error ? 'border-state-danger' : 'border-line-subtle hover:border-line-strong',
           disabled && 'opacity-60',
@@ -92,7 +92,7 @@ export function MoneyField({
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'min-w-0 flex-1 bg-transparent py-3 pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-secondary',
+            'min-w-0 flex-1 bg-transparent pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-secondary',
             symbolFor(currency) === currency && 'pl-3.5',
           )}
           placeholder="0.00"

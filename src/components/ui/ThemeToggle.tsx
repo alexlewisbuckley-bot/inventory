@@ -17,7 +17,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
     <div
       role="radiogroup"
       aria-label="Colour theme"
-      className="inline-flex items-center gap-0.5 rounded-md border border-line-subtle bg-surface-raised p-0.5"
+      className="inline-flex h-9 items-center gap-0.5 rounded-md border border-line-subtle bg-surface-raised p-0.5"
     >
       {OPTIONS.map(({ value, label, icon: Icon }) => (
         <button
@@ -29,7 +29,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
           title={label}
           onClick={() => setTheme(value)}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-caption font-semibold transition-colors',
+            'inline-flex h-full items-center gap-1.5 rounded-xs px-2.5 text-caption font-semibold transition-colors',
             theme === value ? 'bg-navy-700 text-white' : 'text-content-secondary hover:bg-surface-subtle',
           )}
         >

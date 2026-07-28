@@ -11,7 +11,7 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
       <section className="relative hidden flex-col justify-between bg-navy-900 p-12 lg:flex">
         <div className="flex items-center gap-2">
           <span className="text-h3 font-extrabold text-white">bluecroft</span>
-          <span className="h-2 w-2 rounded-full bg-teal-500" aria-hidden />
+          <span className="h-2 w-2 rounded-pill bg-teal-500" aria-hidden />
         </div>
         <div className="max-w-md">
           <h1 className="text-display font-extrabold leading-tight text-white">
@@ -31,7 +31,7 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
             <span className="text-h3 font-extrabold text-content-primary">bluecroft</span>
-            <span className="h-2 w-2 rounded-full bg-teal-500" aria-hidden />
+            <span className="h-2 w-2 rounded-pill bg-teal-500" aria-hidden />
           </div>
           <h2 className="text-h1 font-extrabold text-content-primary">Sign in</h2>
           <p className="mt-2 text-body text-content-secondary">

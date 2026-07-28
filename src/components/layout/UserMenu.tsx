@@ -42,7 +42,7 @@ export function UserMenu({ user }: { user: SessionUser }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-md p-1 transition-colors hover:bg-surface-subtle"
+        className="flex h-9 items-center gap-2 rounded-md px-1 transition-colors hover:bg-surface-subtle"
       >
         <Avatar initials={user.initials} id={user.id} size="sm" />
         <span className="sr-only">Account menu for {user.name}</span>

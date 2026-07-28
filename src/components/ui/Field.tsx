@@ -3,8 +3,19 @@ import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type Selec
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
+/**
+ * Every form control is 44px tall.
+ *
+ * Height is set rather than derived from padding, because padding plus a
+ * line-height gives a different answer for an input, a select and a bordered
+ * wrapper — which is how a search box ended up 4px taller than the filter
+ * pills sitting beside it. 44px is also the touch-target floor, so the same
+ * number serves both.
+ */
+const CONTROL_HEIGHT = 'h-11'
+
 const control =
-  'w-full rounded-md bg-surface-raised border px-3.5 py-3 text-body text-content-primary ' +
+  `w-full ${CONTROL_HEIGHT} rounded-md bg-surface-raised border px-3.5 text-body text-content-primary ` +
   'placeholder:text-content-secondary transition-colors ' +
   'disabled:opacity-60 disabled:cursor-not-allowed'
 
@@ -135,7 +146,8 @@ export const TextareaField = forwardRef<HTMLTextAreaElement, TextareaProps>(func
           required={required}
           aria-invalid={bad || undefined}
           aria-describedby={describedBy}
-          className={cn(control, bad ? invalid : normal, 'resize-y min-h-[88px]')}
+          // The one control that must grow with its content.
+            className={cn(control, bad ? invalid : normal, 'h-auto min-h-[88px] resize-y py-3')}
           {...rest}
         />
       )}
@@ -152,7 +164,7 @@ export const Checkbox = forwardRef<HTMLInputElement, Omit<InputHTMLAttributes<HT
           ref={ref}
           id={id}
           type="checkbox"
-          className="mt-0.5 h-4 w-4 shrink-0 rounded-[4px] border-line-strong text-teal-500 accent-teal-500 cursor-pointer"
+          className="mt-0.5 h-4 w-4 shrink-0 rounded-xs border-line-strong text-teal-500 accent-teal-500 cursor-pointer"
           {...rest}
         />
         <label htmlFor={id} className="text-body text-content-primary cursor-pointer select-none">
@@ -184,12 +196,12 @@ export function RadioCard({ checked, onSelect, title, description, badge, disabl
     >
       <span
         className={cn(
-          'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2',
+          'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-pill border-2',
           checked ? 'border-teal-500 bg-teal-500' : 'border-line-strong bg-surface-raised',
         )}
         aria-hidden
       >
-        {checked && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+        {checked && <span className="h-1.5 w-1.5 rounded-pill bg-white" />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">

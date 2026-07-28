@@ -63,7 +63,7 @@ export default async function DashboardPage() {
       .where(liveSale())
       .orderBy(desc(sales.saleDate))
       .limit(5),
-    auditTrail({ perPage: 6 }),
+    auditTrail({ perPage: 6, stockOnly: true }),
     getRateTable(),
     getPreferencesFor(user.id),
     attentionCounts(),

@@ -20,7 +20,7 @@ export function EmptyState({
   icon, title, description, action, secondaryAction, className, variant = 'default',
 }: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center justify-center px-6 py-16 text-center', className)}>
+    <div className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}>
       {icon && (
         <div
           className={cn(

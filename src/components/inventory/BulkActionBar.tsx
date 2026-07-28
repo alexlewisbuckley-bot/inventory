@@ -136,7 +136,7 @@ export function BulkActionBar({ count, watchIds, locations, capabilities, onClea
           type="button"
           onClick={onClear}
           aria-label="Clear selection"
-          className="rounded-full p-1.5 text-content-secondary hover:bg-surface-subtle"
+          className="rounded-pill p-1.5 text-content-secondary hover:bg-surface-subtle"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>

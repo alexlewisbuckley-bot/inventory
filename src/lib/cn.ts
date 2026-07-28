@@ -21,6 +21,10 @@ const twMerge = extendTailwindMerge({
       'font-size': [{
         text: ['micro', 'caption', 'small', 'body', 'body-lg', 'h3', 'h2', 'h1', 'display'],
       }],
+      // Same reasoning for the radius scale: `rounded-pill` is not a value
+      // tailwind-merge ships with, so without this a component that sets
+      // `rounded-md` and is handed `rounded-pill` keeps both.
+      rounded: [{ rounded: ['xs', 'sm', 'md', 'lg', 'xl', 'pill', 'full'] }],
     },
   },
 })

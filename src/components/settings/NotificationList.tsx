@@ -88,7 +88,7 @@ export function NotificationList({ items, hasUnread }: { items: NotificationView
                 {item.body && <p className="mt-0.5 text-small text-content-secondary">{item.body}</p>}
                 <p className="mt-1 text-caption text-content-secondary">{relativeTime(item.createdAt)}</p>
               </div>
-              {unread && <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-teal-500" aria-hidden />}
+              {unread && <span className="mt-2 h-2 w-2 shrink-0 rounded-pill bg-teal-500" aria-hidden />}
             </div>
           )
 

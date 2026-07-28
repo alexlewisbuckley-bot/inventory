@@ -1,4 +1,4 @@
-import { desc, eq, and, sql } from 'drizzle-orm'
+import { desc, eq, and, notInArray, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { auditLogs, users } from '../db/schema'
 import { newId } from '@/lib/ids'
@@ -70,6 +70,8 @@ export interface AuditQuery {
   entityType?: string
   action?: AuditAction
   actorId?: string
+  /** Exclude sign-in events, for feeds that are about stock rather than access. */
+  stockOnly?: boolean
 }
 
 /** Paginated system-wide audit trail. */
@@ -81,6 +83,10 @@ export async function auditTrail(query: AuditQuery = {}): Promise<{ entries: Aud
     query.entityType ? eq(auditLogs.entityType, query.entityType) : undefined,
     query.action ? eq(auditLogs.action, query.action) : undefined,
     query.actorId ? eq(auditLogs.actorId, query.actorId) : undefined,
+    // Sign-ins belong in the audit trail, not in a feed headed "every change
+    // to stock". Four people arriving in the morning otherwise buries the one
+    // price that changed.
+    query.stockOnly ? notInArray(auditLogs.action, ['LOGIN', 'LOGOUT']) : undefined,
   ].filter(Boolean)
   const where = filters.length > 0 ? and(...(filters as never[])) : undefined
 

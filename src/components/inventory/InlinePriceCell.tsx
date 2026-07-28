@@ -115,7 +115,9 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
         baseMinor === null && 'text-content-secondary',
       )}
     >
-      {baseMinor === null ? <span className="text-caption font-semibold">Set price</span> : money(baseMinor)}
+      {baseMinor === null
+        ? <span className="whitespace-nowrap text-caption font-semibold">Set price</span>
+        : <span className="whitespace-nowrap">{money(baseMinor)}</span>}
       <Pencil className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/price:opacity-60" aria-hidden />
     </button>
   )

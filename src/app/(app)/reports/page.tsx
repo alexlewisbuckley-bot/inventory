@@ -49,14 +49,14 @@ export default async function ReportsPage() {
         description="How capital is deployed, what it is returning, and where it is sitting still."
       />
 
-      <section aria-label="Headline figures" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Headline figures" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="Capital deployed" value={money(inventory.totalCostGbp)} caption={`${inventory.inStockCount} watches held`} />
         <StatCard label="Lifetime revenue" value={money(sales.revenueGbp)} caption={`${sales.count} sales`} />
         <StatCard label="Lifetime profit" value={signed(sales.profitGbp)} tone="accent" caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin`} />
         <StatCard label="Sell-through" value={formatPct(turnover * 100, 0)} caption="of all stock ever acquired" />
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Revenue and profit by month" description="Last 12 months" />
           {monthly.length === 0 ? (
@@ -96,11 +96,11 @@ export default async function ReportsPage() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader title="Supplier performance" description="Spend against realised profit" />
           <ul className="divide-y divide-line-subtle">
-            {suppliers.map((supplier) => (
+            {suppliers.slice(0, 6).map((supplier) => (
               <li key={supplier.supplierId} className="px-6 py-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -156,13 +156,21 @@ export default async function ReportsPage() {
                 sitting longer than 90 days.
               </p>
               <ul className="mt-4 flex flex-col gap-2">
-                {ageing.slice(0, 4).map((item) => (
+                {ageing.slice(0, 5).map((item) => (
                   <li key={item.id} className="flex items-center justify-between gap-3 text-small">
                     <span className="truncate text-content-primary">{item.brandName} {item.model}</span>
                     <span className="shrink-0 text-content-secondary">{item.locationName}</span>
                   </li>
                 ))}
               </ul>
+              {ageing.length > 5 && (
+                <p className="mt-3 text-caption text-content-secondary">
+                  and {ageing.length - 5} more.{' '}
+                  <Link href="/reports/ageing" className="font-bold text-content-accent hover:underline">
+                    See the full report
+                  </Link>
+                </p>
+              )}
             </div>
           )}
         </Card>

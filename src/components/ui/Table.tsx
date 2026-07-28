@@ -31,7 +31,7 @@ export function Table({ children, className, density = 'COMFORTABLE' }: {
 }
 
 export function THead({ children }: { children: ReactNode }) {
-  return <thead className="bg-surface-subtle">{children}</thead>
+  return <thead className="group/head bg-surface-subtle">{children}</thead>
 }
 
 export function TBody({ children }: { children: ReactNode }) {
@@ -45,9 +45,9 @@ export function TR({ children, className, onClick, selected }: {
     <tr
       onClick={onClick}
       className={cn(
-        'border-b border-line-subtle transition-colors',
-        onClick && 'cursor-pointer hover:bg-surface-subtle',
-        selected && 'bg-teal-100/50',
+        'group/row border-b border-line-subtle transition-colors hover:bg-surface-subtle/70',
+        onClick && 'cursor-pointer',
+        selected && 'bg-teal-100/50 hover:bg-teal-100/60',
         className,
       )}
     >
@@ -62,7 +62,7 @@ export function TD({ children, className, align = 'left', ...rest }: {
   return (
     <td
       className={cn(
-        'px-4 py-3.5 text-small text-content-primary align-middle first:pl-6 last:pr-6',
+        'h-14 px-4 py-2 text-small text-content-primary align-middle first:pl-6 last:pr-6',
         align === 'right' && 'text-right tabular-nums',
         align === 'center' && 'text-center',
         className,
@@ -94,7 +94,7 @@ export function TH({ children, className, align = 'left', sortKey, sort, onSort,
       style={width ? { width } : undefined}
       aria-sort={ariaSort}
       className={cn(
-        'px-4 py-3 text-caption font-semibold text-content-secondary first:pl-6 last:pr-6',
+        'whitespace-nowrap px-4 py-3 text-caption font-semibold text-content-secondary first:pl-6 last:pr-6',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,
@@ -106,6 +106,7 @@ export function TH({ children, className, align = 'left', sortKey, sort, onSort,
           onClick={() => onSort(sortKey)}
           className={cn(
             'inline-flex items-center gap-1 rounded-sm transition-colors hover:text-content-primary',
+            'focus-visible:opacity-100 [&_svg]:focus-visible:opacity-40',
             align === 'right' && 'flex-row-reverse',
             active && 'text-content-primary',
           )}
@@ -113,7 +114,12 @@ export function TH({ children, className, align = 'left', sortKey, sort, onSort,
           {children}
           {active
             ? (sort!.dir === 'asc' ? <ArrowUp className="h-3 w-3" aria-hidden /> : <ArrowDown className="h-3 w-3" aria-hidden />)
-            : <ChevronsUpDown className="h-3 w-3 opacity-40" aria-hidden />}
+            : (
+              <ChevronsUpDown
+                className="h-3 w-3 opacity-0 transition-opacity group-hover/head:opacity-40"
+                aria-hidden
+              />
+            )}
         </button>
       ) : (
         children

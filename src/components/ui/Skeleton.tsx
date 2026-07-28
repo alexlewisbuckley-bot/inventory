@@ -33,7 +33,7 @@ export function SkeletonTable({ rows = 8, columns = 6 }: { rows?: number; column
 
 export function SkeletonCards({ count = 4 }: { count?: number }) {
   return (
-    <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4" role="status" aria-busy aria-label="Loading">
+    <div className="grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4" role="status" aria-busy aria-label="Loading">
       <span className="sr-only">Loading…</span>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="rounded-lg bg-surface-raised border border-line-subtle px-6 py-5">

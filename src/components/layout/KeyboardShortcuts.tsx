@@ -156,7 +156,7 @@ export function KeyboardShortcuts({ canCreate }: { canCreate: boolean }) {
                         <span className="text-body text-content-primary">{shortcut.action}</span>
                         <span className="flex shrink-0 gap-1">
                           {shortcut.keys.map((key) => (
-                            <kbd key={key} className="rounded-[4px] border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-sans text-caption font-semibold text-content-secondary">
+                            <kbd key={key} className="rounded-xs border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-sans text-caption font-semibold text-content-secondary">
                               {key}
                             </kbd>
                           ))}

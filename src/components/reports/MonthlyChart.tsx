@@ -157,7 +157,7 @@ function Bar({ heightPct, className, dim }: { heightPct: number; className: stri
 function LegendItem({ className, label }: { className: string; label: string }) {
   return (
     <li className="flex items-center gap-2">
-      <span className={cn('h-2.5 w-2.5 rounded-[3px]', className)} aria-hidden />
+      <span className={cn('h-2.5 w-2.5 rounded-xs', className)} aria-hidden />
       <span className="text-caption text-content-secondary">{label}</span>
     </li>
   )
@@ -167,7 +167,7 @@ function TooltipRow({ swatch, label, value }: { swatch: string; label: string; v
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="flex items-center gap-1.5 text-micro text-content-secondary">
-        <span className={cn('h-2 w-2 rounded-[2px]', swatch)} aria-hidden />
+        <span className={cn('h-2 w-2 rounded-xs', swatch)} aria-hidden />
         {label}
       </dt>
       <dd className="text-micro font-bold tabular-nums text-content-primary">{value}</dd>
@@ -184,7 +184,7 @@ function ViewButton({ active, onClick, icon, label }: {
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-caption font-semibold transition-colors',
+        'inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-semibold transition-colors',
         active ? 'bg-navy-700 text-white' : 'text-content-secondary hover:bg-surface-subtle',
       )}
     >

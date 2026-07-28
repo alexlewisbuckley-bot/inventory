@@ -2,7 +2,11 @@
 import { useEffect, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { AlertTriangle, Lock } from 'lucide-react'
-import { Card, CardHeader, CardBody, CardFooter, Button, TextField, Chip, useToast } from '@/components/ui'
+import {
+  Card, CardHeader, CardBody, CardFooter, Button, Chip,
+  Table, THead, TBody, TR, TD, TH, useToast,
+} from '@/components/ui'
+import { cn } from '@/lib/cn'
 import { updateRatesAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
 import { formatDateTime, relativeTime } from '@/lib/dates'
@@ -45,7 +49,7 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
   )
 
   return (
-    <form action={action} className="max-w-3xl">
+    <form action={action} className="w-full">
       <Card>
         <CardHeader
           title="Exchange rates"
@@ -75,57 +79,81 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
             </div>
           )}
 
-          <ul className="flex flex-col gap-4">
-            {rates.map((rate) => {
-              const isBase = rate.code === BASE_CURRENCY
-              const never = new Date(rate.updatedAt).getTime() === 0
-              return (
-                <li key={rate.code} className="flex flex-wrap items-end gap-4 border-b border-line-subtle pb-4 last:border-0">
-                  <div className="w-28 shrink-0">
-                    <p className="text-body font-extrabold text-content-primary">{rate.code}</p>
-                    <p className="text-caption text-content-secondary">{CURRENCY_LABELS[rate.code]}</p>
-                  </div>
-
-                  <div className="w-44">
-                    {isBase ? (
-                      <div>
-                        <p className="mb-1.5 text-caption font-semibold text-content-secondary">Rate</p>
-                        <div className="flex h-[46px] items-center gap-2 rounded-md border border-line-subtle bg-surface-subtle px-3.5">
-                          <span className="text-body text-content-secondary">1.0000</span>
-                          <Chip tone="neutral">Base</Chip>
-                        </div>
-                      </div>
-                    ) : (
-                      <TextField
-                        name={`rate.${rate.code}`}
-                        label={`${BASE_CURRENCY} → ${rate.code}`}
-                        defaultValue={rate.rate > 0 ? String(rate.rate) : ''}
-                        inputMode="decimal"
-                        disabled={!canManage}
-                        placeholder="0.0000"
-                        error={state.errors?.[rate.code]}
-                      />
-                    )}
-                  </div>
-
-                  <div className="min-w-[200px] flex-1">
-                    <p className="text-caption text-content-secondary">
-                      {isBase
-                        ? 'Every stored amount is held in this currency.'
-                        : never
-                          ? 'Never set.'
-                          : `Updated ${relativeTime(rate.updatedAt)}${rate.updatedByName ? ` by ${rate.updatedByName}` : ''}`}
-                    </p>
-                    {!isBase && !never && (
-                      <p className="text-micro text-content-secondary" title={formatDateTime(rate.updatedAt)}>
-                        {formatDateTime(rate.updatedAt)}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+          {/* A table, not a stack of ad-hoc rows. Each row was labelling its
+              own input, so the first read "Rate" and the rest read "GBP → X",
+              and the timestamp appeared twice in two different formats. One
+              header row says it once and the columns line up. */}
+          <div className="-mx-6 -mt-1 border-b border-line-subtle">
+            <Table>
+              <THead>
+                <TR>
+                  <TH width="200px">Currency</TH>
+                  <TH width="220px">Rate per {BASE_CURRENCY}</TH>
+                  <TH>Last updated</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {rates.map((rate) => {
+                  const isBase = rate.code === BASE_CURRENCY
+                  const never = new Date(rate.updatedAt).getTime() === 0
+                  return (
+                    <TR key={rate.code}>
+                      <TD>
+                        <span className="block font-bold text-content-primary">{rate.code}</span>
+                        <span className="block text-caption text-content-secondary">
+                          {CURRENCY_LABELS[rate.code]}
+                        </span>
+                      </TD>
+                      <TD>
+                        {isBase ? (
+                          <span className="inline-flex items-center gap-2">
+                            <span className="tabular-nums text-content-secondary">1.0000</span>
+                            <Chip tone="neutral">Base</Chip>
+                          </span>
+                        ) : (
+                          <>
+                            <input
+                              name={`rate.${rate.code}`}
+                              defaultValue={rate.rate > 0 ? String(rate.rate) : ''}
+                              inputMode="decimal"
+                              disabled={!canManage}
+                              placeholder="0.0000"
+                              aria-label={`${BASE_CURRENCY} to ${rate.code} rate`}
+                              aria-invalid={state.errors?.[rate.code] ? true : undefined}
+                              className={cn(
+                                'h-10 w-36 rounded-md border bg-surface-raised px-3 text-body tabular-nums',
+                                'text-content-primary transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                                state.errors?.[rate.code]
+                                  ? 'border-state-danger'
+                                  : 'border-line-subtle hover:border-line-strong',
+                              )}
+                            />
+                            {state.errors?.[rate.code] && (
+                              <span className="mt-1 block text-caption text-state-danger">
+                                {state.errors[rate.code]}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </TD>
+                      <TD className="text-content-secondary">
+                        {isBase
+                          ? 'Every stored amount is held in this currency.'
+                          : never
+                            ? 'Never set'
+                            : (
+                              <span title={formatDateTime(rate.updatedAt)}>
+                                {relativeTime(rate.updatedAt)}
+                                {rate.updatedByName ? ` · ${rate.updatedByName}` : ''}
+                              </span>
+                            )}
+                      </TD>
+                    </TR>
+                  )
+                })}
+              </TBody>
+            </Table>
+          </div>
 
           <p className="text-caption text-content-secondary">
             Enter how many units of each currency one {BASE_CURRENCY} buys. For example, if

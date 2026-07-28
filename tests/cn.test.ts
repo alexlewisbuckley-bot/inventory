@@ -44,3 +44,16 @@ describe('class merging', () => {
     expect(cn('hidden', 'block')).toBe('block')
   })
 })
+
+describe('radius scale', () => {
+  it('lets a caller override a component default', () => {
+    // Without the radius group both survive and the browser takes the last
+    // one in the stylesheet, not the last one written.
+    expect(cn('rounded-md', 'rounded-pill')).toBe('rounded-pill')
+    expect(cn('rounded-pill', 'rounded-xs')).toBe('rounded-xs')
+  })
+
+  it('does not confuse a radius with anything else', () => {
+    expect(cn('rounded-md border-line-subtle')).toBe('rounded-md border-line-subtle')
+  })
+})

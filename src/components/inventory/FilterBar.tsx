@@ -1,10 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Search, SlidersHorizontal, X } from 'lucide-react'
+import { SlidersHorizontal, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import { useDebounced } from '@/hooks/useDebounced'
-import { Button, Chip } from '@/components/ui'
+import { Button, Chip, ToolbarRow, ToolbarSearch } from '@/components/ui'
 import { WATCH_STATUSES, WATCH_STATUS_LABELS } from '@/lib/enums'
 
 export interface FilterOption { id: string; name: string }
@@ -37,27 +37,13 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
 
   return (
     <div className="mb-6 flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[240px] flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary" aria-hidden />
-          <input
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search by stock number, reference or serial…"
-            aria-label="Search inventory"
-            className="w-full rounded-md border border-line-subtle bg-surface-raised py-3 pl-11 pr-10 text-body text-content-primary placeholder:text-content-secondary hover:border-line-strong"
-          />
-          {term && (
-            <button
-              type="button"
-              onClick={() => setTerm('')}
-              aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm p-1 text-content-secondary hover:text-content-primary"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+      <ToolbarRow>
+        <ToolbarSearch
+          value={term}
+          onChange={setTerm}
+          label="Search inventory"
+          placeholder="Search by stock number, reference or serial…"
+        />
 
         <MultiSelect label="Status" name="status" options={WATCH_STATUSES.map((s) => ({ id: s, name: WATCH_STATUS_LABELS[s] }))} />
         <MultiSelect label="Location" name="locationId" options={locations} />
@@ -79,7 +65,7 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
             Clear all
           </Button>
         )}
-      </div>
+      </ToolbarRow>
 
       {advanced && (
         // Every cell carries a label above a control of the same height, so the
@@ -117,7 +103,7 @@ export function FilterBar({ locations, suppliers, brands }: FilterBarProps) {
                 type="checkbox"
                 checked={query.get('unpricedOnly') === 'true'}
                 onChange={(e) => query.set('unpricedOnly', e.target.checked ? 'true' : null)}
-                className="h-4 w-4 rounded-[4px] accent-teal-500"
+                className="h-4 w-4 rounded-xs accent-teal-500"
               />
               <span className="truncate text-small text-content-primary">Only watches with no price</span>
             </label>
@@ -191,7 +177,7 @@ function MultiSelect({ label, name, options, block, hideLabel }: {
                   type="checkbox"
                   checked={selected.includes(option.id)}
                   onChange={() => query.toggle(name, option.id)}
-                  className="h-4 w-4 rounded-[4px] accent-teal-500"
+                  className="h-4 w-4 rounded-xs accent-teal-500"
                 />
                 <span className="truncate text-content-primary">{option.name}</span>
               </label>

@@ -26,12 +26,12 @@ export function CommandTrigger() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-2 rounded-md border border-line-subtle px-3 py-2 text-small text-content-secondary transition-colors hover:border-line-strong"
+        className="flex h-9 items-center gap-2 rounded-md border border-line-subtle px-3 text-small text-content-secondary transition-colors hover:border-line-strong"
         aria-label="Search — press Command K"
       >
         <Search className="h-4 w-4" aria-hidden />
         <span className="hidden lg:inline">Search…</span>
-        <kbd className="hidden rounded-[4px] border border-line-subtle px-1.5 py-0.5 font-sans text-[10px] font-semibold lg:inline">
+        <kbd className="hidden rounded-xs border border-line-subtle px-1.5 py-0.5 font-sans text-micro font-semibold lg:inline">
           ⌘K
         </kbd>
       </button>

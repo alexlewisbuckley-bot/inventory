@@ -55,7 +55,7 @@ export default function HelpPage() {
                   </div>
                   <span className="flex shrink-0 gap-1" aria-hidden>
                     {shortcut.keys.map((key) => (
-                      <kbd key={key} className="rounded-[4px] border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-sans text-caption font-semibold text-content-secondary">
+                      <kbd key={key} className="rounded-xs border border-line-subtle bg-surface-subtle px-1.5 py-0.5 font-sans text-caption font-semibold text-content-secondary">
                         {key}
                       </kbd>
                     ))}

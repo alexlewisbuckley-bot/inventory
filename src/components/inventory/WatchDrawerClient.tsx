@@ -161,7 +161,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
           <ol className="flex flex-col gap-3.5">
             {timeline.map((entry) => (
               <li key={entry.id} className="flex gap-3">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-teal-500" aria-hidden />
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-pill bg-teal-500" aria-hidden />
                 <div className="min-w-0">
                   <p className="text-small text-content-primary">
                     {entry.summary ?? AUDIT_ACTION_LABELS[entry.action as AuditAction]}

@@ -51,7 +51,7 @@ export function CurrencySwitcher() {
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={`Display currency: ${currency}. Change`}
-        className="flex items-center gap-1.5 rounded-md border border-line-subtle px-2.5 py-2 text-small font-bold text-content-primary transition-colors hover:border-line-strong"
+        className="flex h-9 items-center gap-1.5 rounded-md border border-line-subtle px-2.5 text-small font-bold text-content-primary transition-colors hover:border-line-strong"
       >
         {currency}
         <ChevronDown className={cn('h-3.5 w-3.5 text-content-secondary transition-transform', open && 'rotate-180')} aria-hidden />

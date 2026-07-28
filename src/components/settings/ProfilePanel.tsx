@@ -40,7 +40,7 @@ export function ProfilePanel({ user, preferences, locations, sessions }: {
   sessions: SessionSummary[]
 }) {
   return (
-    <div className="grid max-w-5xl gap-6 lg:grid-cols-3">
+    <div className="grid items-start gap-6 lg:grid-cols-3">
       <div className="lg:col-span-1">
         <Card>
           <CardBody className="flex flex-col items-center py-8 text-center">

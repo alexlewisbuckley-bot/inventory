@@ -69,7 +69,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
     >
       <div className={cn('flex h-[60px] items-center border-b border-line-subtle', collapsed ? 'justify-center px-2' : 'px-5')}>
         <Link href="/" className="flex items-center gap-2 overflow-hidden" aria-label="Bluecroft Stock — dashboard">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-teal-500" aria-hidden />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-pill bg-teal-500" aria-hidden />
           {!collapsed && <span className="truncate text-body-lg font-extrabold text-content-primary">bluecroft</span>}
         </Link>
       </div>
@@ -94,7 +94,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
                         aria-current={active ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
                         className={cn(
-                          'flex items-center gap-3 rounded-md px-2.5 py-2 text-body transition-colors',
+                          'flex h-9 items-center gap-3 rounded-md px-2.5 text-body transition-colors',
                           collapsed && 'justify-center px-0',
                           active
                             ? 'bg-navy-700/10 font-bold text-content-primary'
@@ -135,7 +135,7 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         title={`${collapsed ? 'Expand' : 'Collapse'} sidebar  [`}
         className={cn(
-          'flex items-center gap-2 border-t border-line-subtle px-4 py-3 text-caption font-semibold text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary',
+          'flex h-11 items-center gap-2 border-t border-line-subtle px-4 text-caption font-semibold text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary',
           collapsed && 'justify-center px-0',
         )}
       >

@@ -47,7 +47,7 @@ export function SettingsForm({ specs, values, canManage }: {
   const groups = [...new Set(specs.map((s) => s.group))]
 
   return (
-    <form action={action} className="flex max-w-3xl flex-col gap-6" noValidate>
+    <form action={action} className="flex flex-col gap-6" noValidate>
       {!canManage && (
         <div className="flex items-start gap-2.5 rounded-md border border-line-subtle bg-surface-subtle px-4 py-3">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-content-secondary" aria-hidden />

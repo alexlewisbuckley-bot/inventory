@@ -183,6 +183,10 @@ export async function supplierPerformance() {
     .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))
     .where(isNull(suppliers.deletedAt))
     .groupBy(suppliers.id)
+    // A performance report is about suppliers you have actually bought from.
+    // Listing every name on file put nine rows of zeroes above the two that
+    // matter.
+    .having(sql`count(${watches.id}) > 0`)
     .orderBy(desc(sql`coalesce(sum(${watches.purchasePriceGbp}), 0)`))
 }
 

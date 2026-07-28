@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
 import {
-  Table, THead, TBody, TR, TD, TH, Pagination, UnpricedChip,
+  Table, THead, TBody, TR, TD, TH, Pagination,
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
 } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
@@ -149,21 +149,21 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
                     checked={allOnPageSelected}
                     onChange={toggleAll}
                     aria-label="Select all watches on this page"
-                    className="h-4 w-4 rounded-[4px] accent-teal-500"
+                    className="h-4 w-4 rounded-xs accent-teal-500"
                   />
                 </TH>
               )}
               <TH width="96px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
               <TH sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
               {show('serial') && <TH width="110px">Serial</TH>}
-              {show('supplier') && <TH width="150px">Supplier</TH>}
+              {show('supplier') && <TH width="170px">Supplier</TH>}
               {show('purchased') && <TH width="120px" sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
               {show('cost') && <TH width="110px" align="right" sortKey="purchasePriceGbp" sort={sort} onSort={query.sortBy}>Cost</TH>}
               {show('estSale') && <TH width="110px" align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Est. sale</TH>}
-              {show('profit') && <TH width="110px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
-              {show('location') && <TH width="150px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
-              {show('status') && <TH width="130px">Status</TH>}
-              <TH width="92px"><span className="sr-only">Actions</span></TH>
+              {show('profit') && <TH width="120px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
+              {show('location') && <TH width="170px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
+              {show('status') && <TH width="128px">Status</TH>}
+              <TH width="88px" align="right"><span className="sr-only">Actions</span></TH>
             </TR>
           </THead>
           <TBody>
@@ -266,7 +266,7 @@ function Row({
             onChange={onToggle}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Select stock number ${watch.stockNo}`}
-            className="h-4 w-4 rounded-[4px] accent-teal-500"
+            className="h-4 w-4 rounded-xs accent-teal-500"
           />
         </TD>
       )}
@@ -278,7 +278,11 @@ function Row({
         </button>
       </TD>
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
-      {show('supplier') && <TD className="text-content-secondary">{watch.supplierName}</TD>}
+      {show('supplier') && (
+        <TD className="text-content-secondary">
+          <span className="block truncate" title={watch.supplierName}>{watch.supplierName}</span>
+        </TD>
+      )}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
       {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
       {show('estSale') && (
@@ -293,21 +297,22 @@ function Row({
           {profit !== null ? signed(profit) : '—'}
         </TD>
       )}
-      {show('location') && <TD className="text-content-secondary">{watch.locationName}</TD>}
+      {show('location') && (
+        <TD className="text-content-secondary">
+          <span className="block truncate" title={watch.locationName}>{watch.locationName}</span>
+        </TD>
+      )}
       {show('status') && (
         <TD>
-          <div className="flex items-center gap-1.5">
-            <StatusCell
-              watchId={watch.id}
-              status={watch.status as WatchStatus}
-              editable={canEditStatus && !watch.deletedAt}
-              canSell={canSell}
-              onSell={onSell}
-              canVoid={canVoid}
-              onVoid={onVoid}
-            />
-            {watch.estSaleGbp === null && !sold && <UnpricedChip />}
-          </div>
+          <StatusCell
+            watchId={watch.id}
+            status={watch.status as WatchStatus}
+            editable={canEditStatus && !watch.deletedAt}
+            canSell={canSell}
+            onSell={onSell}
+            canVoid={canVoid}
+            onVoid={onVoid}
+          />
         </TD>
       )}
       <TD>

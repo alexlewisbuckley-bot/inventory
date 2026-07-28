@@ -70,7 +70,7 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
           />
         </Card>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid items-start gap-6 sm:grid-cols-2 xl:grid-cols-3">
           {locations.map((location) => {
             const share = totalValue > 0 ? (location.valueGbp / totalValue) * 100 : 0
             return (

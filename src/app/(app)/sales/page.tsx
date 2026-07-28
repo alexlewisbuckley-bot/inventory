@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Download, Receipt } from 'lucide-react'
+import { Download, Receipt, SearchX } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { findSales, summariseSales, type SaleQuery } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -49,6 +49,10 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const exportable = can(user.role, 'report:export')
+  // "Nothing here yet" and "nothing matches your filters" are different
+  // situations and want different screens.
+  const filtered = Boolean(query.q || query.channel?.length || query.from || query.to)
+  const isFirstRun = result.total === 0 && !filtered
 
   return (
     <>
@@ -57,12 +61,26 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         description={summary.count > 0
           ? `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'} in this view · ${money(summary.revenueGbp)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
-        actions={exportable
+        actions={exportable && !isFirstRun
           ? <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export CSV</LinkButton>
           : undefined}
       />
 
-      <section aria-label="Sales summary" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+      {/* A first-run page shows nothing but the way in. Four £0 tiles and a
+          filter toolbar over an empty table is furniture for data that does
+          not exist yet, and it makes the one thing to do harder to find. */}
+      {isFirstRun ? (
+        <Card>
+          <EmptyState
+            icon={<Receipt className="h-6 w-6" />}
+            title="No sales recorded yet"
+            description="Open a watch in the inventory and choose “Mark as sold”. Profit and margin are worked out for you."
+            action={<LinkButton href="/inventory">Go to the inventory</LinkButton>}
+          />
+        </Card>
+      ) : (
+        <>
+      <section aria-label="Sales summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="Sales" value={summary.count} caption="in the current view" />
         <StatCard label="Revenue" value={money(summary.revenueGbp)} caption="gross, excluding fees" />
         <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
@@ -81,15 +99,17 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       <Card className="overflow-hidden">
         {result.total === 0 ? (
           <EmptyState
-            icon={<Receipt className="h-6 w-6" />}
-            title="No sales recorded yet"
-            description="Open a watch from the inventory and choose “Record sale”. Profit and margin are calculated for you."
-            action={<LinkButton href="/inventory">Go to inventory</LinkButton>}
+            icon={<SearchX className="h-6 w-6" />}
+            title="No sales match these filters"
+            description="Try a wider date range, or clear the filters to see everything."
+            action={<LinkButton href="/sales" variant="secondary">Clear filters</LinkButton>}
           />
         ) : (
           <SalesTable result={result} />
         )}
       </Card>
+        </>
+      )}
     </>
   )
 }

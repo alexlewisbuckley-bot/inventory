@@ -1,6 +1,6 @@
 'use client'
 import { useListQuery } from '@/hooks/useListQuery'
-import { Button, Pagination } from '@/components/ui'
+import { Button, Pagination, ToolbarRow, ToolbarSelect } from '@/components/ui'
 import { AUDIT_ACTIONS, AUDIT_ACTION_LABELS } from '@/lib/enums'
 
 const ENTITY_TYPES = ['Watch', 'Sale', 'User', 'Supplier', 'Location', 'AppSetting'] as const
@@ -10,37 +10,23 @@ export function AuditFilters() {
   const query = useListQuery()
 
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-3">
-      <label className="flex items-center gap-2">
-        <span className="text-caption font-semibold text-content-secondary">Entity</span>
-        <select
-          value={query.get('entityType') ?? ''}
-          onChange={(e) => query.set('entityType', e.target.value || null)}
-          className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-small"
-        >
-          <option value="">All</option>
-          {ENTITY_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
-        </select>
-      </label>
-
-      <label className="flex items-center gap-2">
-        <span className="text-caption font-semibold text-content-secondary">Action</span>
-        <select
-          value={query.get('action') ?? ''}
-          onChange={(e) => query.set('action', e.target.value || null)}
-          className="rounded-md border border-line-subtle bg-surface-raised px-3 py-2.5 text-small"
-        >
-          <option value="">All</option>
-          {AUDIT_ACTIONS.map((action) => (
-            <option key={action} value={action}>{AUDIT_ACTION_LABELS[action]}</option>
-          ))}
-        </select>
-      </label>
-
+    <ToolbarRow className="mb-6">
+      <ToolbarSelect
+        label="Entity"
+        value={query.get('entityType') ?? ''}
+        onChange={(value) => query.set('entityType', value || null)}
+        options={ENTITY_TYPES.map((type) => ({ value: type, label: type }))}
+      />
+      <ToolbarSelect
+        label="Action"
+        value={query.get('action') ?? ''}
+        onChange={(value) => query.set('action', value || null)}
+        options={AUDIT_ACTIONS.map((action) => ({ value: action, label: AUDIT_ACTION_LABELS[action] }))}
+      />
       {query.activeFilterCount > 0 && (
         <Button variant="ghost" size="sm" onClick={query.clearAll}>Clear filters</Button>
       )}
-    </div>
+    </ToolbarRow>
   )
 }
 

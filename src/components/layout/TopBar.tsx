@@ -28,7 +28,7 @@ export function TopBar({ user, unreadCount, counts }: {
         {/* The wordmark appears only where the sidebar is hidden and there is
             room for it: on the narrowest screens the controls win. */}
         <Link href="/" className="hidden items-center gap-2 sm:flex lg:hidden" aria-label="Bluecroft Stock — dashboard">
-          <span className="h-2 w-2 rounded-full bg-teal-500" aria-hidden />
+          <span className="h-2 w-2 rounded-pill bg-teal-500" aria-hidden />
           <span className="text-body-lg font-extrabold text-content-primary">bluecroft</span>
         </Link>
 
@@ -37,12 +37,12 @@ export function TopBar({ user, unreadCount, counts }: {
           <CurrencySwitcher />
           <Link
             href="/notifications"
-            className="relative rounded-md p-2 text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary"
+            className="relative flex h-9 w-9 items-center justify-center rounded-md text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary"
             aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
           >
             <Bell className="h-[18px] w-[18px]" aria-hidden />
             {unreadCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-state-danger px-1 text-[10px] font-bold text-white">
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-pill bg-state-danger px-1 text-micro font-bold text-white">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}

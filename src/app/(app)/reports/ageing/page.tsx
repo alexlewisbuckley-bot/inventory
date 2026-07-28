@@ -41,7 +41,7 @@ export default async function AgeingReportPage() {
         description={`Watches held longer than ${threshold} days, oldest first. Capital here is not working.`}
       />
 
-      <section aria-label="Ageing summary" className="mb-8 grid gap-6 sm:grid-cols-3">
+      <section aria-label="Ageing summary" className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6">
         <StatCard label="Ageing watches" value={rows.length} caption={`over ${threshold} days held`} />
         <StatCard label="Capital tied up" value={formatMoney(capital, 'GBP')} caption="in ageing stock" />
         <StatCard label="Oldest holding" value={oldest !== null ? `${oldest} days` : '—'} tone={oldest && oldest > 180 ? 'danger' : 'default'} />

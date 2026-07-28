@@ -12,7 +12,7 @@ export function Avatar({ initials, id, size = 'md', className }: {
   const hue = id ? [...id].reduce((a, c) => (a + c.charCodeAt(0)) % 360, 0) : 214
   return (
     <span
-      className={cn('inline-flex items-center justify-center rounded-full font-bold text-white select-none', SIZES[size], className)}
+      className={cn('inline-flex items-center justify-center rounded-pill font-bold text-white select-none', SIZES[size], className)}
       style={{ backgroundColor: `hsl(${hue} 45% 32%)` }}
       aria-hidden
     >
