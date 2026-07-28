@@ -18,4 +18,5 @@ export { Skeleton, SkeletonText, SkeletonTable, SkeletonCards } from './Skeleton
 export { EmptyState } from './EmptyState'
 export { Avatar } from './Avatar'
 export { ThemeProvider, useTheme, themeScript } from './ThemeProvider'
+export { CurrencyProvider, useCurrency } from './CurrencyProvider'
 export { ThemeToggle } from './ThemeToggle'

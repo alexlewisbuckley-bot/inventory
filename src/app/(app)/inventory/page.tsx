@@ -12,7 +12,11 @@ import { FilterBar } from '@/components/inventory/FilterBar'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
 import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
+import { formatPct } from '@/lib/money'
+import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
+import { BASE_CURRENCY } from '@/lib/enums'
 import { CAPABILITIES, can, type Capability } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Inventory' }
@@ -47,7 +51,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   const user = await requireCapability('watch:read')
   const query = parseQuery(searchParams)
 
-  const [result, summary, locationOptions, supplierOptions, brandOptions] = await Promise.all([
+  const [result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
     db.select({ id: locations.id, name: locations.name }).from(locations)
@@ -55,21 +59,26 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
+    getRateTable(),
+    getPreferencesFor(user.id),
   ])
+
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
 
   // Resolved once server-side so the client never re-derives permissions.
   const capabilities = Object.fromEntries(
     CAPABILITIES.map((c) => [c, can(user.role, c)]),
   ) as Record<Capability, boolean>
 
-  const margin = summary.totalCostUsd > 0 ? (summary.estProfitUsd / summary.totalCostUsd) * 100 : null
+  const margin = summary.totalCostGbp > 0 ? (summary.estProfitGbp / summary.totalCostGbp) * 100 : null
   const watchId = typeof searchParams.watch === 'string' ? searchParams.watch : null
 
   return (
     <>
       <PageHeader
         title="Stock Inventory"
-        description={`${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${formatMoney(summary.totalCostGbp, 'GBP')} invested`}
+        description={`${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${money(summary.totalCostGbp)} invested`}
         actions={
           <>
             {capabilities['data:import'] && (
@@ -91,11 +100,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <section aria-label="Summary of the current view" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
-        <StatCard label="Capital invested" value={formatMoney(summary.totalCostGbp, 'GBP')} caption={`avg ${formatMoney(summary.avgCostGbp, 'GBP')} per watch`} />
-        <StatCard label="Est. sale value" value={formatMoney(summary.estSaleUsd, 'USD')} caption={`${summary.pricedCount} priced`} />
+        <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
+        <StatCard label="Est. sale value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
         <StatCard
           label="Est. profit"
-          value={formatSigned(summary.estProfitUsd, 'USD')}
+          value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
           caption={margin !== null ? `${formatPct(margin)} on priced stock` : '—'}
           tone="accent"
         />

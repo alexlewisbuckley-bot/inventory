@@ -170,8 +170,16 @@ export const watches = pgTable(
     /** GBP→USD rate at purchase, stored as an integer ×10000. */
     purchaseFxRate: integer('purchase_fx_rate'),
 
-    /** Target sale price, USD minor units. NULL means "not yet priced". */
+    /** Legacy USD estimate, retained so historic exports still reconcile. */
     estSaleUsd: integer('est_sale_usd'),
+    /** Target sale price in GBP minor units — the figure reports aggregate. */
+    estSaleGbp: integer('est_sale_gbp'),
+    /** The amount and currency actually quoted, preserved as entered. */
+    estSaleAmount: integer('est_sale_amount'),
+    estSaleCurrency: text('est_sale_currency', { enum: CURRENCIES }).notNull().default('USD'),
+    /** The purchase amount and currency as agreed with the supplier. */
+    purchaseAmount: integer('purchase_amount'),
+    purchaseCurrency: text('purchase_currency', { enum: CURRENCIES }).notNull().default('GBP'),
 
     locationId: text('location_id').notNull().references(() => locations.id),
     status: text('status', { enum: WATCH_STATUSES }).notNull().default('IN_STOCK'),
@@ -221,6 +229,9 @@ export const sales = pgTable(
     saleAmountUsd: integer('sale_amount_usd').notNull(),
     saleAmountGbp: integer('sale_amount_gbp').notNull(),
     saleFxRate: integer('sale_fx_rate'),
+    /** The amount and currency the sale was actually agreed in. */
+    saleAmount: integer('sale_amount'),
+    saleCurrency: text('sale_currency', { enum: CURRENCIES }).notNull().default('USD'),
     customerName: text('customer_name'),
     customerEmail: text('customer_email'),
     channel: text('channel', { enum: SALE_CHANNELS }).notNull().default('RETAIL'),
@@ -304,6 +315,21 @@ export const notifications = pgTable(
   }),
 )
 
+/**
+ * Exchange rates, expressed as units of `code` per 1 GBP, scaled by 10,000.
+ *
+ * Rates are entered by hand rather than fetched: the team agrees deals at a
+ * rate they choose, and a live feed would silently re-price stock between one
+ * page load and the next. `updatedAt` is surfaced in the UI so anyone reading
+ * a converted figure can see how stale it is.
+ */
+export const fxRates = pgTable('fx_rates', {
+  code: text('code', { enum: CURRENCIES }).primaryKey(),
+  ratePerGbp: integer('rate_per_gbp').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedById: text('updated_by_id').references(() => users.id, { onDelete: 'set null' }),
+})
+
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
@@ -332,3 +358,4 @@ export type StockMovement = typeof stockMovements.$inferSelect
 export type AuditLog = typeof auditLogs.$inferSelect
 export type Notification = typeof notifications.$inferSelect
 export type AppSetting = typeof appSettings.$inferSelect
+export type FxRate = typeof fxRates.$inferSelect

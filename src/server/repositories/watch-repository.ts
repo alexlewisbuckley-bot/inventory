@@ -25,7 +25,12 @@ export interface WatchListItem {
   purchasePriceGbp: number
   purchasePriceUsd: number | null
   estSaleUsd: number | null
-  /** Estimated profit in USD minor units; null when the watch is unpriced. */
+  /** Estimated sale price in GBP minor units — the base every figure derives from. */
+  estSaleGbp: number | null
+  estSaleCurrency: string
+  /** Estimated profit in GBP minor units; null when the watch is unpriced. */
+  estProfitGbp: number | null
+  /** Retained for the legacy USD columns in exports. */
   estProfitUsd: number | null
   status: WatchStatus
   version: number
@@ -53,6 +58,8 @@ const listSelection = {
   purchasePriceGbp: watches.purchasePriceGbp,
   purchasePriceUsd: watches.purchasePriceUsd,
   estSaleUsd: watches.estSaleUsd,
+  estSaleGbp: watches.estSaleGbp,
+  estSaleCurrency: watches.estSaleCurrency,
   status: watches.status,
   version: watches.version,
   deletedAt: watches.deletedAt,
@@ -89,7 +96,7 @@ function buildFilters(query: WatchQuery): SQL | undefined {
   if (query.locationId?.length) clauses.push(inArray(watches.locationId, query.locationId))
   if (query.supplierId?.length) clauses.push(inArray(watches.supplierId, query.supplierId))
   if (query.brandId?.length) clauses.push(inArray(watches.brandId, query.brandId))
-  if (query.unpricedOnly) clauses.push(isNull(watches.estSaleUsd))
+  if (query.unpricedOnly) clauses.push(isNull(watches.estSaleGbp))
   if (query.purchasedFrom) clauses.push(gte(watches.purchaseDate, query.purchasedFrom))
   if (query.purchasedTo) clauses.push(lte(watches.purchaseDate, query.purchasedTo))
   if (query.minPriceGbp !== undefined) clauses.push(gte(watches.purchasePriceGbp, Math.round(query.minPriceGbp * 100)))
@@ -109,7 +116,7 @@ function buildOrder(query: WatchQuery): SQL {
     case 'status': return direction(watches.status)
     case 'location': return direction(locations.name)
     // Sorting by margin needs the derived expression, not a stored column.
-    case 'margin': return direction(sql`(${watches.estSaleUsd} - ${watches.purchasePriceUsd})`)
+    case 'margin': return direction(sql`(${watches.estSaleGbp} - ${watches.purchasePriceGbp})`)
     case 'stockNo':
     default: return direction(watches.stockNo)
   }
@@ -145,6 +152,9 @@ export async function findWatches(query: WatchQuery): Promise<WatchListResult> {
       estProfitUsd: row.estSaleUsd !== null && row.purchasePriceUsd !== null
         ? row.estSaleUsd - row.purchasePriceUsd
         : null,
+      estProfitGbp: row.estSaleGbp !== null
+        ? row.estSaleGbp - row.purchasePriceGbp
+        : null,
     })),
     total,
     page: query.page,
@@ -160,6 +170,9 @@ export interface InventorySummary {
   totalCostUsd: number
   estSaleUsd: number
   estProfitUsd: number
+  /** Aggregates in GBP minor units — the figures the UI converts for display. */
+  estSaleGbp: number
+  estProfitGbp: number
   pricedCount: number
   unpricedCount: number
   avgCostGbp: number
@@ -173,7 +186,10 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
       cost: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
       costUsd: sql<number>`coalesce(sum(${watches.purchasePriceUsd}), 0)`,
       sale: sql<number>`coalesce(sum(${watches.estSaleUsd}), 0)`,
-      priced: sql<number>`coalesce(sum(case when ${watches.estSaleUsd} is not null then 1 else 0 end), 0)`,
+      saleGbp: sql<number>`coalesce(sum(${watches.estSaleGbp}), 0)`,
+      profitGbp: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null
+        then ${watches.estSaleGbp} - ${watches.purchasePriceGbp} else 0 end), 0)`,
+      priced: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null then 1 else 0 end), 0)`,
       // Only priced rows may contribute to estimated profit, otherwise the
       // figure silently understates by counting unpriced stock as zero revenue.
       profit: sql<number>`coalesce(sum(case when ${watches.estSaleUsd} is not null
@@ -194,6 +210,8 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
     totalCostUsd: Number(row?.costUsd ?? 0),
     estSaleUsd: Number(row?.sale ?? 0),
     estProfitUsd: Number(row?.profit ?? 0),
+    estSaleGbp: Number(row?.saleGbp ?? 0),
+    estProfitGbp: Number(row?.profitGbp ?? 0),
     pricedCount: priced,
     unpricedCount: total - priced,
     avgCostGbp: total > 0 ? Math.round(cost / total) : 0,
@@ -279,7 +297,7 @@ export async function stockByLocation() {
 /** Watches with no estimated sale price — a data-quality worklist. */
 export async function countUnpriced(): Promise<number> {
   const rows = await db.select({ value: count() }).from(watches)
-    .where(and(isNull(watches.deletedAt), isNull(watches.estSaleUsd), inArray(watches.status, ['IN_STOCK', 'RESERVED'])))
+    .where(and(isNull(watches.deletedAt), isNull(watches.estSaleGbp), inArray(watches.status, ['IN_STOCK', 'RESERVED'])))
   return Number(rows[0]?.value ?? 0)
 }
 

@@ -49,8 +49,25 @@ export type Theme = (typeof THEMES)[number]
 export const DENSITIES = ['COMFORTABLE', 'COMPACT'] as const
 export type Density = (typeof DENSITIES)[number]
 
-export const CURRENCIES = ['GBP', 'USD'] as const
+export const CURRENCIES = ['GBP', 'USD', 'AED', 'HKD'] as const
 export type CurrencyCode = (typeof CURRENCIES)[number]
+
+/** The currency every amount is stored in. Everything else is converted. */
+export const BASE_CURRENCY: CurrencyCode = 'GBP'
+
+export const CURRENCY_LABELS: Record<CurrencyCode, string> = {
+  GBP: 'British pound',
+  USD: 'US dollar',
+  AED: 'UAE dirham',
+  HKD: 'Hong Kong dollar',
+}
+
+export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
+  GBP: '£',
+  USD: '$',
+  AED: 'AED',
+  HKD: 'HK$',
+}
 
 // --- Presentation metadata -------------------------------------------------
 

@@ -10,6 +10,10 @@ import { auditTrail } from '@/server/services/audit'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody, StatCard, EmptyState, LinkButton, Chip } from '@/components/ui'
 import { formatMoney, formatSigned, formatPct } from '@/lib/money'
+import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
+import { BASE_CURRENCY } from '@/lib/enums'
 import { formatDate, relativeTime, daysHeld } from '@/lib/dates'
 import { LOCATION_TYPE_LABELS, AUDIT_ACTION_LABELS, type LocationType, type AuditAction } from '@/lib/enums'
 import { watchQuerySchema } from '@/lib/validation'
@@ -27,7 +31,7 @@ export default async function DashboardPage() {
   // capital and margin figures so the tiles answer "what do we hold now?".
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
 
-  const [summary, byLocation, ageing, unpriced, soldStats, recentSales, activity] = await Promise.all([
+  const [summary, byLocation, ageing, unpriced, soldStats, recentSales, activity, rates, preferences] = await Promise.all([
     summariseInventory(activeQuery),
     stockByLocation(),
     findAgeingStock(AGEING_DAYS, 5),
@@ -49,11 +53,16 @@ export default async function DashboardPage() {
       .orderBy(desc(sales.saleDate))
       .limit(5),
     auditTrail({ perPage: 8 }),
+    getRateTable(),
+    getPreferencesFor(user.id),
   ])
 
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
+
   const sold = soldStats[0]
-  const marginOnPriced = summary.totalCostUsd > 0
-    ? (summary.estProfitUsd / summary.totalCostUsd) * 100
+  const marginOnPriced = summary.totalCostGbp > 0
+    ? (summary.estProfitGbp / summary.totalCostGbp) * 100
     : null
   const greeting = greetingFor(new Date())
 
@@ -76,19 +85,19 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Capital invested"
-          value={formatMoney(summary.totalCostGbp, 'GBP')}
-          caption={`avg ${formatMoney(summary.avgCostGbp, 'GBP')} per watch`}
+          value={money(summary.totalCostGbp)}
+          caption={`avg ${money(summary.avgCostGbp)} per watch`}
           icon={<PoundSterling className="h-4 w-4" />}
         />
         <StatCard
           label="Est. sale value"
-          value={formatMoney(summary.estSaleUsd, 'USD')}
+          value={money(summary.estSaleGbp)}
           caption={`${summary.pricedCount} of ${summary.inStockCount} watches priced`}
           icon={<TrendingUp className="h-4 w-4" />}
         />
         <StatCard
           label="Est. profit"
-          value={formatSigned(summary.estProfitUsd, 'USD')}
+          value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
           caption={marginOnPriced !== null ? `${formatPct(marginOnPriced)} margin on priced stock` : 'No priced stock yet'}
           tone="accent"
           icon={<TrendingUp className="h-4 w-4" />}
@@ -138,7 +147,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-small font-bold tabular-nums text-content-primary">
-                        {formatMoney(item.purchasePriceGbp, 'GBP')}
+                        {money(item.purchasePriceGbp)}
                       </p>
                       <p className="flex items-center justify-end gap-1 text-caption text-content-secondary">
                         <Clock className="h-3 w-3" aria-hidden />
@@ -171,7 +180,7 @@ export default async function DashboardPage() {
                     <div className="shrink-0 text-right">
                       <p className="text-body font-bold tabular-nums text-content-primary">{Number(row.count)}</p>
                       <p className="text-caption tabular-nums text-content-secondary">
-                        {formatMoney(Number(row.valueGbp), 'GBP')}
+                        {money(Number(row.valueGbp))}
                       </p>
                     </div>
                   </div>

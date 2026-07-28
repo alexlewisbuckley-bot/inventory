@@ -4,6 +4,7 @@ import { TopNav, MobileNav } from './TopNav'
 import { UserMenu } from './UserMenu'
 import { ThemeToggle } from '@/components/ui'
 import { CommandTrigger } from './CommandTrigger'
+import { CurrencySwitcher } from './CurrencySwitcher'
 import type { SessionUser } from '@/server/auth/session'
 import type { Role } from '@/lib/enums'
 
@@ -20,6 +21,7 @@ export function AppHeader({ user, unreadCount }: { user: SessionUser; unreadCoun
 
         <div className="ml-auto flex items-center gap-2">
           <CommandTrigger />
+          <CurrencySwitcher />
           <Link
             href="/notifications"
             className="relative rounded-md p-2 text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary"

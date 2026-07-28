@@ -130,3 +130,35 @@ export async function markAllNotificationsReadAction(): Promise<ActionState> {
   revalidatePath('/notifications')
   return { ok: true, message: count > 0 ? `${count} marked as read.` : 'Nothing unread.' }
 }
+
+/** Persist the header currency switch. Silent by design — the UI already switched. */
+export async function updateDisplayCurrencyAction(currency: string): Promise<ActionState> {
+  const user = await requireUser()
+  const parsed = preferencesSchema.safeParse({ displayCurrency: currency })
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+  try {
+    await updatePreferences(user.id, parsed.data)
+    return { ok: true }
+  } catch (error) {
+    return toState(error, 'Could not save your currency preference.')
+  }
+}
+
+/** Update exchange rates from the currencies settings screen. */
+export async function updateRatesAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const actor = await requireCapability('settings:manage')
+  const input: Record<string, number> = {}
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith('rate.')) input[key.slice(5)] = Number(value)
+  }
+  try {
+    const { updateRates } = await import('@/server/services/fx-service')
+    await updateRates(input, actor)
+    revalidatePath('/settings/currencies')
+    revalidatePath('/inventory')
+    revalidatePath('/')
+    return { ok: true, message: 'Exchange rates updated.' }
+  } catch (error) {
+    return toState(error, 'Could not update the rates.')
+  }
+}

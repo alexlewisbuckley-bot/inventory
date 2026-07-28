@@ -64,7 +64,13 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       purchasePriceGbp: priceGbp,
       purchasePriceUsd: convert(priceGbp, rate),
       purchaseFxRate: Math.round(rate * 10_000),
+      purchaseAmount: priceGbp,
+      purchaseCurrency: 'GBP',
       estSaleUsd: estSale,
+      // The estimate is quoted in USD today; the GBP base is what reports use.
+      estSaleAmount: estSale,
+      estSaleCurrency: 'USD',
+      estSaleGbp: estSale === null ? null : Math.round(estSale / rate),
       locationId: input.locationId,
       status: 'IN_STOCK',
       notes: input.notes ?? null,
@@ -131,9 +137,16 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
       patch.purchasePriceGbp = Math.round(input.purchasePriceGbp * 100)
       patch.purchasePriceUsd = convert(patch.purchasePriceGbp, rate)
       patch.purchaseFxRate = Math.round(rate * 10_000)
+      patch.purchaseAmount = patch.purchasePriceGbp
+      patch.purchaseCurrency = 'GBP'
     }
     if (input.estSaleUsd !== undefined) {
-      patch.estSaleUsd = input.estSaleUsd === null ? null : Math.round(Number(input.estSaleUsd) * 100)
+      const estimate = input.estSaleUsd === null ? null : Math.round(Number(input.estSaleUsd) * 100)
+      patch.estSaleUsd = estimate
+      patch.estSaleAmount = estimate
+      patch.estSaleCurrency = 'USD'
+      // Keep the GBP base in step, or every report silently ignores the change.
+      patch.estSaleGbp = estimate === null ? null : Math.round(estimate / rate)
     }
 
     // A location change is a stock movement in its own right, not just a field edit.
@@ -238,6 +251,8 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       saleAmountUsd: saleUsd,
       saleAmountGbp: saleGbp,
       saleFxRate: Math.round(rate * 10_000),
+      saleAmount: saleUsd,
+      saleCurrency: 'USD',
       customerName: input.customerName ?? null,
       customerEmail: input.customerEmail ?? null,
       channel: input.channel,

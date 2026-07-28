@@ -8,9 +8,8 @@ import { useListQuery } from '@/hooks/useListQuery'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
 import {
   Table, THead, TBody, TR, TD, TH, Pagination, StatusChip, UnpricedChip,
-  EmptyState, Button, LinkButton, SkeletonTable,
+  EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
 } from '@/components/ui'
-import { formatMoney, formatSigned } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
@@ -220,8 +219,10 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, onSell }: {
   onSell: () => void
 }) {
   const query = useListQuery()
+  const { money, signed } = useCurrency()
   const sold = watch.status === 'SOLD'
-  const profit = sold ? watch.actualProfitUsd : watch.estProfitUsd
+  // Sold rows show realised figures; everything else shows the estimate.
+  const profit = sold ? watch.actualProfitUsd : watch.estProfitGbp
 
   return (
     <TR selected={selected} className={cn('group', watch.deletedAt && 'opacity-50')}>
@@ -249,15 +250,11 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, onSell }: {
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
       {show('supplier') && <TD className="text-content-secondary">{watch.supplierName}</TD>}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
-      {show('cost') && <TD align="right" className="font-bold">{formatMoney(watch.purchasePriceGbp, 'GBP')}</TD>}
-      {show('estSale') && (
-        <TD align="right">
-          {sold ? formatMoney(watch.soldAmountUsd, 'USD') : formatMoney(watch.estSaleUsd, 'USD')}
-        </TD>
-      )}
+      {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
+      {show('estSale') && <TD align="right">{money(watch.estSaleGbp)}</TD>}
       {show('profit') && (
         <TD align="right" className={cn('font-bold', profit !== null && profit >= 0 ? 'text-content-accent' : profit !== null ? 'text-state-danger' : '')}>
-          {profit !== null ? formatSigned(profit, 'USD') : '—'}
+          {profit !== null ? signed(profit) : '—'}
         </TD>
       )}
       {show('location') && <TD className="text-content-secondary">{watch.locationName}</TD>}
