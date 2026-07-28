@@ -3,8 +3,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowRightLeft, Pencil, Receipt } from 'lucide-react'
-import { Drawer, Button, LinkButton, StatusChip, Chip, useToast } from '@/components/ui'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
+import { Drawer, Button, LinkButton, StatusChip, Chip, useToast, useCurrency } from '@/components/ui'
+import { formatPct } from '@/lib/money'
 import { formatDate, relativeTime } from '@/lib/dates'
 import {
   AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS,
@@ -29,14 +29,13 @@ export interface DrawerRecord {
   notes: string | null
   purchaseDate: string
   purchasePriceGbp: number
-  purchasePriceUsd: number | null
-  estSaleUsd: number | null
+  estSaleGbp: number | null
   brandName: string
   supplierName: string
   locationName: string
   locationId: string
   createdByName: string
-  sale: { invoiceNo: string; saleDate: string; amountUsd: number; profitUsd: number; marginBps: number } | null
+  sale: { invoiceNo: string; saleDate: string; amountGbp: number; profitGbp: number; marginBps: number } | null
 }
 
 export interface TimelineEntry {
@@ -51,6 +50,7 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
   capabilities: Record<Capability, boolean>
 }) {
   const router = useRouter()
+  const { money, signed } = useCurrency()
   const toast = useToast()
   const [moveOpen, setMoveOpen] = useState(false)
   const [saleOpen, setSaleOpen] = useState(false)
@@ -63,11 +63,9 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
     router.replace(query ? `/inventory?${query}` : '/inventory', { scroll: false })
   }
 
-  const estProfit = record.estSaleUsd !== null && record.purchasePriceUsd !== null
-    ? record.estSaleUsd - record.purchasePriceUsd
-    : null
-  const estMargin = estProfit !== null && record.purchasePriceUsd
-    ? (estProfit / record.purchasePriceUsd) * 100
+  const estProfit = record.estSaleGbp !== null ? record.estSaleGbp - record.purchasePriceGbp : null
+  const estMargin = estProfit !== null && record.purchasePriceGbp > 0
+    ? (estProfit / record.purchasePriceGbp) * 100
     : null
   const sold = record.status === 'SOLD'
 
@@ -128,21 +126,21 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
         <section aria-label="Financials" className="mb-6 rounded-md bg-surface-subtle p-4">
           <h3 className="mb-3 text-micro font-semibold uppercase tracking-wide text-content-secondary">Financials</h3>
           <dl className="flex flex-col gap-2.5">
-            <Money label="Purchase price" value={`${formatMoney(record.purchasePriceGbp, 'GBP')} · ${formatMoney(record.purchasePriceUsd, 'USD')}`} />
-            <Money label="Est. sale price" value={record.estSaleUsd !== null ? formatMoney(record.estSaleUsd, 'USD') : 'Not set'} muted={record.estSaleUsd === null} />
+            <Money label="Purchase price" value={money(record.purchasePriceGbp)} />
+            <Money label="Est. sale price" value={record.estSaleGbp !== null ? money(record.estSaleGbp) : 'Not set'} muted={record.estSaleGbp === null} />
             <Money
               label="Est. profit"
-              value={estProfit !== null ? `${formatSigned(estProfit, 'USD')}${estMargin !== null ? `  (${formatPct(estMargin)})` : ''}` : '—'}
+              value={estProfit !== null ? `${signed(estProfit)}${estMargin !== null ? `  (${formatPct(estMargin)})` : ''}` : '—'}
               tone={estProfit !== null && estProfit >= 0 ? 'accent' : estProfit !== null ? 'danger' : undefined}
             />
             <div className="my-1 h-px bg-line-subtle" />
             {record.sale ? (
               <>
-                <Money label="Actual sale" value={formatMoney(record.sale.amountUsd, 'USD')} />
+                <Money label="Actual sale" value={money(record.sale.amountGbp)} />
                 <Money
                   label="Actual profit"
-                  value={`${formatSigned(record.sale.profitUsd, 'USD')}  (${formatPct(record.sale.marginBps / 100)})`}
-                  tone={record.sale.profitUsd >= 0 ? 'accent' : 'danger'}
+                  value={`${signed(record.sale.profitGbp)}  (${formatPct(record.sale.marginBps / 100)})`}
+                  tone={record.sale.profitGbp >= 0 ? 'accent' : 'danger'}
                 />
                 <Money label="Invoice" value={`${record.sale.invoiceNo} · ${formatDate(record.sale.saleDate)}`} />
               </>

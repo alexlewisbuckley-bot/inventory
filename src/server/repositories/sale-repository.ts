@@ -21,8 +21,8 @@ export interface SaleListItem {
   supplierName: string
   costGbp: number
   costUsd: number | null
-  /** Difference between realised price and the estimate set before sale. */
-  vsEstimateUsd: number | null
+  /** Difference between realised price and the estimate set before sale, GBP. */
+  vsEstimateGbp: number | null
   recordedByName: string
 }
 
@@ -58,8 +58,8 @@ function filters(query: SaleQuery): SQL | undefined {
 function order(query: SaleQuery): SQL {
   const direction = query.dir === 'asc' ? asc : desc
   switch (query.sort) {
-    case 'amount': return direction(sales.saleAmountUsd)
-    case 'profit': return direction(sales.profitUsd)
+    case 'amount': return direction(sales.saleAmountGbp)
+    case 'profit': return direction(sales.profitGbp)
     case 'margin': return direction(sales.marginBps)
     case 'stockNo': return direction(watches.stockNo)
     case 'saleDate':
@@ -80,7 +80,7 @@ export async function findSales(query: SaleQuery) {
       channel: sales.channel, customerName: sales.customerName,
       stockNo: watches.stockNo, watchId: watches.id, model: watches.model,
       costGbp: watches.purchasePriceGbp, costUsd: watches.purchasePriceUsd,
-      estSaleUsd: watches.estSaleUsd,
+      estSaleGbp: watches.estSaleGbp,
       brandName: brands.name, supplierName: suppliers.name, recordedByName: users.name,
     })
       .from(sales)
@@ -103,7 +103,7 @@ export async function findSales(query: SaleQuery) {
     items: rows.map((row): SaleListItem => ({
       ...row,
       channel: row.channel as SaleChannel,
-      vsEstimateUsd: row.estSaleUsd !== null ? row.amountUsd - row.estSaleUsd : null,
+      vsEstimateGbp: row.estSaleGbp !== null ? row.amountGbp - row.estSaleGbp : null,
     })),
     total, page, perPage,
     pages: Math.max(1, Math.ceil(total / perPage)),
@@ -112,8 +112,9 @@ export async function findSales(query: SaleQuery) {
 
 export interface SalesSummary {
   count: number
-  revenueUsd: number
-  profitUsd: number
+  /** GBP minor units — the display layer converts to the viewer's currency. */
+  revenueGbp: number
+  profitGbp: number
   avgMarginBps: number
   bestMarginBps: number | null
   worstMarginBps: number | null
@@ -123,11 +124,11 @@ export async function summariseSales(query: SaleQuery): Promise<SalesSummary> {
   const rows = await db
     .select({
       count: count(),
-      revenue: sql<number>`coalesce(sum(${sales.saleAmountUsd}), 0)`,
-      profit: sql<number>`coalesce(sum(${sales.profitUsd}), 0)`,
+      revenue: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+      profit: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
       // Weighted by cost rather than a mean of percentages, which would
       // over-weight small watches.
-      cost: sql<number>`coalesce(sum(coalesce(${watches.purchasePriceUsd}, 0)), 0)`,
+      cost: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
       best: sql<number | null>`max(${sales.marginBps})`,
       worst: sql<number | null>`min(${sales.marginBps})`,
     })
@@ -140,8 +141,8 @@ export async function summariseSales(query: SaleQuery): Promise<SalesSummary> {
   const profit = Number(row?.profit ?? 0)
   return {
     count: Number(row?.count ?? 0),
-    revenueUsd: Number(row?.revenue ?? 0),
-    profitUsd: profit,
+    revenueGbp: Number(row?.revenue ?? 0),
+    profitGbp: profit,
     avgMarginBps: cost > 0 ? Math.round((profit / cost) * 10_000) : 0,
     bestMarginBps: row?.best !== null && row?.best !== undefined ? Number(row.best) : null,
     worstMarginBps: row?.worst !== null && row?.worst !== undefined ? Number(row.worst) : null,
@@ -156,8 +157,8 @@ export async function salesByMonth(months = 12) {
     .select({
       month: sql<string>`to_char(${sales.saleDate}, 'YYYY-MM')`,
       count: count(),
-      revenue: sql<number>`coalesce(sum(${sales.saleAmountUsd}), 0)`,
-      profit: sql<number>`coalesce(sum(${sales.profitUsd}), 0)`,
+      revenue: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+      profit: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
     })
     .from(sales)
     .where(and(isNull(sales.deletedAt), gte(sales.saleDate, since)))
@@ -174,7 +175,7 @@ export async function supplierPerformance() {
       watchCount: count(watches.id),
       totalCostGbp: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
       soldCount: sql<number>`coalesce(sum(case when ${watches.status} = 'SOLD' then 1 else 0 end), 0)`,
-      realisedProfitUsd: sql<number>`coalesce(sum(coalesce(${sales.profitUsd}, 0)), 0)`,
+      realisedProfitGbp: sql<number>`coalesce(sum(coalesce(${sales.profitGbp}, 0)), 0)`,
     })
     .from(suppliers)
     .leftJoin(watches, and(eq(watches.supplierId, suppliers.id), isNull(watches.deletedAt)))

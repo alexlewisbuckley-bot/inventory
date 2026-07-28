@@ -4,7 +4,8 @@ import { useMemo } from 'react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import { Table, THead, TBody, TR, TD, TH, Pagination, Chip } from '@/components/ui'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
+import { formatPct } from '@/lib/money'
+import { useCurrency } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
 import { SALE_CHANNEL_LABELS } from '@/lib/enums'
 import type { SaleListItem } from '@/server/repositories/sale-repository'
@@ -13,6 +14,9 @@ export function SalesTable({ result }: {
   result: { items: SaleListItem[]; total: number; page: number; perPage: number }
 }) {
   const query = useListQuery()
+  // Money renders in whatever currency the header is showing, so the table
+  // never disagrees with the summary tiles above it.
+  const { money, signed } = useCurrency()
   const sort = useMemo(
     () => ({ field: query.get('sort') ?? 'saleDate', dir: (query.get('dir') ?? 'desc') as 'asc' | 'desc' }),
     [query],
@@ -51,18 +55,18 @@ export function SalesTable({ result }: {
               <TD>
                 <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>
               </TD>
-              <TD align="right" className="text-content-secondary">{formatMoney(sale.costUsd, 'USD')}</TD>
-              <TD align="right" className="font-bold">{formatMoney(sale.amountUsd, 'USD')}</TD>
-              <TD align="right" className={cn('font-bold', sale.profitUsd >= 0 ? 'text-content-accent' : 'text-state-danger')}>
-                {formatSigned(sale.profitUsd, 'USD')}
+              <TD align="right" className="text-content-secondary">{money(sale.costGbp)}</TD>
+              <TD align="right" className="font-bold">{money(sale.amountGbp)}</TD>
+              <TD align="right" className={cn('font-bold', sale.profitGbp >= 0 ? 'text-content-accent' : 'text-state-danger')}>
+                {signed(sale.profitGbp)}
               </TD>
               <TD align="right">
                 <span className={cn('font-bold', sale.marginBps >= 0 ? 'text-content-primary' : 'text-state-danger')}>
                   {formatPct(sale.marginBps / 100)}
                 </span>
-                {sale.vsEstimateUsd !== null && sale.vsEstimateUsd !== 0 && (
+                {sale.vsEstimateGbp !== null && sale.vsEstimateGbp !== 0 && (
                   <span className="block text-micro text-content-secondary">
-                    {sale.vsEstimateUsd > 0 ? '↑' : '↓'} {formatMoney(Math.abs(sale.vsEstimateUsd), 'USD')} vs est.
+                    {sale.vsEstimateGbp > 0 ? '↑' : '↓'} {money(Math.abs(sale.vsEstimateGbp))} vs est.
                   </span>
                 )}
               </TD>

@@ -1,8 +1,9 @@
 'use client'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Download, Trash2, X } from 'lucide-react'
 import { Button, Modal, SelectField, TextareaField, ConfirmDialog, useToast } from '@/components/ui'
-import { moveWatchesAction, deleteWatchAction } from '@/app/actions/watches'
+import { moveWatchesAction, deleteWatchAction, restoreWatchAction } from '@/app/actions/watches'
 import type { Capability } from '@/lib/permissions'
 import type { FilterOption } from './FilterBar'
 
@@ -20,6 +21,7 @@ export function BulkActionBar({ count, watchIds, locations, capabilities, onClea
   onClear: () => void
 }) {
   const toast = useToast()
+  const router = useRouter()
   const [moveOpen, setMoveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -46,17 +48,52 @@ export function BulkActionBar({ count, watchIds, locations, capabilities, onClea
     }
   }
 
+  /**
+   * Deletion is reversible, so the confirmation is followed by an undo rather
+   * than leaning on the user to find the deleted filter. The toast holds for
+   * twelve seconds — long enough to notice a mistake, short enough not to
+   * linger — and restores exactly the rows that were actually removed.
+   */
   const handleDelete = async () => {
     setBusy(true)
-    const results = await Promise.all(watchIds.map((id) => deleteWatchAction(id)))
+    const results = await Promise.all(watchIds.map(async (id) => ({ id, result: await deleteWatchAction(id) })))
     setBusy(false)
-    const failed = results.filter((r) => !r.ok).length
     setDeleteOpen(false)
-    if (failed === 0) {
-      toast.success(`${count} ${count === 1 ? 'watch' : 'watches'} deleted`, 'They can be restored from the deleted filter.')
+
+    const removed = results.filter((r) => r.result.ok).map((r) => r.id)
+    const failed = results.length - removed.length
+
+    if (removed.length > 0) {
+      toast.toast({
+        tone: 'success',
+        title: `${removed.length} ${removed.length === 1 ? 'watch' : 'watches'} deleted`,
+        description: failed > 0
+          ? `${failed} could not be deleted — sold watches are part of the sales record.`
+          : undefined,
+        duration: 12_000,
+        action: capabilities['watch:restore']
+          ? {
+            label: 'Undo',
+            onClick: async () => {
+              const undone = await Promise.all(removed.map((id) => restoreWatchAction(id)))
+              const back = undone.filter((r) => r.ok).length
+              if (back === removed.length) {
+                toast.success(`${back} ${back === 1 ? 'watch' : 'watches'} restored`)
+              } else {
+                toast.error('Could not restore everything', `${back} of ${removed.length} came back.`)
+              }
+              router.refresh()
+            },
+          }
+          : undefined,
+      })
       onClear()
+      router.refresh()
     } else {
-      toast.error(`${failed} could not be deleted`, 'Sold watches are part of the sales record and cannot be removed.')
+      toast.error(
+        `${failed} could not be deleted`,
+        'Sold watches are part of the sales record and cannot be removed.',
+      )
     }
   }
 
@@ -142,7 +179,7 @@ export function BulkActionBar({ count, watchIds, locations, capabilities, onClea
         onConfirm={handleDelete}
         loading={busy}
         title={`Delete ${count} ${count === 1 ? 'watch' : 'watches'}?`}
-        message="They will be hidden from the inventory but kept for audit, and can be restored later. Sold watches cannot be deleted."
+        message="They will be hidden from the inventory but kept for audit. You can undo this straight afterwards, or restore them later from the deleted filter. Sold watches cannot be deleted."
         confirmLabel="Delete"
       />
     </>

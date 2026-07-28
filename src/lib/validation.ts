@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import {
-  BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, LOCATION_TYPES,
+  BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, LOCATION_TYPES,
   ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
 } from './enums'
 
@@ -110,7 +110,9 @@ export const saleCreateSchema = z.object({
   invoiceNo: trimmed.min(1, 'Invoice number is required.').max(40),
   saleDate: z.coerce.date({ invalid_type_error: 'Enter a valid sale date.' })
     .max(new Date(Date.now() + 86_400_000), 'Sale date cannot be in the future.'),
-  saleAmountUsd: money('Sale amount'),
+  /** The amount as actually agreed, in the currency it was agreed in. */
+  saleAmount: money('Sale amount'),
+  saleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   channel: z.enum(SALE_CHANNELS).default('RETAIL'),
   customerName: optionalText(120),
   customerEmail: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),

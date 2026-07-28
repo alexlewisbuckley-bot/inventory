@@ -1,10 +1,11 @@
 'use client'
 import { useMemo, useState } from 'react'
-import { Modal, Button, TextField, SelectField, TextareaField, useToast } from '@/components/ui'
+import { Modal, Button, TextField, SelectField, TextareaField, MoneyField, useToast, useCurrency } from '@/components/ui'
 import { recordSaleAction } from '@/app/actions/watches'
-import { formatMoney, formatSigned, formatPct, parseMoneyInput } from '@/lib/money'
+import { formatPct, parseMoneyInput } from '@/lib/money'
+import { toBase } from '@/lib/currency'
 import { formatDate, toDateInput } from '@/lib/dates'
-import { SALE_CHANNELS, SALE_CHANNEL_LABELS } from '@/lib/enums'
+import { SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode } from '@/lib/enums'
 import type { DrawerRecord } from './WatchDrawerClient'
 
 /**
@@ -21,7 +22,9 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
   onRecorded: () => void
 }) {
   const toast = useToast()
+  const { currency: display, rates, money, signed } = useCurrency()
   const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState<CurrencyCode>(display)
   const [invoiceNo, setInvoiceNo] = useState('')
   const [saleDate, setSaleDate] = useState(toDateInput(new Date()))
   const [channel, setChannel] = useState('RETAIL')
@@ -31,16 +34,18 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const projection = useMemo(() => {
-    const saleMinor = parseMoneyInput(amount)
-    const cost = watch.purchasePriceUsd
-    if (saleMinor === null || cost === null) return null
-    const profit = saleMinor - cost
+    const entered = parseMoneyInput(amount)
+    if (entered === null || watch.purchasePriceGbp === 0) return null
+    // Everything is compared in the GBP base, so a sale agreed in dirhams and
+    // a cost recorded in sterling still produce an honest margin.
+    const saleGbp = toBase(entered, currency, rates)
+    const profit = saleGbp - watch.purchasePriceGbp
     return {
       profit,
-      margin: (profit / cost) * 100,
-      vsEstimate: watch.estSaleUsd !== null ? saleMinor - watch.estSaleUsd : null,
+      margin: (profit / watch.purchasePriceGbp) * 100,
+      vsEstimate: watch.estSaleGbp !== null ? saleGbp - watch.estSaleGbp : null,
     }
-  }, [amount, watch.purchasePriceUsd, watch.estSaleUsd])
+  }, [amount, currency, rates, watch.purchasePriceGbp, watch.estSaleGbp])
 
   const submit = async () => {
     setBusy(true)
@@ -49,7 +54,9 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
     data.set('watchId', watch.id)
     data.set('invoiceNo', invoiceNo)
     data.set('saleDate', saleDate)
-    data.set('saleAmountUsd', String(parseMoneyInput(amount) ? parseMoneyInput(amount)! / 100 : ''))
+    const minor = parseMoneyInput(amount)
+    data.set('saleAmount', minor !== null ? String(minor / 100) : '')
+    data.set('saleCurrency', currency)
     data.set('channel', channel)
     data.set('customerName', customerName)
     data.set('notes', notes)
@@ -85,12 +92,12 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
             {watch.model}{watch.serial ? ` · Serial ${watch.serial}` : ''}
           </p>
           <p className="text-caption text-content-secondary">
-            Bought {formatDate(watch.purchaseDate)} · {formatMoney(watch.purchasePriceGbp, 'GBP')} ({formatMoney(watch.purchasePriceUsd, 'USD')}) · {watch.supplierName}
+            Bought {formatDate(watch.purchaseDate)} · {money(watch.purchasePriceGbp)} · {watch.supplierName}
           </p>
         </div>
-        {watch.estSaleUsd !== null && (
+        {watch.estSaleGbp !== null && (
           <div className="shrink-0 text-right">
-            <p className="text-small font-bold text-navy-700">Est. {formatMoney(watch.estSaleUsd, 'USD')}</p>
+            <p className="text-small font-bold tabular-nums text-navy-700">Est. {money(watch.estSaleGbp)}</p>
           </div>
         )}
       </div>
@@ -106,10 +113,14 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
           value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)}
           placeholder="INV-2026-118" error={errors.invoiceNo}
         />
-        <TextField
-          label="Sale amount (USD)" required inputMode="decimal" prefix="$"
-          value={amount} onChange={(e) => setAmount(e.target.value)}
-          placeholder="18,900.00" error={errors.saleAmountUsd}
+        <MoneyField
+          label="Sale amount"
+          required
+          amount={amount}
+          currency={currency}
+          onAmountChange={setAmount}
+          onCurrencyChange={setCurrency}
+          error={errors.saleAmount}
         />
         <SelectField
           label="Channel" value={channel} onChange={(e) => setChannel(e.target.value)}
@@ -134,13 +145,13 @@ export function RecordSaleModal({ open, onClose, watch, onRecorded }: {
           {projection ? (
             <>
               <p className="text-h3 font-extrabold text-content-accent tabular-nums">
-                {formatSigned(projection.profit, 'USD')} · {formatPct(projection.margin)}
+                {signed(projection.profit)} · {formatPct(projection.margin)}
               </p>
               {projection.vsEstimate !== null && (
                 <p className="text-micro text-content-secondary">
                   {projection.vsEstimate === 0
                     ? 'Exactly on estimate'
-                    : `${formatMoney(Math.abs(projection.vsEstimate), 'USD')} ${projection.vsEstimate > 0 ? 'ahead of' : 'below'} estimate`}
+                    : `${money(Math.abs(projection.vsEstimate))} ${projection.vsEstimate > 0 ? 'ahead of' : 'below'} estimate`}
                 </p>
               )}
             </>

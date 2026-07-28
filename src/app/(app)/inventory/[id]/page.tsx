@@ -9,10 +9,13 @@ import { listImages } from '@/server/services/image-service'
 import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
+import { formatPct } from '@/lib/money'
+import { formatBase, formatBaseSigned, describeRate, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatDate, formatDateTime, daysHeld } from '@/lib/dates'
 import {
-  AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS,
+  AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
   type AuditAction, type BoxPapers, type Condition, type WatchStatus,
 } from '@/lib/enums'
 import { can } from '@/lib/permissions'
@@ -35,14 +38,22 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   const record = await getWatchDetail(params.id).catch(() => null)
   if (!record) notFound()
 
-  const [timeline, images] = await Promise.all([
+  const [timeline, images, rates, preferences] = await Promise.all([
     auditForEntity('Watch', params.id, 100),
     listImages(params.id),
+    getRateTable(),
+    getPreferencesFor(user.id),
   ])
   const { watch, brand, supplier, location, sale } = record
 
-  const estProfit = watch.estSaleUsd !== null && watch.purchasePriceUsd !== null
-    ? watch.estSaleUsd - watch.purchasePriceUsd
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
+  const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
+
+  // Estimate and cost are both held in GBP, so the margin is computed there
+  // and only converted for display — never the other way round.
+  const estProfit = watch.estSaleGbp !== null
+    ? watch.estSaleGbp - watch.purchasePriceGbp
     : null
   const held = daysHeld(watch.purchaseDate)
 
@@ -68,12 +79,24 @@ export default async function WatchDetailPage({ params }: { params: { id: string
       />
 
       <section aria-label="Financial summary" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Purchase price" value={formatMoney(watch.purchasePriceGbp, 'GBP')} caption={formatMoney(watch.purchasePriceUsd, 'USD')} />
-        <StatCard label="Est. sale price" value={watch.estSaleUsd !== null ? formatMoney(watch.estSaleUsd, 'USD') : 'Not set'} caption={watch.estSaleUsd === null ? 'Needs a price' : 'Target'} />
+        <StatCard
+          label="Purchase price"
+          value={money(watch.purchasePriceGbp)}
+          caption={currency === BASE_CURRENCY ? undefined : describeRate(currency, rates)}
+        />
+        <StatCard
+          label="Est. sale price"
+          value={watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'Not set'}
+          caption={watch.estSaleGbp === null ? 'Needs a price' : 'Target'}
+        />
         <StatCard
           label={sale ? 'Actual profit' : 'Est. profit'}
-          value={sale ? formatSigned(sale.profitUsd, 'USD') : estProfit !== null ? formatSigned(estProfit, 'USD') : '—'}
-          caption={sale ? formatPct(sale.marginBps / 100) : estProfit !== null && watch.purchasePriceUsd ? `${formatPct((estProfit / watch.purchasePriceUsd) * 100)} margin` : undefined}
+          value={sale ? signed(sale.profitGbp) : estProfit !== null ? signed(estProfit) : '—'}
+          caption={sale
+            ? formatPct(sale.marginBps / 100)
+            : estProfit !== null && watch.purchasePriceGbp > 0
+              ? `${formatPct((estProfit / watch.purchasePriceGbp) * 100)} margin`
+              : undefined}
           tone="accent"
         />
         <StatCard label="Days held" value={held ?? '—'} caption={`Purchased ${formatDate(watch.purchaseDate)}`} />
@@ -125,7 +148,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
               <CardBody>
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <Row label="Sale date" value={formatDate(sale.saleDate)} />
-                  <Row label="Sale amount" value={`${formatMoney(sale.saleAmountUsd, 'USD')} · ${formatMoney(sale.saleAmountGbp, 'GBP')}`} />
+                  <Row label="Sale amount" value={money(sale.saleAmountGbp)} />
                   <Row label="Customer" value={sale.customerName ?? '—'} />
                   <Row label="Channel" value={sale.channel} />
                 </dl>

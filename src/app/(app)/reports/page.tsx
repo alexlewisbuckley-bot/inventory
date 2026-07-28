@@ -8,24 +8,35 @@ import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, StatCard, EmptyState } from '@/components/ui'
 import { MonthlyChart } from '@/components/reports/MonthlyChart'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
-import { LOCATION_TYPE_LABELS, type LocationType } from '@/lib/enums'
+import { formatPct } from '@/lib/money'
+import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
+import { BASE_CURRENCY, LOCATION_TYPE_LABELS, type LocationType } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Reports' }
 export const dynamic = 'force-dynamic'
 
 export default async function ReportsPage() {
-  await requireCapability('report:read')
+  const user = await requireCapability('report:read')
 
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
-  const [inventory, sales, monthly, suppliers, byLocation, ageing] = await Promise.all([
+  const [inventory, sales, monthly, suppliers, byLocation, ageing, rates, preferences] = await Promise.all([
     summariseInventory(activeQuery),
     summariseSales({}),
     salesByMonth(12),
     supplierPerformance(),
     stockByLocation(),
     findAgeingStock(90, 100),
+    getRateTable(),
+    getPreferencesFor(user.id),
   ])
+
+  // Every figure below is stored in GBP and rendered in the viewer's chosen
+  // currency, so the page can never mix symbols the way it used to.
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
+  const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
 
   const turnover = inventory.totalCostGbp > 0 && sales.count > 0
     ? sales.count / (inventory.inStockCount + sales.count)
@@ -39,9 +50,9 @@ export default async function ReportsPage() {
       />
 
       <section aria-label="Headline figures" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Capital deployed" value={formatMoney(inventory.totalCostGbp, 'GBP')} caption={`${inventory.inStockCount} watches held`} />
-        <StatCard label="Lifetime revenue" value={formatMoney(sales.revenueUsd, 'USD')} caption={`${sales.count} sales`} />
-        <StatCard label="Lifetime profit" value={formatSigned(sales.profitUsd, 'USD')} tone="accent" caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin`} />
+        <StatCard label="Capital deployed" value={money(inventory.totalCostGbp)} caption={`${inventory.inStockCount} watches held`} />
+        <StatCard label="Lifetime revenue" value={money(sales.revenueGbp)} caption={`${sales.count} sales`} />
+        <StatCard label="Lifetime profit" value={signed(sales.profitGbp)} tone="accent" caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin`} />
         <StatCard label="Sell-through" value={formatPct(turnover * 100, 0)} caption="of all stock ever acquired" />
       </section>
 
@@ -76,7 +87,7 @@ export default async function ReportsPage() {
                   <p className="text-caption text-content-secondary">{LOCATION_TYPE_LABELS[row.type as LocationType]}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-body font-bold tabular-nums text-content-primary">{formatMoney(Number(row.valueGbp), 'GBP')}</p>
+                  <p className="text-body font-bold tabular-nums text-content-primary">{money(Number(row.valueGbp))}</p>
                   <p className="text-caption tabular-nums text-content-secondary">{Number(row.count)} watches</p>
                 </div>
               </li>
@@ -100,14 +111,14 @@ export default async function ReportsPage() {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="text-body font-bold tabular-nums text-content-primary">
-                      {formatMoney(Number(supplier.totalCostGbp), 'GBP')}
+                      {money(Number(supplier.totalCostGbp))}
                     </p>
                     <p className={
-                      Number(supplier.realisedProfitUsd) >= 0
+                      Number(supplier.realisedProfitGbp) >= 0
                         ? 'text-caption tabular-nums text-content-accent'
                         : 'text-caption tabular-nums text-state-danger'
                     }>
-                      {formatSigned(Number(supplier.realisedProfitUsd), 'USD')} realised
+                      {signed(Number(supplier.realisedProfitGbp))} realised
                     </p>
                   </div>
                 </div>
@@ -141,7 +152,7 @@ export default async function ReportsPage() {
             <div className="px-6 py-5">
               <p className="text-h2 font-extrabold text-content-primary">{ageing.length}</p>
               <p className="mt-1 text-small text-content-secondary">
-                watches, {formatMoney(ageing.reduce((sum, a) => sum + a.purchasePriceGbp, 0), 'GBP')} of capital
+                watches, {money(ageing.reduce((sum, a) => sum + a.purchasePriceGbp, 0))} of capital
                 sitting longer than 90 days.
               </p>
               <ul className="mt-4 flex flex-col gap-2">

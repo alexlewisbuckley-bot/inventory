@@ -6,8 +6,11 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SalesTable } from '@/components/sales/SalesTable'
 import { SalesFilterBar } from '@/components/sales/SalesFilterBar'
 import { Card, StatCard, LinkButton, EmptyState } from '@/components/ui'
-import { formatMoney, formatSigned, formatPct } from '@/lib/money'
-import { SALE_CHANNELS, type SaleChannel } from '@/lib/enums'
+import { formatPct } from '@/lib/money'
+import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
+import { BASE_CURRENCY, SALE_CHANNELS, type SaleChannel } from '@/lib/enums'
 import { can } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Sales' }
@@ -35,7 +38,15 @@ function parseQuery(searchParams: SearchParams): SaleQuery {
 export default async function SalesPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('sale:read')
   const query = parseQuery(searchParams)
-  const [result, summary] = await Promise.all([findSales(query), summariseSales(query)])
+  const [result, summary, rates, preferences] = await Promise.all([
+    findSales(query),
+    summariseSales(query),
+    getRateTable(),
+    getPreferencesFor(user.id),
+  ])
+
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
 
   const exportable = can(user.role, 'report:export')
 
@@ -44,7 +55,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       <PageHeader
         title="Sales"
         description={summary.count > 0
-          ? `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'} in this view · ${formatMoney(summary.revenueUsd, 'USD')} revenue`
+          ? `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'} in this view · ${money(summary.revenueGbp)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
         actions={exportable
           ? <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export CSV</LinkButton>
@@ -53,8 +64,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
 
       <section aria-label="Sales summary" className="mb-8 grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Sales" value={summary.count} caption="in the current view" />
-        <StatCard label="Revenue" value={formatMoney(summary.revenueUsd, 'USD')} caption="gross, excluding fees" />
-        <StatCard label="Realised profit" value={formatSigned(summary.profitUsd, 'USD')} tone="accent" caption="sale price minus purchase cost" />
+        <StatCard label="Revenue" value={money(summary.revenueGbp)} caption="gross, excluding fees" />
+        <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
         <StatCard
           label="Weighted margin"
           value={formatPct(summary.avgMarginBps / 100)}

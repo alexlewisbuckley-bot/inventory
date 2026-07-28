@@ -178,9 +178,8 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
                   stockNo: watch.stockNo,
                   model: watch.model,
                   brandName: watch.brandName,
-                  purchasePriceUsd: watch.purchasePriceUsd,
                   purchasePriceGbp: watch.purchasePriceGbp,
-                  estSaleUsd: watch.estSaleUsd,
+                  estSaleGbp: watch.estSaleGbp,
                 })}
               />
             ))}

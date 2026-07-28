@@ -40,8 +40,7 @@ export async function WatchDrawer({ watchId, capabilities }: {
         notes: record.watch.notes,
         purchaseDate: record.watch.purchaseDate.toISOString(),
         purchasePriceGbp: record.watch.purchasePriceGbp,
-        purchasePriceUsd: record.watch.purchasePriceUsd,
-        estSaleUsd: record.watch.estSaleUsd,
+        estSaleGbp: record.watch.estSaleGbp,
         brandName: record.brand.name,
         supplierName: record.supplier.name,
         locationName: record.location.name,
@@ -51,8 +50,8 @@ export async function WatchDrawer({ watchId, capabilities }: {
           ? {
               invoiceNo: record.sale.invoiceNo,
               saleDate: record.sale.saleDate.toISOString(),
-              amountUsd: record.sale.saleAmountUsd,
-              profitUsd: record.sale.profitUsd,
+              amountGbp: record.sale.saleAmountGbp,
+              profitGbp: record.sale.profitGbp,
               marginBps: record.sale.marginBps,
             }
           : null,

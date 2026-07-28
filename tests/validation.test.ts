@@ -40,10 +40,29 @@ describe('watch validation', () => {
 })
 
 describe('sale validation', () => {
-  const baseSale = { watchId: 'wch_1', invoiceNo: 'INV-2026-118', saleDate: '2026-07-01', saleAmountUsd: 18900 }
+  const baseSale = { watchId: 'wch_1', invoiceNo: 'INV-2026-118', saleDate: '2026-07-01', saleAmount: 18900 }
 
   it('accepts a complete sale', () => {
     expect(saleCreateSchema.safeParse(baseSale).success).toBe(true)
+  })
+
+  it('defaults an omitted sale currency to the reporting base', () => {
+    // A sale posted without a currency must not be silently treated as USD —
+    // every stored figure derives from this, so the default has to be the
+    // currency the rest of the system reports in.
+    const result = saleCreateSchema.safeParse(baseSale)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.saleCurrency).toBe('GBP')
+  })
+
+  it('accepts a sale agreed in a non-base currency', () => {
+    const result = saleCreateSchema.safeParse({ ...baseSale, saleCurrency: 'AED' })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.saleCurrency).toBe('AED')
+  })
+
+  it('rejects a currency the application does not support', () => {
+    expect(saleCreateSchema.safeParse({ ...baseSale, saleCurrency: 'EUR' }).success).toBe(false)
   })
 
   it('requires an invoice number', () => {

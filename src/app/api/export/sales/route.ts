@@ -9,9 +9,12 @@ import { toCsv } from '@/lib/csv'
 
 export const dynamic = 'force-dynamic'
 
+// GBP is the reporting base, so the export leads with it. USD is retained
+// because historic exports were denominated that way and downstream
+// spreadsheets still reconcile against the column.
 const COLUMNS = [
   'Invoice', 'Sale Date', 'Stock No', 'Brand', 'Model', 'Supplier', 'Customer', 'Channel',
-  'Cost (USD)', 'Sale (USD)', 'Sale (GBP)', 'Profit (USD)', 'Margin %',
+  'Cost (GBP)', 'Sale (GBP)', 'Profit (GBP)', 'Margin %', 'Sale (USD)',
 ] as const
 
 /** CSV export of the sales ledger, honouring the current filters. */
@@ -35,9 +38,11 @@ export async function GET(request: NextRequest) {
   const csv = toCsv(COLUMNS, items.map((s) => [
     s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,
     s.supplierName, s.customerName, s.channel,
-    s.costUsd !== null ? toMajor(s.costUsd).toFixed(2) : '',
-    toMajor(s.amountUsd).toFixed(2), toMajor(s.amountGbp).toFixed(2),
-    toMajor(s.profitUsd).toFixed(2), (s.marginBps / 100).toFixed(2),
+    toMajor(s.costGbp).toFixed(2),
+    toMajor(s.amountGbp).toFixed(2),
+    toMajor(s.profitGbp).toFixed(2),
+    (s.marginBps / 100).toFixed(2),
+    toMajor(s.amountUsd).toFixed(2),
   ]))
 
   await recordAudit({

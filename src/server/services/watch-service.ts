@@ -7,6 +7,8 @@ import { findWatchById, nextStockNo } from '../repositories/watch-repository'
 import { newId } from '@/lib/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { convert, marginPct } from '@/lib/money'
+import { toBase } from '@/lib/currency'
+import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
 import type { SessionUser } from '../auth/session'
 import type { WatchCreateInput, WatchUpdateInput, SaleCreateInput } from '@/lib/validation'
@@ -219,7 +221,7 @@ export async function moveWatches(
  * transaction — a half-applied sale would corrupt every profit report.
  */
 export async function recordSale(input: SaleCreateInput, actor: SessionUser): Promise<string> {
-  const rate = await fxRate()
+  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
 
   return withTransaction(async () => {
     const rows = await db.select().from(watches).where(eq(watches.id, input.watchId)).limit(1)
@@ -235,12 +237,18 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       })
     }
 
-    const saleUsd = Math.round(input.saleAmountUsd * 100)
-    const saleGbp = Math.round(saleUsd / rate)
+    // The sale is agreed in one currency and reported in another. The agreed
+    // figure is preserved exactly as entered; GBP is derived from it through
+    // the managed rate table and is what every report aggregates. USD is kept
+    // only so historic exports still reconcile.
+    const saleMinor = Math.round(input.saleAmount * 100)
+    const saleGbp = toBase(saleMinor, input.saleCurrency, rates)
+    const saleUsd = convert(saleGbp, rate)
     const costUsd = watch.purchasePriceUsd ?? convert(watch.purchasePriceGbp, rate)
     const profitUsd = saleUsd - costUsd
     const profitGbp = saleGbp - watch.purchasePriceGbp
-    const margin = marginPct(costUsd, saleUsd) ?? 0
+    // Margin is taken in GBP so it agrees with the profit figure beside it.
+    const margin = marginPct(watch.purchasePriceGbp, saleGbp) ?? 0
 
     const id = newId('sal')
     await db.insert(sales).values({
@@ -251,8 +259,8 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       saleAmountUsd: saleUsd,
       saleAmountGbp: saleGbp,
       saleFxRate: Math.round(rate * 10_000),
-      saleAmount: saleUsd,
-      saleCurrency: 'USD',
+      saleAmount: saleMinor,
+      saleCurrency: input.saleCurrency,
       customerName: input.customerName ?? null,
       customerEmail: input.customerEmail ?? null,
       channel: input.channel,
@@ -274,10 +282,10 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     })
 
     await notifyTeam('SALE_RECORDED', 'Sale recorded',
-      `Stock ${watch.stockNo} (${watch.model}) sold for $${(saleUsd / 100).toLocaleString()}.`,
+      `Stock ${watch.stockNo} (${watch.model}) sold for £${(saleGbp / 100).toLocaleString()}.`,
       'Watch', watch.id, actor.id)
 
-    logger.info('sale recorded', { saleId: id, watchId: watch.id, profitUsd })
+    logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
     return id
   })
 }

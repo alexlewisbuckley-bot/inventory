@@ -2,7 +2,7 @@
 import { useId, useMemo, useState } from 'react'
 import { Table2, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { formatMoney } from '@/lib/money'
+import { useCurrency } from '@/components/ui'
 import { Table, THead, TBody, TR, TD, TH } from '@/components/ui'
 
 export interface MonthPoint { month: string; revenue: number; profit: number; count: number }
@@ -22,6 +22,7 @@ export interface MonthPoint { month: string; revenue: number; profit: number; co
  * alone (legend + table).
  */
 export function MonthlyChart({ data }: { data: MonthPoint[] }) {
+  const { money } = useCurrency()
   const [view, setView] = useState<'chart' | 'table'>('chart')
   const [hovered, setHovered] = useState<number | null>(null)
   const headingId = useId()
@@ -55,8 +56,8 @@ export function MonthlyChart({ data }: { data: MonthPoint[] }) {
       {view === 'chart' ? (
         <figure aria-labelledby={headingId}>
           <figcaption id={headingId} className="sr-only">
-            Revenue and profit by month. Total revenue {formatMoney(totals.revenue, 'USD')},
-            total profit {formatMoney(totals.profit, 'USD')} across {totals.count} sales.
+            Revenue and profit by month. Total revenue {money(totals.revenue)},
+            total profit {money(totals.profit)} across {totals.count} sales.
           </figcaption>
 
           <div className="flex h-56 items-end gap-3" role="presentation">
@@ -71,7 +72,7 @@ export function MonthlyChart({ data }: { data: MonthPoint[] }) {
                   onFocus={() => setHovered(index)}
                   onBlur={() => setHovered(null)}
                   tabIndex={0}
-                  aria-label={`${monthLabel(point.month)}: revenue ${formatMoney(point.revenue, 'USD')}, profit ${formatMoney(point.profit, 'USD')}, ${point.count} sales`}
+                  aria-label={`${monthLabel(point.month)}: revenue ${money(point.revenue)}, profit ${money(point.profit)}, ${point.count} sales`}
                 >
                   {active && (
                     <div
@@ -80,8 +81,8 @@ export function MonthlyChart({ data }: { data: MonthPoint[] }) {
                     >
                       <p className="text-caption font-bold text-content-primary">{monthLabel(point.month)}</p>
                       <dl className="mt-1.5 flex flex-col gap-1">
-                        <TooltipRow swatch="bg-series-1" label="Revenue" value={formatMoney(point.revenue, 'USD')} />
-                        <TooltipRow swatch="bg-series-2" label="Profit" value={formatMoney(point.profit, 'USD')} />
+                        <TooltipRow swatch="bg-series-1" label="Revenue" value={money(point.revenue)} />
+                        <TooltipRow swatch="bg-series-2" label="Profit" value={money(point.profit)} />
                       </dl>
                       <p className="mt-1.5 text-micro text-content-secondary">
                         {point.count} {point.count === 1 ? 'sale' : 'sales'}
@@ -123,15 +124,15 @@ export function MonthlyChart({ data }: { data: MonthPoint[] }) {
               <TR key={point.month}>
                 <TD>{monthLabel(point.month)}</TD>
                 <TD align="right">{point.count}</TD>
-                <TD align="right" className="font-bold">{formatMoney(point.revenue, 'USD')}</TD>
-                <TD align="right" className="font-bold text-content-accent">{formatMoney(point.profit, 'USD')}</TD>
+                <TD align="right" className="font-bold">{money(point.revenue)}</TD>
+                <TD align="right" className="font-bold text-content-accent">{money(point.profit)}</TD>
               </TR>
             ))}
             <TR className="bg-surface-subtle">
               <TD className="font-bold">Total</TD>
               <TD align="right" className="font-bold">{totals.count}</TD>
-              <TD align="right" className="font-bold">{formatMoney(totals.revenue, 'USD')}</TD>
-              <TD align="right" className="font-bold text-content-accent">{formatMoney(totals.profit, 'USD')}</TD>
+              <TD align="right" className="font-bold">{money(totals.revenue)}</TD>
+              <TD align="right" className="font-bold text-content-accent">{money(totals.profit)}</TD>
             </TR>
           </TBody>
         </Table>
