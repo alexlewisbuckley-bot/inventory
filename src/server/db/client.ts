@@ -41,8 +41,15 @@ export const db = drizzle(
         stmt.run(...(params as never[]))
         return { rows: [] }
       }
-      // sqlite-proxy expects positional arrays, not objects.
-      const rows = stmt.all(...(params as never[])).map((row) => Object.values(row as object))
+
+      // `sqlite-proxy` maps results positionally, so rows MUST come back as
+      // arrays. Object rows are unsafe here: a join that selects the same
+      // column name from two tables (`sessions.id` and `users.id`) collapses
+      // into a single object key, silently dropping columns and misaligning
+      // every value after it. `setReturnArrays` returns the true column
+      // vector, duplicates included.
+      stmt.setReturnArrays(true)
+      const rows = stmt.all(...(params as never[])) as unknown as unknown[][]
       return method === 'get' ? { rows: rows[0] ?? [] } : { rows }
     } catch (error) {
       logger.error('query failed', { query, error: (error as Error).message })

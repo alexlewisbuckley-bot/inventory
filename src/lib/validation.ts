@@ -17,8 +17,23 @@ const money = (label: string) =>
     .min(0, `${label} cannot be negative.`)
     .max(100_000_000, `${label} looks too large — please check.`)
 
+/**
+ * Optional money.
+ *
+ * Two rules, both load-bearing:
+ *  1. Empty input is collapsed to null in `preprocess`.
+ *  2. `z.null()` is the FIRST union branch. `z.coerce.number()` turns both ''
+ *     and null into 0, and 0 satisfies `.min(0)`, so if the numeric branch is
+ *     tried first it wins and a blank price is silently stored as zero —
+ *     making an unpriced watch look priced at nothing and reporting a large
+ *     false loss. Never put a coercing schema first in a union that can
+ *     receive empty input.
+ */
 const optionalMoney = (label: string) =>
-  z.union([money(label), z.literal('').transform(() => null), z.null()]).optional().nullable()
+  z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : value),
+    z.union([z.null(), money(label)]),
+  ).optional()
 
 const trimmed = z.string().trim()
 const optionalText = (max = 500) =>
@@ -51,10 +66,14 @@ export const watchCreateSchema = z.object({
   model: trimmed.min(1, 'Model reference is required.').max(80),
   nickname: optionalText(80),
   serial: optionalText(60),
-  year: z.union([
-    z.coerce.number().int().min(1900, 'Year looks too early.').max(new Date().getFullYear() + 1),
-    z.literal('').transform(() => null), z.null(),
-  ]).optional().nullable(),
+  // Same null-branch-first rule as optionalMoney above.
+  year: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : value),
+    z.union([
+      z.null(),
+      z.coerce.number().int().min(1900, 'Year looks too early.').max(new Date().getFullYear() + 1),
+    ]),
+  ).optional(),
   condition: z.enum(CONDITIONS).default('UNKNOWN'),
   boxPapers: z.enum(BOX_PAPERS).default('UNKNOWN'),
   supplierId: trimmed.min(1, 'Choose a supplier.'),
