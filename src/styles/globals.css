@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Colour tokens are declared as space-separated RGB channels so Tailwind's
+ * `<alpha-value>` syntax can apply opacity to any token.
+ */
+@layer base {
+  :root {
+    --c-navy-900: 4 23 58;
+    --c-navy-700: 1 45 104;
+    --c-navy-500: 30 78 157;
+    --c-teal-500: 0 194 203;
+    --c-teal-600: 0 168 176;
+    --c-teal-100: 217 246 247;
+    --c-surface-page: 255 255 255;
+    --c-surface-subtle: 245 248 252;
+    --c-surface-raised: 255 255 255;
+    --c-surface-inverse: 4 23 58;
+    --c-text-primary: 10 31 68;
+    --c-text-secondary: 81 97 125;
+    --c-text-inverse: 255 255 255;
+    --c-text-inverse-muted: 170 189 218;
+    --c-text-accent: 0 122 128;
+    --c-border-subtle: 227 234 243;
+    --c-border-strong: 198 211 228;
+    --c-success: 0 182 122;
+    --c-gold: 245 184 65;
+    --c-danger: 214 69 69;
+    --c-shadow: 10 31 68;
+  }
+
+  .dark {
+    --c-navy-900: 226 235 249;
+    --c-navy-700: 147 185 255;
+    --c-navy-500: 96 145 226;
+    --c-teal-500: 0 194 203;
+    --c-teal-600: 79 217 224;
+    --c-teal-100: 8 51 60;
+    --c-surface-page: 7 16 35;
+    --c-surface-subtle: 11 24 45;
+    --c-surface-raised: 17 33 58;
+    --c-surface-inverse: 226 235 249;
+    --c-text-primary: 233 240 251;
+    --c-text-secondary: 154 170 198;
+    --c-text-inverse: 7 16 35;
+    --c-text-inverse-muted: 81 97 125;
+    --c-text-accent: 79 217 224;
+    --c-border-subtle: 30 48 80;
+    --c-border-strong: 44 67 104;
+    --c-success: 42 205 148;
+    --c-gold: 245 184 65;
+    --c-danger: 240 113 113;
+    --c-shadow: 0 0 0;
+  }
+
+  * { @apply border-line-subtle; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    @apply bg-surface-subtle text-content-primary font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Visible, consistent focus ring for keyboard users only. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-teal-500 ring-offset-2 ring-offset-surface-page rounded-sm;
+  }
+
+  ::selection { @apply bg-teal-500/25; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .skeleton {
+    @apply relative overflow-hidden bg-line-subtle/60 rounded-sm;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background-image: linear-gradient(90deg, transparent, rgb(var(--c-surface-page) / 0.55), transparent);
+  }
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    @apply sr-only;
+  }
+}
