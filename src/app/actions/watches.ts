@@ -11,6 +11,7 @@ import {
 } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
+import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import type { ActionState } from './auth'
 
 /** Convert a thrown error into the serialisable shape forms expect. */
@@ -60,17 +61,32 @@ export async function updateWatchAction(_prev: ActionState, formData: FormData):
   }
 }
 
-/** Inline price edit — used by the unpriced worklist for fast data entry. */
-export async function setPriceAction(id: string, estSaleUsd: number): Promise<ActionState> {
+/**
+ * Inline price edit — used by the unpriced worklist for fast data entry.
+ *
+ * Takes the amount in the currency the user typed it in. The caller used to
+ * convert to USD first, which meant a price entered in dirhams was rounded
+ * twice before it was stored.
+ */
+export async function setPriceAction(
+  id: string,
+  estSaleAmount: number,
+  estSaleCurrency: CurrencyCode = BASE_CURRENCY,
+): Promise<ActionState> {
   const actor = await requireCapability('watch:price')
-  const parsed = watchPriceSchema.safeParse({ id, estSaleUsd })
+  const parsed = watchPriceSchema.safeParse({ id, estSaleAmount, estSaleCurrency })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 
   try {
     const { getWatchDetail } = await import('@/server/services/watch-service')
     const current = await getWatchDetail(parsed.data.id)
     await updateWatch(
-      { id: parsed.data.id, version: current.watch.version, estSaleUsd: parsed.data.estSaleUsd },
+      {
+        id: parsed.data.id,
+        version: current.watch.version,
+        estSaleAmount: parsed.data.estSaleAmount,
+        estSaleCurrency: parsed.data.estSaleCurrency,
+      },
       actor,
     )
     refreshInventory()

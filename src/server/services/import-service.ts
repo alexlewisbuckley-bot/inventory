@@ -210,6 +210,7 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
     for (const row of rows) {
       const id = newId('wch')
       const priceMinor = toMinor(row.purchasePriceGbp!)
+      const { usd: estUsd, gbp: estGbp } = estimateFromSheet(row.estSaleUsd, fx)
       const locationId = locationIds.get(row.location.toLowerCase())!
       await db.insert(watches).values({
         id,
@@ -223,7 +224,15 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         purchasePriceGbp: priceMinor,
         purchasePriceUsd: Math.round(priceMinor * fx),
         purchaseFxRate: Math.round(fx * 10_000),
-        estSaleUsd: row.estSaleUsd !== null ? toMinor(row.estSaleUsd) : null,
+        purchaseAmount: priceMinor,
+        purchaseCurrency: 'GBP',
+        estSaleUsd: estUsd,
+        // The spreadsheet quotes estimates in dollars, but every report
+        // aggregates the GBP base. Omitting it made an imported watch count as
+        // unpriced no matter what the sheet said.
+        estSaleGbp: estGbp,
+        estSaleAmount: estGbp,
+        estSaleCurrency: 'GBP',
         locationId,
         createdById: actor.id,
       })
@@ -262,4 +271,20 @@ function parseAmount(raw: string): number | null {
   const cleaned = raw.replace(/[£$,\s]/g, '')
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+/**
+ * The estimate as it must be stored, from the sheet's dollar column.
+ *
+ * Exported so the null case is covered by a test: a blank estimate has to stay
+ * null rather than becoming zero, or the watch reports a total loss instead of
+ * appearing on the "needs a price" worklist.
+ */
+export function estimateFromSheet(
+  estSaleUsdMajor: number | null,
+  fx: number,
+): { usd: number | null; gbp: number | null } {
+  if (estSaleUsdMajor === null) return { usd: null, gbp: null }
+  const usd = toMinor(estSaleUsdMajor)
+  return { usd, gbp: Math.round(usd / fx) }
 }

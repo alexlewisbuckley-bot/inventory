@@ -3,7 +3,7 @@ import { watchCreateSchema, saleCreateSchema, watchQuerySchema, fieldErrors } fr
 
 const baseWatch = {
   brandId: 'brd_1', model: '126711CHNR', supplierId: 'sup_1', locationId: 'loc_1',
-  purchaseDate: '2026-04-08', purchasePriceGbp: 13106,
+  purchaseDate: '2026-04-08', purchaseAmount: 13106,
 }
 
 describe('watch validation', () => {
@@ -19,13 +19,30 @@ describe('watch validation', () => {
   })
 
   it('rejects a negative purchase price', () => {
-    expect(watchCreateSchema.safeParse({ ...baseWatch, purchasePriceGbp: -5 }).success).toBe(false)
+    expect(watchCreateSchema.safeParse({ ...baseWatch, purchaseAmount: -5 }).success).toBe(false)
   })
 
   it('treats an empty estimated sale price as not-yet-priced rather than zero', () => {
-    const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleUsd: '' })
+    const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleAmount: '' })
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data.estSaleUsd).toBeNull()
+    if (result.success) expect(result.data.estSaleAmount).toBeNull()
+  })
+
+  it('defaults an omitted purchase currency to the reporting base', () => {
+    // A form posted without the currency select must not be read as dollars —
+    // the whole capital figure derives from this.
+    const result = watchCreateSchema.safeParse(baseWatch)
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.purchaseCurrency).toBe('GBP')
+      expect(result.data.estSaleCurrency).toBe('GBP')
+    }
+  })
+
+  it('accepts a purchase agreed in a non-base currency', () => {
+    const result = watchCreateSchema.safeParse({ ...baseWatch, purchaseAmount: 48000, purchaseCurrency: 'AED' })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.purchaseCurrency).toBe('AED')
   })
 
   it('requires the references a watch cannot exist without', () => {
@@ -105,9 +122,9 @@ describe('empty-input coercion guards', () => {
   // price is stored as zero and the watch reports a large false loss.
   it('never turns a blank money field into zero', () => {
     for (const blank of ['', null, undefined]) {
-      const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleUsd: blank })
+      const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleAmount: blank })
       expect(result.success).toBe(true)
-      if (result.success) expect(result.data.estSaleUsd ?? null).toBeNull()
+      if (result.success) expect(result.data.estSaleAmount ?? null).toBeNull()
     }
   })
 
@@ -120,10 +137,10 @@ describe('empty-input coercion guards', () => {
   })
 
   it('still parses a real value through the same field', () => {
-    const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleUsd: '18900', year: '2021' })
+    const result = watchCreateSchema.safeParse({ ...baseWatch, estSaleAmount: '18900', year: '2021' })
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.estSaleUsd).toBe(18900)
+      expect(result.data.estSaleAmount).toBe(18900)
       expect(result.data.year).toBe(2021)
     }
   })

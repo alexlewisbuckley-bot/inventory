@@ -28,9 +28,14 @@ async function fxRate(): Promise<number> {
  * concurrent submissions cannot claim the same one.
  */
 export async function createWatch(input: WatchCreateInput, actor: SessionUser): Promise<string> {
-  const rate = await fxRate()
-  const priceGbp = Math.round(input.purchasePriceGbp * 100)
-  const estSale = input.estSaleUsd ? Math.round(Number(input.estSaleUsd) * 100) : null
+  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
+
+  // What was agreed is stored verbatim; the GBP base is derived from it. Doing
+  // it this way round means a later rate correction never rewrites the deal.
+  const purchaseMinor = Math.round(input.purchaseAmount * 100)
+  const priceGbp = toBase(purchaseMinor, input.purchaseCurrency, rates)
+  const estMinor = input.estSaleAmount ? Math.round(Number(input.estSaleAmount) * 100) : null
+  const estGbp = estMinor === null ? null : toBase(estMinor, input.estSaleCurrency, rates)
 
   return withTransaction(async () => {
     await assertReferencesExist(input.supplierId, input.locationId)
@@ -66,13 +71,13 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       purchasePriceGbp: priceGbp,
       purchasePriceUsd: convert(priceGbp, rate),
       purchaseFxRate: Math.round(rate * 10_000),
-      purchaseAmount: priceGbp,
-      purchaseCurrency: 'GBP',
-      estSaleUsd: estSale,
-      // The estimate is quoted in USD today; the GBP base is what reports use.
-      estSaleAmount: estSale,
-      estSaleCurrency: 'USD',
-      estSaleGbp: estSale === null ? null : Math.round(estSale / rate),
+      purchaseAmount: purchaseMinor,
+      purchaseCurrency: input.purchaseCurrency,
+      estSaleGbp: estGbp,
+      estSaleAmount: estMinor,
+      estSaleCurrency: input.estSaleCurrency,
+      // Retained so historic USD exports still reconcile.
+      estSaleUsd: estGbp === null ? null : convert(estGbp, rate),
       locationId: input.locationId,
       status: 'IN_STOCK',
       notes: input.notes ?? null,
@@ -89,7 +94,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       summary: `Stock ${stockNo} — ${input.model} added`,
     })
 
-    if (!estSale) await notifyTeam('PRICE_MISSING', 'Watch added without a sale price',
+    if (estGbp === null) await notifyTeam('PRICE_MISSING', 'Watch added without a sale price',
       `Stock ${stockNo} (${input.model}) needs an estimated sale price.`, 'Watch', id, actor.id)
 
     logger.info('watch created', { watchId: id, stockNo, actorId: actor.id })
@@ -104,7 +109,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
  * write is rejected rather than silently overwriting their change.
  */
 export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): Promise<void> {
-  const rate = await fxRate()
+  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
 
   await withTransaction(async () => {
     const rows = await db.select().from(watches).where(eq(watches.id, input.id)).limit(1)
@@ -135,20 +140,21 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.status !== undefined) patch.status = input.status
     if (input.purchaseDate !== undefined) patch.purchaseDate = input.purchaseDate
 
-    if (input.purchasePriceGbp !== undefined) {
-      patch.purchasePriceGbp = Math.round(input.purchasePriceGbp * 100)
+    if (input.purchaseAmount !== undefined) {
+      const minor = Math.round(input.purchaseAmount * 100)
+      patch.purchaseAmount = minor
+      patch.purchaseCurrency = input.purchaseCurrency ?? 'GBP'
+      patch.purchasePriceGbp = toBase(minor, patch.purchaseCurrency, rates)
       patch.purchasePriceUsd = convert(patch.purchasePriceGbp, rate)
       patch.purchaseFxRate = Math.round(rate * 10_000)
-      patch.purchaseAmount = patch.purchasePriceGbp
-      patch.purchaseCurrency = 'GBP'
     }
-    if (input.estSaleUsd !== undefined) {
-      const estimate = input.estSaleUsd === null ? null : Math.round(Number(input.estSaleUsd) * 100)
-      patch.estSaleUsd = estimate
-      patch.estSaleAmount = estimate
-      patch.estSaleCurrency = 'USD'
+    if (input.estSaleAmount !== undefined) {
+      const minor = input.estSaleAmount === null ? null : Math.round(Number(input.estSaleAmount) * 100)
+      patch.estSaleAmount = minor
+      patch.estSaleCurrency = input.estSaleCurrency ?? 'GBP'
       // Keep the GBP base in step, or every report silently ignores the change.
-      patch.estSaleGbp = estimate === null ? null : Math.round(estimate / rate)
+      patch.estSaleGbp = minor === null ? null : toBase(minor, patch.estSaleCurrency, rates)
+      patch.estSaleUsd = patch.estSaleGbp === null ? null : convert(patch.estSaleGbp, rate)
     }
 
     // A location change is a stock movement in its own right, not just a field edit.

@@ -1,15 +1,18 @@
 'use client'
 import { useFormState, useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, useToast } from '@/components/ui'
+import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, MoneyField, useToast } from '@/components/ui'
 import { createWatchAction, updateWatchAction } from '@/app/actions/watches'
 import { createBrandAction, createSupplierInlineAction } from '@/app/actions/reference'
 import { ChevronDown } from 'lucide-react'
 import type { ActionState } from '@/app/actions/auth'
-import { CONDITIONS, CONDITION_LABELS, BOX_PAPERS, BOX_PAPERS_LABELS } from '@/lib/enums'
-import { toMajor, parseMoneyInput, formatMoney } from '@/lib/money'
+import {
+  BASE_CURRENCY, CONDITIONS, CONDITION_LABELS, BOX_PAPERS, BOX_PAPERS_LABELS,
+  type CurrencyCode,
+} from '@/lib/enums'
+import { toMajor } from '@/lib/money'
 import { toDateInput } from '@/lib/dates'
 
 export interface Option { id: string; name: string }
@@ -26,8 +29,10 @@ export interface WatchFormValues {
   boxPapers: string
   supplierId: string
   purchaseDate: string
-  purchasePriceGbp: string
-  estSaleUsd: string
+  purchaseAmount: string
+  purchaseCurrency: CurrencyCode
+  estSaleAmount: string
+  estSaleCurrency: CurrencyCode
   locationId: string
   notes: string
 }
@@ -35,7 +40,9 @@ export interface WatchFormValues {
 const EMPTY: WatchFormValues = {
   brandId: '', model: '', nickname: '', serial: '', year: '',
   condition: 'UNKNOWN', boxPapers: 'UNKNOWN', supplierId: '',
-  purchaseDate: toDateInput(new Date()), purchasePriceGbp: '', estSaleUsd: '',
+  purchaseDate: toDateInput(new Date()),
+  purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
+  estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
   locationId: '', notes: '',
 }
 
@@ -48,13 +55,12 @@ const INITIAL: ActionState = { ok: false }
  * drift apart. In edit mode a hidden `version` field carries the optimistic
  * concurrency token read when the form was opened.
  */
-export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate }: {
+export function WatchForm({ mode, initial, brands, suppliers, locations }: {
   mode: 'create' | 'edit'
   initial?: Partial<WatchFormValues>
   brands: Option[]
   suppliers: Option[]
   locations: Option[]
-  fxRate: number
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -82,11 +88,8 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => setValues((current) => ({ ...current, [key]: event.target.value }))
 
-  // Live GBP -> USD conversion mirrors what the service will store.
-  const usdPreview = useMemo(() => {
-    const minor = parseMoneyInput(values.purchasePriceGbp)
-    return minor === null ? null : Math.round(minor * fxRate)
-  }, [values.purchasePriceGbp, fxRate])
+  const setField = (key: keyof WatchFormValues) => (value: string) =>
+    setValues((current) => ({ ...current, [key]: value }))
 
   return (
     <form action={formAction} noValidate>
@@ -158,21 +161,28 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, fxRate 
             value={values.purchaseDate} onChange={set('purchaseDate')}
             error={state.errors?.purchaseDate}
           />
-          <TextField
-            name="purchasePriceGbp" label="Purchase price (£)" required inputMode="decimal" prefix="£"
-            value={values.purchasePriceGbp} onChange={set('purchasePriceGbp')}
-            placeholder="13,106.00"
-            hint={usdPreview !== null
-              ? `≈ ${formatMoney(usdPreview, 'USD')} at today's rate (${fxRate.toFixed(2)}) — stored in both currencies`
-              : `Converted to USD at ${fxRate.toFixed(2)} and stored in both currencies`}
-            error={state.errors?.purchasePriceGbp}
+          <MoneyField
+            label="Purchase price"
+            required
+            amountName="purchaseAmount"
+            currencyName="purchaseCurrency"
+            amount={values.purchaseAmount}
+            currency={values.purchaseCurrency}
+            onAmountChange={setField('purchaseAmount')}
+            onCurrencyChange={(code: CurrencyCode) => setValues((c) => ({ ...c, purchaseCurrency: code }))}
+            hint="The amount you actually agreed with the supplier."
+            error={state.errors?.purchaseAmount}
           />
-          <TextField
-            name="estSaleUsd" label="Est. sale price ($)" inputMode="decimal" prefix="$"
-            value={values.estSaleUsd} onChange={set('estSaleUsd')}
-            placeholder="Optional — set later from pricing review"
+          <MoneyField
+            label="Est. sale price"
+            amountName="estSaleAmount"
+            currencyName="estSaleCurrency"
+            amount={values.estSaleAmount}
+            currency={values.estSaleCurrency}
+            onAmountChange={setField('estSaleAmount')}
+            onCurrencyChange={(code: CurrencyCode) => setValues((c) => ({ ...c, estSaleCurrency: code }))}
             hint="Leave blank and the watch is flagged as needing a price."
-            error={state.errors?.estSaleUsd}
+            error={state.errors?.estSaleAmount}
           />
           <SelectField
             name="locationId" label="Location" required

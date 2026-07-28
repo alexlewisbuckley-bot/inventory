@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv, toCsv, csvCell } from '@/lib/csv'
+import { estimateFromSheet } from '@/server/services/import-service'
 
 describe('CSV parsing', () => {
   it('parses a plain table', () => {
@@ -47,5 +48,29 @@ describe('CSV writing', () => {
     expect(parsed[0]).toEqual(['Model', 'Notes'])
     expect(parsed[1]).toEqual(rows[0])
     expect(parsed[2]).toEqual(rows[1])
+  })
+})
+
+/**
+ * Regression: the importer wrote only the legacy USD estimate and left the GBP
+ * base null. Every report aggregates the base, so an imported watch with a
+ * perfectly good estimate still counted as unpriced — the dashboard told the
+ * user to go and price watches the spreadsheet had already priced.
+ */
+describe('imported estimates reach the reporting base', () => {
+  it('derives the GBP base from the sheet\'s USD column', () => {
+    expect(estimateFromSheet(18_900, 1.33)).toEqual({ usd: 1_890_000, gbp: 1_421_053 })
+  })
+
+  it('keeps a missing estimate null rather than turning it into zero', () => {
+    // Zero would report the watch as a total loss instead of unpriced.
+    expect(estimateFromSheet(null, 1.33)).toEqual({ usd: null, gbp: null })
+  })
+
+  it('never returns a base without a dollar figure, or the reverse', () => {
+    for (const value of [0, 1, 18_900]) {
+      const result = estimateFromSheet(value, 1.33)
+      expect(result.usd === null).toBe(result.gbp === null)
+    }
   })
 })

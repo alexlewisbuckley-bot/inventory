@@ -79,8 +79,15 @@ export const watchCreateSchema = z.object({
   supplierId: trimmed.min(1, 'Choose a supplier.'),
   purchaseDate: z.coerce.date({ invalid_type_error: 'Enter a valid purchase date.' })
     .max(new Date(Date.now() + 86_400_000), 'Purchase date cannot be in the future.'),
-  purchasePriceGbp: money('Purchase price'),
-  estSaleUsd: optionalMoney('Estimated sale price'),
+  /**
+   * Prices are captured in the currency they were agreed in. The service
+   * converts to the GBP base through the managed rate table — doing it here
+   * would need a database read inside a validator.
+   */
+  purchaseAmount: money('Purchase price'),
+  purchaseCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  estSaleAmount: optionalMoney('Estimated sale price'),
+  estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   locationId: trimmed.min(1, 'Choose a location.'),
   notes: optionalText(2000),
 })
@@ -102,7 +109,8 @@ export const watchMoveSchema = z.object({
 
 export const watchPriceSchema = z.object({
   id: trimmed.min(1),
-  estSaleUsd: money('Estimated sale price'),
+  estSaleAmount: money('Estimated sale price'),
+  estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
 })
 
 export const saleCreateSchema = z.object({

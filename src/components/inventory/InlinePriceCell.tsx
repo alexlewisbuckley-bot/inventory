@@ -47,12 +47,10 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
   const save = async () => {
     const entered = parseMoneyInput(value)
     if (entered === null) { cancel(); return }
-    // The action still takes USD, so convert display -> base -> USD.
-    const base = toBase(entered, currency, rates)
-    const usd = Math.round((base * (rates.USD ?? 13_300)) / 10_000)
-
+    // The amount goes to the server in the currency it was typed in; the
+    // service does the single conversion to the reporting base.
     setSaving(true)
-    const result = await setPriceAction(watchId, usd / 100)
+    const result = await setPriceAction(watchId, entered / 100, currency)
     setSaving(false)
     setEditing(false)
 
