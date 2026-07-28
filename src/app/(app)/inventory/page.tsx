@@ -5,10 +5,11 @@ import { Download, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, suppliers } from '@/server/db/schema'
-import { findWatches, summariseInventory } from '@/server/repositories/watch-repository'
+import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { FilterBar } from '@/components/inventory/FilterBar'
+import { SavedViews } from '@/components/inventory/SavedViews'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
 import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
@@ -51,7 +52,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   const user = await requireCapability('watch:read')
   const query = parseQuery(searchParams)
 
-  const [result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences] = await Promise.all([
+  const [result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences, unpricedCount] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
     db.select({ id: locations.id, name: locations.name }).from(locations)
@@ -61,6 +62,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
     getRateTable(),
     getPreferencesFor(user.id),
+    countUnpriced(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -109,6 +111,8 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
           tone="accent"
         />
       </section>
+
+      <SavedViews counts={{ unpriced: unpricedCount }} />
 
       <FilterBar locations={locationOptions} suppliers={supplierOptions} brands={brandOptions} />
 

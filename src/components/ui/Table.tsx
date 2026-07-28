@@ -3,9 +3,18 @@ import type { ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
-export function Table({ children, className }: { children: ReactNode; className?: string }) {
+/**
+ * Density is applied via a data attribute on the wrapper rather than threaded
+ * through every cell, so a table becomes compact without any of its children
+ * knowing the setting exists.
+ */
+export function Table({ children, className, density = 'COMFORTABLE' }: {
+  children: ReactNode
+  className?: string
+  density?: 'COMFORTABLE' | 'COMPACT'
+}) {
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full overflow-x-auto" data-density={density === 'COMPACT' ? 'compact' : undefined}>
       <table className={cn('w-full border-collapse text-left', className)}>{children}</table>
     </div>
   )

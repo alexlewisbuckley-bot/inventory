@@ -13,7 +13,9 @@ import {
 import { formatDate } from '@/lib/dates'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
+import { SavedViews } from './SavedViews'
 import { QuickSellModal, type QuickSellTarget } from './QuickSellModal'
+import { InlinePriceCell } from './InlinePriceCell'
 import type { WatchListItem, WatchListResult } from '@/server/repositories/watch-repository'
 import type { Capability } from '@/lib/permissions'
 import type { FilterOption } from './FilterBar'
@@ -117,6 +119,11 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
       <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-6 py-3">
         <p className="text-small text-content-secondary">
           {result.total} {result.total === 1 ? 'watch' : 'watches'}
+          {capabilities['watch:price'] && (
+            <span className="ml-2 hidden text-caption text-content-secondary sm:inline">
+              · click a price to edit it
+            </span>
+          )}
         </p>
         <ColumnPicker
           columns={INVENTORY_COLUMNS}
@@ -142,7 +149,7 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
                   />
                 </TH>
               )}
-              <TH width="88px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock no</TH>
+              <TH width="96px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
               <TH sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
               {show('serial') && <TH width="110px">Serial</TH>}
               {show('supplier') && <TH width="150px">Supplier</TH>}
@@ -165,6 +172,7 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
                 selected={selected.has(watch.id)}
                 onToggle={() => toggleOne(watch.id)}
                 canSell={capabilities['sale:create']}
+                canPrice={capabilities['watch:price']}
                 onSell={() => setSellTarget({
                   id: watch.id,
                   stockNo: watch.stockNo,
@@ -209,13 +217,14 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
   )
 }
 
-function Row({ watch, show, selectable, selected, onToggle, canSell, onSell }: {
+function Row({ watch, show, selectable, selected, onToggle, canSell, canPrice, onSell }: {
   watch: WatchListItem
   show: (key: string) => boolean
   selectable: boolean
   selected: boolean
   onToggle: () => void
   canSell: boolean
+  canPrice: boolean
   onSell: () => void
 }) {
   const query = useListQuery()
@@ -251,7 +260,13 @@ function Row({ watch, show, selectable, selected, onToggle, canSell, onSell }: {
       {show('supplier') && <TD className="text-content-secondary">{watch.supplierName}</TD>}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
       {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
-      {show('estSale') && <TD align="right">{money(watch.estSaleGbp)}</TD>}
+      {show('estSale') && (
+        <TD align="right">
+          {sold
+            ? money(watch.estSaleGbp)
+            : <InlinePriceCell watchId={watch.id} baseMinor={watch.estSaleGbp} editable={canPrice} />}
+        </TD>
+      )}
       {show('profit') && (
         <TD align="right" className={cn('font-bold', profit !== null && profit >= 0 ? 'text-content-accent' : profit !== null ? 'text-state-danger' : '')}>
           {profit !== null ? signed(profit) : '—'}

@@ -96,6 +96,18 @@
 }
 
 @layer components {
+  /* Compact density: roughly a third more rows on screen without shrinking
+     type below a comfortable reading size. */
+  [data-density='compact'] td {
+    @apply py-2;
+  }
+  [data-density='compact'] th {
+    @apply py-2;
+  }
+  [data-density='compact'] td .text-caption {
+    @apply hidden;
+  }
+
   .skeleton {
     @apply relative overflow-hidden bg-line-subtle/60 rounded-sm;
   }

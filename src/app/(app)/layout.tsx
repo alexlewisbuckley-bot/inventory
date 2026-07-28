@@ -3,12 +3,18 @@ import { and, count, eq, isNull } from 'drizzle-orm'
 import { getSessionUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { notifications } from '@/server/db/schema'
-import { AppHeader } from '@/components/layout/AppHeader'
+import { AppSidebar } from '@/components/layout/AppSidebar'
+import { TopBar } from '@/components/layout/TopBar'
+import { KeyboardShortcuts } from '@/components/layout/KeyboardShortcuts'
+import { countUnpriced, findAgeingStock, summariseInventory } from '@/server/repositories/watch-repository'
+import { watchQuerySchema } from '@/lib/validation'
+import { sales } from '@/server/db/schema'
 import { CurrencyProvider } from '@/components/ui/CurrencyProvider'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { isCurrency } from '@/lib/currency'
-import { BASE_CURRENCY } from '@/lib/enums'
+import { BASE_CURRENCY, type Role } from '@/lib/enums'
+import { can } from '@/lib/permissions'
 
 /**
  * Authenticated shell. Every route in this group is guaranteed a session —
@@ -19,11 +25,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getSessionUser()
   if (!user) redirect('/login')
 
-  const [unread, rates, preferences] = await Promise.all([
+  const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
+
+  const [unread, rates, preferences, stock, unpriced, ageing, saleCount] = await Promise.all([
     db.select({ value: count() }).from(notifications)
       .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt))),
     getRateTable(),
     getPreferencesFor(user.id),
+    summariseInventory(activeQuery),
+    countUnpriced(),
+    findAgeingStock(90, 500),
+    db.select({ value: count() }).from(sales).where(isNull(sales.deletedAt)),
   ])
 
   const displayCurrency = isCurrency(preferences?.displayCurrency)
@@ -32,12 +44,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <CurrencyProvider initial={displayCurrency} rates={rates}>
-      <div className="min-h-screen bg-surface-subtle">
-        <AppHeader user={user} unreadCount={Number(unread[0]?.value ?? 0)} />
-        <main id="main" className="mx-auto w-full max-w-[1600px] px-6 py-8 lg:px-10">
-          {children}
-        </main>
+      <div className="flex min-h-screen bg-surface-subtle">
+        <AppSidebar
+          role={user.role as Role}
+          counts={{
+            inStock: stock.inStockCount,
+            unpriced,
+            ageing: ageing.length,
+            sales: Number(saleCount[0]?.value ?? 0),
+          }}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar user={user} unreadCount={Number(unread[0]?.value ?? 0)} />
+          <main id="main" className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-7 lg:px-8">
+            {children}
+          </main>
+        </div>
       </div>
+      <KeyboardShortcuts canCreate={can(user.role, 'watch:create')} />
     </CurrencyProvider>
   )
 }
