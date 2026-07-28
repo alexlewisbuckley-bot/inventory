@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
-  BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, LOCATION_TYPES,
-  ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
+  BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, ENTITY_TYPES,
+  LOCATION_TYPES, PAYMENT_TERMS, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
 } from './enums'
 
 /**
@@ -138,12 +138,36 @@ export type SaleCreateInput = z.infer<typeof saleCreateSchema>
 
 // --- Reference data --------------------------------------------------------
 
+/**
+ * A supplier as a counterparty.
+ *
+ * Only the trading name is required. Everything else is what you need to raise
+ * a purchase order, pay an invoice and know who you are actually contracting
+ * with — but demanding it up front would break the one-keystroke "add supplier"
+ * from the watch form, and the paperwork usually arrives after the watch does.
+ */
 export const supplierSchema = z.object({
   name: trimmed.min(1, 'Supplier name is required.').max(120),
+  legalName: optionalText(160),
+  entityType: z.enum(ENTITY_TYPES).default('UNKNOWN'),
+  registrationNo: optionalText(60),
+  vatNo: optionalText(40),
+  website: optionalText(200),
+
   contactName: optionalText(120),
-  email: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),
-  phone: optionalText(40),
+  contactRole: optionalText(120),
+  contactEmail: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),
+  contactPhone: optionalText(40),
+
+  addressLine1: optionalText(160),
+  addressLine2: optionalText(160),
+  city: optionalText(80),
+  postcode: optionalText(20),
   country: optionalText(80),
+
+  paymentTerms: z.enum(PAYMENT_TERMS).default('UNKNOWN'),
+  defaultCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+
   notes: optionalText(1000),
   isActive: z.coerce.boolean().default(true),
 })

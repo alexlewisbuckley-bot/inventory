@@ -23,13 +23,11 @@ function toState(error: unknown, fallback: string): ActionState {
 export async function saveSupplierAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('supplier:manage')
   const id = formData.get('id')?.toString() || null
+  // Read the whole form rather than naming each field: the supplier record now
+  // has eighteen of them, and picking them off one at a time is how a field
+  // silently stops being saved when it is added to the form.
   const parsed = supplierSchema.safeParse({
-    name: formData.get('name'),
-    contactName: formData.get('contactName'),
-    email: formData.get('email'),
-    phone: formData.get('phone'),
-    country: formData.get('country'),
-    notes: formData.get('notes'),
+    ...Object.fromEntries(formData.entries()),
     isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
   })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }

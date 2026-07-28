@@ -20,10 +20,22 @@ export async function listSuppliers() {
     .select({
       id: suppliers.id,
       name: suppliers.name,
+      legalName: suppliers.legalName,
+      entityType: suppliers.entityType,
+      registrationNo: suppliers.registrationNo,
+      vatNo: suppliers.vatNo,
+      website: suppliers.website,
       contactName: suppliers.contactName,
-      email: suppliers.email,
-      phone: suppliers.phone,
+      contactRole: suppliers.contactRole,
+      contactEmail: suppliers.contactEmail,
+      contactPhone: suppliers.contactPhone,
+      addressLine1: suppliers.addressLine1,
+      addressLine2: suppliers.addressLine2,
+      city: suppliers.city,
+      postcode: suppliers.postcode,
       country: suppliers.country,
+      paymentTerms: suppliers.paymentTerms,
+      defaultCurrency: suppliers.defaultCurrency,
       isActive: suppliers.isActive,
       notes: suppliers.notes,
       watchCount: count(watches.id),
@@ -64,7 +76,12 @@ export async function updateSupplier(id: string, input: Partial<SupplierInput>, 
     await recordAudit({
       entityType: 'Supplier', entityId: id, action: 'UPDATE', actorId: actor.id,
       summary: `Supplier ${existing.name} updated`,
-      changes: diff(existing, input, ['name', 'contactName', 'email', 'phone', 'country', 'notes', 'isActive']),
+      changes: diff(existing, input, [
+        'name', 'legalName', 'entityType', 'registrationNo', 'vatNo', 'website',
+        'contactName', 'contactRole', 'contactEmail', 'contactPhone',
+        'addressLine1', 'addressLine2', 'city', 'postcode', 'country',
+        'paymentTerms', 'defaultCurrency', 'notes', 'isActive',
+      ]),
     })
   })
 }
