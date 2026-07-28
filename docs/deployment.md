@@ -23,13 +23,24 @@ dashboard.
    | `DEFAULT_FX_GBP_USD` | `1.33` — optional |
 
 3. **Deploy.** Import the repository and let Vercel build it.
-4. **Create the schema and first users.** From your machine, with the same
+4. **The schema creates itself on deploy.** The `vercel-build` script runs
+   `db:setup` before `next build`, which applies migrations and — only if the
+   database has no users — seeds reference data and the starting stock. Both
+   halves are safe to repeat: migrations are tracked in a ledger, and seeding
+   is skipped entirely once any user exists, so a later deploy can never
+   re-seed or overwrite live data.
+
+   To provision manually instead, run the same steps from your machine with
    `DATABASE_URL` in `.env`:
 
    ```bash
-   npm run db:migrate   # creates the tables
-   npm run db:seed      # reference data, four demo users, the 26 watches
+   npm run db:migrate   # create the tables
+   npm run db:seed      # reference data, demo users, the 26 watches
    ```
+
+   Once the system is established and you would rather migrations be a
+   deliberate act, delete the `vercel-build` script from `package.json` and run
+   `npm run db:migrate` yourself as part of your release process.
 
 5. **Check it.** Visit `/api/health`. It reports connectivity and whether
    migrations have run, separately — so a misconfigured deployment tells you
