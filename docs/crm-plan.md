@@ -90,6 +90,10 @@ Phases 1 and 2 are complete, and phase 3 has the four new destinations —
 customers, the customer record, the pipeline board, tasks and the wanted board
 — live in navigation with working counts.
 
+The sell flow is integrated: recording a sale attributes it to a customer,
+closes the deal it came from and writes both on to the timeline. One sale form
+now serves the inventory row and the watch record.
+
 Still outstanding, in the order worth doing them:
 
 1. **The watch record's CRM panel.** `interestInWatch` and `ownershipHistory`
