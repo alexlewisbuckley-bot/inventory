@@ -8,7 +8,7 @@ import {
   Button, ComboSelect, Drawer, SelectField, TextField, useToast,
 } from '@/components/ui'
 import { useCreateFlag } from '@/components/ui/CreateAction'
-import { saveDealAction } from '@/app/actions/crm'
+import { quickCreateCustomerAction, saveDealAction } from '@/app/actions/crm'
 import { DEAL_STAGE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS, OPEN_DEAL_STAGES } from '@/lib/enums'
 import { toMajor } from '@/lib/money'
 import type { ActionState } from '@/app/actions/auth'
@@ -24,7 +24,9 @@ const INITIAL: ActionState = { ok: false }
  */
 export function DealFormPanel({ customers, stock, owners, presetCustomerId, presetWatchId, triggerLabel = 'New deal' }: {
   customers: Array<{ id: string; name: string }>
-  stock: Array<{ id: string; stockNo: number; label: string; estSaleGbp: number | null }>
+  stock: Array<{
+    id: string; stockNo: number; label: string; serial: string | null; estSaleGbp: number | null
+  }>
   owners: Array<{ id: string; name: string }>
   presetCustomerId?: string
   presetWatchId?: string
@@ -74,12 +76,26 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
             error={state.errors?.title}
           />
 
+          {/* Creating in place. Being sent to another screen to add somebody
+              who is not on the book means losing everything typed so far,
+              which is how a pipeline ends up half-populated. */}
           <ComboSelect
             name="customerId"
             label="Customer"
             value={customerId}
             onChange={setCustomerId}
-            placeholder="Choose a customer…"
+            placeholder={customers.length === 0 ? 'Nobody on the book yet — type a name' : 'Choose a customer…'}
+            createLabel="Add"
+            hint="Not on the book? Type their name and add them here."
+            onCreate={async (name) => {
+              const result = await quickCreateCustomerAction(name)
+              if (!result.ok || !result.id) {
+                toast.error('Could not add the customer', result.message)
+                return null
+              }
+              toast.success(`${result.label} added`, 'Fill in the rest on their record when you have a moment.')
+              return { value: result.id, label: result.label ?? name }
+            }}
             options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
           />
           <ComboSelect
@@ -88,9 +104,14 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
             value={watchId}
             onChange={chooseWatch}
             placeholder="Not against a specific watch yet"
+            emptyMessage="No stock matches that. A deal does not need a watch — leave it blank while you source one."
+
             options={stock.map((item) => ({
               value: item.id,
-              label: `${item.stockNo} · ${item.label}`,
+              // Stock number, reference, then serial: the first identifies the
+              // row, the second is what people say out loud, and the third is
+              // the only thing that separates two of the same model.
+              label: [`${item.stockNo} · ${item.label}`, item.serial].filter(Boolean).join(' · '),
             }))}
           />
           <div className="grid gap-4 sm:grid-cols-2">

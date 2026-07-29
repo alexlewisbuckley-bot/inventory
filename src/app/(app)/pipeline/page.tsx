@@ -41,6 +41,9 @@ export default async function PipelinePage({ searchParams }: {
       id: watches.id,
       stockNo: watches.stockNo,
       label: sql<string>`${brands.name} || ' ' || ${watches.model}`,
+      // Two watches can be the same reference, so the serial is what tells
+      // them apart when you are picking one off a list.
+      serial: watches.serial,
       estSaleGbp: watches.estSaleGbp,
     })
       .from(watches)

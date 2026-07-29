@@ -415,6 +415,37 @@ await journey('sell links customer and deal', async (page) => {
   if (await row.count() === 0) throw new Error(`sale ${invoice} is not in the ledger`)
 })
 
+// --- 10c. A customer can be added from wherever one is chosen ---------------
+await journey('add a customer from the deal form', async (page) => {
+  await go(page, '/pipeline')
+  await page.locator('button:has-text("New deal")').click()
+  await page.waitForTimeout(800)
+
+  const picker = page.locator('button:has-text("Choose a customer"), button:has-text("Nobody on the book")').first()
+  if (await picker.count() === 0) throw new Error('the deal form has no customer picker')
+  await picker.click()
+  await page.waitForTimeout(400)
+
+  const name = `Picker Newman ${Date.now().toString().slice(-6)}`
+  await page.keyboard.type(name)
+  await page.waitForTimeout(400)
+
+  const add = page.locator('button').filter({ hasText: 'Add' }).last()
+  if (await add.count() === 0) throw new Error('no way to add a customer who is not on the book')
+  await add.click()
+  await page.waitForTimeout(2500)
+
+  if (await page.locator(`button:has-text("${name}")`).count() === 0) {
+    throw new Error('the customer was added but not selected')
+  }
+
+  // And they are really on the book, not just in the dropdown.
+  await go(page, `/customers?q=${encodeURIComponent(name.split(' ')[1])}`)
+  if (await page.locator(`tbody tr:has-text("${name.split(' ')[1]}")`).count() === 0) {
+    throw new Error('the customer never reached the book')
+  }
+})
+
 // --- 11. The inventory list on a phone -------------------------------------
 if (!only || 'inventory on a phone'.includes(only)) {
   const { ctx, page } = await newPage(390, 844)

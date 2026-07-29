@@ -5,6 +5,7 @@ import {
   useToast, useCurrency,
 } from '@/components/ui'
 import { recordSaleAction } from '@/app/actions/watches'
+import { quickCreateCustomerAction } from '@/app/actions/crm'
 import { formatMoneyInput, formatPct, parseMoneyInput } from '@/lib/money'
 import { fromBase, toBase } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
@@ -254,7 +255,18 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
           label="Customer"
           value={customerId}
           onChange={chooseCustomer}
-          placeholder={customers.length === 0 ? 'No customers on file yet' : 'Search the customer book…'}
+          placeholder={customers.length === 0 ? 'Nobody on the book yet' : 'Search the customer book…'}
+          emptyMessage="Not on the book — add their details below and they will be."
+          onCreate={async (name) => {
+            const result = await quickCreateCustomerAction(name)
+            if (!result.ok || !result.id) {
+              toast.error('Could not add the customer', result.message)
+              return null
+            }
+            setCustomerName(result.label ?? name)
+            toast.success(`${result.label} added to the book`)
+            return { value: result.id, label: result.label ?? name }
+          }}
           options={customers.map((customer) => ({
             value: customer.id,
             label: customer.company ? `${customer.name} · ${customer.company}` : customer.name,

@@ -23,6 +23,11 @@ export interface ComboSelectProps {
    */
   onCreate?: (label: string) => Promise<ComboOption | null>
   createLabel?: string
+  /**
+   * Shown instead of "No matches." — so a picker that cannot create in place
+   * can still say where to go, rather than leaving a dead end.
+   */
+  emptyMessage?: React.ReactNode
 }
 
 /**
@@ -36,7 +41,7 @@ export interface ComboSelectProps {
  */
 export function ComboSelect({
   name, label, hint, error, required, className, placeholder = 'Choose…',
-  options, value, onChange, onCreate, createLabel = 'Add',
+  options, value, onChange, onCreate, createLabel = 'Add', emptyMessage,
 }: ComboSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -134,7 +139,11 @@ export function ComboSelect({
                   </li>
                 ))}
                 {filtered.length === 0 && !canCreate && (
-                  <li className="px-3.5 py-3 text-small text-content-secondary">No matches.</li>
+                  <li className="px-3.5 py-3 text-small text-content-secondary">
+                    {emptyMessage ?? (onCreate
+                      ? 'Nothing here yet — type a name to add one.'
+                      : 'No matches.')}
+                  </li>
                 )}
               </ul>
 

@@ -78,6 +78,40 @@ export async function deleteCustomerAction(id: string): Promise<ActionState> {
   }
 }
 
+/**
+ * Create a customer from a name alone.
+ *
+ * The escape hatch for every picker: you are part-way through opening a deal
+ * or recording a sale, the person is not on the book, and being sent to
+ * another screen to add them means losing what you have typed. A name is
+ * enough to start; the rest is filled in on their record when there is time.
+ */
+export async function quickCreateCustomerAction(
+  name: string,
+): Promise<{ ok: boolean; id?: string; label?: string; message?: string }> {
+  const actor = await requireCapability('customer:create')
+  const trimmed = name.trim().replace(/\s+/g, ' ')
+  if (!trimmed) return { ok: false, message: 'Give them a name.' }
+
+  // "Priya Raman" splits; a single word becomes the surname, which is how a
+  // dealer files a walk-in they only know by one name.
+  const parts = trimmed.split(' ')
+  const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0]!
+  const lastName = parts.length > 1 ? parts[parts.length - 1]! : parts[0]!
+
+  const parsed = customerSchema.safeParse({ firstName, lastName })
+  if (!parsed.success) return { ok: false, message: 'That name could not be used.' }
+
+  try {
+    const id = await createCustomer(parsed.data, actor)
+    revalidateCrm()
+    return { ok: true, id, label: trimmed }
+  } catch (error) {
+    const state = toState(error, 'Could not add the customer.')
+    return { ok: false, message: state.message }
+  }
+}
+
 // --- Deals -----------------------------------------------------------------
 
 export async function saveDealAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
