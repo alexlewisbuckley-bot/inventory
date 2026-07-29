@@ -32,6 +32,7 @@ export interface CustomerListItem {
   phone: string | null
   country: string | null
   tier: string
+  customerType: string
   status: string
   leadSource: string
   ownerId: string | null
@@ -63,6 +64,7 @@ const customerColumns = {
   phone: customers.phone,
   country: customers.country,
   tier: customers.tier,
+  customerType: customers.customerType,
   status: customers.status,
   leadSource: customers.leadSource,
   ownerId: customers.ownerId,
@@ -107,6 +109,7 @@ function customerFilters(query: CustomerQuery): SQL | undefined {
     ))
   }
   if (query.tier?.length) clauses.push(inArray(customers.tier, query.tier))
+  if (query.customerType?.length) clauses.push(inArray(customers.customerType, query.customerType))
   if (query.status?.length) clauses.push(inArray(customers.status, query.status))
   if (query.ownerId?.length) clauses.push(inArray(customers.ownerId, query.ownerId))
   if (query.leadSource?.length) clauses.push(inArray(customers.leadSource, query.leadSource))
@@ -635,6 +638,7 @@ export async function customerOptions() {
     email: customers.email,
     phone: customers.phone,
     country: customers.country,
+    customerType: customers.customerType,
   })
     .from(customers)
     .where(isNull(customers.deletedAt))
@@ -677,4 +681,35 @@ export async function openDealsByWatch(): Promise<Record<string, WatchDealOption
     byWatch.set(row.watchId, list)
   }
   return Object.fromEntries(byWatch)
+}
+
+/**
+ * The two lines of business, side by side.
+ *
+ * The reason the distinction is worth carrying at all: trade moves volume at
+ * thin margins and retail moves fewer at fat ones, and a single blended margin
+ * describes neither. Sales with no customer attached are reported separately
+ * rather than being quietly folded into retail.
+ */
+export async function tradeVsRetail() {
+  const rows = await db.select({
+    segment: sql<string>`coalesce(${customers.customerType}, 'UNATTRIBUTED')`,
+    sales: sql<number>`count(*)`,
+    revenueGbp: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+    profitGbp: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
+  })
+    .from(sales)
+    .leftJoin(customers, eq(customers.id, sales.customerId))
+    .where(liveSale())
+    .groupBy(sql`coalesce(${customers.customerType}, 'UNATTRIBUTED')`)
+
+  return rows.map((row) => ({
+    segment: row.segment,
+    sales: Number(row.sales),
+    revenueGbp: Number(row.revenueGbp),
+    profitGbp: Number(row.profitGbp),
+    marginPct: Number(row.revenueGbp) > 0
+      ? (Number(row.profitGbp) / Number(row.revenueGbp)) * 100
+      : null,
+  }))
 }

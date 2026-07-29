@@ -4,7 +4,9 @@ export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 export { Chip, StatusChip, UnpricedChip } from './Chip'
 export type { ChipTone } from './Chip'
 export { Card, CardHeader, CardBody, CardFooter, StatCard } from './Card'
-export { Field, TextField, SelectField, TextareaField, Checkbox, RadioCard } from './Field'
+export {
+  Field, TextField, SelectField, TextareaField, Checkbox, RadioCard, SegmentedField,
+} from './Field'
 export { MoneyField } from './MoneyField'
 export { AnchoredMenu } from './AnchoredMenu'
 export { ToolbarRow, ToolbarSearch, ToolbarSelect, ToolbarDate } from './Toolbar'

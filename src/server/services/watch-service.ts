@@ -388,6 +388,7 @@ async function resolveBuyer(input: SaleCreateInput, actor: SessionUser): Promise
     postcode: null,
     preferredChannel: 'EMAIL',
     tier: input.buyerTier,
+    customerType: input.buyerType,
     status: 'ACTIVE',
     leadSource: input.buyerLeadSource,
     budgetMinGbp: null,

@@ -153,6 +153,7 @@ export async function createCustomer(input: CustomerInput, actor: SessionUser): 
       postcode: input.postcode,
       preferredChannel: input.preferredChannel,
       tier: input.tier,
+      customerType: input.customerType,
       status: input.status,
       leadSource: input.leadSource,
       budgetMinGbp: input.budgetMinGbp,
@@ -209,6 +210,7 @@ export async function updateCustomer(id: string, input: CustomerInput, actor: Se
       postcode: input.postcode,
       preferredChannel: input.preferredChannel,
       tier: input.tier,
+      customerType: input.customerType,
       status: input.status,
       leadSource: input.leadSource,
       budgetMinGbp: input.budgetMinGbp,
@@ -228,7 +230,8 @@ export async function updateCustomer(id: string, input: CustomerInput, actor: Se
 
     const changes = diff(existing, input, [
       'firstName', 'lastName', 'company', 'email', 'phone', 'country', 'tier',
-      'status', 'leadSource', 'preferredChannel', 'ownerId', 'marketingConsent',
+      'customerType', 'status', 'leadSource', 'preferredChannel', 'ownerId',
+      'marketingConsent',
     ])
 
     await recordAudit({
@@ -239,14 +242,16 @@ export async function updateCustomer(id: string, input: CustomerInput, actor: Se
 
     // A quiet field edit is not worth a timeline row; a change of tier or owner
     // is the kind of thing a colleague needs to see they did not do.
-    if (changes && (changes.tier || changes.ownerId || changes.status)) {
+    if (changes && (changes.tier || changes.ownerId || changes.status || changes.customerType)) {
       await logActivity({
         type: 'SYSTEM', isSystem: true, scope: { customerId: id }, actorId: actor.id,
-        subject: changes?.tier
-          ? `Tier changed to ${input.tier.toLowerCase()}`
-          : changes?.status
-            ? `Marked ${input.status.toLowerCase()}`
-            : 'Account manager changed',
+        subject: changes?.customerType
+          ? `Moved to the ${input.customerType.toLowerCase()} side of the business`
+          : changes?.tier
+            ? `Tier changed to ${input.tier.toLowerCase()}`
+            : changes?.status
+              ? `Marked ${input.status.toLowerCase()}`
+              : 'Account manager changed',
       })
     }
   })

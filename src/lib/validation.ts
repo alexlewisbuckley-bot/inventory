@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
-  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES,
   REQUEST_STATUSES, ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
@@ -156,6 +156,7 @@ export const saleCreateSchema = z.object({
   buyerLastName: optionalText(80),
   buyerCountry: optionalText(60),
   buyerTier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
+  buyerType: z.enum(CUSTOMER_TYPES).default('RETAIL'),
   buyerLeadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
   paymentStatus: z.enum(PAYMENT_STATUSES).default('PAID'),
   deliveryStatus: z.enum(DELIVERY_STATUSES).default('COLLECTED'),
@@ -315,6 +316,7 @@ export const customerSchema = z.object({
   postcode: optionalText(20),
   preferredChannel: z.enum(CONTACT_CHANNELS).default('EMAIL'),
   tier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
+  customerType: z.enum(CUSTOMER_TYPES).default('RETAIL'),
   status: z.enum(CUSTOMER_STATUSES).default('ACTIVE'),
   leadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
   budgetMinGbp: moneyFromText,
@@ -336,6 +338,7 @@ export const CUSTOMER_SORT_FIELDS = ['name', 'value', 'lastContact', 'created'] 
 export const customerQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   tier: z.array(z.enum(CUSTOMER_TIERS)).optional(),
+  customerType: z.array(z.enum(CUSTOMER_TYPES)).optional(),
   status: z.array(z.enum(CUSTOMER_STATUSES)).optional(),
   leadSource: z.array(z.enum(LEAD_SOURCES)).optional(),
   ownerId: z.array(z.string()).optional(),

@@ -233,3 +233,72 @@ export function RadioCard({ checked, onSelect, title, description, badge, disabl
     </button>
   )
 }
+
+/**
+ * A two-or-three-way choice, shown as a segmented control.
+ *
+ * A select hides the options behind a click, which is wrong when the choice is
+ * short, mutually exclusive and consequential — the kind you want to see the
+ * state of at a glance rather than read. Radio inputs underneath, so it is
+ * keyboard-navigable with the arrow keys and announced as a group.
+ */
+export function SegmentedField<T extends string>({
+  name, label, hint, error, value, onChange, options, className,
+}: {
+  name: string
+  label?: string
+  hint?: ReactNode
+  error?: string
+  value: T
+  onChange: (value: T) => void
+  options: Array<{ value: T; label: string; description?: string }>
+  className?: string
+}) {
+  const id = useId()
+  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined
+  const active = options.find((option) => option.value === value)
+
+  return (
+    <fieldset className={cn('flex flex-col gap-1.5', className)}>
+      {label && (
+        <legend className="text-caption font-semibold text-content-secondary">{label}</legend>
+      )}
+      <div
+        className="inline-flex w-full rounded-md border border-line-subtle bg-surface-subtle p-1"
+        aria-describedby={describedBy}
+      >
+        {options.map((option) => {
+          const selected = option.value === value
+          return (
+            <label
+              key={option.value}
+              className={cn(
+                'relative flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-sm px-3 text-small font-semibold transition-colors',
+                selected
+                  ? 'bg-surface-raised text-content-primary shadow-sm'
+                  : 'text-content-secondary hover:text-content-primary',
+              )}
+            >
+              <input
+                type="radio"
+                name={name}
+                value={option.value}
+                checked={selected}
+                onChange={() => onChange(option.value)}
+                className="sr-only"
+              />
+              {option.label}
+            </label>
+          )
+        })}
+      </div>
+      {error
+        ? <p id={`${id}-error`} className="text-caption text-state-danger">{error}</p>
+        : (active?.description || hint) && (
+          <p id={`${id}-hint`} className="text-caption text-content-secondary">
+            {active?.description ?? hint}
+          </p>
+        )}
+    </fieldset>
+  )
+}

@@ -1,7 +1,8 @@
 'use client'
 import { useMemo, useState } from 'react'
 import {
-  Modal, Button, TextField, SelectField, MoneyField, ComboSelect, Chip, useToast, useCurrency,
+  Modal, Button, TextField, SelectField, MoneyField, ComboSelect, Chip, SegmentedField,
+  useToast, useCurrency,
 } from '@/components/ui'
 import { recordSaleAction } from '@/app/actions/watches'
 import { formatMoneyInput, formatPct, parseMoneyInput } from '@/lib/money'
@@ -9,9 +10,10 @@ import { fromBase, toBase } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
 import { UserPlus } from 'lucide-react'
 import {
-  CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, DELIVERY_STATUSES, DELIVERY_STATUS_LABELS,
+  CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_DESCRIPTIONS,
+  CUSTOMER_TYPE_LABELS, DELIVERY_STATUSES, DELIVERY_STATUS_LABELS,
   LEAD_SOURCES, LEAD_SOURCE_LABELS, PAYMENT_STATUSES, PAYMENT_STATUS_LABELS,
-  SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode,
+  SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode, type CustomerType,
 } from '@/lib/enums'
 
 export interface QuickSellTarget {
@@ -30,6 +32,7 @@ export interface SellCustomerOption {
   email: string | null
   phone: string | null
   country: string | null
+  customerType: string
 }
 
 export interface SellDealOption {
@@ -66,6 +69,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
   const [buyerLast, setBuyerLast] = useState('')
   const [buyerCountry, setBuyerCountry] = useState('')
   const [buyerTier, setBuyerTier] = useState('STANDARD')
+  const [buyerType, setBuyerType] = useState<CustomerType>('RETAIL')
   const [buyerSource, setBuyerSource] = useState('UNKNOWN')
   // The ledger's own name column, kept in step with whichever route was taken:
   // a customer picked from the book, or one being created here.
@@ -103,6 +107,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     setBuyerLast('')
     setBuyerCountry('')
     setBuyerTier('STANDARD')
+    setBuyerType('RETAIL')
     setBuyerSource('UNKNOWN')
     setNewBuyer(false)
     setPaymentStatus('PAID')
@@ -126,6 +131,10 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     setCustomerCompany(customer.company ?? '')
     setCustomerEmail(customer.email ?? '')
     setCustomerPhone(customer.phone ?? '')
+    // The channel follows the customer: a dealer is a trade sale, and having
+    // to remember to change it is how the split between the two lines of
+    // business quietly stops being true.
+    setChannel(customer.customerType === 'TRADE' ? 'TRADE' : 'RETAIL')
   }
 
   const projection = useMemo(() => {
@@ -160,6 +169,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     data.set('buyerLastName', buyerLast)
     data.set('buyerCountry', buyerCountry)
     data.set('buyerTier', buyerTier)
+    data.set('buyerType', buyerType)
     data.set('buyerLeadSource', buyerSource)
     data.set('dealId', dealId)
     data.set('paymentStatus', paymentStatus)
@@ -253,6 +263,14 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
         />
 
         <div className="mt-2 flex flex-wrap items-center gap-3">
+          {customerId && (() => {
+            const picked = customers.find((c) => c.id === customerId)
+            return picked ? (
+              <Chip tone={picked.customerType === 'TRADE' ? 'navy' : 'accent'}>
+                {CUSTOMER_TYPE_LABELS[picked.customerType as CustomerType]}
+              </Chip>
+            ) : null
+          })()}
           {customerId ? (
             <button
               type="button"
@@ -286,6 +304,22 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
               <UserPlus className="h-4 w-4 text-content-accent" aria-hidden />
               Adding {channel === 'TRADE' ? 'this dealer' : 'this buyer'} to the customer book
             </p>
+
+            <SegmentedField
+              name="buyerType"
+              label="Which side of the business"
+              className="mb-4"
+              value={buyerType}
+              onChange={(value) => {
+                setBuyerType(value)
+                setChannel(value === 'TRADE' ? 'TRADE' : 'RETAIL')
+              }}
+              options={CUSTOMER_TYPES.map((type) => ({
+                value: type,
+                label: CUSTOMER_TYPE_LABELS[type],
+                description: CUSTOMER_TYPE_DESCRIPTIONS[type],
+              }))}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField

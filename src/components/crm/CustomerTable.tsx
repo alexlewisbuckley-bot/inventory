@@ -10,8 +10,10 @@ import {
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
   CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS, CUSTOMER_TIERS, CUSTOMER_TIER_LABELS,
-  LEAD_SOURCES, LEAD_SOURCE_LABELS, type CustomerTier,
+  CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
+  type CustomerTier, type CustomerType,
 } from '@/lib/enums'
+import { cn } from '@/lib/cn'
 import type { CustomerListResult } from '@/server/repositories/crm-repository'
 
 const TIER_TONE: Record<CustomerTier, 'gold' | 'accent' | 'neutral'> = {
@@ -37,6 +39,33 @@ export function CustomerTable({ result, owners }: {
 
   return (
     <>
+      {/* The first cut anyone makes on this list, so it is one click rather
+          than a filter buried in a dropdown beside four others. */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {[
+          { value: '', label: 'Everyone' },
+          ...CUSTOMER_TYPES.map((type) => ({ value: type, label: CUSTOMER_TYPE_LABELS[type] })),
+        ].map((segment) => {
+          const active = (query.get('customerType') ?? '') === segment.value
+          return (
+            <button
+              key={segment.value || 'all'}
+              type="button"
+              aria-pressed={active}
+              onClick={() => query.set('customerType', segment.value || null)}
+              className={cn(
+                'inline-flex h-9 items-center rounded-md px-3.5 text-small font-semibold transition-colors',
+                active
+                  ? 'bg-navy-700 text-white'
+                  : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
+              )}
+            >
+              {segment.label}
+            </button>
+          )
+        })}
+      </div>
+
       <ToolbarRow className="mb-4">
         <ToolbarSearch
           value={query.get('q') ?? ''}
@@ -102,6 +131,8 @@ export function CustomerTable({ result, owners }: {
                       )}
                     </span>
                     <span className="mt-0.5 block truncate text-caption text-content-secondary">
+                      {CUSTOMER_TYPE_LABELS[customer.customerType as CustomerType]}
+                      {' · '}
                       {customer.company ?? customer.email ?? customer.phone ?? 'No contact details'}
                     </span>
                     <span className="mt-1.5 block text-caption text-content-secondary">
@@ -118,6 +149,7 @@ export function CustomerTable({ result, owners }: {
               <THead>
                 <TR>
                   <TH>Customer</TH>
+                  <TH width="90px">Side</TH>
                   <TH width="190px">Contact</TH>
                   <TH width="120px">Country</TH>
                   <TH width="120px">Owner</TH>
@@ -149,6 +181,11 @@ export function CustomerTable({ result, owners }: {
                           </span>
                         </span>
                       </Link>
+                    </TD>
+                    <TD>
+                      <Chip tone={customer.customerType === 'TRADE' ? 'navy' : 'accent'}>
+                        {CUSTOMER_TYPE_LABELS[customer.customerType as CustomerType]}
+                      </Chip>
                     </TD>
                     <TD className="text-content-secondary">
                       <span className="block truncate" title={customer.email ?? undefined}>

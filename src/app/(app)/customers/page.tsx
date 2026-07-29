@@ -28,6 +28,7 @@ export default async function CustomersPage({ searchParams }: {
   const query = customerQuerySchema.parse({
     q: searchParams.q,
     tier: list(searchParams.tier),
+    customerType: list(searchParams.customerType),
     status: list(searchParams.status),
     leadSource: list(searchParams.leadSource),
     ownerId: list(searchParams.ownerId),

@@ -4,9 +4,10 @@ import { ArrowRight, Clock, Store, TrendingUp } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { salesByMonth, summariseSales, supplierPerformance } from '@/server/repositories/sale-repository'
 import { stockByLocation, summariseInventory, findAgeingStock } from '@/server/repositories/watch-repository'
+import { tradeVsRetail } from '@/server/repositories/crm-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Card, CardHeader, StatCard, EmptyState } from '@/components/ui'
+import { Card, CardBody, CardHeader, StatCard, EmptyState } from '@/components/ui'
 import { MonthlyChart } from '@/components/reports/MonthlyChart'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
@@ -21,7 +22,9 @@ export default async function ReportsPage() {
   const user = await requireCapability('report:read')
 
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
-  const [inventory, sales, monthly, suppliers, byLocation, ageing, rates, preferences] = await Promise.all([
+  const [
+    inventory, sales, monthly, suppliers, byLocation, ageing, rates, preferences, segments,
+  ] = await Promise.all([
     summariseInventory(activeQuery),
     summariseSales({}),
     salesByMonth(12),
@@ -30,10 +33,17 @@ export default async function ReportsPage() {
     findAgeingStock(90, 100),
     getRateTable(),
     getPreferencesFor(user.id),
+    tradeVsRetail(),
   ])
 
   // Every figure below is stored in GBP and rendered in the viewer's chosen
   // currency, so the page can never mix symbols the way it used to.
+  // Trade first, then retail, then anything unattributed — the order the
+  // business thinks in rather than whatever the group by returned.
+  const order = ['TRADE', 'RETAIL', 'UNATTRIBUTED']
+  segments.sort((a, b) => order.indexOf(a.segment) - order.indexOf(b.segment))
+  const totalRevenue = segments.reduce((sum, segment) => sum + segment.revenueGbp, 0)
+
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
   const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
@@ -74,6 +84,50 @@ export default async function ReportsPage() {
                 count: Number(m.count),
               }))}
             />
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Trade and retail"
+            description="The two lines of business, which a blended margin describes neither of."
+          />
+          {segments.length === 0 ? (
+            <CardBody className="text-small text-content-secondary">
+              Nothing sold yet. Attribute a sale to a customer and it will split here.
+            </CardBody>
+          ) : (
+            <ul className="divide-y divide-line-subtle">
+              {segments.map((segment) => (
+                <li key={segment.segment} className="px-6 py-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-body font-bold text-content-primary">
+                      {segment.segment === 'TRADE' ? 'Trade'
+                        : segment.segment === 'RETAIL' ? 'Retail'
+                        : 'Not attributed to a customer'}
+                    </p>
+                    <p className="text-body font-bold tabular-nums text-content-primary">
+                      {money(segment.revenueGbp)}
+                    </p>
+                  </div>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-3 text-caption text-content-secondary">
+                    <span>{segment.sales} {segment.sales === 1 ? 'sale' : 'sales'}</span>
+                    <span className="tabular-nums">
+                      {money(segment.profitGbp)} profit
+                      {segment.marginPct !== null ? ` · ${formatPct(segment.marginPct)}` : ''}
+                    </span>
+                  </div>
+                  {/* Share of revenue, so the two are comparable at a glance
+                      rather than by mental arithmetic. */}
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-pill bg-surface-subtle" role="presentation">
+                    <div
+                      className={segment.segment === 'TRADE' ? 'h-full rounded-pill bg-navy-500' : 'h-full rounded-pill bg-series-1'}
+                      style={{ width: `${totalRevenue > 0 ? Math.max((segment.revenueGbp / totalRevenue) * 100, 2) : 0}%` }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
 

@@ -238,6 +238,27 @@ export const CONTACT_CHANNEL_LABELS: Record<ContactChannel, string> = {
  * Deliberately three levels. A finer scale invites arguments about the
  * boundary and produces no different behaviour.
  */
+/**
+ * The two lines of business.
+ *
+ * Not the same thing as a sale's channel: the channel describes one
+ * transaction, this describes what kind of counterparty somebody is. It
+ * decides the price you quote, the paperwork you need and how you speak to
+ * them, and it does not change from one sale to the next.
+ */
+export const CUSTOMER_TYPES = ['RETAIL', 'TRADE'] as const
+export type CustomerType = (typeof CUSTOMER_TYPES)[number]
+
+export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
+  RETAIL: 'Retail',
+  TRADE: 'Trade',
+}
+
+export const CUSTOMER_TYPE_DESCRIPTIONS: Record<CustomerType, string> = {
+  RETAIL: 'A private buyer. Direct-to-consumer.',
+  TRADE: 'Another dealer or business. Business-to-business.',
+}
+
 export const CUSTOMER_TIERS = ['STANDARD', 'PRIORITY', 'VIP'] as const
 export type CustomerTier = (typeof CUSTOMER_TIERS)[number]
 

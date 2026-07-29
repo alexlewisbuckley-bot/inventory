@@ -19,6 +19,7 @@ import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
   BASE_CURRENCY, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUS_LABELS, CUSTOMER_TIER_LABELS,
+  CUSTOMER_TYPE_LABELS, type CustomerType,
   DEAL_STAGE_LABELS, LEAD_SOURCE_LABELS, OFFER_STATUS_LABELS, REQUEST_STATUS_LABELS, type ContactChannel,
   type CustomerStatus, type CustomerTier, type DealStage, type LeadSource, type OfferStatus,
   type RequestStatus,
@@ -112,6 +113,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
               postcode: customer.postcode,
               preferredChannel: customer.preferredChannel,
               tier: customer.tier,
+              customerType: customer.customerType,
               status: customer.status,
               leadSource: customer.leadSource,
               budgetMinGbp: customer.budgetMinGbp,
@@ -128,6 +130,11 @@ export default async function CustomerPage({ params }: { params: { id: string } 
       />
 
       <div className="mb-6 flex flex-wrap items-center gap-2">
+        {/* Leads the chips: which side of the business they are on changes how
+            every other fact about them should be read. */}
+        <Chip tone={customer.customerType === 'TRADE' ? 'navy' : 'accent'}>
+          {CUSTOMER_TYPE_LABELS[customer.customerType as CustomerType]}
+        </Chip>
         <Chip tone={tierTone}>{CUSTOMER_TIER_LABELS[customer.tier as CustomerTier]}</Chip>
         {customer.status !== 'ACTIVE' && (
           <Chip tone="danger">{CUSTOMER_STATUS_LABELS[customer.status as CustomerStatus]}</Chip>

@@ -5,7 +5,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
-  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
   PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
@@ -457,6 +457,8 @@ export const customers = pgTable(
     preferredChannel: text('preferred_channel', { enum: CONTACT_CHANNELS }).notNull().default('EMAIL'),
     language: text('language'),
     tier: text('tier', { enum: CUSTOMER_TIERS }).notNull().default('STANDARD'),
+    /** Which side of the business they belong to: trade (B2B) or retail (B2C). */
+    customerType: text('customer_type', { enum: CUSTOMER_TYPES }).notNull().default('RETAIL'),
     leadSource: text('lead_source', { enum: LEAD_SOURCES }).notNull().default('UNKNOWN'),
     status: text('status', { enum: CUSTOMER_STATUSES }).notNull().default('ACTIVE'),
     /** Budget as a range in GBP minor units; a ceiling alone reads as a promise. */
@@ -479,6 +481,7 @@ export const customers = pgTable(
     emailIdx: index('customers_email_idx').on(t.email),
     phoneIdx: index('customers_phone_idx').on(t.phone),
     ownerIdx: index('customers_owner_idx').on(t.ownerId),
+    typeIdx: index('customers_type_idx').on(t.customerType).where(sql`deleted_at IS NULL`),
   }),
 )
 

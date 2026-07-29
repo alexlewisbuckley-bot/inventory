@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Pencil, Plus } from 'lucide-react'
 import {
-  Button, Checkbox, Drawer, SelectField, TextField, useToast,
+  Button, Checkbox, Drawer, SegmentedField, SelectField, TextField, useToast,
 } from '@/components/ui'
 import { saveCustomerAction } from '@/app/actions/crm'
 import { useCreateFlag } from '@/components/ui/CreateAction'
 import {
   CONTACT_CHANNELS, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
-  CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
+  CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_DESCRIPTIONS,
+  CUSTOMER_TYPE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS, type CustomerType,
 } from '@/lib/enums'
 import { toMajor } from '@/lib/money'
 import type { ActionState } from '@/app/actions/auth'
@@ -33,6 +34,7 @@ export interface CustomerFormValues {
   postcode: string | null
   preferredChannel: string
   tier: string
+  customerType: string
   status: string
   leadSource: string
   budgetMinGbp: number | null
@@ -63,6 +65,9 @@ export function CustomerFormPanel({ owners, brands, customer, triggerLabel, vari
   const toast = useToast()
   const create = useCreateFlag()
   const [editing, setEditing] = useState(false)
+  const [customerType, setCustomerType] = useState<CustomerType>(
+    (customer?.customerType as CustomerType) ?? 'RETAIL',
+  )
   const [state, action] = useFormState(saveCustomerAction, INITIAL)
 
   const open = customer ? editing : create.open
@@ -97,6 +102,21 @@ export function CustomerFormPanel({ owners, brands, customer, triggerLabel, vari
       >
         <form action={action} className="flex flex-col gap-5">
           {customer && <input type="hidden" name="id" value={customer.id} />}
+
+          {/* First, because it changes what the rest of the record means: a
+              dealer is quoted differently, invoiced differently and spoken to
+              differently from a private buyer. */}
+          <SegmentedField
+            name="customerType"
+            label="Which side of the business"
+            value={customerType}
+            onChange={setCustomerType}
+            options={CUSTOMER_TYPES.map((type) => ({
+              value: type,
+              label: CUSTOMER_TYPE_LABELS[type],
+              description: CUSTOMER_TYPE_DESCRIPTIONS[type],
+            }))}
+          />
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField name="firstName" label="First name" required autoFocus
