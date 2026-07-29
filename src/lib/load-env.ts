@@ -12,7 +12,17 @@ import { resolve } from 'node:path'
  * Existing environment variables always win, so real deployment config is
  * never overwritten by a checked-in file.
  */
-export function loadEnv(file = '.env'): void {
+export function loadEnv(files = ['.env.local', '.env']): void {
+  for (const file of Array.isArray(files) ? files : [files]) readFile(file)
+}
+
+/**
+ * Next.js reads `.env.local` in preference to `.env`, so a CLI that reads only
+ * `.env` is the exact mismatch this module exists to prevent: `db:seed` writes
+ * the checked-in database while the running application reads the local one.
+ * Earlier files win, matching Next's own precedence.
+ */
+function readFile(file: string): void {
   const path = resolve(process.cwd(), file)
   if (!existsSync(path)) return
 
