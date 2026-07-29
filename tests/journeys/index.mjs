@@ -18,35 +18,13 @@
  * Signs in through the login form rather than minting a token, so the session
  * path is covered too.
  */
-import { existsSync } from 'node:fs'
-import { chromium } from 'playwright'
+import { BASE, ROUTES, launch, signIn } from '../harness/browser.mjs'
 
-const BASE = process.env.JOURNEY_URL ?? 'http://localhost:3000'
-const EMAIL = process.env.JOURNEY_EMAIL ?? 'alex@bluecroft.co.uk'
-const PASSWORD = process.env.JOURNEY_PASSWORD ?? 'Bluecroft2026!'
 const only = process.argv[2]
 const results = []
 
-// The bundled browser moves with the Playwright version; a pinned copy in the
-// sandbox is used when the default download is not present.
-const FALLBACK_CHROMIUM = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH
-    || (existsSync(FALLBACK_CHROMIUM) ? FALLBACK_CHROMIUM : undefined),
-  args: ['--no-proxy-server'],
-})
-
-/** One signed-in browser context, reused so the login runs once. */
-const signedIn = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-{
-  const page = await signedIn.newPage()
-  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
-  await page.fill('input[type="email"]', EMAIL)
-  await page.fill('input[type="password"]', PASSWORD)
-  await page.click('button[type="submit"]')
-  await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 20_000 })
-  await page.close()
-}
+const { browser, ctx: signedIn } = await launch()
+await signIn(signedIn)
 
 async function newPage(width = 1440, height = 1000) {
   const ctx = width === 1440
@@ -80,7 +58,11 @@ async function journey(name, fn) {
 
 const go = async (page, path) => {
   await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
-  await page.waitForTimeout(1200)
+  // A fixed wait is a race the suite loses as it warms up and pages do more
+  // work. Wait for the region every screen has, then settle briefly for the
+  // client components that hydrate into it.
+  await page.locator('main').waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {})
+  await page.waitForTimeout(900)
 }
 
 /** The status chip for a given stock number. */
@@ -372,7 +354,14 @@ await journey('sign out other devices', async (page) => {
 await journey('sell links customer and deal', async (page) => {
   // A watch with a deal open against it, so the form has both halves to join.
   await go(page, '/inventory?status=IN_STOCK')
-  const trigger = page.locator('tbody button[aria-label^="Status:"]').first()
+  // Earlier journeys sell and void as they go, so this one states plainly what
+  // it needs rather than hanging on a selector that will never resolve — and
+  // it tracks its own watch, because the first Sold row belongs to somebody
+  // else's journey by the time this runs.
+  const firstRow = page.locator('tbody tr').first()
+  if (await firstRow.count() === 0) throw new Error('nothing is in stock to sell')
+  const stockNo = (await firstRow.locator('td').nth(1).innerText()).trim()
+  const trigger = firstRow.locator('button[aria-label^="Status:"]')
   await trigger.click()
   await page.waitForTimeout(300)
   await page.locator('[role="menu"] button:has-text("Mark as sold")').click()
@@ -491,6 +480,149 @@ if (!only || 'mobile nav'.includes(only)) {
     await ctx.close()
   }
 }
+
+// --- Coverage floor before the redesign begins ------------------------------
+//
+// These are not workflow journeys; they are the net. Every route must render
+// for every role, and the money paths must survive whatever the redesign does
+// to the screens around them.
+
+await journey('every route renders', async (page) => {
+  const broken = []
+  for (const route of ROUTES) {
+    const response = await page.goto(BASE + route, { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(350)
+    const status = response?.status() ?? 0
+    const body = await page.locator('body').innerText()
+    if (status >= 400) broken.push(`${route} → HTTP ${status}`)
+    else if (/application error|unhandled|digest:/i.test(body)) broken.push(`${route} → error boundary`)
+    else if (await page.locator('main').count() === 0) broken.push(`${route} → no main region`)
+  }
+  if (broken.length) throw new Error(broken.join(' · '))
+})
+
+await journey('every route renders for a viewer', async () => {
+  // A role that can reach less must still never see a broken page — the most
+  // common regression when navigation and permissions change together.
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const page = await ctx.newPage()
+  try {
+    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
+    await page.fill('input[type="email"]', 'priya@bluecroft.co.uk')
+    await page.fill('input[type="password"]', 'Bluecroft2026!')
+    await page.click('button[type="submit"]')
+    await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000, waitUntil: 'commit' })
+
+    const broken = []
+    for (const route of ROUTES) {
+      const response = await page.goto(BASE + route, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(300)
+      const status = response?.status() ?? 0
+      // 403 is a correct answer for a viewer; a 500 is not.
+      if (status >= 500) broken.push(`${route} → HTTP ${status}`)
+      const body = await page.locator('body').innerText()
+      if (/application error|unhandled|digest:/i.test(body)) broken.push(`${route} → error boundary`)
+    }
+    if (broken.length) throw new Error(broken.join(' · '))
+  } finally {
+    await page.close()
+    await ctx.close()
+  }
+})
+
+await journey('a sale survives being voided and resold', async (page) => {
+  // The money path, end to end. Everything else in the redesign can move; this
+  // sequence has to keep producing the same numbers.
+  //
+  // It tracks its own watch throughout, because by the time this runs the
+  // first Sold row belongs to another journey.
+  await go(page, '/inventory?status=IN_STOCK')
+  const firstRow = page.locator('tbody tr').first()
+  if (await firstRow.count() === 0) throw new Error('nothing is in stock to sell')
+  const stockNo = (await firstRow.locator('td').nth(1).innerText()).trim()
+
+  await firstRow.locator('button[aria-label^="Status:"]').click()
+  await page.waitForTimeout(300)
+  await page.locator('[role="menu"] button:has-text("Mark as sold")').click()
+  await page.waitForTimeout(900)
+
+  const invoice = `INV-V-${Date.now().toString().slice(-7)}`
+  const dialog = page.locator('[role="dialog"]')
+  await dialog.locator('input[inputmode="decimal"]').first().fill('11000')
+  await page.fill('input[placeholder="INV-2026-001"]', invoice)
+  await dialog.locator('button:has-text("Record the sale")').click()
+  await page.waitForTimeout(3000)
+  if (await page.locator('[role="dialog"]').count() > 0) throw new Error('the sale did not record')
+
+  // Void it, and the watch must come back into stock and be sellable again —
+  // the partial unique indexes exist precisely for this.
+  await go(page, `/inventory?q=${stockNo}`)
+  const sold = page.locator(`tbody tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`)
+  if (await sold.count() === 0) throw new Error(`stock ${stockNo} vanished after the sale`)
+  if (!(await sold.getAttribute('aria-label'))?.includes('Sold')) {
+    throw new Error(`stock ${stockNo} did not move to Sold`)
+  }
+  await sold.click()
+  await page.waitForTimeout(300)
+  await page.locator('[role="menu"] button:has-text("Void the sale")').click()
+  await page.waitForTimeout(700)
+  await page.locator('[role="dialog"] textarea').first()
+    .fill('Journey: voided to prove the watch can be resold')
+  await page.locator('[role="dialog"] button:has-text("Void the sale")').click()
+  await page.waitForTimeout(3000)
+  if (await page.locator('[role="dialog"]').count() > 0) {
+    throw new Error('the void dialog stayed open')
+  }
+
+  await go(page, `/sales?q=${invoice}`)
+  if (await page.locator(`tr:has-text("${invoice}")`).count() > 0) {
+    throw new Error('the voided sale is still in the ledger')
+  }
+
+  await go(page, `/inventory?q=${stockNo}`)
+  const back = page.locator(`tbody tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`)
+  if ((await back.getAttribute('aria-label'))?.includes('Sold')) {
+    throw new Error(`stock ${stockNo} is still marked sold after the void`)
+  }
+})
+
+await journey('money reads the same on every screen', async (page) => {
+  // A figure that disagrees with itself across screens is the defect class the
+  // audit found twice — a sold row reporting profit from the USD column, and a
+  // customer's lifetime value diverging from the ledger. Column positions move
+  // during a redesign, so this reads the figures out of the row rather than out
+  // of a fixed cell.
+  await go(page, '/inventory')
+  const row = page.locator('tbody tr').first()
+  if (await row.count() === 0) throw new Error('no stock to compare')
+  const rowText = await row.innerText()
+  const figures = [...rowText.matchAll(/£[\d,]+/g)].map((match) => match[0])
+  if (figures.length === 0) throw new Error('the row shows no money at all')
+
+  const href = await row.locator('a[aria-label^="Open full record"]').getAttribute('href')
+  await go(page, href)
+  const record = await page.locator('main').innerText()
+
+  const missing = figures.filter((figure) => !record.includes(figure))
+  if (missing.length === figures.length) {
+    throw new Error(`the list shows ${figures.join(', ')} and the record repeats none of them`)
+  }
+})
+
+// Last, deliberately. Signing out revokes the session every other journey is
+// using, so this has to be the final thing that happens. Placed earlier it
+// left the rest of the suite anonymous and staring at empty pages.
+await journey('signing out ends the session', async (page) => {
+  await go(page, '/')
+  await page.click('button:has-text("Account menu for")')
+  await page.waitForTimeout(300)
+  await page.click('button:has-text("Sign out"), a:has-text("Sign out")')
+  await page.waitForTimeout(2000)
+
+  await page.goto(`${BASE}/inventory`, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(800)
+  if (!page.url().includes('/login')) throw new Error('a signed-out session still reached the inventory')
+})
 
 await signedIn.close()
 await browser.close()

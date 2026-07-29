@@ -6,28 +6,13 @@
  * submission, pagination past the end, sorting every column, and every
  * viewport from a phone to an ultra-wide.
  */
-import { existsSync } from 'node:fs'
-import { chromium } from 'playwright'
+import { BASE, launch, signIn } from './browser.mjs'
 
-const BASE = 'http://localhost:3000'
-const FALLBACK = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const results = []
 const only = process.argv[2]
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || (existsSync(FALLBACK) ? FALLBACK : undefined),
-  args: ['--no-proxy-server'],
-})
-const signedIn = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
-{
-  const page = await signedIn.newPage()
-  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
-  await page.fill('input[type="email"]', 'alex@bluecroft.co.uk')
-  await page.fill('input[type="password"]', 'Bluecroft2026!')
-  await page.click('button[type="submit"]')
-  await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 20000 })
-  await page.close()
-}
+const { browser, ctx: signedIn } = await launch()
+await signIn(signedIn)
 
 async function check(name, fn, viewport) {
   if (only && !name.includes(only)) return

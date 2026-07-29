@@ -1,0 +1,85 @@
+# ------------------------------------------------------------------------
+# Copy this file to .github/workflows/ci.yml.
+#
+# It lives here because the deploy token in use lacks the `workflow` scope
+# and GitHub refuses a push that creates or edits a workflow without it.
+# Moving it is a one-line change; nothing in it needs editing first.
+# ------------------------------------------------------------------------
+# CI for the V2 redesign.
+#
+# Every gate the implementation plan's definition-of-done names, in the order
+# that fails fastest: types, then units, then the built application under a
+# real browser. The browser jobs need Postgres and a migrated, seeded database,
+# which is why they run after the build rather than beside it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  AUTH_SECRET: ci-secret-not-used-anywhere-real-but-long-enough
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bluecroft
+  DEFAULT_FX_GBP_USD: "1.33"
+
+jobs:
+  static:
+    name: Types and units
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+
+  browser:
+    name: Journeys and adversarial sweep
+    runs-on: ubuntu-latest
+    needs: static
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bluecroft
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run db:migrate
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Start the application
+        run: |
+          npm start &
+          npx wait-on http://localhost:3000/api/health --timeout 60000
+
+      # The clicked workflows. A dead control passes a unit test and fails here.
+      - run: npm run test:journeys
+
+      # Adversarial input, four viewports, no sideways scroll, focus rings,
+      # and nothing fetched from a third party.
+      - run: npm run test:stress
+
+      # Design-system drift. Reporting only until epic E7, then --strict.
+      - run: npm run test:tokens
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failure-screenshots
+          path: /tmp/*.png
+          if-no-files-found: ignore
