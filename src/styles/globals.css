@@ -11,6 +11,12 @@
     /* Served from this origin by @fontsource-variable, not from a CDN. */
     --font-jakarta: 'Plus Jakarta Sans Variable';
 
+    /* The density multiplier. Read by the `dy-*` spacing scale in
+       tailwind.config.ts. Declared here rather than passed as a prop because
+       density is a property of a surface, not of a component: set it once on
+       a table and every row, cell and inline control inside it inherits. */
+    --density-y: 1;
+
     --c-navy-900: 4 23 58;
     --c-navy-700: 1 45 104;
     --c-navy-500: 30 78 157;
@@ -38,6 +44,60 @@
        own steps from the same ramps, not an automatic flip. */
     --c-series-1: 30 78 157;   /* #1E4E9D */
     --c-series-2: 0 194 203;   /* #00C2CB */
+
+    /* ---------------------------------------------------------------------
+       V2 tokens (design-system-v2.md §1.6). Additive: nothing consumes these
+       yet, so adding them changes no pixel. Components migrate in E7, at
+       which point the V1 names above are deleted rather than aliased —
+       an alias is how two systems end up living in one codebase forever.
+       --------------------------------------------------------------------- */
+
+    /* A third ink level. V1 used `secondary` for both metadata and
+       placeholders, which made an empty input look filled in. */
+    --c-content-muted: 122 138 165;      /* #7A8AA5 */
+
+    /* One step above `raised`, for modals and the command palette. In dark
+       mode this is lightness, not shadow — a shadow on a dark surface
+       carries no information. */
+    --c-surface-overlay: 255 255 255;    /* #FFFFFF */
+
+    /* Four reserved status colours, never reused as a series or an accent.
+       `serious` is new: V1 collapsed it into danger, so an overdue task and
+       a failed migration looked identical. The distinction is "someone
+       should act" versus "something is broken". */
+    --c-state-good: 0 135 90;            /* #00875A */
+    --c-state-warning: 178 106 0;        /* #B26A00 */
+    --c-state-serious: 194 65 12;        /* #C2410C */
+    --c-state-critical: 163 20 9;        /* #A31409 */
+
+    /* Categorical chart palette, six slots, assigned in this fixed order and
+       never cycled. Computed rather than chosen: all five checks of
+       scripts/validate_palette.js pass against #FFFFFF on adjacent pairs.
+       Under `--pairs all` only the first three slots pass in both themes, so
+       four or more series carry direct labels or texture — see
+       CHART_SAFE_SLOTS in src/lib/tokens.ts, where the evidence is recorded.
+       A seventh slot does not exist. */
+    --c-chart-1: 30 78 157;              /* #1E4E9D navy */
+    --c-chart-2: 194 65 127;             /* #C2417F magenta */
+    --c-chart-3: 178 115 0;              /* #B27300 amber */
+    --c-chart-4: 0 151 167;              /* #0097A7 teal */
+    --c-chart-5: 122 90 248;             /* #7A5AF8 violet */
+    --c-chart-6: 65 117 47;              /* #41752F olive */
+
+    /* Sequential: one hue, light to dark. For magnitude. Never a rainbow. */
+    --c-chart-seq-1: 226 235 249;        /* #E2EBF9 */
+    --c-chart-seq-2: 184 204 236;        /* #B8CCEC */
+    --c-chart-seq-3: 110 147 214;        /* #6E93D6 */
+    --c-chart-seq-4: 46 99 176;          /* #2E63B0 */
+    --c-chart-seq-5: 1 45 104;           /* #012D68 */
+
+    /* Diverging: two poles, neutral grey midpoint. For anything signed —
+       margin, variance. A hue at the midpoint invents a third category. */
+    --c-chart-div-1: 180 35 24;          /* #B42318 */
+    --c-chart-div-2: 232 139 132;        /* #E88B84 */
+    --c-chart-div-3: 227 234 243;        /* #E3EAF3 */
+    --c-chart-div-4: 111 168 201;        /* #6FA8C9 */
+    --c-chart-div-5: 18 85 126;          /* #12557E */
   }
 
   .dark {
@@ -65,6 +125,48 @@
 
     --c-series-1: 63 114 204;  /* #3F72CC — re-stepped for the dark surface */
     --c-series-2: 15 166 174;  /* #0FA6AE */
+
+    /* V2 tokens, selected against the dark surface rather than derived from
+       the light values. Inverting lightness produces muddy chroma and charts
+       that fail the lightness band; every value below was re-stepped and
+       re-validated. */
+
+    --c-content-muted: 108 127 156;      /* #6C7F9C */
+
+    --c-surface-overlay: 19 34 61;       /* #13223D — one step above raised */
+
+    --c-state-good: 61 214 140;          /* #3DD68C */
+    --c-state-warning: 245 184 65;       /* #F5B841 */
+    --c-state-serious: 251 146 60;       /* #FB923C */
+    --c-state-critical: 249 112 102;     /* #F97066 */
+
+    /* Re-stepped and re-validated against the dark raised surface: all five
+       checks pass on adjacent pairs, worst-case tritan ΔE 6.8. Slots 1, 4 and
+       5 were moved away from each other — navy, teal and violet collapse
+       into one colour under protanopia on a dark surface, which the first
+       draft of this palette did not survive. */
+    --c-chart-1: 79 134 219;             /* #4F86DB */
+    --c-chart-2: 214 101 148;            /* #D66594 */
+    --c-chart-3: 181 128 18;             /* #B58012 */
+    --c-chart-4: 23 160 160;             /* #17A0A0 */
+    --c-chart-5: 176 114 232;            /* #B072E8 */
+    --c-chart-6: 99 168 60;              /* #63A83C */
+
+    /* The sequential ramp reverses direction in dark mode: magnitude still
+       reads as "more ink", but on a dark surface more ink means lighter. */
+    --c-chart-seq-1: 1 45 104;           /* #012D68 */
+    --c-chart-seq-2: 46 99 176;          /* #2E63B0 */
+    --c-chart-seq-3: 110 147 214;        /* #6E93D6 */
+    --c-chart-seq-4: 184 204 236;        /* #B8CCEC */
+    --c-chart-seq-5: 226 235 249;        /* #E2EBF9 */
+
+    /* Poles keep their meaning; the midpoint becomes a dark neutral so it
+       still reads as "no signal" rather than as a third colour. */
+    --c-chart-div-1: 249 112 102;        /* #F97066 */
+    --c-chart-div-2: 197 88 82;          /* #C55852 */
+    --c-chart-div-3: 62 70 80;           /* #3E4650 */
+    --c-chart-div-4: 79 146 184;         /* #4F92B8 */
+    --c-chart-div-5: 138 194 226;        /* #8AC2E2 */
   }
 
   * { @apply border-line-subtle; }
@@ -96,11 +198,27 @@
 
   ::selection { @apply bg-teal-500/25; }
 
+  /* Compact halves nothing and shrinks no type; it multiplies vertical
+     padding by 0.75 and leaves the horizontal axis alone. Scoped to the
+     attribute so a compact table can sit inside a comfortable page. */
+  [data-density='compact'] {
+    --density-y: 0.75;
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    /* Every transform and every loop stops. Opacity survives, at 100ms,
+       because a fade conveys state rather than movement — and stripping the
+       fade too makes an optimistic update look like a glitch rather than a
+       change. Motion sensitivity is a real accessibility need; this is a
+       hard rule, not a courtesy. */
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
+      /* Restricting the property is what removes the movement: a transform or
+         a size can no longer animate at all, whatever a component asks for. */
+      transition-property: opacity, color, background-color, border-color !important;
+      transition-duration: 100ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

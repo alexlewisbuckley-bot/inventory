@@ -174,7 +174,7 @@ rather than a rewrite.
 | `surface-inverse` | `#04173A` | `#E2EBF9` | Tooltips, inverted chips |
 | `content-primary` | `#0A1F44` | `#E2EBF9` | Body text, values |
 | `content-secondary` | `#51617D` | `#93A7C4` | Labels, metadata |
-| `content-muted` | `#8B9BB4` | `#6C7F9C` | Placeholders, disabled |
+| `content-muted` | `#7A8AA5` | `#6C7F9C` | Placeholders, disabled |
 | `content-accent` | `#007A80` | `#4FD9E0` | Links, accent text |
 | `line-subtle` | `#E3EAF3` | `#1C2C4A` | Dividers, resting borders |
 | `line-strong` | `#C6D3E4` | `#2A3E63` | Hover borders, emphasis |
@@ -219,7 +219,7 @@ not a series, not a brand accent, not an emphasis.
 | `good` | `#00875A` | `#3DD68C` | tint at 12% | Complete, paid, healthy |
 | `warning` | `#B26A00` | `#F5B841` | tint at 14% | Ageing, due soon, attention |
 | `serious` | `#C2410C` | `#FB923C` | tint at 12% | Overdue, blocked |
-| `critical` | `#B42318` | `#F97066` | tint at 12% | Failed, void, error |
+| `critical` | `#A31409` | `#F97066` | tint at 12% | Failed, void, error |
 
 **Four, not three.** V1 collapsed serious and critical into one danger colour,
 which meant an overdue task and a failed migration looked identical. The
@@ -244,36 +244,57 @@ order, never cycled.
 | 3 | `#B27300` | Amber |
 | 4 | `#0097A7` | Teal |
 | 5 | `#7A5AF8` | Violet |
-| 6 | `#5E8C3A` | Olive |
+| 6 | `#41752F` | Olive |
 
 **Categorical — dark, on `surface-raised` #0E1B33.** Selected steps, not a
 flip. An automatically lightened light palette fails the lightness band.
 
 | Slot | Hex |
 |---|---|
-| 1 | `#5F8CE0` |
+| 1 | `#4F86DB` |
 | 2 | `#D66594` |
 | 3 | `#B58012` |
-| 4 | `#1CA3AE` |
-| 5 | `#8F72E8` |
-| 6 | `#6EA453` |
+| 4 | `#17A0A0` |
+| 5 | `#B072E8` |
+| 6 | `#63A83C` |
 
-**Validator output, both modes:** lightness band PASS · chroma floor PASS ·
-CVD separation PASS · normal-vision floor PASS · contrast ≥3:1 PASS.
+**Validator output, both modes, adjacent pairs:** lightness band PASS · chroma
+floor PASS · CVD separation PASS · normal-vision floor PASS · contrast ≥3:1
+PASS.
 
-**The one constraint that comes with it.** Worst-case tritan separation is
-ΔE 6.8–7.1, inside the 6–8 floor band. That band is legal **only with secondary
-encoding.** Therefore, non-negotiably: every chart with two or more series
-carries a legend, and charts using slots 4–5 adjacently carry direct labels or
-texture. This is not a preference; it is the condition under which the palette
-is accessible.
+**The constraint that comes with it, and it is a real one.** Running the same
+validator with `--pairs all` — every pair, not just neighbours — the six-slot
+palette **fails**, in both themes. So does every five-slot and every four-slot
+subset of it. Exactly three three-slot subsets pass, and slots 1–3 are one of
+them. That is why the order is navy, magenta, amber, and it is the whole reason
+`CHART_SAFE_SLOTS` exists in `src/lib/tokens.ts`.
+
+What defeats a fourth hue is protanopia, not taste. Navy, teal and violet
+collapse into one another (ΔE 2.7 at worst, dark surface); amber and olive
+collapse into each other (ΔE 5.1, light surface). No re-stepping fixes it: the
+lightness band is only so wide, and six mutually distinguishable hues do not fit
+inside it. Anyone who tells you otherwise has not run the numbers.
+
+Therefore, non-negotiably:
+
+- **Two or more series: a legend, always.**
+- **Four or more series: direct labels, texture, or small multiples** as well.
+  Four series distinguished by hue alone is not an accessible chart, whatever
+  it looks like to the person who built it.
+- The first draft of the dark palette put navy, teal and violet at ΔE 8.8 and
+  passed the adjacent check. It was wrong, and the all-pairs run is what caught
+  it. Re-run both modes and both pair modes after touching any slot.
 
 **Sequential** — one hue, light to dark, five steps. Navy:
 `#E2EBF9 · #B8CCEC · #6E93D6 · #2E63B0 · #012D68`. Never a rainbow.
 
 **Diverging** — two poles and a *neutral* midpoint, for margin, variance and
-anything that can be negative:
-`#B42318 · #E88B84 · #E3EAF3 · #6FA8C9 · #12557E`. Never a hue at the middle.
+anything that can be negative. Light:
+`#B42318 · #E88B84 · #E3EAF3 · #6FA8C9 · #12557E`. Dark:
+`#F97066 · #C55852 · #3E4650 · #4F92B8 · #8AC2E2`. Never a hue at the middle —
+the midpoint's chroma is held below 0.04 in OKLab and tested, because a tinted
+midpoint invents a third category out of "no signal". The ramp is lightest at
+the centre on a light surface and darkest at the centre on a dark one.
 
 **A seventh series does not exist.** It becomes "Other", small multiples, or a
 different chart. Generating an eighth hue is how a palette stops being

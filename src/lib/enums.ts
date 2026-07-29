@@ -80,6 +80,15 @@ export const NOTIFICATION_TYPES = [
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  STOCK_ADDED: 'Stock added',
+  SALE_RECORDED: 'Sale recorded',
+  WATCH_MOVED: 'Watch moved',
+  PRICE_MISSING: 'Price missing',
+  AGEING_STOCK: 'Ageing stock',
+  SYSTEM: 'System',
+}
+
 export const IMAGE_KINDS = ['WATCH', 'CARD', 'DOCUMENT'] as const
 export type ImageKind = (typeof IMAGE_KINDS)[number]
 
@@ -416,6 +425,16 @@ export const LOGGABLE_ACTIVITY_TYPES = [
 export const ACTIVITY_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const
 export type ActivityDirection = (typeof ACTIVITY_DIRECTIONS)[number]
 
+/**
+ * Who started it. Written from the reader's point of view rather than the
+ * record's, because "outbound" is jargon and "we contacted them" is not.
+ */
+export const ACTIVITY_DIRECTION_LABELS: Record<ActivityDirection, string> = {
+  INBOUND: 'They contacted us',
+  OUTBOUND: 'We contacted them',
+  INTERNAL: 'Internal note',
+}
+
 export const TASK_KINDS = ['FOLLOW_UP', 'CALL', 'EMAIL', 'MEETING', 'ADMIN', 'SOURCING', 'DELIVERY'] as const
 export type TaskKind = (typeof TASK_KINDS)[number]
 
@@ -431,6 +450,12 @@ export const TASK_KIND_LABELS: Record<TaskKind, string> = {
 
 export const TASK_STATUSES = ['OPEN', 'DONE', 'CANCELLED'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  OPEN: 'Open',
+  DONE: 'Done',
+  CANCELLED: 'Cancelled',
+}
 
 export const PAYMENT_STATUSES = ['PAID', 'DEPOSIT', 'PENDING', 'OVERDUE', 'REFUNDED'] as const
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number]

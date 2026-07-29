@@ -25,11 +25,13 @@ const config: Config = {
           page: 'rgb(var(--c-surface-page) / <alpha-value>)',
           subtle: 'rgb(var(--c-surface-subtle) / <alpha-value>)',
           raised: 'rgb(var(--c-surface-raised) / <alpha-value>)',
+          overlay: 'rgb(var(--c-surface-overlay) / <alpha-value>)',
           inverse: 'rgb(var(--c-surface-inverse) / <alpha-value>)',
         },
         content: {
           primary: 'rgb(var(--c-text-primary) / <alpha-value>)',
           secondary: 'rgb(var(--c-text-secondary) / <alpha-value>)',
+          muted: 'rgb(var(--c-content-muted) / <alpha-value>)',
           inverse: 'rgb(var(--c-text-inverse) / <alpha-value>)',
           'inverse-muted': 'rgb(var(--c-text-inverse-muted) / <alpha-value>)',
           accent: 'rgb(var(--c-text-accent) / <alpha-value>)',
@@ -47,12 +49,73 @@ const config: Config = {
           gold: 'rgb(var(--c-gold) / <alpha-value>)',
           danger: 'rgb(var(--c-danger) / <alpha-value>)',
           info: 'rgb(var(--c-navy-500) / <alpha-value>)',
+          // V2: four reserved statuses. `success`/`gold`/`danger` above are
+          // the V1 names and are removed in E7 once nothing references them.
+          good: 'rgb(var(--c-state-good) / <alpha-value>)',
+          warning: 'rgb(var(--c-state-warning) / <alpha-value>)',
+          serious: 'rgb(var(--c-state-serious) / <alpha-value>)',
+          critical: 'rgb(var(--c-state-critical) / <alpha-value>)',
+        },
+        // Charts address slots, never hues: `chart-3` is "the third series",
+        // not "amber". That is what lets dark mode use different values for
+        // the same slot without a component knowing.
+        chart: {
+          1: 'rgb(var(--c-chart-1) / <alpha-value>)',
+          2: 'rgb(var(--c-chart-2) / <alpha-value>)',
+          3: 'rgb(var(--c-chart-3) / <alpha-value>)',
+          4: 'rgb(var(--c-chart-4) / <alpha-value>)',
+          5: 'rgb(var(--c-chart-5) / <alpha-value>)',
+          6: 'rgb(var(--c-chart-6) / <alpha-value>)',
+          'seq-1': 'rgb(var(--c-chart-seq-1) / <alpha-value>)',
+          'seq-2': 'rgb(var(--c-chart-seq-2) / <alpha-value>)',
+          'seq-3': 'rgb(var(--c-chart-seq-3) / <alpha-value>)',
+          'seq-4': 'rgb(var(--c-chart-seq-4) / <alpha-value>)',
+          'seq-5': 'rgb(var(--c-chart-seq-5) / <alpha-value>)',
+          'div-1': 'rgb(var(--c-chart-div-1) / <alpha-value>)',
+          'div-2': 'rgb(var(--c-chart-div-2) / <alpha-value>)',
+          'div-3': 'rgb(var(--c-chart-div-3) / <alpha-value>)',
+          'div-4': 'rgb(var(--c-chart-div-4) / <alpha-value>)',
+          'div-5': 'rgb(var(--c-chart-div-5) / <alpha-value>)',
         },
       },
       borderRadius: { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', pill: '999px', full: '999px' },
       spacing: {
         1: '4px', 2: '8px', 3: '12px', 4: '16px', 5: '20px', 6: '24px',
         8: '32px', 10: '40px', 12: '48px', 16: '64px', 20: '80px', 24: '96px', 30: '120px',
+        // Density-aware vertical steps. `--density-y` is 1 comfortable, 0.75
+        // compact, and is set on the surface rather than passed as a prop, so
+        // a component nested three levels deep inherits it without knowing.
+        // Only the vertical axis compresses: the eye tracks columns
+        // horizontally and rows vertically, so squeezing both makes a table
+        // harder to read rather than denser.
+        'dy-1': 'calc(4px * var(--density-y, 1))',
+        'dy-2': 'calc(8px * var(--density-y, 1))',
+        'dy-3': 'calc(12px * var(--density-y, 1))',
+        'dy-4': 'calc(16px * var(--density-y, 1))',
+        'dy-5': 'calc(20px * var(--density-y, 1))',
+        'dy-6': 'calc(24px * var(--density-y, 1))',
+      },
+      // The control scale. Named `control-*` rather than `sm`/`md`/`lg` so it
+      // cannot collide with Tailwind's own size words while both systems are
+      // in the tree; E7 is what makes these the only heights that exist.
+      height: { 'control-sm': '32px', 'control-md': '40px', 'control-lg': '44px' },
+      minHeight: { 'control-sm': '32px', 'control-md': '40px', 'control-lg': '44px' },
+      minWidth: { 'control-sm': '32px', 'control-md': '40px', 'control-lg': '44px' },
+      transitionDuration: {
+        fast: '120ms',
+        base: '200ms',
+        slow: '280ms',
+        // Nothing exceeds 400ms. A user waiting on the interface is a user
+        // who has stopped working.
+        deliberate: '400ms',
+      },
+      transitionTimingFunction: {
+        // `standard` decelerates into place — things arriving feel instant and
+        // settle. `emphasis` is for the two blocking surfaces. `exit` is the
+        // only accelerating curve, because leaving should not linger.
+        standard: 'cubic-bezier(.2, 0, 0, 1)',
+        emphasis: 'cubic-bezier(.4, 0, .2, 1)',
+        exit: 'cubic-bezier(.4, 0, 1, 1)',
       },
       fontFamily: {
         // The webfont leads, but the fallback stack is a deliberate, complete
@@ -84,12 +147,27 @@ const config: Config = {
         'slide-in-right': { from: { transform: 'translateX(100%)' }, to: { transform: 'translateX(0)' } },
         'slide-up': { from: { transform: 'translateY(8px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
+        // Modal and command palette. Scale from .96 rather than from 0: a
+        // surface that grows from nothing reads as an animation, one that
+        // grows from nearly-full-size reads as arriving.
+        'scale-in': {
+          from: { transform: 'scale(.96)', opacity: '0' },
+          to: { transform: 'scale(1)', opacity: '1' },
+        },
+        // A row that just changed. The only animation the user did not
+        // directly cause, and it exists to answer "which one moved?".
+        'row-settle': {
+          from: { backgroundColor: 'rgb(var(--c-teal-100))' },
+          to: { backgroundColor: 'transparent' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 150ms ease-out',
         'slide-in-right': 'slide-in-right 220ms cubic-bezier(0.32, 0.72, 0, 1)',
         'slide-up': 'slide-up 180ms ease-out',
         shimmer: 'shimmer 1.6s infinite',
+        'scale-in': 'scale-in 200ms cubic-bezier(.2, 0, 0, 1)',
+        'row-settle': 'row-settle 600ms ease-out',
       },
     },
   },
