@@ -1,10 +1,14 @@
 import { sql } from 'drizzle-orm'
 import {
-  boolean, customType, index, integer, pgTable, text, timestamp, uniqueIndex,
+  boolean, customType, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import {
-  AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, ENTITY_TYPES, IMAGE_KINDS,
-  LOCATION_TYPES, NOTIFICATION_TYPES, PAYMENT_TERMS, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
+  ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
+  ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
+  PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
+  ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -287,7 +291,20 @@ export const sales = pgTable(
     customerPhone: text('customer_phone'),
     customerCompany: text('customer_company'),
     customerCountry: text('customer_country'),
+    /**
+     * The linked customer record, once there is one. `customerName` stays as
+     * the fallback: sales recorded before the CRM existed must keep reading
+     * correctly rather than becoming anonymous.
+     */
+    customerId: text('customer_id').references((): AnyPgColumn => customers.id),
+    dealId: text('deal_id').references((): AnyPgColumn => deals.id),
     channel: text('channel', { enum: SALE_CHANNELS }).notNull().default('RETAIL'),
+    commissionGbp: integer('commission_gbp').notNull().default(0),
+    depositGbp: integer('deposit_gbp').notNull().default(0),
+    paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PAID'),
+    deliveryStatus: text('delivery_status', { enum: DELIVERY_STATUSES }).notNull().default('COLLECTED'),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    warrantyMonths: integer('warranty_months'),
     /** Realised profit, denormalised for fast reporting. */
     profitUsd: integer('profit_usd').notNull(),
     profitGbp: integer('profit_gbp').notNull(),
@@ -409,6 +426,320 @@ export const appSettings = pgTable('app_settings', {
   updatedAt: updatedAt(),
 })
 
+// ---------------------------------------------------------------------------
+// CRM
+// ---------------------------------------------------------------------------
+
+/**
+ * A customer.
+ *
+ * The dealership's other half. Everything here exists to answer a question
+ * somebody asks out loud: who wants this watch, what did we last say to them,
+ * and what has this relationship been worth.
+ */
+export const customers = pgTable(
+  'customers',
+  {
+    id: text('id').primaryKey(),
+    /** Human-quotable reference, e.g. C-0142. */
+    reference: text('reference').notNull(),
+    firstName: text('first_name').notNull(),
+    lastName: text('last_name').notNull(),
+    company: text('company'),
+    email: text('email'),
+    phone: text('phone'),
+    altPhone: text('alt_phone'),
+    country: text('country'),
+    city: text('city'),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    postcode: text('postcode'),
+    preferredChannel: text('preferred_channel', { enum: CONTACT_CHANNELS }).notNull().default('EMAIL'),
+    language: text('language'),
+    tier: text('tier', { enum: CUSTOMER_TIERS }).notNull().default('STANDARD'),
+    leadSource: text('lead_source', { enum: LEAD_SOURCES }).notNull().default('UNKNOWN'),
+    status: text('status', { enum: CUSTOMER_STATUSES }).notNull().default('ACTIVE'),
+    /** Budget as a range in GBP minor units; a ceiling alone reads as a promise. */
+    budgetMinGbp: integer('budget_min_gbp'),
+    budgetMaxGbp: integer('budget_max_gbp'),
+    birthday: date('birthday'),
+    notes: text('notes'),
+    riskNotes: text('risk_notes'),
+    marketingConsent: boolean('marketing_consent').notNull().default(false),
+    consentRecordedAt: timestamp('consent_recorded_at', { withTimezone: true }),
+    ownerId: text('owner_id').references(() => users.id),
+    lastContactedAt: timestamp('last_contacted_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    referenceIdx: uniqueIndex('customers_reference_idx').on(t.reference).where(sql`deleted_at IS NULL`),
+    nameIdx: index('customers_name_idx').on(t.lastName, t.firstName),
+    emailIdx: index('customers_email_idx').on(t.email),
+    phoneIdx: index('customers_phone_idx').on(t.phone),
+    ownerIdx: index('customers_owner_idx').on(t.ownerId),
+  }),
+)
+
+/** Which brands a customer actually buys, so "who wants a Patek?" is a query. */
+export const customerBrands = pgTable(
+  'customer_brands',
+  {
+    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    brandId: text('brand_id').notNull().references(() => brands.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.customerId, t.brandId] }) }),
+)
+
+export const tags = pgTable(
+  'tags',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull(),
+    tone: text('tone').notNull().default('neutral'),
+    createdAt: createdAt(),
+  },
+  (t) => ({ labelIdx: uniqueIndex('tags_label_idx').on(sql`lower(${t.label})`) }),
+)
+
+/** One tag vocabulary, attached to whichever entity wants it. */
+export const entityTags = pgTable(
+  'entity_tags',
+  {
+    tagId: text('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.tagId, t.entityType, t.entityId] }),
+    entityIdx: index('entity_tags_entity_idx').on(t.entityType, t.entityId),
+  }),
+)
+
+/** The named people at a supplier, rather than one contact field per company. */
+export const supplierContacts = pgTable(
+  'supplier_contacts',
+  {
+    id: text('id').primaryKey(),
+    supplierId: text('supplier_id').notNull().references(() => suppliers.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    role: text('role'),
+    email: text('email'),
+    phone: text('phone'),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({ supplierIdx: index('supplier_contacts_supplier_idx').on(t.supplierId) }),
+)
+
+/**
+ * A deal: the sale before it is a sale.
+ *
+ * Winning one hands over to the `sales` ledger rather than duplicating it, so
+ * revenue keeps a single source of truth.
+ */
+export const deals = pgTable(
+  'deals',
+  {
+    id: text('id').primaryKey(),
+    reference: text('reference').notNull(),
+    title: text('title').notNull(),
+    customerId: text('customer_id').references(() => customers.id),
+    watchId: text('watch_id').references(() => watches.id),
+    stage: text('stage', { enum: DEAL_STAGES }).notNull().default('ENQUIRY'),
+    valueGbp: integer('value_gbp'),
+    probability: integer('probability').notNull().default(20),
+    expectedClose: date('expected_close'),
+    ownerId: text('owner_id').references(() => users.id),
+    source: text('source', { enum: LEAD_SOURCES }).notNull().default('UNKNOWN'),
+    notes: text('notes'),
+    lostReason: text('lost_reason'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    stageChangedAt: timestamp('stage_changed_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Position within its column, so a hand-ordered board survives a refresh. */
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    referenceIdx: uniqueIndex('deals_reference_idx').on(t.reference).where(sql`deleted_at IS NULL`),
+    stageIdx: index('deals_stage_idx').on(t.stage).where(sql`deleted_at IS NULL`),
+    customerIdx: index('deals_customer_idx').on(t.customerId),
+    watchIdx: index('deals_watch_idx').on(t.watchId),
+    ownerIdx: index('deals_owner_idx').on(t.ownerId),
+  }),
+)
+
+export const dealStageEvents = pgTable(
+  'deal_stage_events',
+  {
+    id: text('id').primaryKey(),
+    dealId: text('deal_id').notNull().references(() => deals.id, { onDelete: 'cascade' }),
+    fromStage: text('from_stage', { enum: DEAL_STAGES }),
+    toStage: text('to_stage', { enum: DEAL_STAGES }).notNull(),
+    actorId: text('actor_id').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => ({ dealIdx: index('deal_stage_events_deal_idx').on(t.dealId, t.createdAt) }),
+)
+
+/** What was actually put to the customer, and what came back. */
+export const offers = pgTable(
+  'offers',
+  {
+    id: text('id').primaryKey(),
+    dealId: text('deal_id').references(() => deals.id, { onDelete: 'cascade' }),
+    customerId: text('customer_id').references(() => customers.id),
+    watchId: text('watch_id').references(() => watches.id),
+    amount: integer('amount').notNull(),
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('GBP'),
+    amountGbp: integer('amount_gbp').notNull(),
+    status: text('status', { enum: OFFER_STATUSES }).notNull().default('SENT'),
+    validUntil: date('valid_until'),
+    notes: text('notes'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    dealIdx: index('offers_deal_idx').on(t.dealId),
+    customerIdx: index('offers_customer_idx').on(t.customerId),
+    watchIdx: index('offers_watch_idx').on(t.watchId),
+  }),
+)
+
+/** Demand you do not yet hold: what a customer is waiting for. */
+export const watchRequests = pgTable(
+  'watch_requests',
+  {
+    id: text('id').primaryKey(),
+    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    brandId: text('brand_id').references(() => brands.id),
+    model: text('model'),
+    referenceNo: text('reference_no'),
+    dial: text('dial'),
+    bracelet: text('bracelet'),
+    condition: text('condition', { enum: CONDITIONS }).notNull().default('UNKNOWN'),
+    boxPapers: text('box_papers', { enum: BOX_PAPERS }).notNull().default('UNKNOWN'),
+    budgetGbp: integer('budget_gbp'),
+    targetDate: date('target_date'),
+    priority: text('priority', { enum: PRIORITIES }).notNull().default('NORMAL'),
+    status: text('status', { enum: REQUEST_STATUSES }).notNull().default('OPEN'),
+    notes: text('notes'),
+    ownerId: text('owner_id').references(() => users.id),
+    fulfilledBy: text('fulfilled_by').references(() => watches.id),
+    fulfilledAt: timestamp('fulfilled_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    customerIdx: index('watch_requests_customer_idx').on(t.customerId),
+    statusIdx: index('watch_requests_status_idx').on(t.status).where(sql`deleted_at IS NULL`),
+    brandIdx: index('watch_requests_brand_idx').on(t.brandId),
+  }),
+)
+
+/** Who was asked to find it, and what they said. */
+export const requestEnquiries = pgTable(
+  'request_enquiries',
+  {
+    id: text('id').primaryKey(),
+    requestId: text('request_id').notNull().references(() => watchRequests.id, { onDelete: 'cascade' }),
+    supplierId: text('supplier_id').references(() => suppliers.id),
+    status: text('status', { enum: REQUEST_ENQUIRY_STATUSES }).notNull().default('SENT'),
+    quotedGbp: integer('quoted_gbp'),
+    notes: text('notes'),
+    actorId: text('actor_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({ requestIdx: index('request_enquiries_request_idx').on(t.requestId) }),
+)
+
+/**
+ * One timeline primitive.
+ *
+ * Calls, emails, WhatsApp, meetings, notes and the system's own events are all
+ * rows here, each pointing at whichever entities it concerns. Six separate
+ * feeds is how a CRM becomes something people stop reading.
+ */
+export const activities = pgTable(
+  'activities',
+  {
+    id: text('id').primaryKey(),
+    type: text('type', { enum: ACTIVITY_TYPES }).notNull(),
+    direction: text('direction', { enum: ACTIVITY_DIRECTIONS }).notNull().default('OUTBOUND'),
+    subject: text('subject'),
+    body: text('body'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    durationMin: integer('duration_min'),
+    customerId: text('customer_id').references(() => customers.id, { onDelete: 'cascade' }),
+    supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'cascade' }),
+    dealId: text('deal_id').references(() => deals.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').references(() => watchRequests.id, { onDelete: 'cascade' }),
+    actorId: text('actor_id').references(() => users.id),
+    /** Written by the application, and rendered quieter than a real conversation. */
+    isSystem: boolean('is_system').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    customerIdx: index('activities_customer_idx').on(t.customerId, t.occurredAt),
+    supplierIdx: index('activities_supplier_idx').on(t.supplierId, t.occurredAt),
+    watchIdx: index('activities_watch_idx').on(t.watchId, t.occurredAt),
+    dealIdx: index('activities_deal_idx').on(t.dealId, t.occurredAt),
+    recentIdx: index('activities_recent_idx').on(t.occurredAt),
+  }),
+)
+
+/** The follow-up that otherwise lives in somebody's head. */
+export const tasks = pgTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    notes: text('notes'),
+    kind: text('kind', { enum: TASK_KINDS }).notNull().default('FOLLOW_UP'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    status: text('status', { enum: TASK_STATUSES }).notNull().default('OPEN'),
+    priority: text('priority', { enum: PRIORITIES }).notNull().default('NORMAL'),
+    assigneeId: text('assignee_id').references(() => users.id),
+    customerId: text('customer_id').references(() => customers.id, { onDelete: 'cascade' }),
+    supplierId: text('supplier_id').references(() => suppliers.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'cascade' }),
+    dealId: text('deal_id').references(() => deals.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').references(() => watchRequests.id, { onDelete: 'cascade' }),
+    /**
+     * The rule that generated this task. Unique, so a rule that fires every
+     * night produces one reminder rather than one per night.
+     */
+    autoKey: text('auto_key'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedBy: text('completed_by').references(() => users.id),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    autoKeyIdx: uniqueIndex('tasks_auto_key_idx').on(t.autoKey).where(sql`auto_key IS NOT NULL`),
+    openIdx: index('tasks_open_idx').on(t.status, t.dueAt).where(sql`deleted_at IS NULL`),
+    assigneeIdx: index('tasks_assignee_idx').on(t.assigneeId, t.status),
+    customerIdx: index('tasks_customer_idx').on(t.customerId),
+    dealIdx: index('tasks_deal_idx').on(t.dealId),
+  }),
+)
+
 void sql
 
 // --- Inferred model types --------------------------------------------------
@@ -432,3 +763,17 @@ export type AuditLog = typeof auditLogs.$inferSelect
 export type Notification = typeof notifications.$inferSelect
 export type AppSetting = typeof appSettings.$inferSelect
 export type FxRate = typeof fxRates.$inferSelect
+export type Customer = typeof customers.$inferSelect
+export type NewCustomer = typeof customers.$inferInsert
+export type SupplierContact = typeof supplierContacts.$inferSelect
+export type Deal = typeof deals.$inferSelect
+export type NewDeal = typeof deals.$inferInsert
+export type Offer = typeof offers.$inferSelect
+export type WatchRequest = typeof watchRequests.$inferSelect
+export type NewWatchRequest = typeof watchRequests.$inferInsert
+export type RequestEnquiry = typeof requestEnquiries.$inferSelect
+export type Activity = typeof activities.$inferSelect
+export type NewActivity = typeof activities.$inferInsert
+export type Task = typeof tasks.$inferSelect
+export type NewTask = typeof tasks.$inferInsert
+export type Tag = typeof tags.$inferSelect

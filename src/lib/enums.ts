@@ -209,3 +209,229 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   SELL: 'Sold',
   PASSWORD_CHANGE: 'Changed password',
 }
+
+// ---------------------------------------------------------------------------
+// CRM
+// ---------------------------------------------------------------------------
+
+/**
+ * How a customer prefers to be reached.
+ *
+ * Recorded because getting it wrong is expensive in a business built on
+ * relationships: emailing somebody who only ever answers WhatsApp produces a
+ * customer who looks unresponsive and is not.
+ */
+export const CONTACT_CHANNELS = ['EMAIL', 'PHONE', 'WHATSAPP', 'SMS', 'IN_PERSON'] as const
+export type ContactChannel = (typeof CONTACT_CHANNELS)[number]
+
+export const CONTACT_CHANNEL_LABELS: Record<ContactChannel, string> = {
+  EMAIL: 'Email',
+  PHONE: 'Phone',
+  WHATSAPP: 'WhatsApp',
+  SMS: 'SMS',
+  IN_PERSON: 'In person',
+}
+
+/**
+ * How much of the business a customer represents.
+ *
+ * Deliberately three levels. A finer scale invites arguments about the
+ * boundary and produces no different behaviour.
+ */
+export const CUSTOMER_TIERS = ['STANDARD', 'PRIORITY', 'VIP'] as const
+export type CustomerTier = (typeof CUSTOMER_TIERS)[number]
+
+export const CUSTOMER_TIER_LABELS: Record<CustomerTier, string> = {
+  STANDARD: 'Standard',
+  PRIORITY: 'Priority',
+  VIP: 'VIP',
+}
+
+export const CUSTOMER_STATUSES = ['ACTIVE', 'DORMANT', 'BLOCKED'] as const
+export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number]
+
+export const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
+  ACTIVE: 'Active',
+  DORMANT: 'Dormant',
+  BLOCKED: 'Blocked',
+}
+
+export const LEAD_SOURCES = [
+  'UNKNOWN', 'REFERRAL', 'WALK_IN', 'INSTAGRAM', 'WEBSITE', 'MARKETPLACE',
+  'REPEAT', 'TRADE', 'EVENT',
+] as const
+export type LeadSource = (typeof LEAD_SOURCES)[number]
+
+export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
+  UNKNOWN: 'Not recorded',
+  REFERRAL: 'Referral',
+  WALK_IN: 'Walk-in',
+  INSTAGRAM: 'Instagram',
+  WEBSITE: 'Website',
+  MARKETPLACE: 'Marketplace',
+  REPEAT: 'Repeat customer',
+  TRADE: 'Trade contact',
+  EVENT: 'Event or fair',
+}
+
+/**
+ * The pipeline.
+ *
+ * Ordered, and the order is the board. Two of these are terminal: WON hands
+ * over to the sales ledger, LOST keeps the reason. Nothing sits in a stage
+ * called "archived" — a deal that is finished is one of the two.
+ */
+export const DEAL_STAGES = [
+  'ENQUIRY', 'QUALIFIED', 'SOURCING', 'OFFER_SENT', 'NEGOTIATION',
+  'DEPOSIT_TAKEN', 'PAYMENT_PENDING', 'WON', 'LOST',
+] as const
+export type DealStage = (typeof DEAL_STAGES)[number]
+
+export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
+  ENQUIRY: 'New enquiry',
+  QUALIFIED: 'Qualified',
+  SOURCING: 'Sourcing',
+  OFFER_SENT: 'Offer sent',
+  NEGOTIATION: 'Negotiation',
+  DEPOSIT_TAKEN: 'Deposit taken',
+  PAYMENT_PENDING: 'Payment pending',
+  WON: 'Won',
+  LOST: 'Lost',
+}
+
+/** The stages a deal can still move through under its own steam. */
+export const OPEN_DEAL_STAGES = DEAL_STAGES.filter(
+  (stage) => stage !== 'WON' && stage !== 'LOST',
+) as readonly DealStage[]
+
+/**
+ * Default likelihood per stage.
+ *
+ * A forecast nobody maintains is worse than no forecast, so the probability is
+ * pre-filled from the stage and can be overridden per deal.
+ */
+export const DEAL_STAGE_PROBABILITY: Record<DealStage, number> = {
+  ENQUIRY: 10,
+  QUALIFIED: 25,
+  SOURCING: 35,
+  OFFER_SENT: 50,
+  NEGOTIATION: 65,
+  DEPOSIT_TAKEN: 85,
+  PAYMENT_PENDING: 95,
+  WON: 100,
+  LOST: 0,
+}
+
+export const OFFER_STATUSES = ['SENT', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'WITHDRAWN'] as const
+export type OfferStatus = (typeof OFFER_STATUSES)[number]
+
+export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
+  SENT: 'Sent',
+  ACCEPTED: 'Accepted',
+  DECLINED: 'Declined',
+  EXPIRED: 'Expired',
+  WITHDRAWN: 'Withdrawn',
+}
+
+export const REQUEST_STATUSES = ['OPEN', 'SOURCING', 'MATCHED', 'FULFILLED', 'CANCELLED'] as const
+export type RequestStatus = (typeof REQUEST_STATUSES)[number]
+
+export const REQUEST_STATUS_LABELS: Record<RequestStatus, string> = {
+  OPEN: 'Open',
+  SOURCING: 'Sourcing',
+  MATCHED: 'Match found',
+  FULFILLED: 'Fulfilled',
+  CANCELLED: 'Cancelled',
+}
+
+export const REQUEST_ENQUIRY_STATUSES = ['SENT', 'QUOTED', 'DECLINED', 'NO_REPLY'] as const
+export type RequestEnquiryStatus = (typeof REQUEST_ENQUIRY_STATUSES)[number]
+
+export const REQUEST_ENQUIRY_STATUS_LABELS: Record<RequestEnquiryStatus, string> = {
+  SENT: 'Asked',
+  QUOTED: 'Quoted',
+  DECLINED: 'Declined',
+  NO_REPLY: 'No reply',
+}
+
+export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const
+export type Priority = (typeof PRIORITIES)[number]
+
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  LOW: 'Low',
+  NORMAL: 'Normal',
+  HIGH: 'High',
+  URGENT: 'Urgent',
+}
+
+/** Every kind of contact worth remembering, in one list. */
+export const ACTIVITY_TYPES = [
+  'NOTE', 'CALL', 'EMAIL', 'WHATSAPP', 'SMS', 'MEETING', 'VIDEO',
+  'OFFER', 'STAGE_CHANGE', 'PURCHASE', 'SALE', 'VALUATION', 'SYSTEM',
+] as const
+export type ActivityType = (typeof ACTIVITY_TYPES)[number]
+
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  NOTE: 'Note',
+  CALL: 'Call',
+  EMAIL: 'Email',
+  WHATSAPP: 'WhatsApp',
+  SMS: 'SMS',
+  MEETING: 'Meeting',
+  VIDEO: 'Video call',
+  OFFER: 'Offer',
+  STAGE_CHANGE: 'Stage change',
+  PURCHASE: 'Purchase',
+  SALE: 'Sale',
+  VALUATION: 'Valuation',
+  SYSTEM: 'System',
+}
+
+/** The types a person can log by hand; the rest are written by the system. */
+export const LOGGABLE_ACTIVITY_TYPES = [
+  'NOTE', 'CALL', 'EMAIL', 'WHATSAPP', 'SMS', 'MEETING', 'VIDEO', 'VALUATION',
+] as const
+
+export const ACTIVITY_DIRECTIONS = ['INBOUND', 'OUTBOUND', 'INTERNAL'] as const
+export type ActivityDirection = (typeof ACTIVITY_DIRECTIONS)[number]
+
+export const TASK_KINDS = ['FOLLOW_UP', 'CALL', 'EMAIL', 'MEETING', 'ADMIN', 'SOURCING', 'DELIVERY'] as const
+export type TaskKind = (typeof TASK_KINDS)[number]
+
+export const TASK_KIND_LABELS: Record<TaskKind, string> = {
+  FOLLOW_UP: 'Follow up',
+  CALL: 'Call',
+  EMAIL: 'Email',
+  MEETING: 'Meeting',
+  ADMIN: 'Admin',
+  SOURCING: 'Sourcing',
+  DELIVERY: 'Delivery',
+}
+
+export const TASK_STATUSES = ['OPEN', 'DONE', 'CANCELLED'] as const
+export type TaskStatus = (typeof TASK_STATUSES)[number]
+
+export const PAYMENT_STATUSES = ['PAID', 'DEPOSIT', 'PENDING', 'OVERDUE', 'REFUNDED'] as const
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number]
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PAID: 'Paid in full',
+  DEPOSIT: 'Deposit taken',
+  PENDING: 'Awaiting payment',
+  OVERDUE: 'Overdue',
+  REFUNDED: 'Refunded',
+}
+
+export const DELIVERY_STATUSES = ['COLLECTED', 'SHIPPED', 'AWAITING', 'DELIVERED'] as const
+export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number]
+
+export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
+  COLLECTED: 'Collected',
+  SHIPPED: 'Shipped',
+  AWAITING: 'Awaiting despatch',
+  DELIVERED: 'Delivered',
+}
+
+/** Which entity a tag or timeline row is attached to. */
+export const CRM_ENTITIES = ['Customer', 'Supplier', 'Watch', 'Deal', 'Request'] as const
+export type CrmEntity = (typeof CRM_ENTITIES)[number]

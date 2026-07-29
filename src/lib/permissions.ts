@@ -18,6 +18,14 @@ export const CAPABILITIES = [
   'user:read', 'user:manage',
   'settings:read', 'settings:manage',
   'audit:read',
+  // CRM. Reading the customer book is part of every selling role, but the
+  // commercial detail on a deal and the ability to delete a relationship are
+  // not: a viewer is usually someone shown the stock, not the client list.
+  'customer:read', 'customer:create', 'customer:update', 'customer:delete',
+  'deal:read', 'deal:create', 'deal:update', 'deal:delete',
+  'activity:read', 'activity:create',
+  'task:read', 'task:create', 'task:update',
+  'request:read', 'request:create', 'request:update',
 ] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
@@ -30,6 +38,13 @@ const STAFF: Capability[] = [
   ...VIEWER,
   'watch:create', 'watch:update', 'watch:move', 'watch:price',
   'sale:create', 'report:export',
+  // Selling is the job: a salesperson owns their customers, their pipeline and
+  // their follow-ups outright.
+  'customer:read', 'customer:create', 'customer:update',
+  'deal:read', 'deal:create', 'deal:update',
+  'activity:read', 'activity:create',
+  'task:read', 'task:create', 'task:update',
+  'request:read', 'request:create', 'request:update',
 ]
 
 const MANAGER: Capability[] = [
@@ -38,6 +53,7 @@ const MANAGER: Capability[] = [
   'sale:update', 'sale:delete',
   'supplier:manage', 'location:manage',
   'data:import', 'user:read', 'settings:read', 'audit:read',
+  'customer:delete', 'deal:delete',
 ]
 
 const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage']
