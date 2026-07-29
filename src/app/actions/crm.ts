@@ -4,7 +4,7 @@ import { requireCapability } from '@/server/auth/session'
 import {
   createActivity, createCustomer, createDeal, createOffer, createRequest, createTask,
   completeTask, deleteCustomer, deleteDeal, moveDeal, recordEnquiry, respondToOffer,
-  updateCustomer, updateDeal, updateRequestStatus, updateTask,
+  snoozeTask, updateCustomer, updateDeal, updateRequestStatus, updateTask,
 } from '@/server/services/crm-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { toBase } from '@/lib/currency'
@@ -35,7 +35,7 @@ function toState(error: unknown, fallback: string): ActionState {
 }
 
 const revalidateCrm = (extra: string[] = []) => {
-  for (const path of ['/crm', '/customers', '/pipeline', '/tasks', '/requests', '/', ...extra]) {
+  for (const path of ['/crm', '/customers', '/pipeline', '/tasks', '/requests', '/today', '/', ...extra]) {
     revalidatePath(path)
   }
 }
@@ -220,6 +220,28 @@ export async function completeTaskAction(id: string, done: boolean): Promise<Act
     return { ok: true, message: done ? 'Done.' : 'Reopened.' }
   } catch (error) {
     return toState(error, 'Could not update the task.')
+  }
+}
+
+/**
+ * Push a task out by a number of days.
+ *
+ * Separate from `saveTaskAction` because it is a different gesture: snoozing is
+ * one keystroke on a row somebody is working through, not a form submission,
+ * and routing it through the full task schema would mean the row had to know
+ * every field of a task in order to move one date.
+ */
+export async function snoozeTaskAction(id: string, days: number): Promise<ActionState> {
+  const actor = await requireCapability('task:update')
+  try {
+    const due = await snoozeTask(id, days, actor)
+    revalidateCrm(['/today'])
+    return {
+      ok: true,
+      message: `Back on ${due.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}.`,
+    }
+  } catch (error) {
+    return toState(error, 'Could not snooze that.')
   }
 }
 

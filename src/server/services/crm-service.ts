@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
   activities, brands, customers, customerBrands, deals, dealStageEvents, notifications,
@@ -579,6 +579,91 @@ export async function createTask(input: TaskInput, actor: SessionUser): Promise<
     createdBy: actor.id,
   })
   return id
+}
+
+/**
+ * The agenda: what needs this person, in the order it needs them.
+ *
+ * Two bands rather than a sorted list. "Overdue" and "due today" are different
+ * kinds of obligation — one is a promise already broken and the other is a
+ * promise still keepable — and a flat list ordered by date makes the reader do
+ * that separation themselves, every morning, before they can start.
+ *
+ * Undated tasks come back too, in their own band. V1 put them at the bottom of
+ * a date-sorted list where they were invisible, and a follow-up nobody put a
+ * date on is still a follow-up somebody promised.
+ */
+export async function agendaFor(userId: string, options: { everyone?: boolean } = {}) {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const endOfToday = new Date(startOfToday.getTime() + 86_400_000)
+
+  const mine = options.everyone ? undefined : eq(tasks.assigneeId, userId)
+  const open = and(isNull(tasks.deletedAt), eq(tasks.status, 'OPEN'), mine)
+
+  const columns = {
+    id: tasks.id,
+    title: tasks.title,
+    notes: tasks.notes,
+    kind: tasks.kind,
+    priority: tasks.priority,
+    dueAt: tasks.dueAt,
+    customerId: tasks.customerId,
+    watchId: tasks.watchId,
+    dealId: tasks.dealId,
+    assigneeName: users.name,
+    customerName: sql<string | null>`nullif(trim(coalesce(${customers.firstName}, '') || ' ' || coalesce(${customers.lastName}, '')), '')`,
+    stockNo: watches.stockNo,
+  }
+
+  const base = () => db.select(columns).from(tasks)
+    .leftJoin(users, eq(users.id, tasks.assigneeId))
+    .leftJoin(customers, eq(customers.id, tasks.customerId))
+    .leftJoin(watches, eq(watches.id, tasks.watchId))
+
+  const [overdue, today, undated] = await Promise.all([
+    base().where(and(open, lte(tasks.dueAt, startOfToday))).orderBy(asc(tasks.dueAt)),
+    base().where(and(open, gte(tasks.dueAt, startOfToday), lte(tasks.dueAt, endOfToday)))
+      .orderBy(asc(tasks.dueAt)),
+    base().where(and(open, isNull(tasks.dueAt))).orderBy(desc(tasks.createdAt)).limit(10),
+  ])
+
+  return { overdue, today, undated }
+}
+
+/**
+ * Push a task out.
+ *
+ * Snoozing is not the same as rescheduling and the difference matters: this
+ * moves the date relative to *now*, not to the date it already had. A task
+ * that was due last Tuesday and gets snoozed "to tomorrow" should be due
+ * tomorrow, not next Wednesday — which is what adding a day to its existing
+ * date would produce, and which is how a snooze button teaches people not to
+ * trust it.
+ */
+export async function snoozeTask(id: string, days: number, actor: SessionUser): Promise<Date> {
+  const [existing] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1)
+  if (!existing || existing.deletedAt) throw new NotFoundError('Task')
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    throw new ValidationError('Snooze by between one and ninety days.')
+  }
+
+  const due = new Date()
+  due.setDate(due.getDate() + days)
+  // Nine in the morning, not this exact moment, or a task snoozed at 4pm
+  // reappears at 4pm the following day — after the working day it was meant
+  // to be part of.
+  due.setHours(9, 0, 0, 0)
+
+  await db.update(tasks).set({ dueAt: due, updatedAt: new Date() }).where(eq(tasks.id, id))
+
+  await recordAudit({
+    entityType: 'Task', entityId: id, action: 'UPDATE', actorId: actor.id,
+    summary: `${existing.title} snoozed for ${days} ${days === 1 ? 'day' : 'days'}`,
+    changes: { dueAt: { from: existing.dueAt?.toISOString() ?? null, to: due.toISOString() } },
+  })
+
+  return due
 }
 
 export async function completeTask(id: string, done: boolean, actor: SessionUser): Promise<void> {

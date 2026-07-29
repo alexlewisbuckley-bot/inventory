@@ -45,7 +45,11 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
     {
       heading: null,
       items: [
-        { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+        // "Today" rather than "Dashboard", and it is the first thing in the
+        // rail because it is the first thing anybody needs: what should I do
+        // now. The figures moved to Insights, under Manage, where they are
+        // looked at deliberately.
+        { href: '/today', label: 'Today', icon: LayoutDashboard, match: '/today' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
       ],
@@ -71,6 +75,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
       items: [
         { href: '/suppliers', label: 'Suppliers', icon: Building2, capability: 'supplier:read', match: '/suppliers' },
         { href: '/locations', label: 'Locations', icon: MapPin, capability: 'location:read', match: '/locations' },
+        { href: '/insights', label: 'Insights', icon: LayoutDashboard, capability: 'report:read', match: '/insights' },
         { href: '/reports', label: 'Reports', icon: BarChart3, capability: 'report:read', match: '/reports' },
       ],
     },

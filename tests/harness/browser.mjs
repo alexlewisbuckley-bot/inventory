@@ -16,7 +16,7 @@ const FALLBACK = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 
 /** Every authenticated route, for sweeps that must cover the whole product. */
 export const ROUTES = [
-  '/', '/inventory', '/inventory/new', '/inventory/import', '/sales',
+  '/', '/today', '/insights', '/inventory', '/inventory/new', '/inventory/import', '/sales',
   '/reports', '/reports/ageing', '/suppliers', '/locations', '/customers',
   '/pipeline', '/tasks', '/requests', '/notifications', '/help',
   '/settings', '/settings/currencies', '/settings/users', '/settings/audit',

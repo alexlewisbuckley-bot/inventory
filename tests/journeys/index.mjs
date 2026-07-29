@@ -82,6 +82,31 @@ const go = async (page, path) => {
   await page.waitForTimeout(900)
 }
 
+/**
+ * Put a sold watch back into stock.
+ *
+ * The suite has to be re-runnable, and journeys that sell a watch without
+ * returning it were quietly consuming the fixture: twenty-odd runs later there
+ * were two watches in stock and the money journeys started failing with
+ * "nothing is in stock to sell" — a fault in the tests reported as a fault in
+ * the product. Anything that sells now puts it back.
+ */
+const returnToStock = async (page, stockNo) => {
+  await go(page, '/inventory?status=SOLD')
+  const row = page.locator(`tr:has(td:text-is("${String(stockNo).trim()}"))`).first()
+  if (await row.count() === 0) return false
+  await row.locator('button[aria-label^="Status:"]').click()
+  await page.waitForTimeout(300)
+  const voidItem = page.locator('[role="menu"] button:has-text("Void the sale")')
+  if (await voidItem.count() === 0) return false
+  await voidItem.click()
+  await page.waitForTimeout(700)
+  await page.fill('textarea', 'Returned to stock by the journey that sold it')
+  await page.click('button:has-text("Void the sale")')
+  await page.waitForTimeout(2500)
+  return true
+}
+
 /** The status chip for a given stock number. */
 const statusButton = (page, stockNo) =>
   page.locator(`tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`)
@@ -172,6 +197,7 @@ await journey('mark as sold', async (page) => {
   await go(page, '/inventory?status=IN_STOCK')
   // Scoped to the table: the same rows are also rendered as cards for phones,
   // hidden at this width but still in the DOM and first in document order.
+  const soldStockNo = (await page.locator('tbody tr').first().locator('td').nth(1).innerText()).trim()
   const trigger = page.locator('tbody button[aria-label^="Status:"]').first()
   await trigger.click()
   await page.waitForTimeout(300)
@@ -233,6 +259,8 @@ await journey('mark as sold', async (page) => {
   if (profit && !shown.includes(profit.replace('+', ''))) {
     throw new Error(`inventory and the ledger disagree on profit: ledger ${profit}, inventory row "${shown.replace(/\n/g, ' / ')}"`)
   }
+
+  await returnToStock(page, soldStockNo)
 })
 
 // --- 4. Void that sale, from the status menu -------------------------------
@@ -419,6 +447,8 @@ await journey('sell links customer and deal', async (page) => {
   await go(page, '/sales')
   const row = page.locator(`tr:has-text("${invoice}")`)
   if (await row.count() === 0) throw new Error(`sale ${invoice} is not in the ledger`)
+
+  await returnToStock(page, stockNo)
 })
 
 // --- 10c. A customer can be added from wherever one is chosen ---------------
@@ -838,6 +868,89 @@ await journey('peek shows a record and gives the page back', async (page) => {
   // the overlay does not honour for anybody using a keyboard.
   const refocused = await page.evaluate(() => document.activeElement?.tagName)
   if (refocused !== 'TR') throw new Error(`focus went to ${refocused} instead of back to the row`)
+})
+
+// --- E5. Today
+
+await journey('the front door opens on the agenda, not the dashboard', async (page) => {
+  await go(page, '/')
+  if (!page.url().endsWith('/today')) {
+    throw new Error(`/ went to ${page.url()} instead of the agenda`)
+  }
+  const body = await page.locator('main').innerText()
+  if (!/good (morning|afternoon|evening)/i.test(body)) {
+    throw new Error('the agenda does not greet anybody — is this still the dashboard?')
+  }
+  // The figures did not disappear, they moved.
+  await go(page, '/insights')
+  if (!/capital/i.test(await page.locator('main').innerText())) {
+    throw new Error('the figures removed from the dashboard are not on Insights either')
+  }
+})
+
+await journey('a task can be ticked off the agenda without leaving it', async (page) => {
+  // Give the agenda something to work with that this journey owns, so it is
+  // not competing with the other suites for whichever row happens to be first.
+  const title = `Agenda check ${stamp}`
+  await go(page, '/tasks')
+  await openComposer(page, 'Add a follow-up')
+  await page.fill('input[name="title"]', title)
+  await page.fill('input[name="dueAt"]', new Date().toISOString().slice(0, 10))
+  await page.click('button:has-text("Add task")')
+  await page.waitForTimeout(2500)
+
+  await go(page, '/today')
+  const row = page.locator(`li[data-agenda-row]:has-text("${title}")`)
+  if (await row.count() === 0) throw new Error('a task due today never reached the agenda')
+
+  await row.first().locator('button[aria-label^="Mark"]').click()
+  await page.waitForTimeout(2500)
+
+  await go(page, '/today')
+  if (await page.locator(`li[data-agenda-row]:has-text("${title}")`).count() > 0) {
+    throw new Error('the task is still on the agenda after being ticked off')
+  }
+
+  // And it is actually done, not merely hidden.
+  await go(page, '/tasks')
+  const tasks = await page.locator('main').innerText()
+  if (!tasks.includes(title)) throw new Error('the completed task vanished from the task list entirely')
+  const struck = await page.locator(`.line-through:has-text("${title}")`).count()
+  if (struck === 0) throw new Error('the task list does not show it as done')
+})
+
+await journey('snoozing pushes a task off today and onto its new date', async (page) => {
+  const title = `Snooze check ${stamp}`
+  await go(page, '/tasks')
+  await openComposer(page, 'Add a follow-up')
+  await page.fill('input[name="title"]', title)
+  await page.fill('input[name="dueAt"]', new Date().toISOString().slice(0, 10))
+  await page.click('button:has-text("Add task")')
+  await page.waitForTimeout(2500)
+
+  await go(page, '/today')
+  const row = page.locator(`li[data-agenda-row]:has-text("${title}")`).first()
+  if (await row.count() === 0) throw new Error('the task never reached the agenda')
+
+  await row.focus()
+  await page.keyboard.press('s')
+  await page.waitForTimeout(2500)
+
+  await go(page, '/today')
+  if (await page.locator(`li[data-agenda-row]:has-text("${title}")`).count() > 0) {
+    throw new Error('the snoozed task is still on today')
+  }
+
+  await go(page, '/tasks')
+  const body = await page.locator('main').innerText()
+  if (!body.includes(title)) throw new Error('the snoozed task disappeared from the task list')
+  // Snooze moves relative to now, so a task snoozed today is due tomorrow —
+  // never "in 2 days", which is what adding a day to an existing date gives.
+  const line = body.split('\n').find((text) => text.includes(title))
+  const context = body.slice(body.indexOf(title), body.indexOf(title) + 200)
+  if (!/in (about )?(a day|1 day|\d+ hours|24 hours|tomorrow)/i.test(context)) {
+    throw new Error(`snoozed to something other than tomorrow: ${line} ${context.slice(0, 80)}`)
+  }
 })
 
 // --- Coverage floor before the redesign begins ------------------------------

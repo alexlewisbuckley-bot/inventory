@@ -14,8 +14,8 @@ describe('navigation highlighting', () => {
   it('marks exactly one destination as current, whatever the path', () => {
     // /settings/users is matched by both "Settings" and "Users". Lighting both
     // left the user unsure which section they were actually in.
-    for (const path of ['/', '/inventory', '/inventory/new', '/sales', '/suppliers',
-                        '/locations', '/reports', '/reports/ageing', '/settings',
+    for (const path of ['/today', '/insights', '/inventory', '/inventory/new', '/sales',
+                        '/suppliers', '/locations', '/reports', '/reports/ageing', '/settings',
                         '/settings/users', '/settings/currencies', '/settings/audit']) {
       expect(activeFor(path), `for ${path}`).toHaveLength(1)
     }
@@ -35,6 +35,9 @@ describe('navigation highlighting', () => {
 
   it('highlights nothing for a path outside the navigation', () => {
     expect(activeFor('/notifications')).toHaveLength(0)
+    // `/` is a redirect to Today, not a destination. Nobody is ever sitting on
+    // it long enough for a highlight to mean anything.
+    expect(activeFor('/')).toHaveLength(0)
   })
 
   it('hides destinations a role cannot reach', () => {
