@@ -1,48 +1,39 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { and, eq, isNull, like, or, sql } from 'drizzle-orm'
-import { db } from '@/server/db/client'
-import { brands, watches } from '@/server/db/schema'
 import { getSessionUser } from '@/server/auth/session'
-import { can } from '@/lib/permissions'
+import { search } from '@/server/repositories/search-repository'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-/** Type-ahead search backing the command palette. */
+/**
+ * The palette's back end.
+ *
+ * V1 searched one table and returned eight watches. It now answers across six
+ * object types, filtered by what the caller is allowed to see — the filtering
+ * happens in the repository against the session's role rather than here,
+ * because a permission check that lives next to the query cannot be forgotten
+ * by the next endpoint that calls it.
+ *
+ * `tookMs` comes back with the results. It is not decoration: the palette has
+ * a 100ms budget, and a budget nobody can observe is a budget nobody keeps.
+ */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser()
   if (!user) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-  if (!can(user.role, 'watch:read')) return NextResponse.json({ results: [] })
 
   const query = request.nextUrl.searchParams.get('q')?.trim() ?? ''
-  if (query.length < 2) return NextResponse.json({ results: [] })
+  if (query.length < 2) return NextResponse.json({ hits: [], tookMs: 0 })
 
-  const term = `%${query.toLowerCase()}%`
-  const rows = await db
-    .select({
-      id: watches.id, stockNo: watches.stockNo, model: watches.model,
-      nickname: watches.nickname, serial: watches.serial,
-      priceGbp: watches.purchasePriceGbp, brandName: brands.name,
-    })
-    .from(watches)
-    .innerJoin(brands, eq(brands.id, watches.brandId))
-    .where(and(
-      isNull(watches.deletedAt),
-      or(
-        like(sql`lower(${watches.model})`, term),
-        like(sql`lower(${watches.serial})`, term),
-        like(sql`lower(${watches.nickname})`, term),
-        like(sql`cast(${watches.stockNo} as text)`, term),
-      ),
-    ))
-    .limit(8)
-
-  return NextResponse.json({
-    results: rows.map((row) => ({
-      id: row.id,
-      stockNo: row.stockNo,
-      label: `${row.brandName} ${row.model}`,
-      sublabel: [row.nickname, row.serial && `Serial ${row.serial}`].filter(Boolean).join(' · ') || 'No serial recorded',
-      priceGbp: row.priceGbp,
-    })),
-  })
+  try {
+    const results = await search(query, user.role)
+    if (results.tookMs > 100) {
+      // Logged rather than thrown. A slow search is still a useful search; a
+      // slow search nobody knows about is how it becomes a slow product.
+      logger.warn('search over budget', { tookMs: results.tookMs, length: query.length })
+    }
+    return NextResponse.json(results)
+  } catch (error) {
+    logger.error('search failed', { error: (error as Error).message })
+    return NextResponse.json({ error: 'Search is unavailable' }, { status: 500 })
+  }
 }

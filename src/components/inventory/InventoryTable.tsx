@@ -374,7 +374,11 @@ function Row({
   const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
 
   return (
-    <TR selected={selected} className={cn('group', watch.deletedAt && 'opacity-50')}>
+    <TR
+      selected={selected}
+      peek={{ kind: 'watch', id: watch.id }}
+      className={cn('group', watch.deletedAt && 'opacity-50')}
+    >
       {selectable && (
         <TD className="hidden sm:table-cell">
           <input

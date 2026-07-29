@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { requestPeek, type PeekTarget } from './Peek'
 
 /**
  * Density is applied via a data attribute on the wrapper rather than threaded
@@ -38,12 +39,33 @@ export function TBody({ children }: { children: ReactNode }) {
   return <tbody>{children}</tbody>
 }
 
-export function TR({ children, className, onClick, selected }: {
-  children: ReactNode; className?: string; onClick?: () => void; selected?: boolean
+export function TR({ children, className, onClick, selected, peek }: {
+  children: ReactNode
+  className?: string
+  onClick?: () => void
+  selected?: boolean
+  /**
+   * Makes the row focusable and answers `→` with a preview of this record.
+   *
+   * The same key does the same thing in the command palette, which is the
+   * point: one gesture for "show me that without taking me there", available
+   * wherever a record is listed.
+   */
+  peek?: PeekTarget
 }) {
   return (
     <tr
       onClick={onClick}
+      tabIndex={peek ? 0 : undefined}
+      onKeyDown={peek ? (event) => {
+        if (event.key !== 'ArrowRight') return
+        // Not while somebody is typing in a cell — an inline price editor owns
+        // its own arrow keys.
+        const tag = (event.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        event.preventDefault()
+        requestPeek(peek)
+      } : undefined}
       className={cn(
         'group/row border-b border-line-subtle transition-colors hover:bg-surface-subtle/70',
         onClick && 'cursor-pointer',

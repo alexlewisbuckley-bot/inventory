@@ -713,6 +713,133 @@ await journey('moving a stage updates the rail on the record', async (page) => {
   }
 })
 
+// --- E4. Search and peek
+
+/** Open the palette and type, waiting for results to settle. */
+const palette = async (page, text) => {
+  await page.keyboard.press('Control+k')
+  await page.waitForSelector('[aria-label="Search and commands"]', { timeout: 10_000 })
+  if (text) {
+    await page.fill('input[aria-label="Search"]', text)
+    await page.waitForTimeout(900)
+  }
+}
+
+await journey('search finds a person, a watch and a deal from one box', async (page) => {
+  await go(page, '/inventory')
+
+  // A surname. V1 could not find a person at all — it searched watches only.
+  await palette(page, 'reinhardt')
+  let body = await page.locator('[aria-label="Search and commands"]').innerText()
+  if (!/contacts/i.test(body)) throw new Error(`a surname found no contacts: ${body.slice(0, 200)}`)
+  if (!/Reinhardt/i.test(body)) throw new Error('the contact itself is missing from the results')
+
+  // A stock number typed as a fragment, the way it is quoted down a phone.
+  await page.fill('input[aria-label="Search"]', '114')
+  await page.waitForTimeout(900)
+  body = await page.locator('[aria-label="Search and commands"]').innerText()
+  if (!/watches/i.test(body)) throw new Error('a stock-number fragment found no watches')
+  // Two watches can share a reference, so the row has to carry a serial.
+  if (!/serial|no serial/.test(body)) throw new Error('watch rows do not disambiguate themselves')
+
+  // An action, addressed with the prefix rather than by remembering a menu.
+  await page.fill('input[aria-label="Search"]', '>stock')
+  await page.waitForTimeout(500)
+  body = await page.locator('[aria-label="Search and commands"]').innerText()
+  if (!/actions/i.test(body)) throw new Error('the > prefix did not switch to actions')
+
+  await page.keyboard.press('Escape')
+})
+
+await journey('a phone number with punctuation finds its owner', async (page) => {
+  await go(page, '/customers')
+
+  // Finding a fixture and making the assertion are two different jobs. Only
+  // eight of forty-four customers have a number recorded and they are not the
+  // first eight alphabetically, so the number is located through the API —
+  // a contact's subtitle carries it — and the claim is then tested through the
+  // palette, which is the thing under test.
+  const number = await page.evaluate(async () => {
+    for (const seed of ['an', 'ar', 'el', 'on', 'in']) {
+      const response = await fetch(`/api/search?q=${seed}`)
+      if (!response.ok) continue
+      const data = await response.json()
+      for (const hit of data.hits ?? []) {
+        if (hit.kind !== 'contact') continue
+        const match = String(hit.subtitle).match(/\+?\d[\d\s()+-]{8,}\d/)
+        if (match) return match[0]
+      }
+    }
+    return null
+  })
+  if (!number) throw new Error('no customer in the book has a phone number to search for')
+
+  // Written the way somebody would actually type it from memory: last nine
+  // digits, spaced and hyphenated, none of it matching how it was stored.
+  const digits = number.replace(/\D/g, '')
+  const mangled = `${digits.slice(-9, -6)} ${digits.slice(-6, -3)}-${digits.slice(-3)}`
+
+  await palette(page, mangled)
+  const body = await page.locator('[aria-label="Search and commands"]').innerText()
+  if (!/contacts/i.test(body)) {
+    throw new Error(`punctuation defeated the phone search: "${mangled}" (stored as "${number}") found nothing`)
+  }
+  await page.keyboard.press('Escape')
+})
+
+await journey('search stays inside its latency budget', async (page) => {
+  // The number the palette lives or dies on. Measured against whatever the
+  // database currently holds — run src/server/db/seed/scale.ts first to
+  // measure it against ten times that.
+  await go(page, '/inventory')
+  const timings = []
+  for (const term of ['sub', 'rein', 'tanaka', '114', 'daytona']) {
+    const took = await page.evaluate(async (q) => {
+      const started = performance.now()
+      const response = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const data = await response.json()
+      return { wall: performance.now() - started, server: data.tookMs ?? -1 }
+    }, term)
+    timings.push({ term, ...took })
+  }
+  const slow = timings.filter((row) => row.server > 100)
+  if (slow.length) {
+    throw new Error(`over budget: ${slow.map((r) => `${r.term} ${r.server}ms`).join(', ')}`)
+  }
+})
+
+await journey('peek shows a record and gives the page back', async (page) => {
+  await go(page, '/inventory')
+
+  // Focus a row, then the same key that peeks in the palette.
+  const row = page.locator('tbody tr[tabindex="0"]').first()
+  await row.waitFor({ state: 'visible', timeout: 10_000 })
+  await row.focus()
+  await page.keyboard.press('ArrowRight')
+
+  const overlay = page.locator('[role="dialog"][aria-label^="Preview"]')
+  await overlay.waitFor({ state: 'visible', timeout: 10_000 })
+  await page.waitForTimeout(900)
+
+  const shown = await overlay.innerText()
+  for (const fact of ['Status', 'Cost', 'Asking', 'Margin']) {
+    if (!shown.includes(fact)) throw new Error(`the peek omits ${fact}`)
+  }
+  if (!/Lately/.test(shown)) throw new Error('the peek shows no recent activity section')
+
+  const before = page.url()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(600)
+
+  if (await overlay.count() > 0) throw new Error('escape did not dismiss the peek')
+  if (page.url() !== before) throw new Error('the peek navigated away — it is meant to give the page back')
+
+  // Focus has to come back to the row, or "carry on where you were" is a claim
+  // the overlay does not honour for anybody using a keyboard.
+  const refocused = await page.evaluate(() => document.activeElement?.tagName)
+  if (refocused !== 'TR') throw new Error(`focus went to ${refocused} instead of back to the row`)
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render

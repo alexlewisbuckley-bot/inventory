@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
 import { CommandPalette } from './CommandPalette'
+import { PeekHost } from '@/components/ui/Peek'
 
 /**
  * Search affordance in the header. Owns the palette's open state and the
@@ -36,6 +37,10 @@ export function CommandTrigger() {
         </kbd>
       </button>
       <CommandPalette open={open} onClose={() => setOpen(false)} />
+      {/* One overlay for the whole application. Any row anywhere asks for a
+          preview by firing an event; mounting a host per table would put four
+          of them on screen racing to trap focus. */}
+      <PeekHost />
     </>
   )
 }

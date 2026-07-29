@@ -161,7 +161,7 @@ export function CustomerTable({ result, owners }: {
               </THead>
               <TBody>
                 {result.items.map((customer) => (
-                  <TR key={customer.id}>
+                  <TR key={customer.id} peek={{ kind: 'contact', id: customer.id }}>
                     <TD>
                       <Link href={`/customers/${customer.id}`} className="flex items-center gap-3">
                         <Avatar initials={initialsOf(customer)} id={customer.id} />
