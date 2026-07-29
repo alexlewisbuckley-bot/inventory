@@ -8,7 +8,7 @@ import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId } from '@/lib/ids'
 import { NotFoundError, ValidationError } from '@/lib/errors'
-import { DEAL_STAGE_PROBABILITY, type ActivityType, type DealStage } from '@/lib/enums'
+import { DEAL_STAGE_LABELS, DEAL_STAGE_PROBABILITY, type ActivityType, type DealStage } from '@/lib/enums'
 import type {
   ActivityInput, CustomerInput, DealInput, OfferInput, TaskInput, WatchRequestInput,
 } from '@/lib/validation'
@@ -415,13 +415,16 @@ export async function moveDeal(
 
     await recordAudit({
       entityType: 'Deal', entityId: id, action: 'UPDATE', actorId: actor.id,
-      summary: `${existing.title} moved to ${stage.replace('_', ' ').toLowerCase()}`,
+      summary: `${existing.title} moved to ${DEAL_STAGE_LABELS[stage].toLowerCase()}`,
       changes: { stage: { from: existing.stage, to: stage } },
     })
 
     await logActivity({
       type: 'STAGE_CHANGE',
-      subject: `Moved to ${stage.replace('_', ' ').toLowerCase()}`,
+      // The label, not the enum with its underscore filed off: "offer sent"
+      // is a phrase somebody wrote, and OFFER_SENT.replace(…) only happens to
+      // agree with it until a stage is named something with two words in it.
+      subject: `Moved to ${DEAL_STAGE_LABELS[stage].toLowerCase()}`,
       body: stage === 'LOST' ? options.lostReason ?? null : null,
       isSystem: true,
       scope: { dealId: id, customerId: existing.customerId, watchId: existing.watchId },

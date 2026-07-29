@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import {
   Button, ComboSelect, Drawer, SelectField, TextField, useToast,
 } from '@/components/ui'
 import { useCreateFlag } from '@/components/ui/CreateAction'
 import { quickCreateCustomerAction, saveDealAction } from '@/app/actions/crm'
-import { DEAL_STAGE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS, OPEN_DEAL_STAGES } from '@/lib/enums'
+import { DEAL_STAGES, DEAL_STAGE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS } from '@/lib/enums'
 import { toMajor } from '@/lib/money'
 import type { ActionState } from '@/app/actions/auth'
 
@@ -22,7 +22,10 @@ const INITIAL: ActionState = { ok: false }
  * the number the deal starts at nine times in ten and retyping it is exactly
  * the kind of friction that leaves a pipeline half-populated.
  */
-export function DealFormPanel({ customers, stock, owners, presetCustomerId, presetWatchId, triggerLabel = 'New deal' }: {
+export function DealFormPanel({
+  customers, stock, owners, presetCustomerId, presetWatchId,
+  triggerLabel = 'New deal', variant = 'primary', size = 'md', deal,
+}: {
   customers: Array<{ id: string; name: string }>
   stock: Array<{
     id: string; stockNo: number; label: string; serial: string | null; estSaleGbp: number | null
@@ -31,15 +34,44 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
   presetCustomerId?: string
   presetWatchId?: string
   triggerLabel?: string
+  variant?: 'primary' | 'secondary' | 'ghost'
+  size?: 'sm' | 'md' | 'lg'
+  /**
+   * Supplied to edit rather than create.
+   *
+   * The action already branches on `id` and `updateDeal` has always existed;
+   * what was missing was any way for a person to reach it. The deal record is
+   * where that gap became obvious — a screen that shows four editable facts
+   * and cannot edit them.
+   */
+  deal?: {
+    id: string
+    title: string
+    customerId: string | null
+    watchId: string | null
+    valueGbp: number | null
+    stage: string
+    expectedClose: string | null
+    ownerId: string | null
+    source: string
+    notes: string | null
+  }
 }) {
   const router = useRouter()
   const toast = useToast()
   const create = useCreateFlag()
+  // Editing keeps its state locally rather than in `?new=1`. The URL flag is
+  // what makes "add a deal" deep-linkable, and it is shared by every panel on
+  // a page — so an edit drawer driven by it would open alongside whatever else
+  // on that page listens for the same flag.
+  const [editing, setEditing] = useState(false)
+  const open = deal ? editing : create.open
+  const dismiss = () => (deal ? setEditing(false) : create.close())
   const [state, action] = useFormState(saveDealAction, INITIAL)
 
-  const [customerId, setCustomerId] = useState(presetCustomerId ?? '')
-  const [watchId, setWatchId] = useState(presetWatchId ?? '')
-  const [value, setValue] = useState('')
+  const [customerId, setCustomerId] = useState(deal?.customerId ?? presetCustomerId ?? '')
+  const [watchId, setWatchId] = useState(deal?.watchId ?? presetWatchId ?? '')
+  const [value, setValue] = useState(deal?.valueGbp ? String(toMajor(deal.valueGbp)) : '')
 
   const chooseWatch = (id: string) => {
     setWatchId(id)
@@ -49,7 +81,7 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
 
   useEffect(() => {
     if (!state.ok) return
-    create.close()
+    dismiss()
     toast.success(state.message ?? 'Saved')
     router.refresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -57,20 +89,32 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
 
   return (
     <>
-      <Button icon={<Plus className="h-4 w-4" />} onClick={() => create.openIt()}>{triggerLabel}</Button>
+      <Button
+        variant={variant}
+        size={size}
+        // A plus on an edit button is a small lie about what it does.
+        icon={deal ? <Pencil className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+        onClick={() => (deal ? setEditing(true) : create.openIt())}
+      >
+        {triggerLabel}
+      </Button>
 
       <Drawer
-        open={create.open}
-        onClose={create.close}
-        title="Open a deal"
-        subtitle="A deal is a sale before it is a sale. Winning one hands over to the ledger."
+        open={open}
+        onClose={dismiss}
+        title={deal ? 'Edit this deal' : 'Open a deal'}
+        subtitle={deal
+          ? 'Changing the value here changes the margin shown against the watch.'
+          : 'A deal is a sale before it is a sale. Winning one hands over to the ledger.'}
       >
         <form action={action} className="flex flex-col gap-5">
+          {deal && <input type="hidden" name="id" value={deal.id} />}
           <TextField
             name="title"
             label="What is it"
             required
             autoFocus
+            defaultValue={deal?.title}
             placeholder="Daytona 126500LN for Mr Al Mansoori"
             hint="Something you would recognise on a board of twenty."
             error={state.errors?.title}
@@ -127,20 +171,24 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
             <SelectField
               name="stage"
               label="Stage"
-              defaultValue="ENQUIRY"
-              options={OPEN_DEAL_STAGES.map((stage) => ({ value: stage, label: DEAL_STAGE_LABELS[stage] }))}
+              defaultValue={deal?.stage ?? 'ENQUIRY'}
+              options={DEAL_STAGES.map((stage) => ({ value: stage, label: DEAL_STAGE_LABELS[stage] }))}
             />
-            <TextField name="expectedClose" type="date" label="Expected to close" />
+            <TextField
+              name="expectedClose" type="date" label="Expected to close"
+              defaultValue={deal?.expectedClose ?? undefined}
+            />
             <SelectField
               name="ownerId"
               label="Owner"
               placeholder="You"
+              defaultValue={deal?.ownerId ?? undefined}
               options={owners.map((owner) => ({ value: owner.id, label: owner.name }))}
             />
             <SelectField
               name="source"
               label="Where it came from"
-              defaultValue="UNKNOWN"
+              defaultValue={deal?.source ?? 'UNKNOWN'}
               className="sm:col-span-2"
               options={LEAD_SOURCES.map((source) => ({ value: source, label: LEAD_SOURCE_LABELS[source] }))}
             />
@@ -152,6 +200,7 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
               id="deal-notes"
               name="notes"
               rows={3}
+              defaultValue={deal?.notes ?? undefined}
               placeholder="What they want, what they have said, what happens next."
               className="mt-1.5 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 text-body text-content-primary placeholder:text-content-secondary"
             />
@@ -162,8 +211,8 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
           )}
 
           <div className="flex items-center justify-end gap-2 border-t border-line-subtle pt-4">
-            <Button variant="ghost" type="button" onClick={create.close}>Cancel</Button>
-            <SaveButton />
+            <Button variant="ghost" type="button" onClick={dismiss}>Cancel</Button>
+            <SaveButton label={deal ? 'Save changes' : 'Open the deal'} />
           </div>
         </form>
       </Drawer>
@@ -171,7 +220,7 @@ export function DealFormPanel({ customers, stock, owners, presetCustomerId, pres
   )
 }
 
-function SaveButton() {
+function SaveButton({ label }: { label: string }) {
   const { pending } = useFormStatus()
-  return <Button type="submit" loading={pending}>Open the deal</Button>
+  return <Button type="submit" loading={pending}>{label}</Button>
 }

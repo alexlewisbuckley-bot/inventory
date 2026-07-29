@@ -2,8 +2,8 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql, type
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
-  activities, brands, customers, customerBrands, deals, offers, sales, suppliers,
-  tasks, users, watches, watchRequests, requestEnquiries,
+  activities, brands, customers, customerBrands, deals, dealStageEvents, offers,
+  sales, suppliers, tasks, users, watches, watchRequests, requestEnquiries,
 } from '../db/schema'
 import type { CustomerQuery, DealQuery, TaskQuery } from '@/lib/validation'
 import type { DealStage } from '@/lib/enums'
@@ -418,6 +418,69 @@ export async function getDeal(id: string) {
     .where(and(eq(deals.id, id), isNull(deals.deletedAt)))
     .limit(1)
   return row ?? null
+}
+
+/**
+ * Every stage this deal has been through, oldest first.
+ *
+ * The events have been written since the CRM shipped and nothing has ever read
+ * them. This is what turns a board column into a history.
+ */
+export async function stageHistoryFor(dealId: string) {
+  return db.select({
+    id: dealStageEvents.id,
+    fromStage: dealStageEvents.fromStage,
+    toStage: dealStageEvents.toStage,
+    at: dealStageEvents.createdAt,
+    actorName: users.name,
+  })
+    .from(dealStageEvents)
+    .leftJoin(users, eq(users.id, dealStageEvents.actorId))
+    .where(eq(dealStageEvents.dealId, dealId))
+    .orderBy(asc(dealStageEvents.createdAt))
+}
+
+/**
+ * Everything the deal record shows, in one round trip.
+ *
+ * The watch's cost comes back with it so the record can state the margin this
+ * deal would produce at its current value — the number that decides whether a
+ * discount is worth taking, and the one that was previously only visible after
+ * the sale had already happened.
+ */
+export async function getDealContext(id: string) {
+  const [dealOffers, dealTasks, events] = await Promise.all([
+    db.select({
+      id: offers.id,
+      amount: offers.amount,
+      currency: offers.currency,
+      amountGbp: offers.amountGbp,
+      status: offers.status,
+      validUntil: offers.validUntil,
+      notes: offers.notes,
+      createdAt: offers.createdAt,
+      respondedAt: offers.respondedAt,
+      createdByName: users.name,
+    })
+      .from(offers)
+      .leftJoin(users, eq(users.id, offers.createdBy))
+      .where(eq(offers.dealId, id))
+      .orderBy(desc(offers.createdAt)),
+
+    db.select({
+      id: tasks.id, title: tasks.title, dueAt: tasks.dueAt, kind: tasks.kind,
+      priority: tasks.priority, status: tasks.status, notes: tasks.notes,
+      assigneeName: users.name,
+    })
+      .from(tasks)
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .where(and(eq(tasks.dealId, id), isNull(tasks.deletedAt)))
+      .orderBy(asc(tasks.status), asc(tasks.dueAt)),
+
+    stageHistoryFor(id),
+  ])
+
+  return { offers: dealOffers, tasks: dealTasks, events }
 }
 
 // ---------------------------------------------------------------------------

@@ -218,14 +218,23 @@ function DealCardView({ deal, canEdit, dragging, onDragStart, onDragEnd, onMove,
           />
         )}
         <div className="min-w-0 flex-1">
+          {/* The card links to the deal, not to the customer. It linked to the
+              customer only because the deal had no record to link to, which
+              meant clicking a deal took you somewhere that could not tell you
+              what had happened on it. */}
           <Link
-            href={deal.customerId ? `/customers/${deal.customerId}` : '/pipeline'}
+            href={`/pipeline/${deal.id}`}
             className="block text-small font-bold text-content-primary hover:underline"
           >
             {deal.title}
           </Link>
-          {deal.customerName && (
-            <p className="mt-0.5 truncate text-caption text-content-secondary">{deal.customerName}</p>
+          {deal.customerName && deal.customerId && (
+            <Link
+              href={`/customers/${deal.customerId}`}
+              className="mt-0.5 block truncate text-caption text-content-secondary hover:text-content-accent hover:underline"
+            >
+              {deal.customerName}
+            </Link>
           )}
         </div>
         {deal.ownerInitials && (

@@ -632,6 +632,87 @@ await journey('a viewer is shown no create controls at all', async () => {
   }
 })
 
+// --- E3. The deal record
+
+await journey('a deal record opens from the board and records what happens on it', async (page) => {
+  await go(page, '/pipeline')
+
+  // The card title links to the deal now. Before E3 it linked to the customer,
+  // because the deal had nowhere to link to.
+  const card = page.locator('a[href^="/pipeline/deal_"], a[href^="/pipeline/dea"]').first()
+  const anyDeal = page.locator('article a[href^="/pipeline/"]').first()
+  const link = (await card.count()) ? card : anyDeal
+  await link.waitFor({ state: 'visible', timeout: 10_000 })
+  await link.click()
+  await page.waitForTimeout(1800)
+
+  const record = new URL(page.url()).pathname
+  if (!/^\/pipeline\/.+/.test(record)) throw new Error(`the card did not open a deal: ${record}`)
+
+  const railText = await page.locator('main').innerText()
+  // The rail is the thing that only this screen can show.
+  if (!/so far|Won after|Lost after/.test(railText)) {
+    throw new Error('the stage rail reports no elapsed time at all')
+  }
+
+  // Log a call. The timeline's log form is collapsed behind a prompt until it
+  // is asked for — an always-open form at the top of a history pushes the
+  // history down the page.
+  const note = `Discussed shipping ${stamp}`
+  await page.click('button:has-text("Log a call, message or note")')
+  await page.waitForTimeout(400)
+  await page.selectOption('select[name="type"]', 'CALL').catch(() => {})
+  await page.fill('input[name="subject"]', note)
+  await page.click('button:has-text("Log it"), button:has-text("Log")')
+  await page.waitForTimeout(2200)
+
+  await go(page, record)
+  if (!(await page.locator('main').innerText()).includes(note)) {
+    throw new Error('the call never appeared on the deal timeline')
+  }
+
+  // Record an offer against the deal.
+  await openComposer(page, 'Record an offer')
+  await page.fill('input[name="amount"]', '31250')
+  await page.click('button:has-text("Record it")')
+  await page.waitForTimeout(2400)
+
+  await go(page, record)
+  if (!/31,250/.test(await page.locator('main').innerText())) {
+    throw new Error('the offer did not appear in the deal offers panel')
+  }
+})
+
+await journey('moving a stage updates the rail on the record', async (page) => {
+  await go(page, '/pipeline')
+  const link = page.locator('article a[href^="/pipeline/"]').first()
+  await link.click()
+  await page.waitForTimeout(1800)
+  const record = new URL(page.url()).pathname
+
+  const stage = page.locator('select[name="stage"]').first()
+  const before = await stage.inputValue()
+  const options = await stage.locator('option').evaluateAll(
+    (nodes) => nodes.map((n) => n.value).filter(Boolean),
+  )
+  const next = options.find((value) => value !== before)
+  if (!next) throw new Error('the stage selector offers nowhere to move to')
+
+  await stage.selectOption(next)
+  await page.waitForTimeout(2500)
+
+  await go(page, record)
+  const after = await page.locator('select[name="stage"]').first().inputValue()
+  if (after !== next) throw new Error(`the stage did not stick: asked for ${next}, got ${after}`)
+
+  // The rail has to know about it too — that is the whole point of the screen.
+  const body = await page.locator('main').innerText()
+  if (!/so far/.test(body)) throw new Error('the rail stopped reporting a current dwell after the move')
+  if (!body.includes('Moved to')) {
+    throw new Error('the move was not written to the timeline the rail is built from')
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render
