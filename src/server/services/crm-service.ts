@@ -690,7 +690,15 @@ export async function matchesForRequest(requestId: string) {
   ]
   if (request.brandId) clauses.push(eq(watches.brandId, request.brandId))
   if (request.referenceNo) clauses.push(ilike(watches.model, `%${request.referenceNo}%`))
-  if (request.budgetGbp) clauses.push(lte(watches.estSaleGbp, Math.round(request.budgetGbp * 1.1)))
+  if (request.budgetGbp) {
+    // An unpriced watch still fits: "we hold one, we have not priced it" is
+    // more useful than silence, and a customer with a budget is the best
+    // reason to go and price it.
+    clauses.push(or(
+      isNull(watches.estSaleGbp),
+      lte(watches.estSaleGbp, Math.round(request.budgetGbp * 1.1)),
+    )!)
+  }
 
   return db.select({
     id: watches.id,

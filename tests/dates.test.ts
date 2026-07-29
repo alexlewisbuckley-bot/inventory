@@ -11,6 +11,11 @@ describe('relativeTime', () => {
     expect(relativeTime(new Date(Date.now() - 90_000))).toBe('2 minutes ago')
   })
 
+  it('reads a future date as a commitment rather than a memory', () => {
+    expect(relativeTime(new Date(Date.now() + 2 * 86_400_000))).toBe('in 2 days')
+    expect(relativeTime(new Date(Date.now() + 90_000))).toBe('in 2 minutes')
+  })
+
   it('returns the fallback for nothing rather than an invalid date', () => {
     expect(relativeTime(null)).toBe('—')
     expect(relativeTime(undefined, 'Never')).toBe('Never')

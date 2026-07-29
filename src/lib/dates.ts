@@ -22,7 +22,10 @@ export function relativeTime(value: Date | string | null | undefined, fallback =
   // "0 seconds ago" is a sentence nobody writes. Anything inside the last few
   // seconds is, to a reader, now.
   const elapsed = Date.now() - date.getTime()
-  if (elapsed >= 0 && elapsed < 10_000) return 'Just now'
+  if (Math.abs(elapsed) < 10_000) return 'Just now'
+  // Anything ahead of now is a commitment, not a memory: a task due tomorrow
+  // read "due 24 hours ago", which is the opposite of what it meant.
+  if (elapsed < 0) return `in ${formatDistanceToNowStrict(date)}`
   return `${formatDistanceToNowStrict(date)} ago`
 }
 
