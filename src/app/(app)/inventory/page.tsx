@@ -7,9 +7,10 @@ import { db } from '@/server/db/client'
 import { brands, locations, suppliers } from '@/server/db/schema'
 import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
+import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
-import { FilterBar } from '@/components/inventory/FilterBar'
+import { FilterBar } from '@/components/ui/DataList'
 import { SavedViews } from '@/components/inventory/SavedViews'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -47,6 +48,17 @@ function parseQuery(searchParams: SearchParams) {
     dir: searchParams.dir ?? 'desc',
     page: searchParams.page ?? 1,
     perPage: searchParams.perPage ?? 25,
+    // The V2 grammar, parsed by the one parser that knows the rules. Anything
+    // the URL says that the fields do not support is dropped here rather than
+    // reaching the query builder.
+    f: parseFilters(
+      new URLSearchParams(
+        Object.entries(searchParams).flatMap(([key, value]) =>
+          (Array.isArray(value) ? value : value === undefined ? [] : [value])
+            .map((item) => [key, item] as [string, string])),
+      ),
+      WATCH_FIELDS,
+    ),
   })
 }
 
@@ -138,7 +150,15 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <SavedViews counts={{ unpriced: unpricedCount }} />
 
-      <FilterBar locations={locationOptions} suppliers={supplierOptions} brands={brandOptions} />
+      <FilterBar
+        fields={WATCH_FIELDS}
+        placeholder="Search by stock number, model, reference or serial…"
+        options={{
+          locations: locationOptions.map((row) => ({ value: row.id, label: row.name })),
+          suppliers: supplierOptions.map((row) => ({ value: row.id, label: row.name })),
+          brands: brandOptions.map((row) => ({ value: row.id, label: row.name })),
+        }}
+      />
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>

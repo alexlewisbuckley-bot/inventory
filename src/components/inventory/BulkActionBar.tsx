@@ -13,12 +13,24 @@ import type { FilterOption } from './FilterBar'
  * Anchored to the viewport bottom so it stays reachable however far the user
  * has scrolled, and it reports the selection count for screen readers.
  */
-export function BulkActionBar({ count, watchIds, locations, capabilities, onClear }: {
+export function BulkActionBar({
+  count, watchIds, locations, capabilities, onClear, allMatching = false,
+}: {
   count: number
   watchIds: string[]
   locations: FilterOption[]
   capabilities: Record<Capability, boolean>
   onClear: () => void
+  /**
+   * The selection is "everything matching the filter", not a list of ids.
+   *
+   * The destructive verbs are withheld in that mode until the server can act
+   * on a filter rather than on ids. Offering Delete here and quietly applying
+   * it to only the loaded page would be worse than not offering it — the bar
+   * would say 312 and remove 25, and nobody would find out until the next
+   * report disagreed.
+   */
+  allMatching?: boolean
 }) {
   const toast = useToast()
   const router = useRouter()
@@ -115,17 +127,27 @@ export function BulkActionBar({ count, watchIds, locations, capabilities, onClea
         </span>
         <span className="h-5 w-px bg-line-subtle" aria-hidden />
 
-        {capabilities['watch:move'] && (
+        {allMatching && (
+          // Said plainly rather than hidden behind a disabled button. The
+          // operator asked for three hundred rows and is being told which
+          // verbs can honour that, which is more useful than three greyed-out
+          // controls and no explanation.
+          <span className="max-w-[220px] text-caption text-content-secondary">
+            Moving and deleting work on rows you have picked. Narrow the filter, or select a page.
+          </span>
+        )}
+
+        {!allMatching && capabilities['watch:move'] && (
           <Button size="sm" variant="ghost" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => setMoveOpen(true)}>
             Move
           </Button>
         )}
-        {capabilities['report:export'] && (
+        {!allMatching && capabilities['report:export'] && (
           <Button size="sm" variant="ghost" icon={<Download className="h-4 w-4" />} onClick={exportSelection}>
             Export
           </Button>
         )}
-        {capabilities['watch:delete'] && (
+        {!allMatching && capabilities['watch:delete'] && (
           <Button size="sm" variant="ghost" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDeleteOpen(true)}
             className="text-state-danger hover:bg-state-danger/8">
             Delete

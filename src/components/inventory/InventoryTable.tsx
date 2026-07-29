@@ -1,10 +1,12 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, PackageSearch, Receipt, SearchX } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
+import { useSelection } from '@/hooks/useSelection'
+import { SelectAllBanner } from '@/components/ui/DataList'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
 import {
   Table, THead, TBody, TR, TD, TH, Pagination,
@@ -71,7 +73,10 @@ export function InventoryTable({
 }: InventoryTableProps) {
   const query = useListQuery()
   const router = useRouter()
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Selection knows the difference between "these rows" and "everything that
+  // matches", which is the whole reason a filtered list of three hundred can
+  // now be acted on at all.
+  const selection = useSelection(result.total)
   const [sellTarget, setSellTarget] = useState<QuickSellTarget | null>(null)
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
 
@@ -85,25 +90,27 @@ export function InventoryTable({
   )
 
   const selectable = capabilities['watch:move'] || capabilities['watch:delete']
-  const allOnPageSelected = result.items.length > 0 && result.items.every((w) => selected.has(w.id))
+  const pageIds = useMemo(() => result.items.map((item) => item.id), [result.items])
+  const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selection.isSelected(id))
 
-  const toggleAll = () => {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (allOnPageSelected) result.items.forEach((w) => next.delete(w.id))
-      else result.items.forEach((w) => next.add(w.id))
-      return next
-    })
-  }
+  const toggleAll = () => selection.togglePage(pageIds)
+  const toggleOne = (id: string) => selection.toggle(id)
 
-  const toggleOne = (id: string) => {
-    setSelected((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  // ⌘A selects the page, and the banner then offers the rest. Two steps rather
+  // than one: silently selecting four hundred rows because somebody pressed a
+  // familiar shortcut is how a bulk delete goes wrong.
+  useEffect(() => {
+    if (!selectable) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'a' || (!event.metaKey && !event.ctrlKey)) return
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+      event.preventDefault()
+      selection.togglePage(pageIds)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectable, pageIds, selection])
 
   if (query.isPending && result.items.length === 0) return <SkeletonTable rows={8} columns={8} />
 
@@ -213,7 +220,7 @@ export function InventoryTable({
                 watch={watch}
                 show={show}
                 selectable={selectable}
-                selected={selected.has(watch.id)}
+                selected={selection.isSelected(watch.id)}
                 onToggle={() => toggleOne(watch.id)}
                 canSell={capabilities['sale:create']}
                 canPrice={capabilities['watch:price']}
@@ -238,6 +245,16 @@ export function InventoryTable({
         </Table>
         </div>
 
+        {selectable && allOnPageSelected && (
+          <SelectAllBanner
+            pageCount={pageIds.length}
+            total={result.total}
+            allMatching={selection.isAllMatching}
+            onSelectAll={selection.selectAllMatching}
+            onClear={selection.clear}
+          />
+        )}
+
         <Pagination
           page={result.page}
           perPage={result.perPage}
@@ -248,13 +265,14 @@ export function InventoryTable({
         />
       </div>
 
-      {selected.size > 0 && (
+      {!selection.empty && (
         <BulkActionBar
-          count={selected.size}
-          watchIds={[...selected]}
+          count={selection.count}
+          watchIds={selection.state.ids as string[]}
+          allMatching={selection.isAllMatching}
           locations={locations}
           capabilities={capabilities}
-          onClear={() => setSelected(new Set())}
+          onClear={selection.clear}
         />
       )}
 

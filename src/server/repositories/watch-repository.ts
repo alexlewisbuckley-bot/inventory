@@ -2,6 +2,8 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, 
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
+import { filtersToSql, type ColumnMap } from './filter-sql'
+import { WATCH_FIELDS } from '@/lib/filters'
 import type { WatchQuery } from '@/lib/validation'
 import type { WatchStatus } from '@/lib/enums'
 
@@ -109,8 +111,37 @@ function buildFilters(query: WatchQuery): SQL | undefined {
   if (query.minPriceGbp !== undefined) clauses.push(gte(watches.purchasePriceGbp, Math.round(query.minPriceGbp * 100)))
   if (query.maxPriceGbp !== undefined) clauses.push(lte(watches.purchasePriceGbp, Math.round(query.maxPriceGbp * 100)))
 
+  // The V2 filter grammar, alongside the V1 named parameters rather than
+  // instead of them. Both write to the same URL and both narrow the same
+  // query, so a bookmark from last month and a filter built this morning
+  // compose rather than fighting. The named parameters go in E7, once nothing
+  // is producing them.
+  const grammar = filtersToSql(query.f ?? [], WATCH_COLUMNS, WATCH_FIELDS)
+  if (grammar) clauses.push(grammar)
+
   const present = clauses.filter(Boolean) as SQL[]
   return present.length > 0 ? and(...present) : undefined
+}
+
+/**
+ * Which column each filterable field means.
+ *
+ * The second gate on hostile input: a field with no entry here produces no SQL
+ * at all. That is the difference between a filter that quietly does nothing
+ * and a string interpolated into a query.
+ */
+const WATCH_COLUMNS: ColumnMap = {
+  status: { column: watches.status, kind: 'enum' },
+  condition: { column: watches.condition, kind: 'enum' },
+  brandId: { column: watches.brandId, kind: 'enum' },
+  locationId: { column: watches.locationId, kind: 'enum' },
+  supplierId: { column: watches.supplierId, kind: 'enum' },
+  model: { column: watches.model, kind: 'text' },
+  serial: { column: watches.serial, kind: 'text' },
+  purchasePriceGbp: { column: watches.purchasePriceGbp, kind: 'money' },
+  estSaleGbp: { column: watches.estSaleGbp, kind: 'money' },
+  purchaseDate: { column: watches.purchaseDate, kind: 'date' },
+  year: { column: watches.year, kind: 'number' },
 }
 
 function buildOrder(query: WatchQuery): SQL {

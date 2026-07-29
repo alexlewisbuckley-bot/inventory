@@ -953,6 +953,96 @@ await journey('snoozing pushes a task off today and onto its new date', async (p
   }
 })
 
+// --- E6. The list system
+
+await journey('a filter can be built, shared and survives a reload', async (page) => {
+  await go(page, '/inventory')
+
+  await page.click('button:has-text("Filter")')
+  await page.waitForTimeout(400)
+  await page.locator('[role="menu"] button:has-text("Status")').first().click()
+  await page.waitForTimeout(1800)
+
+  const url = new URL(page.url())
+  const clauses = url.searchParams.getAll('f')
+  if (clauses.length === 0) throw new Error('adding a filter wrote nothing to the URL')
+  if (!clauses[0].startsWith('status:')) throw new Error(`unexpected clause: ${clauses[0]}`)
+
+  const chip = page.locator('button[aria-label^="Remove the Status filter"]')
+  if (await chip.count() === 0) throw new Error('the filter produced no chip')
+
+  const filtered = await page.locator('main').innerText()
+
+  // The same URL, opened cold. A filtered list that cannot be sent to somebody
+  // is a filtered list that gets described down a phone instead.
+  await go(page, url.pathname + url.search)
+  if (await page.locator('button[aria-label^="Remove the Status filter"]').count() === 0) {
+    throw new Error('the filter did not survive being reopened from its own URL')
+  }
+  const reloaded = await page.locator('main').innerText()
+  const countOf = (text) => (text.match(/(\d+) watches? +·/) ?? [])[1]
+  if (countOf(filtered) !== countOf(reloaded)) {
+    throw new Error(`the same URL produced a different result: ${countOf(filtered)} then ${countOf(reloaded)}`)
+  }
+
+  // And it narrows something, or it is not a filter.
+  await go(page, '/inventory')
+  const unfiltered = countOf(await page.locator('main').innerText())
+  if (unfiltered && countOf(filtered) && Number(countOf(filtered)) > Number(unfiltered)) {
+    throw new Error('the filter returned more rows than no filter at all')
+  }
+})
+
+await journey('a stale or hostile filter URL still opens the list', async (page) => {
+  // The case that actually happens: a link shared months ago, filtering on a
+  // column since renamed. The recipient did nothing wrong and cannot fix it.
+  const hostile = "/inventory?f=colour:is:blue&f=status:is:MELTED&f=purchasePriceGbp:gt:'; DROP TABLE watches;--"
+  const response = await page.goto(BASE + encodeURI(hostile), { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(1200)
+
+  if ((response?.status() ?? 0) >= 400) throw new Error(`a bad filter returned HTTP ${response?.status()}`)
+  const body = await page.locator('body').innerText()
+  if (/application error|something went wrong/i.test(body)) {
+    throw new Error('a bad filter took the page down')
+  }
+  if (await page.locator('table').count() === 0) throw new Error('the list did not render at all')
+
+  // And the table is still there afterwards, which is the other half of that
+  // last clause.
+  await go(page, '/inventory')
+  if (await page.locator('tbody tr').count() === 0) throw new Error('the inventory is empty after that')
+})
+
+await journey('selecting a page offers the whole result set', async (page) => {
+  await go(page, '/inventory?perPage=10')
+
+  const header = page.locator('thead input[type="checkbox"]').first()
+  if (await header.count() === 0) throw new Error('the list offers no way to select a page')
+  await header.click()
+  await page.waitForTimeout(600)
+
+  const banner = page.locator('[role="status"]:has-text("on this page")')
+  if (await banner.count() === 0) {
+    throw new Error('selecting a page never offers the rest of the matching rows')
+  }
+
+  const offer = banner.locator('button:has-text("Select all")')
+  const offered = await offer.innerText()
+  await offer.click()
+  await page.waitForTimeout(600)
+
+  const bar = page.locator('[role="region"][aria-label$="selected"]')
+  const said = await bar.innerText()
+  const total = Number((offered.match(/([\d,]+)/) ?? [])[1]?.replace(/,/g, ''))
+  const selected = Number((said.match(/([\d,]+) selected/) ?? [])[1]?.replace(/,/g, ''))
+  if (!Number.isFinite(total) || !Number.isFinite(selected)) {
+    throw new Error(`could not read the counts: offered "${offered}", bar "${said}"`)
+  }
+  if (selected !== total) {
+    throw new Error(`asked for ${total} and the bar reports ${selected}`)
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render

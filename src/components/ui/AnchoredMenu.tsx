@@ -14,6 +14,16 @@ export interface MenuItem {
   separated?: boolean
 }
 
+/**
+ * Whether choosing an item dismisses the menu.
+ *
+ * A menu of commands should close — the command has been given. A menu of
+ * checkboxes should not: closing after each tick makes selecting three
+ * statuses cost three round trips through the trigger, which is how a
+ * multi-select filter ends up being used to select one thing.
+ */
+export type MenuDismissal = 'on-select' | 'stay-open'
+
 const TONES: Record<NonNullable<MenuItem['tone']>, string> = {
   default: 'text-content-primary hover:bg-surface-subtle',
   accent: 'font-bold text-content-accent hover:bg-surface-subtle',
@@ -46,12 +56,13 @@ const TONES: Record<NonNullable<MenuItem['tone']>, string> = {
  * 3. Near the bottom of a window the menu ran off-screen, so it flips above
  *    the trigger when there is not room below.
  */
-export function AnchoredMenu({ open, onClose, anchorRef, items, label }: {
+export function AnchoredMenu({ open, onClose, anchorRef, items, label, dismiss = 'on-select' }: {
   open: boolean
   onClose: () => void
   anchorRef: React.RefObject<HTMLElement>
   items: MenuItem[]
   label: string
+  dismiss?: MenuDismissal
 }) {
   const menuRef = useRef<HTMLDivElement>(null)
   /** Where the trigger sat when the menu was placed, to detect real scrolling. */
@@ -99,7 +110,7 @@ export function AnchoredMenu({ open, onClose, anchorRef, items, label }: {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         items[active]?.onSelect()
-        onClose()
+        if (dismiss === 'on-select') onClose()
       }
     }
 
@@ -158,7 +169,7 @@ export function AnchoredMenu({ open, onClose, anchorRef, items, label }: {
             role="menuitem"
             data-menu-item={item.id}
             onMouseEnter={() => setActive(index)}
-            onClick={() => { item.onSelect(); onClose() }}
+            onClick={() => { item.onSelect(); if (dismiss === 'on-select') onClose() }}
             className={cn(
               'flex w-full items-center gap-2.5 px-3 py-2 text-left text-small transition-colors',
               TONES[item.tone ?? 'default'],

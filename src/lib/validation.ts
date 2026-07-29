@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { FilterClause } from './filters'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
@@ -251,6 +252,15 @@ export const WATCH_SORT_FIELDS = [
 export type WatchSortField = (typeof WATCH_SORT_FIELDS)[number]
 
 export const watchQuerySchema = z.object({
+  /**
+   * V2 filter clauses, already parsed and validated by src/lib/filters.ts.
+   *
+   * Passed through rather than re-parsed: the grammar has one parser, and a
+   * second one living in the query schema is a second set of rules to keep in
+   * agreement with the first.
+   */
+  f: z.array(z.custom<FilterClause>()).optional(),
+
   q: z.string().trim().max(120).optional(),
   status: z.array(z.enum(WATCH_STATUSES)).optional(),
   locationId: z.array(z.string()).optional(),
