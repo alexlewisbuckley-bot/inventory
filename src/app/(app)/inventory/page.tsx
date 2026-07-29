@@ -7,7 +7,7 @@ import { db } from '@/server/db/client'
 import { brands, locations, suppliers } from '@/server/db/schema'
 import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
-import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
+import { parseFilters, toSearchParams, WATCH_FIELDS } from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
@@ -51,14 +51,7 @@ function parseQuery(searchParams: SearchParams) {
     // The V2 grammar, parsed by the one parser that knows the rules. Anything
     // the URL says that the fields do not support is dropped here rather than
     // reaching the query builder.
-    f: parseFilters(
-      new URLSearchParams(
-        Object.entries(searchParams).flatMap(([key, value]) =>
-          (Array.isArray(value) ? value : value === undefined ? [] : [value])
-            .map((item) => [key, item] as [string, string])),
-      ),
-      WATCH_FIELDS,
-    ),
+    f: parseFilters(toSearchParams(searchParams), WATCH_FIELDS),
   })
 }
 

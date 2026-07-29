@@ -336,3 +336,22 @@ export function describeFilters(
   if (clauses.length === 0) return ''
   return clauses.map((clause) => describeClause(clause, fields, resolve)).join(', and ')
 }
+
+/**
+ * Next's searchParams, as a URLSearchParams the filter parser understands.
+ *
+ * Next hands over `Record<string, string | string[]>`; the grammar reads
+ * repeated keys. Written once here rather than three times, because the shape
+ * with the array in it is exactly where a hand-rolled conversion drops the
+ * second clause and nobody notices.
+ */
+export function toSearchParams(
+  searchParams: Record<string, string | string[] | undefined>,
+): URLSearchParams {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value === undefined) continue
+    for (const item of Array.isArray(value) ? value : [value]) params.append(key, item)
+  }
+  return params
+}

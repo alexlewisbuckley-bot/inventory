@@ -2,6 +2,8 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sql, ty
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
+import { filtersToSql, type ColumnMap } from './filter-sql'
+import { SALE_FIELDS, type FilterClause } from '@/lib/filters'
 import type { SaleChannel } from '@/lib/enums'
 
 export interface SaleListItem {
@@ -29,6 +31,8 @@ export interface SaleListItem {
 
 export interface SaleQuery {
   q?: string
+  /** V2 filter clauses, already validated by src/lib/filters.ts. */
+  f?: FilterClause[]
   channel?: SaleChannel[]
   from?: Date
   to?: Date
@@ -52,8 +56,22 @@ function filters(query: SaleQuery): SQL | undefined {
   if (query.channel?.length) clauses.push(inArray(sales.channel, query.channel))
   if (query.from) clauses.push(gte(sales.saleDate, query.from))
   if (query.to) clauses.push(lte(sales.saleDate, query.to))
+
+  const grammar = filtersToSql(query.f ?? [], SALE_COLUMNS, SALE_FIELDS)
+  if (grammar) clauses.push(grammar)
+
   const present = clauses.filter(Boolean) as SQL[]
   return present.length > 0 ? and(...present) : undefined
+}
+
+/** Which column each filterable sale field means. */
+const SALE_COLUMNS: ColumnMap = {
+  channel: { column: sales.channel, kind: 'enum' },
+  paymentStatus: { column: sales.paymentStatus, kind: 'enum' },
+  deliveryStatus: { column: sales.deliveryStatus, kind: 'enum' },
+  saleAmountGbp: { column: sales.saleAmountGbp, kind: 'money' },
+  profitGbp: { column: sales.profitGbp, kind: 'money' },
+  saleDate: { column: sales.saleDate, kind: 'date' },
 }
 
 function order(query: SaleQuery): SQL {

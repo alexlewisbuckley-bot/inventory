@@ -5,6 +5,8 @@ import { findSales, summariseSales, type SaleQuery } from '@/server/repositories
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SalesTable } from '@/components/sales/SalesTable'
 import { SalesFilterBar } from '@/components/sales/SalesFilterBar'
+import { FilterBar } from '@/components/ui/DataList'
+import { parseFilters, SALE_FIELDS, toSearchParams } from '@/lib/filters'
 import { Card, StatCard, LinkButton, EmptyState } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
@@ -32,6 +34,7 @@ function parseQuery(searchParams: SearchParams): SaleQuery {
     dir: (searchParams.dir as 'asc' | 'desc') ?? 'desc',
     page: Number(searchParams.page ?? 1),
     perPage: Number(searchParams.perPage ?? 25),
+    f: parseFilters(toSearchParams(searchParams), SALE_FIELDS),
   }
 }
 
@@ -51,7 +54,13 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const exportable = can(user.role, 'report:export')
   // "Nothing here yet" and "nothing matches your filters" are different
   // situations and want different screens.
-  const filtered = Boolean(query.q || query.channel?.length || query.from || query.to)
+  // The V2 clauses count as filtering too. Without them, a URL carrying only
+  // `f=` clauses that match nothing would show "no sales recorded yet" — which
+  // tells the reader the business has never sold anything, rather than that
+  // their filter is too narrow.
+  const filtered = Boolean(
+    query.q || query.channel?.length || query.from || query.to || query.f?.length,
+  )
   const isFirstRun = result.total === 0 && !filtered
 
   return (
@@ -94,7 +103,15 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         />
       </section>
 
+      {/* The date range keeps its own control — a from/to pair is the one
+          filter a chip cannot express as well as two date inputs, and the
+          ledger is read by date more than by anything else. */}
       <SalesFilterBar />
+
+      <FilterBar
+        fields={SALE_FIELDS}
+        placeholder="Search by invoice number, buyer, model or stock number…"
+      />
 
       <Card className="overflow-hidden">
         {result.total === 0 ? (

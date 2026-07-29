@@ -352,6 +352,7 @@ export type CustomerInput = z.infer<typeof customerSchema>
 export const CUSTOMER_SORT_FIELDS = ['name', 'value', 'lastContact', 'created'] as const
 
 export const customerQuerySchema = z.object({
+  f: z.array(z.custom<FilterClause>()).optional(),
   q: z.string().trim().max(120).optional(),
   tier: z.array(z.enum(CUSTOMER_TIERS)).optional(),
   customerType: z.array(z.enum(CUSTOMER_TYPES)).optional(),

@@ -5,12 +5,11 @@ import { Users2 } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
 import {
   Avatar, Card, Chip, EmptyState, LinkButton, Pagination, Table, TBody, TD, TH, THead, TR,
-  ToolbarRow, ToolbarSearch, ToolbarSelect, useCurrency,
+  useCurrency,
 } from '@/components/ui'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
-  CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS, CUSTOMER_TIERS, CUSTOMER_TIER_LABELS,
-  CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
+  CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS,
   type CustomerTier, type CustomerType,
 } from '@/lib/enums'
 import { cn } from '@/lib/cn'
@@ -30,10 +29,7 @@ const TIER_TONE: Record<CustomerTier, 'gold' | 'accent' | 'neutral'> = {
  * have spent and when anybody last spoke to them — are on the row rather than
  * one click inside it.
  */
-export function CustomerTable({ result, owners }: {
-  result: CustomerListResult
-  owners: Array<{ id: string; name: string }>
-}) {
+export function CustomerTable({ result }: { result: CustomerListResult }) {
   const query = useListQuery()
   const { money } = useCurrency()
 
@@ -66,39 +62,6 @@ export function CustomerTable({ result, owners }: {
         })}
       </div>
 
-      <ToolbarRow className="mb-4">
-        <ToolbarSearch
-          value={query.get('q') ?? ''}
-          onChange={(value) => query.set('q', value || null)}
-          label="Search customers"
-          placeholder="Name, company, email or phone…"
-          className="min-w-[260px]"
-        />
-        <ToolbarSelect
-          label="Tier"
-          value={query.get('tier') ?? ''}
-          onChange={(value) => query.set('tier', value || null)}
-          options={CUSTOMER_TIERS.map((t) => ({ value: t, label: CUSTOMER_TIER_LABELS[t] }))}
-        />
-        <ToolbarSelect
-          label="Owner"
-          value={query.get('ownerId') ?? ''}
-          onChange={(value) => query.set('ownerId', value || null)}
-          options={owners.map((o) => ({ value: o.id, label: o.name }))}
-        />
-        <ToolbarSelect
-          label="Source"
-          value={query.get('leadSource') ?? ''}
-          onChange={(value) => query.set('leadSource', value || null)}
-          options={LEAD_SOURCES.map((s) => ({ value: s, label: LEAD_SOURCE_LABELS[s] }))}
-        />
-        <ToolbarSelect
-          label="Status"
-          value={query.get('status') ?? ''}
-          onChange={(value) => query.set('status', value || null)}
-          options={CUSTOMER_STATUSES.map((s) => ({ value: s, label: CUSTOMER_STATUS_LABELS[s] }))}
-        />
-      </ToolbarRow>
 
       {result.items.length === 0 ? (
         <EmptyState

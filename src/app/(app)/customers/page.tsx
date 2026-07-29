@@ -6,6 +6,8 @@ import { customerQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerTable } from '@/components/crm/CustomerTable'
 import { CustomerFormPanel } from '@/components/crm/CustomerFormPanel'
+import { FilterBar } from '@/components/ui/DataList'
+import { CONTACT_FIELDS, parseFilters, toSearchParams } from '@/lib/filters'
 import { db } from '@/server/db/client'
 import { brands, suppliers } from '@/server/db/schema'
 import { asc, isNull } from 'drizzle-orm'
@@ -36,6 +38,7 @@ export default async function CustomersPage({ searchParams }: {
     dir: searchParams.dir ?? 'asc',
     page: searchParams.page ?? 1,
     perPage: searchParams.perPage ?? 25,
+    f: parseFilters(toSearchParams(searchParams), CONTACT_FIELDS),
   })
 
   const [result, owners, brandRows, supplierRows] = await Promise.all([
@@ -55,7 +58,12 @@ export default async function CustomersPage({ searchParams }: {
           ? <CustomerFormPanel owners={owners} brands={brandRows} suppliers={supplierRows} triggerLabel="Add customer" />
           : undefined}
       />
-      <CustomerTable result={result} owners={owners} />
+      <FilterBar
+        fields={CONTACT_FIELDS}
+        placeholder="Search by name, company, email or phone…"
+        options={{ users: owners.map((owner) => ({ value: owner.id, label: owner.name })) }}
+      />
+      <CustomerTable result={result} />
     </>
   )
 }

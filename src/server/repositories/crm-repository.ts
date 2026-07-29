@@ -5,6 +5,8 @@ import {
   activities, brands, customers, customerBrands, deals, dealStageEvents, offers,
   sales, suppliers, tasks, users, watches, watchRequests, requestEnquiries,
 } from '../db/schema'
+import { filtersToSql, type ColumnMap } from './filter-sql'
+import { CONTACT_FIELDS } from '@/lib/filters'
 import type { CustomerQuery, DealQuery, TaskQuery } from '@/lib/validation'
 import type { DealStage } from '@/lib/enums'
 
@@ -114,8 +116,23 @@ function customerFilters(query: CustomerQuery): SQL | undefined {
   if (query.ownerId?.length) clauses.push(inArray(customers.ownerId, query.ownerId))
   if (query.leadSource?.length) clauses.push(inArray(customers.leadSource, query.leadSource))
 
+  const grammar = filtersToSql(query.f ?? [], CONTACT_COLUMNS, CONTACT_FIELDS)
+  if (grammar) clauses.push(grammar)
+
   const present = clauses.filter(Boolean) as SQL[]
   return present.length > 0 ? and(...present) : undefined
+}
+
+/** Which column each filterable contact field means. */
+const CONTACT_COLUMNS: ColumnMap = {
+  customerType: { column: customers.customerType, kind: 'enum' },
+  tier: { column: customers.tier, kind: 'enum' },
+  status: { column: customers.status, kind: 'enum' },
+  leadSource: { column: customers.leadSource, kind: 'enum' },
+  ownerId: { column: customers.ownerId, kind: 'enum' },
+  company: { column: customers.company, kind: 'text' },
+  country: { column: customers.country, kind: 'text' },
+  lastContactedAt: { column: customers.lastContactedAt, kind: 'date' },
 }
 
 export async function findCustomers(query: CustomerQuery): Promise<CustomerListResult> {

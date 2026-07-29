@@ -107,6 +107,42 @@ const returnToStock = async (page, stockNo) => {
   return true
 }
 
+/**
+ * Sell the first watch in stock, and return what it was.
+ *
+ * Extracted once three journeys needed a sale to exist. Each journey creating
+ * its own is the only arrangement that survives being run in any order: the
+ * suite used to depend on "mark as sold" leaving a sold watch behind for
+ * "void a sale" to find, which held right up until the selling journeys
+ * started cleaning up after themselves.
+ */
+const sellFirstInStock = async (page, prefix) => {
+  await go(page, '/inventory?status=IN_STOCK')
+  const row = page.locator('tbody tr').first()
+  if (await row.count() === 0) throw new Error('nothing is in stock to sell')
+  const stockNo = (await row.locator('td').nth(1).innerText()).trim()
+
+  await row.locator('button[aria-label^="Status:"]').click()
+  await page.waitForTimeout(300)
+  await page.locator('[role="menu"] button:has-text("Mark as sold")').click()
+  await page.waitForTimeout(900)
+
+  const dialog = page.locator('[role="dialog"]:has-text("Mark as sold")')
+  if (await dialog.count() === 0) throw new Error('the sell dialog did not open')
+
+  const invoice = `${prefix}${Date.now().toString().slice(-7)}`
+  await dialog.locator('input[inputmode="decimal"]').first().fill('11000')
+  await page.fill('input[placeholder="INV-2026-001"]', invoice)
+  await dialog.locator('button:has-text("Record the sale")').click()
+  await page.waitForTimeout(3000)
+
+  if (await page.locator('[role="dialog"]').count() > 0) {
+    const shown = await page.locator('[role="dialog"]').innerText()
+    throw new Error(`the sell dialog stayed open: ${shown.split('\n').find((l) => /must|required|could not|already/i.test(l)) ?? ''}`)
+  }
+  return { stockNo, invoice }
+}
+
 /** The status chip for a given stock number. */
 const statusButton = (page, stockNo) =>
   page.locator(`tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`)
@@ -265,11 +301,16 @@ await journey('mark as sold', async (page) => {
 
 // --- 4. Void that sale, from the status menu -------------------------------
 await journey('void a sale', async (page) => {
-  await go(page, '/inventory?status=SOLD')
-  const trigger = page.locator('tbody button[aria-label^="Status:"]').filter({ hasText: 'Sold' }).first()
-  if (await trigger.count() === 0) throw new Error('no sold watch to void')
+  // Sells its own watch first. Depending on another journey to leave one
+  // behind held only until the selling journeys started cleaning up after
+  // themselves, and then this failed with "no sold watch to void" — a fault
+  // in the suite's ordering wearing the costume of a product fault.
+  const { stockNo } = await sellFirstInStock(page, 'INV-R-')
 
-  const stockNo = await page.locator('tbody tr').first().locator('td').nth(1).innerText()
+  await go(page, '/inventory?status=SOLD')
+  const trigger = page.locator(`tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`).first()
+  if (await trigger.count() === 0) throw new Error(`stock ${stockNo} is not in the sold list`)
+
   await trigger.click()
   await page.waitForTimeout(300)
   await page.locator('[role="menu"] button:has-text("Void the sale")').click()
@@ -1040,6 +1081,40 @@ await journey('selecting a page offers the whole result set', async (page) => {
   }
   if (selected !== total) {
     throw new Error(`asked for ${total} and the bar reports ${selected}`)
+  }
+})
+
+await journey('the same filter bar works on contacts and on sales', async (page) => {
+  // The point of a shared grammar is that the second and third lists cost
+  // nothing. This asserts they actually got it, rather than each keeping its
+  // own toolbar with the new one bolted above.
+  for (const [route, field] of [['/customers', 'Tier'], ['/sales', 'Payment']]) {
+    await go(page, route)
+
+    // A list with no rows at all shows the way in rather than a toolbar over
+    // an empty table — correct behaviour, and the reason this journey checks
+    // for it instead of assuming the earlier journeys left data behind.
+    if (await page.locator('text=No sales recorded yet').count() > 0) continue
+
+    const searches = await page.locator('main input[placeholder^="Search"]').count()
+    if (searches === 0) throw new Error(`${route} has no search box`)
+    if (searches > 1) throw new Error(`${route} has ${searches} search boxes — the old toolbar is still there`)
+
+    await page.click('button:has-text("Filter")')
+    await page.waitForTimeout(400)
+    const option = page.locator(`[role="menu"] button:has-text("${field}")`).first()
+    if (await option.count() === 0) throw new Error(`${route} does not offer a ${field} filter`)
+    await option.click()
+    await page.waitForTimeout(1800)
+
+    const url = new URL(page.url())
+    if (url.searchParams.getAll('f').length === 0) {
+      throw new Error(`${route} added a filter that wrote nothing to the URL`)
+    }
+    const body = await page.locator('main').innerText()
+    if (/application error|something went wrong/i.test(body)) {
+      throw new Error(`${route} broke when filtered`)
+    }
   }
 })
 
