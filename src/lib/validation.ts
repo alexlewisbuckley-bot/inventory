@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import {
-  BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CURRENCIES, DENSITIES, ENTITY_TYPES,
-  LOCATION_TYPES, PAYMENT_TERMS, ROLES, SALE_CHANNELS, THEMES, WATCH_STATUSES,
+  ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DENSITIES, ENTITY_TYPES,
+  LEAD_SOURCES, LOCATION_TYPES, PAYMENT_TERMS, PRIORITIES, REQUEST_STATUSES, ROLES,
+  SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
 
 /**
@@ -249,3 +251,161 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   }
   return out
 }
+
+// ---------------------------------------------------------------------------
+// CRM
+// ---------------------------------------------------------------------------
+
+/**
+ * Money arriving from a form already grouped as "12,500.00".
+ *
+ * The money inputs format as you type, so by the time a value reaches here it
+ * carries separators. Stripping them beats asking the user to delete them.
+ */
+const moneyFromText = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => {
+    if (!value) return null
+    const cleaned = value.replace(/[^0-9.]/g, '')
+    if (!cleaned) return null
+    return Math.round(Number(cleaned) * 100)
+  })
+  .refine((v) => v === null || (Number.isFinite(v) && v >= 0), 'Enter an amount.')
+
+export const customerSchema = z.object({
+  firstName: z.string().trim().min(1, 'A first name is required.').max(80),
+  lastName: z.string().trim().min(1, 'A surname is required.').max(80),
+  company: optionalText(120),
+  email: z.string().trim().email('That does not look like an email address.').optional().or(z.literal('')).transform((v) => v || null),
+  phone: optionalText(40),
+  altPhone: optionalText(40),
+  country: optionalText(60),
+  city: optionalText(60),
+  addressLine1: optionalText(120),
+  addressLine2: optionalText(120),
+  postcode: optionalText(20),
+  preferredChannel: z.enum(CONTACT_CHANNELS).default('EMAIL'),
+  tier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
+  status: z.enum(CUSTOMER_STATUSES).default('ACTIVE'),
+  leadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
+  budgetMinGbp: moneyFromText,
+  budgetMaxGbp: moneyFromText,
+  birthday: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  notes: optionalText(4000),
+  riskNotes: optionalText(2000),
+  marketingConsent: z.coerce.boolean().default(false),
+  ownerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  brandIds: z.array(z.string()).optional().default([]),
+}).refine(
+  (v) => v.budgetMinGbp === null || v.budgetMaxGbp === null || v.budgetMaxGbp >= v.budgetMinGbp,
+  { message: 'The top of the budget cannot be below the bottom.', path: ['budgetMaxGbp'] },
+)
+export type CustomerInput = z.infer<typeof customerSchema>
+
+export const CUSTOMER_SORT_FIELDS = ['name', 'value', 'lastContact', 'created'] as const
+
+export const customerQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  tier: z.array(z.enum(CUSTOMER_TIERS)).optional(),
+  status: z.array(z.enum(CUSTOMER_STATUSES)).optional(),
+  leadSource: z.array(z.enum(LEAD_SOURCES)).optional(),
+  ownerId: z.array(z.string()).optional(),
+  sort: z.enum(CUSTOMER_SORT_FIELDS).default('name'),
+  dir: z.enum(['asc', 'desc']).default('asc'),
+  page: z.coerce.number().int().min(1).default(1),
+  perPage: z.coerce.number().int().min(10).max(200).default(25),
+})
+export type CustomerQuery = z.infer<typeof customerQuerySchema>
+
+export const dealSchema = z.object({
+  title: z.string().trim().min(1, 'Give the deal a name you would recognise in a list.').max(140),
+  customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  watchId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  stage: z.enum(DEAL_STAGES).default('ENQUIRY'),
+  valueGbp: moneyFromText,
+  probability: z.coerce.number().int().min(0).max(100).optional(),
+  expectedClose: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  ownerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  source: z.enum(LEAD_SOURCES).default('UNKNOWN'),
+  notes: optionalText(4000),
+})
+export type DealInput = z.infer<typeof dealSchema>
+
+export const dealQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  stage: z.array(z.enum(DEAL_STAGES)).optional(),
+  ownerId: z.array(z.string()).optional(),
+  openOnly: z.coerce.boolean().default(false),
+})
+export type DealQuery = z.infer<typeof dealQuerySchema>
+
+export const activitySchema = z.object({
+  type: z.enum(ACTIVITY_TYPES).default('NOTE'),
+  direction: z.enum(ACTIVITY_DIRECTIONS).default('OUTBOUND'),
+  subject: optionalText(160),
+  body: optionalText(8000),
+  occurredAt: z.string().trim().optional().or(z.literal('')).transform((v) => (v ? new Date(v) : new Date())),
+  durationMin: z.coerce.number().int().min(0).max(1440).optional(),
+  customerId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  supplierId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  watchId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  dealId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  requestId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+})
+export type ActivityInput = z.infer<typeof activitySchema>
+
+export const taskSchema = z.object({
+  title: z.string().trim().min(1, 'What needs doing?').max(160),
+  notes: optionalText(4000),
+  kind: z.enum(TASK_KINDS).default('FOLLOW_UP'),
+  priority: z.enum(PRIORITIES).default('NORMAL'),
+  dueAt: z.string().trim().optional().or(z.literal('')).transform((v) => (v ? new Date(v) : null)),
+  assigneeId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  customerId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  supplierId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  watchId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  dealId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  requestId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+})
+export type TaskInput = z.infer<typeof taskSchema>
+
+export const taskQuerySchema = z.object({
+  status: z.array(z.enum(TASK_STATUSES)).optional(),
+  assigneeId: z.array(z.string()).optional(),
+  dueBefore: z.coerce.date().optional(),
+  dueAfter: z.coerce.date().optional(),
+  customerId: z.string().optional(),
+  dealId: z.string().optional(),
+})
+export type TaskQuery = z.infer<typeof taskQuerySchema>
+
+export const watchRequestSchema = z.object({
+  customerId: z.string().trim().min(1, 'Which customer is asking?'),
+  brandId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  model: optionalText(80),
+  referenceNo: optionalText(60),
+  dial: optionalText(60),
+  bracelet: optionalText(60),
+  condition: z.enum(CONDITIONS).default('UNKNOWN'),
+  boxPapers: z.enum(BOX_PAPERS).default('UNKNOWN'),
+  budgetGbp: moneyFromText,
+  targetDate: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  priority: z.enum(PRIORITIES).default('NORMAL'),
+  status: z.enum(REQUEST_STATUSES).default('OPEN'),
+  notes: optionalText(2000),
+  ownerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+})
+export type WatchRequestInput = z.infer<typeof watchRequestSchema>
+
+export const offerSchema = z.object({
+  dealId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  customerId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  watchId: z.string().optional().or(z.literal('')).transform((v) => v || null),
+  amount: z.string().trim().min(1, 'How much was offered?'),
+  currency: z.enum(CURRENCIES).default('GBP'),
+  validUntil: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  notes: optionalText(2000),
+})
+export type OfferInput = z.infer<typeof offerSchema>

@@ -11,6 +11,12 @@ export interface ActionState {
   ok: boolean
   message?: string
   errors?: Record<string, string>
+  /**
+   * The id of the record just created, so a form can navigate straight to it.
+   * Creating a customer and then having to find them in a list is the kind of
+   * small tax that makes people avoid the system.
+   */
+  id?: string
 }
 
 /**

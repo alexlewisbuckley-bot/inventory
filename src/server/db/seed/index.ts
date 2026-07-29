@@ -190,6 +190,11 @@ export async function seed(): Promise<void> {
     void managerId
     void sales
   })
+
+  // The customer book, outside the transaction above so a failure to seed
+  // demonstration CRM data can never roll back the stock it depends on.
+  const { seedCrm } = await import('./crm')
+  await seedCrm()
 }
 
 // Executed directly via `npm run db:seed`.
@@ -197,7 +202,8 @@ if (process.argv[1]?.includes('seed')) {
   seed()
     .then(async () => {
       const rows = await client<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM watches`
-      console.log(`Seed complete — ${rows[0]?.count ?? 0} watches in stock.`)
+      const people = await client<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM customers`
+      console.log(`Seed complete — ${rows[0]?.count ?? 0} watches in stock, ${people[0]?.count ?? 0} customers.`)
       console.log('Sign in with alex@bluecroft.co.uk / Bluecroft2026!')
       await client.end()
       process.exit(0)
