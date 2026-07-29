@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { requireCapability } from '@/server/auth/session'
 import { findTasks } from '@/server/repositories/crm-repository'
+import { assignableUsers } from '@/server/services/crm-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { TaskList } from '@/components/crm/TaskList'
 import { can } from '@/lib/permissions'
@@ -21,10 +22,10 @@ export default async function TasksPage({ searchParams }: {
   const user = await requireCapability('task:read')
   const mine = searchParams.everyone !== '1'
 
-  const tasks = await findTasks({
-    status: ['OPEN', 'DONE'],
-    assigneeId: mine ? [user.id] : undefined,
-  })
+  const [tasks, assignees] = await Promise.all([
+    findTasks({ status: ['OPEN', 'DONE'], assigneeId: mine ? [user.id] : undefined }),
+    assignableUsers(),
+  ])
 
   return (
     <>
@@ -42,7 +43,12 @@ export default async function TasksPage({ searchParams }: {
           </a>
         }
       />
-      <TaskList tasks={tasks} canComplete={can(user.role, 'task:update')} />
+      <TaskList
+        tasks={tasks}
+        canComplete={can(user.role, 'task:update')}
+        canCreate={can(user.role, 'task:create')}
+        assignees={assignees}
+      />
     </>
   )
 }

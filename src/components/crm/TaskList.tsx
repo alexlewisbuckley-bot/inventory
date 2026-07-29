@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, Circle, ListChecks } from 'lucide-react'
 import { Card, Chip, EmptyState, useToast } from '@/components/ui'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { TaskComposer } from './TaskComposer'
 import { completeTaskAction } from '@/app/actions/crm'
 import { PRIORITY_LABELS, TASK_KIND_LABELS, type Priority, type TaskKind } from '@/lib/enums'
 import { formatDateTime } from '@/lib/dates'
@@ -18,7 +19,12 @@ import type { TaskRow } from '@/server/repositories/crm-repository'
  * Overdue first, then today, then the rest. A flat list sorted by date reads
  * as one long backlog; the grouping is what turns it into "these three, now".
  */
-export function TaskList({ tasks, canComplete }: { tasks: TaskRow[]; canComplete: boolean }) {
+export function TaskList({ tasks, canComplete, canCreate = false, assignees = [] }: {
+  tasks: TaskRow[]
+  canComplete: boolean
+  canCreate?: boolean
+  assignees?: Array<{ id: string; name: string }>
+}) {
   const now = Date.now()
   const endOfToday = new Date()
   endOfToday.setHours(23, 59, 59, 999)
@@ -35,11 +41,21 @@ export function TaskList({ tasks, canComplete }: { tasks: TaskRow[]; canComplete
 
   if (open.length === 0 && done.length === 0) {
     return (
-      <EmptyState
-        icon={<ListChecks className="h-6 w-6" />}
-        title="Nothing to follow up"
-        description="Tasks appear here when you add one, and automatically when a deal is won or an offer goes unanswered."
-      />
+      <div className="flex flex-col gap-4">
+        <EmptyState
+          icon={<ListChecks className="h-6 w-6" />}
+          title="Nothing to follow up"
+          description="Tasks appear here when you add one, and automatically when a deal is won or an offer goes unanswered."
+        />
+        {/* The empty state gets the composer too. An empty list that only
+            explains where rows come from, with no way to make one, is the
+            exact moment somebody decides the feature does not work. */}
+        {canCreate && (
+          <Card as="section">
+            <TaskComposer can assignees={assignees} label="Add the first follow-up" />
+          </Card>
+        )}
+      </div>
     )
   }
 
@@ -60,6 +76,15 @@ export function TaskList({ tasks, canComplete }: { tasks: TaskRow[]; canComplete
           </ul>
         </Card>
       ))}
+
+      {/* One composer, at the end of the groups rather than inside one of
+          them: a new task has no group until it has a date, and putting the
+          control inside "Today" would imply it did. */}
+      {canCreate && (
+        <Card as="section">
+          <TaskComposer can assignees={assignees} />
+        </Card>
+      )}
 
       {done.length > 0 && (
         <Card as="section">

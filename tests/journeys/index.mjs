@@ -40,6 +40,23 @@ async function newPage(width = 1440, height = 1000) {
   return { ctx, page, shared: ctx === signedIn }
 }
 
+/**
+ * The viewer's session, signed in once and shared.
+ *
+ * Two journeys need a read-only role, and signing in twice within a few
+ * seconds trips the application's own login rate limiter — so the suite was
+ * failing on a defence working exactly as designed. One login, reused, also
+ * means the rate-limit backoff in `signIn` covers both.
+ */
+let viewerCtx = null
+async function viewer() {
+  if (!viewerCtx) {
+    viewerCtx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    await signIn(viewerCtx, { email: 'priya@bluecroft.co.uk', password: 'Bluecroft2026!' })
+  }
+  return viewerCtx
+}
+
 async function journey(name, fn) {
   if (only && !name.includes(only)) return
   const { ctx, page, shared } = await newPage()
@@ -481,6 +498,140 @@ if (!only || 'mobile nav'.includes(only)) {
   }
 }
 
+// --- E2. The four things the server could create and the interface could not
+
+const stamp = Date.now().toString().slice(-6)
+
+/** Open an inline composer by its prompt, and wait for the form to appear. */
+const openComposer = async (page, prompt) => {
+  const trigger = page.locator(`button:has-text("${prompt}")`).first()
+  await trigger.waitFor({ state: 'visible', timeout: 10_000 })
+  await trigger.click()
+  await page.waitForTimeout(400)
+}
+
+await journey('a follow-up created on a contact appears on the task list', async (page) => {
+  // The assertion the plan asks for by name: creating it is not enough, it has
+  // to turn up where the person who has to do it will look.
+  await go(page, '/customers')
+  await page.locator('table a[href^="/customers/"]').first().click()
+  await page.waitForTimeout(1200)
+  const record = new URL(page.url()).pathname
+
+  const title = `Ring back about the Daytona ${stamp}`
+  await openComposer(page, 'Add a follow-up')
+  await page.fill('input[name="title"]', title)
+  await page.click('button:has-text("Add task")')
+  await page.waitForTimeout(2500)
+
+  await go(page, record)
+  if (!(await page.locator('main').innerText()).includes(title)) {
+    throw new Error('the task was not on the record it was created from')
+  }
+
+  await go(page, '/tasks')
+  if (!(await page.locator('main').innerText()).includes(title)) {
+    throw new Error('the task never reached the task list')
+  }
+})
+
+await journey('a want registered from the wanted list is matched against stock', async (page) => {
+  await go(page, '/requests')
+
+  const model = `Submariner ${stamp}`
+  await page.click('button:has-text("Register a want")')
+  await page.waitForTimeout(500)
+
+  // The customer picker on this screen is a combobox, not a select: it has to
+  // be opened, searched and chosen from.
+  await page.click('[role="dialog"] button:has-text("Choose a customer")')
+  await page.waitForTimeout(300)
+  await page.locator('[role="dialog"] [role="option"], [role="dialog"] li button').first().click()
+  await page.waitForTimeout(300)
+
+  await page.fill('[role="dialog"] input[name="model"]', model)
+  await page.click('[role="dialog"] button:has-text("Register it")')
+  await page.waitForTimeout(2500)
+
+  await go(page, '/requests')
+  const body = await page.locator('main').innerText()
+  if (!body.includes(model)) throw new Error('the want never appeared on the wanted list')
+  // Every card states its sourcing position; a new one must too.
+  if (!/in stock could fit|Nothing in stock fits/.test(body)) {
+    throw new Error('the want was listed without saying whether anything matches it')
+  }
+})
+
+await journey('an offer recorded on a customer shows against them', async (page) => {
+  await go(page, '/customers')
+  await page.locator('table a[href^="/customers/"]').first().click()
+  await page.waitForTimeout(1200)
+  const record = new URL(page.url()).pathname
+
+  const before = (await page.locator('main').innerText()).match(/£[\d,]+/g)?.length ?? 0
+  await openComposer(page, 'Record an offer')
+  await page.fill('input[name="amount"]', '43750')
+  await page.click('button:has-text("Record it")')
+  await page.waitForTimeout(2500)
+
+  await go(page, record)
+  const body = await page.locator('main').innerText()
+  if (!/43,750/.test(body)) {
+    throw new Error(`the offer did not appear on the record (${before} figures before)`)
+  }
+  if (!/Offers/.test(body)) throw new Error('the offers panel is missing entirely')
+})
+
+await journey('a supplier enquiry is logged against a want', async (page) => {
+  // Counted across every card, not on the first one. Logging an enquiry can
+  // reorder the board, and a journey that reads "the first card" before and
+  // after is then comparing two different requests — which is how this
+  // assertion passed for the wrong reason the first time it was written.
+  const enquiriesOut = async () => {
+    const body = await page.locator('main').innerText()
+    return [...body.matchAll(/(\d+) supplier (?:enquiry|enquiries) out/g)]
+      .reduce((sum, match) => sum + Number(match[1]), 0)
+  }
+
+  await go(page, '/requests')
+  const start = await enquiriesOut()
+
+  await openComposer(page, 'Log a supplier enquiry')
+  await page.selectOption('select[name="supplierId"]', { index: 1 })
+  await page.click('button:has-text("Log it")')
+  await page.waitForTimeout(2500)
+
+  await go(page, '/requests')
+  const end = await enquiriesOut()
+  if (end <= start) throw new Error(`enquiries out did not rise: ${start} → ${end}`)
+})
+
+await journey('a viewer is shown no create controls at all', async () => {
+  // Not a disabled button. A greyed-out control is an advertisement for a
+  // thing you cannot have, and it is also indistinguishable from a bug.
+  const ctx = await viewer()
+  const page = await ctx.newPage()
+  try {
+
+    const forbidden = [
+      ['/tasks', 'Add a follow-up'],
+      ['/requests', 'Register a want'],
+      ['/requests', 'Log a supplier enquiry'],
+    ]
+    const leaked = []
+    for (const [route, label] of forbidden) {
+      await page.goto(BASE + route, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(800)
+      if (await page.locator(`button:has-text("${label}")`).count() > 0) {
+        leaked.push(`${route} offers "${label}"`)
+      }
+    }
+    if (leaked.length) throw new Error(leaked.join(' · '))
+  } finally {
+    await page.close()
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render
@@ -504,14 +655,9 @@ await journey('every route renders', async (page) => {
 await journey('every route renders for a viewer', async () => {
   // A role that can reach less must still never see a broken page — the most
   // common regression when navigation and permissions change together.
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const ctx = await viewer()
   const page = await ctx.newPage()
   try {
-    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
-    await page.fill('input[type="email"]', 'priya@bluecroft.co.uk')
-    await page.fill('input[type="password"]', 'Bluecroft2026!')
-    await page.click('button[type="submit"]')
-    await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 30_000, waitUntil: 'commit' })
 
     const broken = []
     for (const route of ROUTES) {
@@ -526,7 +672,6 @@ await journey('every route renders for a viewer', async () => {
     if (broken.length) throw new Error(broken.join(' · '))
   } finally {
     await page.close()
-    await ctx.close()
   }
 })
 
@@ -624,6 +769,7 @@ await journey('signing out ends the session', async (page) => {
   if (!page.url().includes('/login')) throw new Error('a signed-out session still reached the inventory')
 })
 
+if (viewerCtx) await viewerCtx.close()
 await signedIn.close()
 await browser.close()
 console.log(results.join('\n'))

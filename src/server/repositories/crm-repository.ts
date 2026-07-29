@@ -234,10 +234,12 @@ export async function getCustomerContext(id: string) {
 
     db.select({
       id: offers.id, amountGbp: offers.amountGbp, status: offers.status,
-      createdAt: offers.createdAt, stockNo: watches.stockNo, model: watches.model,
+      createdAt: offers.createdAt, validUntil: offers.validUntil,
+      stockNo: watches.stockNo, model: watches.model, brandName: brands.name,
     })
       .from(offers)
       .leftJoin(watches, eq(watches.id, offers.watchId))
+      .leftJoin(brands, eq(brands.id, watches.brandId))
       .where(eq(offers.customerId, id))
       .orderBy(desc(offers.createdAt))
       .limit(10),
@@ -630,6 +632,33 @@ export async function ownershipHistory(watchId: string) {
  * Small and flat on purpose: the picker is a search box over a few hundred
  * names, and passing them with the page beats a round trip on every keystroke.
  */
+/**
+ * Stock that can still be attached to a deal or an offer.
+ *
+ * Extracted because two screens now need it and a third will: the pipeline,
+ * the customer record, and the deal record after it. The same query written
+ * twice is the same query answered differently the first time somebody adds a
+ * status to the filter.
+ *
+ * `IN_STOCK` only. A reserved watch already belongs to a deal, and offering a
+ * sold one is a promise that cannot be kept.
+ */
+export async function sellableStockOptions() {
+  return db.select({
+    id: watches.id,
+    stockNo: watches.stockNo,
+    label: sql<string>`${brands.name} || ' ' || ${watches.model}`,
+    // Two watches can be the same reference, so the serial is what tells them
+    // apart when you are picking one off a list.
+    serial: watches.serial,
+    estSaleGbp: watches.estSaleGbp,
+  })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')))
+    .orderBy(asc(watches.stockNo))
+}
+
 export async function customerOptions() {
   return db.select({
     id: customers.id,

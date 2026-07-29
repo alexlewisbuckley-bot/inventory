@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { asc, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands, customers, watches } from '@/server/db/schema'
-import { findDeals } from '@/server/repositories/crm-repository'
+import { customers } from '@/server/db/schema'
+import { findDeals, sellableStockOptions } from '@/server/repositories/crm-repository'
 import { assignableUsers } from '@/server/services/crm-service'
 import { dealQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -37,19 +37,7 @@ export default async function PipelinePage({ searchParams }: {
       id: customers.id,
       name: sql<string>`trim(${customers.firstName} || ' ' || ${customers.lastName})`,
     }).from(customers).where(isNull(customers.deletedAt)).orderBy(asc(customers.lastName)),
-    db.select({
-      id: watches.id,
-      stockNo: watches.stockNo,
-      label: sql<string>`${brands.name} || ' ' || ${watches.model}`,
-      // Two watches can be the same reference, so the serial is what tells
-      // them apart when you are picking one off a list.
-      serial: watches.serial,
-      estSaleGbp: watches.estSaleGbp,
-    })
-      .from(watches)
-      .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(and(isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')))
-      .orderBy(asc(watches.stockNo)),
+    sellableStockOptions(),
     getRateTable(),
     getPreferencesFor(user.id),
   ])

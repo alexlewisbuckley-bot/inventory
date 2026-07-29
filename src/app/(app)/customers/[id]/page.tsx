@@ -7,7 +7,8 @@ import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, suppliers } from '@/server/db/schema'
 import {
-  getCustomer, getCustomerContext, stockTheyMightWant, tasteProfile, timelineFor,
+  getCustomer, getCustomerContext, sellableStockOptions, stockTheyMightWant,
+  tasteProfile, timelineFor,
 } from '@/server/repositories/crm-repository'
 import { assignableUsers } from '@/server/services/crm-service'
 import { getRateTable } from '@/server/services/fx-service'
@@ -16,6 +17,10 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader, Chip, StatCard } from '@/components/ui'
 import { Timeline } from '@/components/crm/Timeline'
 import { CustomerFormPanel } from '@/components/crm/CustomerFormPanel'
+import { DealFormPanel } from '@/components/crm/DealFormPanel'
+import { OfferComposer } from '@/components/crm/OfferComposer'
+import { TaskComposer } from '@/components/crm/TaskComposer'
+import { WantComposer } from '@/components/crm/WantComposer'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
@@ -50,7 +55,8 @@ export default async function CustomerPage({ params }: { params: { id: string } 
   const { customer, ownerName } = row
 
   const [
-    context, timeline, owners, brandRows, rates, preferences, taste, suggested, supplierRows,
+    context, timeline, owners, brandRows, rates, preferences, taste, suggested,
+    supplierRows, sellable,
   ] = await Promise.all([
     getCustomerContext(customer.id),
     timelineFor({ customerId: customer.id }, 40),
@@ -62,6 +68,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
     stockTheyMightWant(customer.id),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
+    sellableStockOptions(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -234,7 +241,18 @@ export default async function CustomerPage({ params }: { params: { id: string } 
 
         <div className="flex flex-col gap-6">
           <Card as="section">
-            <CardHeader title="Open deals" />
+            <CardHeader
+              title="Open deals"
+              action={can(user.role, 'deal:create') ? (
+                <DealFormPanel
+                  customers={[{ id: customer.id, name: `${customer.firstName} ${customer.lastName}` }]}
+                  stock={sellable}
+                  owners={owners}
+                  presetCustomerId={customer.id}
+                  triggerLabel="Open a deal"
+                />
+              ) : undefined}
+            />
             {context.openDeals.length === 0 ? (
               <CardBody className="text-small text-content-secondary">Nothing in the pipeline for them.</CardBody>
             ) : (
@@ -268,7 +286,18 @@ export default async function CustomerPage({ params }: { params: { id: string } 
           </Card>
 
           <Card as="section">
-            <CardHeader title="Wanted" description="What they are waiting for us to find." />
+            <CardHeader
+              title="Wanted"
+              description="What they are waiting for us to find."
+              action={
+                <WantComposer
+                  can={can(user.role, 'request:create')}
+                  customerId={customer.id}
+                  brands={brandRows}
+                  owners={owners}
+                />
+              }
+            />
             {context.requests.length === 0 ? (
               <CardBody className="text-small text-content-secondary">
                 Nothing registered. Adding one means the system tells you when a match arrives.
@@ -317,6 +346,52 @@ export default async function CustomerPage({ params }: { params: { id: string } 
                 })}
               </ul>
             )}
+            <TaskComposer
+              can={can(user.role, 'task:create')}
+              assignees={owners}
+              scope={{ customerId: customer.id }}
+            />
+          </Card>
+
+          {/* An offer is the thing that turns a conversation into a deal, and
+              until now it could only be recorded by the server. Scoped to the
+              customer rather than a deal: most offers are made before anybody
+              has opened one. */}
+          <Card as="section">
+            <CardHeader
+              title="Offers"
+              description="What we have put to them, and what it was worth."
+            />
+            {context.recentOffers.length === 0 ? (
+              <CardBody className="text-small text-content-secondary">
+                Nothing offered yet.
+              </CardBody>
+            ) : (
+              <ul className="divide-y divide-line-subtle">
+                {context.recentOffers.map((offer) => (
+                  <li key={offer.id} className="flex items-start justify-between gap-3 px-6 py-3.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-small text-content-primary">
+                        {offer.stockNo
+                          ? `${offer.brandName ?? ''} ${offer.model ?? ''}`.trim() || `Stock ${offer.stockNo}`
+                          : 'No watch named'}
+                      </span>
+                      <span className="block text-caption text-content-secondary">
+                        {OFFER_STATUS_LABELS[offer.status as OfferStatus]}
+                        {offer.validUntil ? ` · good until ${formatDate(offer.validUntil)}` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-small font-bold tabular-nums text-content-primary">
+                      {money(offer.amountGbp)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <OfferComposer
+              can={can(user.role, 'deal:update')}
+              scope={{ customerId: customer.id }}
+            />
           </Card>
 
           {/* What the ledger says they want, as opposed to what they told us.

@@ -1,19 +1,26 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Search } from 'lucide-react'
+import { asc, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
-import { findRequests } from '@/server/repositories/crm-repository'
-import { matchesForRequest } from '@/server/services/crm-service'
+import { db } from '@/server/db/client'
+import { brands, suppliers } from '@/server/db/schema'
+import { customerOptions, findRequests } from '@/server/repositories/crm-repository'
+import { assignableUsers, matchesForRequest } from '@/server/services/crm-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, Chip, EmptyState, StatCard } from '@/components/ui'
 import { RelativeTime } from '@/components/ui/RelativeTime'
+import { EnquiryComposer } from '@/components/crm/EnquiryComposer'
+import { RequestStatusControl } from '@/components/crm/RequestStatusControl'
+import { TaskComposer } from '@/components/crm/TaskComposer'
+import { WantComposer } from '@/components/crm/WantComposer'
+import { can } from '@/lib/permissions'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
-  BASE_CURRENCY, PRIORITY_LABELS, REQUEST_STATUS_LABELS,
-  type Priority, type RequestStatus,
+  BASE_CURRENCY, PRIORITY_LABELS, type Priority, type RequestStatus,
 } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Wanted' }
@@ -36,11 +43,21 @@ const PRIORITY_TONE: Record<string, 'danger' | 'gold' | 'neutral'> = {
 export default async function RequestsPage() {
   const user = await requireCapability('request:read')
 
-  const [requests, rates, preferences] = await Promise.all([
-    findRequests({ status: ['OPEN', 'SOURCING', 'MATCHED'] }),
-    getRateTable(),
-    getPreferencesFor(user.id),
-  ])
+  const [requests, rates, preferences, customers, brandRows, supplierRows, owners] =
+    await Promise.all([
+      findRequests({ status: ['OPEN', 'SOURCING', 'MATCHED'] }),
+      getRateTable(),
+      getPreferencesFor(user.id),
+      customerOptions(),
+      db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
+      db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
+        .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
+      assignableUsers(),
+    ])
+
+  const canCreate = can(user.role, 'request:create')
+  const canUpdate = can(user.role, 'request:update')
+  const canTask = can(user.role, 'task:create')
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
@@ -56,6 +73,17 @@ export default async function RequestsPage() {
       <PageHeader
         title="Wanted"
         description="What customers are waiting for, and what we already hold that might do."
+        actions={
+          <WantComposer
+            can={canCreate}
+            customers={customers.map((c) => ({
+              id: c.id, name: c.company ? `${c.name} · ${c.company}` : c.name,
+            }))}
+            brands={brandRows}
+            owners={owners}
+            label="Register a want"
+          />
+        }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -71,6 +99,17 @@ export default async function RequestsPage() {
           icon={<Search className="h-6 w-6" />}
           title="Nothing on the wanted list"
           description="Register what a customer is looking for and you will be told the moment something matching is booked in."
+          action={canCreate ? (
+            <WantComposer
+              can
+              customers={customers.map((c) => ({
+                id: c.id, name: c.company ? `${c.name} · ${c.company}` : c.name,
+              }))}
+              brands={brandRows}
+              owners={owners}
+              label="Register the first want"
+            />
+          ) : undefined}
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
@@ -93,9 +132,11 @@ export default async function RequestsPage() {
                 <Chip tone={PRIORITY_TONE[request.priority] ?? 'neutral'}>
                   {PRIORITY_LABELS[request.priority as Priority]}
                 </Chip>
-                <Chip tone={request.status === 'MATCHED' ? 'success' : 'neutral'}>
-                  {REQUEST_STATUS_LABELS[request.status as RequestStatus]}
-                </Chip>
+                <RequestStatusControl
+                  id={request.id}
+                  status={request.status as RequestStatus}
+                  canUpdate={canUpdate}
+                />
                 {request.referenceNo && <Chip tone="neutral">{request.referenceNo}</Chip>}
                 {request.dial && <Chip tone="neutral">{request.dial}</Chip>}
                 {request.budgetGbp && (
@@ -140,14 +181,28 @@ export default async function RequestsPage() {
                     ))}
                   </ul>
                 )}
-                {found.length === 0 && (
-                  <p className="px-6 pb-4 pt-1 text-caption text-content-secondary">
-                    {request.enquiries > 0
-                      ? `${request.enquiries} supplier ${request.enquiries === 1 ? 'enquiry' : 'enquiries'} out.`
-                      : 'No supplier has been asked yet.'}
-                  </p>
-                )}
+                {/* Always shown, not only when nothing matches. Knowing who
+                    has already been rung is what stops two people in the same
+                    office asking the same dealer the same question on the
+                    same afternoon. */}
+                <p className="px-6 pb-4 pt-1 text-caption text-content-secondary">
+                  {request.enquiries > 0
+                    ? `${request.enquiries} supplier ${request.enquiries === 1 ? 'enquiry' : 'enquiries'} out.`
+                    : 'No supplier has been asked yet.'}
+                </p>
               </div>
+
+              <EnquiryComposer
+                can={canUpdate && supplierRows.length > 0}
+                requestId={request.id}
+                suppliers={supplierRows}
+              />
+              <TaskComposer
+                can={canTask}
+                assignees={owners}
+                scope={{ customerId: request.customerId, requestId: request.id }}
+                label="Add a follow-up"
+              />
             </Card>
           ))}
         </div>

@@ -44,12 +44,12 @@ export async function launch({ width = 1440, height = 1000, colorScheme } = {}) 
  * CI, or while iterating — trips it, and a harness that fails because the
  * product is correctly defending itself is a harness nobody trusts.
  */
-export async function signIn(ctx, attempt = 1) {
+export async function signIn(ctx, { email = EMAIL, password = PASSWORD, attempt = 1 } = {}) {
   const page = await ctx.newPage()
   try {
     await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
-    await page.fill('input[type="email"]', EMAIL)
-    await page.fill('input[type="password"]', PASSWORD)
+    await page.fill('input[type="email"]', email)
+    await page.fill('input[type="password"]', password)
     await page.click('button[type="submit"]')
     // `commit` rather than `load`: the app streams, and waiting for every
     // resource made this hang whenever a page was slow.
@@ -64,7 +64,7 @@ export async function signIn(ctx, attempt = 1) {
       const wait = attempt * 45_000
       console.log(`rate limited — waiting ${wait / 1000}s (attempt ${attempt})`)
       await new Promise((resolve) => setTimeout(resolve, wait))
-      return signIn(ctx, attempt + 1)
+      return signIn(ctx, { email, password, attempt: attempt + 1 })
     }
     throw error
   }
