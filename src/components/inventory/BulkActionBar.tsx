@@ -5,7 +5,6 @@ import { ArrowRightLeft, Download, Trash2, X } from 'lucide-react'
 import { Button, Modal, SelectField, TextareaField, ConfirmDialog, useToast } from '@/components/ui'
 import { moveWatchesAction, deleteWatchAction, restoreWatchAction } from '@/app/actions/watches'
 import type { Capability } from '@/lib/permissions'
-import type { FilterOption } from './FilterBar'
 
 /**
  * Floating action bar shown while rows are selected.
@@ -18,7 +17,7 @@ export function BulkActionBar({
 }: {
   count: number
   watchIds: string[]
-  locations: FilterOption[]
+  locations: Array<{ id: string; name: string }>
   capabilities: Record<Capability, boolean>
   onClear: () => void
   /**

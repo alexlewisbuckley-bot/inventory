@@ -1118,6 +1118,57 @@ await journey('the same filter bar works on contacts and on sales', async (page)
   }
 })
 
+await journey('a view can be saved, applied and deleted', async (page) => {
+  const name = `Journey view ${stamp}`
+
+  // Build something worth saving, then save what is on screen.
+  await go(page, '/inventory')
+  await page.click('button:has-text("Filter")')
+  await page.waitForTimeout(400)
+  await page.locator('[role="menu"] button:has-text("Status")').first().click()
+  await page.waitForTimeout(1600)
+  const savedQuery = new URL(page.url()).search
+
+  await page.click('button:has-text("Save this view")')
+  await page.waitForTimeout(500)
+  await page.fill('[role="dialog"] input[type="text"], [role="dialog"] input:not([type="checkbox"])', name)
+  await page.click('[role="dialog"] button:has-text("Save it")')
+  await page.waitForTimeout(2500)
+
+  // It survives a cold load of the list.
+  await go(page, '/inventory')
+  const chip = page.locator(`button:has-text("${name}")`).first()
+  if (await chip.count() === 0) throw new Error('the saved view is not on the list after a reload')
+
+  // And applying it restores the filter it was saved with.
+  await chip.click()
+  await page.waitForTimeout(1800)
+  const applied = new URL(page.url()).search
+  const normalise = (search) => [...new URLSearchParams(search).entries()]
+    .filter(([key]) => key !== 'page')
+    .map(([key, value]) => `${key}=${value}`)
+    .sort().join('&')
+  if (normalise(applied) !== normalise(savedQuery)) {
+    throw new Error(`the view applied "${applied}" but was saved as "${savedQuery}"`)
+  }
+
+  // The chip has to know it is the one being looked at, or nobody presses it
+  // twice.
+  const pressed = await chip.getAttribute('aria-pressed')
+  if (pressed !== 'true') throw new Error('the applied view does not show as active')
+
+  // Clean up after itself, and prove deleting works while doing so.
+  await page.locator(`button[aria-label="Options for the ${name} view"]`).click()
+  await page.waitForTimeout(400)
+  await page.locator('[role="menu"] button:has-text("Delete it")').click()
+  await page.waitForTimeout(2500)
+
+  await go(page, '/inventory')
+  if (await page.locator(`button:has-text("${name}")`).count() > 0) {
+    throw new Error('the deleted view is still there')
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render

@@ -15,7 +15,6 @@ import {
 import { formatDate } from '@/lib/dates'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
-import { SavedViews } from './SavedViews'
 import {
   QuickSellModal, type QuickSellTarget, type SellCustomerOption, type SellDealOption,
 } from './QuickSellModal'
@@ -25,7 +24,6 @@ import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
 import type { WatchStatus } from '@/lib/enums'
 import type { WatchListItem, WatchListResult } from '@/server/repositories/watch-repository'
 import type { Capability } from '@/lib/permissions'
-import type { FilterOption } from './FilterBar'
 
 /**
  * Inventory columns.
@@ -52,7 +50,7 @@ const STORAGE_KEY = 'bluecroft.inventory.columns'
 
 export interface InventoryTableProps {
   result: WatchListResult
-  locations: FilterOption[]
+  locations: Array<{ id: string; name: string }>
   capabilities: Record<Capability, boolean>
   /** The customer book, so a sale can be attributed without leaving the row. */
   customers?: SellCustomerOption[]

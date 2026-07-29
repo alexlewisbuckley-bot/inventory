@@ -11,7 +11,9 @@ import { parseFilters, toSearchParams, WATCH_FIELDS } from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
-import { SavedViews } from '@/components/inventory/SavedViews'
+import { ViewBar } from '@/components/ui/DataList'
+import { INVENTORY_VIEWS } from '@/components/inventory/views'
+import { listViews } from '@/server/services/views-service'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
@@ -61,7 +63,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
   const [
     result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences,
-    unpricedCount, customers, dealsByWatch,
+    unpricedCount, customers, dealsByWatch, savedViews,
   ] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
@@ -77,6 +79,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     // customer, and close the deal it came from, without a round trip.
     can(user.role, 'customer:read') ? customerOptions() : Promise.resolve([]),
     can(user.role, 'deal:read') ? openDealsByWatch() : Promise.resolve({}),
+    listViews('watch', user.id),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -141,7 +144,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         />
       </section>
 
-      <SavedViews counts={{ unpriced: unpricedCount }} />
+      <ViewBar object="watch" builtIn={INVENTORY_VIEWS} saved={savedViews} />
 
       <FilterBar
         fields={WATCH_FIELDS}

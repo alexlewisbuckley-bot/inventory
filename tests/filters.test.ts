@@ -136,7 +136,10 @@ describe('operators', () => {
     expect(operatorsFor(status)).toEqual(['is', 'isNot'])
 
     const cost = WATCH_FIELDS.find((field) => field.key === 'purchasePriceGbp')!
-    expect(operatorsFor(cost)).toEqual(['gt', 'lt'])
+    // "Is empty" belongs on a price: unpriced stock is the most-used filter in
+    // the product, and leaving it off would mean keeping `unpricedOnly=true`
+    // as a hand-written special case forever.
+    expect(operatorsFor(cost)).toEqual(['gt', 'lt', 'isEmpty', 'isNotEmpty'])
 
     const serial = WATCH_FIELDS.find((field) => field.key === 'serial')!
     expect(operatorsFor(serial)).toContain('isEmpty')

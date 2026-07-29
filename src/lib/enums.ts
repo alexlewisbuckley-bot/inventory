@@ -481,3 +481,13 @@ export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
 /** Which entity a tag or timeline row is attached to. */
 export const CRM_ENTITIES = ['Customer', 'Supplier', 'Watch', 'Deal', 'Request'] as const
 export type CrmEntity = (typeof CRM_ENTITIES)[number]
+
+/** Which list a saved view belongs to. */
+export const SAVED_VIEW_OBJECTS = ['watch', 'contact', 'sale'] as const
+export type SavedViewObject = (typeof SAVED_VIEW_OBJECTS)[number]
+
+export const SAVED_VIEW_OBJECT_LABELS: Record<SavedViewObject, string> = {
+  watch: 'Stock',
+  contact: 'Contacts',
+  sale: 'Sales',
+}

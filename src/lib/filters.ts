@@ -80,9 +80,12 @@ const OPERATORS_FOR: Record<FieldType, readonly FilterOperator[]> = {
   enum: ['is', 'isNot'],
   reference: ['is', 'isNot'],
   text: ['contains', 'notContains', 'isEmpty', 'isNotEmpty'],
-  number: ['gt', 'lt', 'is'],
-  money: ['gt', 'lt'],
-  date: ['after', 'before'],
+  number: ['gt', 'lt', 'is', 'isEmpty', 'isNotEmpty'],
+  // "Is empty" on a price is the unpriced-stock query, which is the single
+  // most-used filter in the product. Leaving it off a money field would have
+  // meant keeping `unpricedOnly=true` as a special case forever.
+  money: ['gt', 'lt', 'isEmpty', 'isNotEmpty'],
+  date: ['after', 'before', 'isEmpty', 'isNotEmpty'],
   boolean: ['is'],
 }
 

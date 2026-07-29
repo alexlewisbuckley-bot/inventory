@@ -8,7 +8,7 @@ import {
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
   PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
-  ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
+  ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -73,6 +73,33 @@ export const sessions = pgTable(
     tokenIdx: uniqueIndex('sessions_token_idx').on(t.tokenHash),
     userIdx: index('sessions_user_idx').on(t.userId),
     expiryIdx: index('sessions_expiry_idx').on(t.expiresAt),
+  }),
+)
+
+/**
+ * A list somebody set up and wants back tomorrow.
+ *
+ * The query string is the whole payload — it already carries filters, sort,
+ * search and column choices, and it is already the representation that can be
+ * pasted into a message. Storing a structured copy alongside it would be
+ * storing the same thing twice and inviting the two to disagree.
+ */
+export const savedViews = pgTable(
+  'saved_views',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    object: text('object', { enum: SAVED_VIEW_OBJECTS }).notNull(),
+    name: text('name').notNull(),
+    query: text('query').notNull(),
+    shared: boolean('shared').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    lookupIdx: index('saved_views_lookup_idx').on(t.object, t.userId).where(sql`deleted_at IS NULL`),
   }),
 )
 
