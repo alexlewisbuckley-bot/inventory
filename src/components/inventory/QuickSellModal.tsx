@@ -7,8 +7,10 @@ import { recordSaleAction } from '@/app/actions/watches'
 import { formatMoneyInput, formatPct, parseMoneyInput } from '@/lib/money'
 import { fromBase, toBase } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
+import { UserPlus } from 'lucide-react'
 import {
-  DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, PAYMENT_STATUSES, PAYMENT_STATUS_LABELS,
+  CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, DELIVERY_STATUSES, DELIVERY_STATUS_LABELS,
+  LEAD_SOURCES, LEAD_SOURCE_LABELS, PAYMENT_STATUSES, PAYMENT_STATUS_LABELS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode,
 } from '@/lib/enums'
 
@@ -60,6 +62,13 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
   const [invoiceNo, setInvoiceNo] = useState('')
   const [saleDate, setSaleDate] = useState(toDateInput(new Date()))
   const [channel, setChannel] = useState('RETAIL')
+  const [buyerFirst, setBuyerFirst] = useState('')
+  const [buyerLast, setBuyerLast] = useState('')
+  const [buyerCountry, setBuyerCountry] = useState('')
+  const [buyerTier, setBuyerTier] = useState('STANDARD')
+  const [buyerSource, setBuyerSource] = useState('UNKNOWN')
+  // The ledger's own name column, kept in step with whichever route was taken:
+  // a customer picked from the book, or one being created here.
   const [customerName, setCustomerName] = useState('')
   const [customerCompany, setCustomerCompany] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
@@ -90,6 +99,11 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     setCustomerCompany('')
     setCustomerEmail('')
     setCustomerPhone('')
+    setBuyerFirst('')
+    setBuyerLast('')
+    setBuyerCountry('')
+    setBuyerTier('STANDARD')
+    setBuyerSource('UNKNOWN')
     setNewBuyer(false)
     setPaymentStatus('PAID')
     setDeliveryStatus('COLLECTED')
@@ -137,11 +151,16 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     data.set('saleAmount', minor !== null ? String(minor / 100) : '')
     data.set('saleCurrency', currency)
     data.set('channel', channel)
-    data.set('customerName', customerName)
+    data.set('customerName', customerName || [buyerFirst, buyerLast].filter(Boolean).join(' '))
     data.set('customerCompany', customerCompany)
     data.set('customerEmail', customerEmail)
     data.set('customerPhone', customerPhone)
     data.set('customerId', customerId)
+    data.set('buyerFirstName', buyerFirst)
+    data.set('buyerLastName', buyerLast)
+    data.set('buyerCountry', buyerCountry)
+    data.set('buyerTier', buyerTier)
+    data.set('buyerLeadSource', buyerSource)
     data.set('dealId', dealId)
     data.set('paymentStatus', paymentStatus)
     data.set('deliveryStatus', deliveryStatus)
@@ -243,6 +262,8 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
                 setCustomerCompany('')
                 setCustomerEmail('')
                 setCustomerPhone('')
+                setBuyerFirst('')
+                setBuyerLast('')
               }}
               className="text-caption font-bold text-content-accent hover:underline"
             >
@@ -254,40 +275,72 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
               onClick={() => setNewBuyer((value) => !value)}
               className="text-caption font-bold text-content-accent hover:underline"
             >
-              {newBuyer ? 'Hide the buyer fields' : 'Not on file — record their details'}
+              {newBuyer ? 'Never mind — no buyer details' : 'Not on file — add them to the book'}
             </button>
           )}
         </div>
 
-        {(newBuyer || (!customerId && (customerName || customerEmail))) && (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <TextField
-              label={channel === 'TRADE' ? 'Contact name' : 'Customer name'}
-              value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Who took the watch"
-              error={errors.customerName}
-            />
-            <TextField
-              label={channel === 'TRADE' ? 'Dealer or company' : 'Company'}
-              value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)}
-              placeholder="Optional"
-              error={errors.customerCompany}
-            />
-            <TextField
-              label="Email" type="email"
-              value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
-              placeholder="Optional"
-              error={errors.customerEmail}
-            />
-            <TextField
-              label="Phone"
-              value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="Optional"
-              error={errors.customerPhone}
-            />
-            <p className="text-caption text-content-secondary sm:col-span-2">
-              Recorded against the sale only. Add them to the customer book from
-              Customers if you expect to deal with them again.
+        {(newBuyer || (!customerId && (buyerFirst || buyerLast || customerEmail))) && (
+          <div className="mt-4 rounded-md border border-line-subtle bg-surface-subtle/60 p-4">
+            <p className="mb-3 flex items-center gap-2 text-caption font-semibold text-content-primary">
+              <UserPlus className="h-4 w-4 text-content-accent" aria-hidden />
+              Adding {channel === 'TRADE' ? 'this dealer' : 'this buyer'} to the customer book
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="First name"
+                value={buyerFirst} onChange={(e) => setBuyerFirst(e.target.value)}
+                placeholder="Priya"
+                error={errors.buyerFirstName}
+              />
+              <TextField
+                label="Surname"
+                value={buyerLast} onChange={(e) => setBuyerLast(e.target.value)}
+                placeholder="Raman"
+                error={errors.buyerLastName}
+              />
+              <TextField
+                label={channel === 'TRADE' ? 'Dealer or company' : 'Company'}
+                value={customerCompany} onChange={(e) => setCustomerCompany(e.target.value)}
+                placeholder="Optional"
+                error={errors.customerCompany}
+              />
+              <TextField
+                label="Country"
+                value={buyerCountry} onChange={(e) => setBuyerCountry(e.target.value)}
+                placeholder="Optional"
+              />
+              <TextField
+                label="Email" type="email"
+                value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)}
+                placeholder="Optional"
+                hint="An address already on the book links to that customer instead of making a second one."
+                error={errors.customerEmail}
+              />
+              <TextField
+                label="Phone"
+                value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                placeholder="Optional"
+                error={errors.customerPhone}
+              />
+              <SelectField
+                label="Tier"
+                value={buyerTier}
+                onChange={(e) => setBuyerTier(e.target.value)}
+                options={CUSTOMER_TIERS.map((tier) => ({ value: tier, label: CUSTOMER_TIER_LABELS[tier] }))}
+              />
+              <SelectField
+                label="Where they came from"
+                value={buyerSource}
+                onChange={(e) => setBuyerSource(e.target.value)}
+                options={LEAD_SOURCES.map((source) => ({ value: source, label: LEAD_SOURCE_LABELS[source] }))}
+              />
+            </div>
+
+            <p className="mt-3 text-caption text-content-secondary">
+              They get a customer record with this sale already on it, so the next
+              time they call you can see what they bought and what it made.
             </p>
           </div>
         )}

@@ -1,7 +1,9 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { liveSale } from '../db/predicates'
-import { appSettings, locations, notifications, sales, stockMovements, users, watches } from '../db/schema'
+import {
+  appSettings, customers, locations, notifications, sales, stockMovements, users, watches,
+} from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
@@ -237,6 +239,11 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     if (!watch || watch.deletedAt) throw new NotFoundError('Watch')
     if (watch.status === 'SOLD') throw new ConflictError('This watch has already been sold.')
 
+    // A buyer typed into the sale form becomes a customer record, not a string
+    // stranded on one row. Recording who bought a watch and being unable to
+    // find them again is the failure the customer book exists to prevent.
+    const customerId = await resolveBuyer(input, actor)
+
     // Voided invoices free their number: the commonest reason to void is
     // having booked the sale against the wrong watch, and the invoice the
     // customer is holding has not changed.
@@ -277,7 +284,7 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       customerEmail: input.customerEmail ?? null,
       customerPhone: input.customerPhone ?? null,
       customerCountry: input.customerCountry ?? null,
-      customerId: input.customerId ?? null,
+      customerId,
       dealId: input.dealId ?? null,
       paymentStatus: input.paymentStatus,
       deliveryStatus: input.deliveryStatus,
@@ -309,14 +316,14 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     // to the customer's timeline here rather than being reconstructed later
     // from the ledger — and the deal it came from is closed in the same breath,
     // because nobody remembers to go back to the board afterwards.
-    if (input.customerId) {
+    if (customerId) {
       const { logActivity } = await import('./crm-service')
       await logActivity({
         type: 'SALE',
         subject: `Bought stock ${watch.stockNo}`,
         body: `${watch.model} on invoice ${input.invoiceNo}.`,
         isSystem: true,
-        scope: { customerId: input.customerId, watchId: watch.id, dealId: input.dealId },
+        scope: { customerId, watchId: watch.id, dealId: input.dealId },
         actorId: actor.id,
       })
     }
@@ -335,6 +342,63 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
     return id
   })
+}
+
+
+/**
+ * The customer this sale belongs to.
+ *
+ * Three ways in, in order of confidence: an explicit pick from the book; an
+ * email that already belongs to somebody, which quietly reuses them rather
+ * than creating a second record for the same person; and finally a new record
+ * built from what was typed. A sale with no buyer details at all — the cash
+ * walk-in — is still allowed and returns null.
+ */
+async function resolveBuyer(input: SaleCreateInput, actor: SessionUser): Promise<string | null> {
+  if (input.customerId) return input.customerId
+
+  const first = input.buyerFirstName?.trim()
+  const last = input.buyerLastName?.trim()
+  if (!first && !last && !input.customerEmail) return null
+
+  if (input.customerEmail) {
+    const existing = await db
+      .select({ id: customers.id })
+      .from(customers)
+      .where(and(eq(customers.email, input.customerEmail), isNull(customers.deletedAt)))
+      .limit(1)
+    if (existing[0]) return existing[0].id
+  }
+
+  if (!first && !last) return null
+
+  const { createCustomer } = await import('./crm-service')
+  return createCustomer({
+    // A single name goes in the surname, which is how a dealer would file it.
+    firstName: first || last!,
+    lastName: first ? (last ?? '') || first : last!,
+    company: input.customerCompany ?? null,
+    email: input.customerEmail ?? null,
+    phone: input.customerPhone ?? null,
+    altPhone: null,
+    country: input.buyerCountry ?? input.customerCountry ?? null,
+    city: null,
+    addressLine1: null,
+    addressLine2: null,
+    postcode: null,
+    preferredChannel: 'EMAIL',
+    tier: input.buyerTier,
+    status: 'ACTIVE',
+    leadSource: input.buyerLeadSource,
+    budgetMinGbp: null,
+    budgetMaxGbp: null,
+    birthday: null,
+    notes: null,
+    riskNotes: null,
+    marketingConsent: false,
+    ownerId: actor.id,
+    brandIds: [],
+  }, actor)
 }
 
 /**

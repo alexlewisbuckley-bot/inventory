@@ -145,6 +145,18 @@ export const saleCreateSchema = z.object({
   customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   /** The pipeline deal this closes, if the sale came from one. */
   dealId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  /**
+   * A buyer who is not on the book yet.
+   *
+   * Filling these in creates the customer record and links the sale to it.
+   * Capturing a name against a sale and nowhere else is how a ledger and a
+   * customer book end up describing the same person and agreeing on nothing.
+   */
+  buyerFirstName: optionalText(80),
+  buyerLastName: optionalText(80),
+  buyerCountry: optionalText(60),
+  buyerTier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
+  buyerLeadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
   paymentStatus: z.enum(PAYMENT_STATUSES).default('PAID'),
   deliveryStatus: z.enum(DELIVERY_STATUSES).default('COLLECTED'),
   depositGbp: z.union([money('Deposit'), z.literal('')]).optional()

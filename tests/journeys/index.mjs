@@ -187,14 +187,16 @@ await journey('mark as sold', async (page) => {
   await page.fill('input[placeholder="INV-2026-001"]', invoice)
 
   // The buyer fields are behind a disclosure now that a sale is normally
-  // attributed to a customer record; this journey deliberately takes the
-  // by-hand path, which is what a walk-in paying cash looks like.
+  // attributed to a customer record. This journey takes the other route: a
+  // buyer nobody has met before, who should come out of it on the book.
   const byHand = page.locator('[role="dialog"] button:has-text("Clear and enter the buyer by hand")')
   if (await byHand.count() > 0) await byHand.click()
-  const reveal = page.locator('[role="dialog"] button:has-text("record their details")')
+  const reveal = page.locator('[role="dialog"] button:has-text("add them to the book")')
   if (await reveal.count() > 0) await reveal.click()
   await page.waitForTimeout(200)
-  await page.fill('input[placeholder="Who took the watch"]', 'Journey Test Buyer')
+  const surname = `Journeybuyer ${Date.now().toString().slice(-6)}`
+  await page.locator('[role="dialog"] input[placeholder="Priya"]').fill('Test')
+  await page.locator('[role="dialog"] input[placeholder="Raman"]').fill(surname)
   await page.locator('[role="dialog"] button:has-text("Record the sale")').click()
   await page.waitForTimeout(3000)
 
@@ -209,7 +211,18 @@ await journey('mark as sold', async (page) => {
   const row = page.locator(`tr:has-text("${invoice}")`)
   if (await row.count() === 0) throw new Error(`sale ${invoice} is not in the ledger`)
   const ledger = await row.innerText()
-  if (!ledger.includes('Journey Test Buyer')) throw new Error('the buyer was not saved')
+  if (!ledger.includes(surname)) throw new Error('the buyer was not saved against the sale')
+
+  // And the point of the exercise: they are on the book, with the purchase
+  // already against them, rather than being a name stranded on one row.
+  await go(page, `/customers?q=${encodeURIComponent(surname)}`)
+  const customerRow = page.locator(`tbody tr:has-text("${surname}")`)
+  if (await customerRow.count() === 0) {
+    throw new Error('the buyer was recorded on the sale but never reached the customer book')
+  }
+  if (!(await customerRow.innerText()).includes('1')) {
+    throw new Error('the new customer does not show the purchase')
+  }
 
   // The same sale, seen from the inventory. The profit was being read from the
   // USD column and printed through the GBP formatter, so the two screens
