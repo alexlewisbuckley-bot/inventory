@@ -5,6 +5,8 @@ import { Pencil } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { auditForEntity } from '@/server/services/audit'
+import { interestInWatch, ownershipHistory, whoMightWant } from '@/server/repositories/crm-repository'
+import { WhoMightWant } from '@/components/crm/WhoMightWant'
 import { listImages } from '@/server/services/image-service'
 import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -42,12 +44,16 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   const record = await getWatchDetail(params.id).catch(() => null)
   if (!record) notFound()
 
-  const [timeline, images, rates, preferences] = await Promise.all([
+  const [timeline, images, rates, preferences, suggestions, interest, owners] = await Promise.all([
     // One more than we show, so the footer knows whether to offer the rest.
     auditForEntity('Watch', params.id, TIMELINE_SHOWN + 1),
     listImages(params.id),
     getRateTable(),
     getPreferencesFor(user.id),
+    // Who wants it, drawn from what people have bought and asked for.
+    can(user.role, 'customer:read') ? whoMightWant(params.id) : Promise.resolve([]),
+    can(user.role, 'deal:read') ? interestInWatch(params.id) : Promise.resolve(null),
+    can(user.role, 'customer:read') ? ownershipHistory(params.id) : Promise.resolve([]),
   ])
   const { watch, brand, supplier, location, sale } = record
 
@@ -156,6 +162,72 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                   <Row label="Channel" value={sale.channel} />
                 </dl>
               </CardBody>
+            </Card>
+          )}
+
+          {suggestions.length > 0 && <WhoMightWant suggestions={suggestions} />}
+
+          {owners.length > 0 && (
+            <Card as="section">
+              <CardHeader
+                title="Who has owned it"
+                description="Every time this watch has left the building through us."
+              />
+              <ul className="divide-y divide-line-subtle">
+                {owners.map((owner) => (
+                  <li key={owner.saleId} className="flex items-center justify-between gap-3 px-6 py-3.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-small font-bold text-content-primary">
+                        {owner.customerId ? (
+                          <Link href={`/customers/${owner.customerId}`} className="hover:underline">
+                            {owner.customerName ?? 'Unnamed buyer'}
+                          </Link>
+                        ) : (owner.customerName ?? 'Unnamed buyer')}
+                      </span>
+                      <span className="block text-caption text-content-secondary">
+                        {owner.invoiceNo} · {formatDate(owner.saleDate)}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-small font-bold tabular-nums text-content-primary">
+                      {money(owner.amountGbp)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {interest && (interest.deals.length > 0 || interest.offers.length > 0) && (
+            <Card as="section">
+              <CardHeader title="Deals and offers on this watch" />
+              <ul className="divide-y divide-line-subtle">
+                {interest.deals.map((deal) => (
+                  <li key={deal.id} className="flex items-center justify-between gap-3 px-6 py-3.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-small font-bold text-content-primary">{deal.title}</span>
+                      <span className="block truncate text-caption text-content-secondary">
+                        {deal.customerName ?? 'No customer'} · {deal.stage.replace('_', ' ').toLowerCase()}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-small font-bold tabular-nums text-content-primary">
+                      {money(deal.valueGbp)}
+                    </span>
+                  </li>
+                ))}
+                {interest.offers.map((offer) => (
+                  <li key={offer.id} className="flex items-center justify-between gap-3 px-6 py-3.5">
+                    <span className="min-w-0">
+                      <span className="block truncate text-small text-content-primary">
+                        Offer to {offer.customerName ?? 'a customer'}
+                      </span>
+                      <span className="block text-caption text-content-secondary">{offer.status.toLowerCase()}</span>
+                    </span>
+                    <span className="shrink-0 text-small font-bold tabular-nums text-content-primary">
+                      {money(offer.amountGbp)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </Card>
           )}
 

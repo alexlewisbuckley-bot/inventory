@@ -7,8 +7,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { CustomerTable } from '@/components/crm/CustomerTable'
 import { CustomerFormPanel } from '@/components/crm/CustomerFormPanel'
 import { db } from '@/server/db/client'
-import { brands } from '@/server/db/schema'
-import { asc } from 'drizzle-orm'
+import { brands, suppliers } from '@/server/db/schema'
+import { asc, isNull } from 'drizzle-orm'
 import { can } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Customers' }
@@ -38,10 +38,12 @@ export default async function CustomersPage({ searchParams }: {
     perPage: searchParams.perPage ?? 25,
   })
 
-  const [result, owners, brandRows] = await Promise.all([
+  const [result, owners, brandRows, supplierRows] = await Promise.all([
     findCustomers(query),
     assignableUsers(),
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
+    db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
+      .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
   ])
 
   return (
@@ -50,7 +52,7 @@ export default async function CustomersPage({ searchParams }: {
         title="Customers"
         description="Who you sell to, what they have bought, and what they are waiting for."
         actions={can(user.role, 'customer:create')
-          ? <CustomerFormPanel owners={owners} brands={brandRows} triggerLabel="Add customer" />
+          ? <CustomerFormPanel owners={owners} brands={brandRows} suppliers={supplierRows} triggerLabel="Add customer" />
           : undefined}
       />
       <CustomerTable result={result} owners={owners} />

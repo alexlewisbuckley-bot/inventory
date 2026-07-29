@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { asc } from 'drizzle-orm'
+import { asc, isNull } from 'drizzle-orm'
 import { AtSign, CalendarHeart, Globe2, Phone, ShieldAlert, Watch } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands } from '@/server/db/schema'
-import { getCustomer, getCustomerContext, timelineFor } from '@/server/repositories/crm-repository'
+import { brands, suppliers } from '@/server/db/schema'
+import {
+  getCustomer, getCustomerContext, stockTheyMightWant, tasteProfile, timelineFor,
+} from '@/server/repositories/crm-repository'
 import { assignableUsers } from '@/server/services/crm-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
@@ -19,7 +21,7 @@ import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
   BASE_CURRENCY, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUS_LABELS, CUSTOMER_TIER_LABELS,
-  CUSTOMER_TYPE_LABELS, type CustomerType,
+  CUSTOMER_TYPE_LABELS, PAYMENT_TERMS_LABELS, type CustomerType, type PaymentTerms,
   DEAL_STAGE_LABELS, LEAD_SOURCE_LABELS, OFFER_STATUS_LABELS, REQUEST_STATUS_LABELS, type ContactChannel,
   type CustomerStatus, type CustomerTier, type DealStage, type LeadSource, type OfferStatus,
   type RequestStatus,
@@ -47,13 +49,19 @@ export default async function CustomerPage({ params }: { params: { id: string } 
 
   const { customer, ownerName } = row
 
-  const [context, timeline, owners, brandRows, rates, preferences] = await Promise.all([
+  const [
+    context, timeline, owners, brandRows, rates, preferences, taste, suggested, supplierRows,
+  ] = await Promise.all([
     getCustomerContext(customer.id),
     timelineFor({ customerId: customer.id }, 40),
     assignableUsers(),
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
     getRateTable(),
     getPreferencesFor(user.id),
+    tasteProfile(customer.id),
+    stockTheyMightWant(customer.id),
+    db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
+      .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -96,6 +104,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
           <CustomerFormPanel
             owners={owners}
             brands={brandRows}
+            suppliers={supplierRows}
             triggerLabel="Edit"
             variant="secondary"
             customer={{
@@ -115,6 +124,11 @@ export default async function CustomerPage({ params }: { params: { id: string } 
               tier: customer.tier,
               customerType: customer.customerType,
               status: customer.status,
+              paymentTerms: customer.paymentTerms,
+              creditLimitGbp: customer.creditLimitGbp,
+              vatNo: customer.vatNo,
+              registrationNo: customer.registrationNo,
+              supplierId: customer.supplierId,
               leadSource: customer.leadSource,
               budgetMinGbp: customer.budgetMinGbp,
               budgetMaxGbp: customer.budgetMaxGbp,
@@ -305,6 +319,66 @@ export default async function CustomerPage({ params }: { params: { id: string } 
             )}
           </Card>
 
+          {/* What the ledger says they want, as opposed to what they told us.
+              Declared preferences go stale; purchases do not. */}
+          {taste.purchases > 0 && (
+            <Card as="section">
+              <CardHeader title="What they buy" description="Read from what they have actually bought." />
+              <CardBody className="flex flex-col gap-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {taste.brands.map((brand) => (
+                    <Chip key={brand.brandId} tone="neutral">
+                      {brand.brandName} × {brand.bought}
+                    </Chip>
+                  ))}
+                </div>
+                <dl className="grid grid-cols-2 gap-3 text-caption">
+                  <div>
+                    <dt className="text-content-secondary">Typical spend</dt>
+                    <dd className="font-bold tabular-nums text-content-primary">{money(taste.avgGbp)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-content-secondary">Range</dt>
+                    <dd className="font-bold tabular-nums text-content-primary">
+                      {money(taste.minGbp)} – {money(taste.maxGbp)}
+                    </dd>
+                  </div>
+                </dl>
+              </CardBody>
+            </Card>
+          )}
+
+          {suggested.length > 0 && (
+            <Card as="section">
+              <CardHeader
+                title="In stock for them"
+                description="Matched on the brands and price band they buy in."
+              />
+              <ul className="divide-y divide-line-subtle">
+                {suggested.map((watch) => (
+                  <li key={watch.id}>
+                    <Link
+                      href={`/inventory/${watch.id}`}
+                      className="flex items-center justify-between gap-3 px-6 py-3 transition-colors hover:bg-surface-subtle"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-small font-bold text-content-primary">
+                          {watch.brandName} {watch.model}
+                        </span>
+                        <span className="block text-caption text-content-secondary">
+                          Stock {watch.stockNo} · {watch.condition.toLowerCase()}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-small font-bold tabular-nums text-content-primary">
+                        {money(watch.estSaleGbp)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           {(customer.notes || customer.riskNotes || context.favouriteBrands.length > 0) && (
             <Card as="section">
               <CardHeader title="What we know" />
@@ -319,14 +393,28 @@ export default async function CustomerPage({ params }: { params: { id: string } 
                     </div>
                   </div>
                 )}
-                {(customer.budgetMinGbp || customer.budgetMaxGbp) && (
+                {customer.customerType === 'TRADE' ? (
+                  <div>
+                    <p className="text-caption font-semibold text-content-secondary">Terms</p>
+                    <p className="mt-0.5 text-small text-content-primary">
+                      {PAYMENT_TERMS_LABELS[customer.paymentTerms as PaymentTerms]}
+                      {customer.creditLimitGbp ? ` · ${money(customer.creditLimitGbp)} limit` : ''}
+                    </p>
+                    {(customer.vatNo || customer.registrationNo) && (
+                      <p className="mt-0.5 text-caption text-content-secondary">
+                        {[customer.registrationNo && `Co. ${customer.registrationNo}`,
+                          customer.vatNo && `VAT ${customer.vatNo}`].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                ) : (customer.budgetMinGbp || customer.budgetMaxGbp) ? (
                   <div>
                     <p className="text-caption font-semibold text-content-secondary">Budget</p>
                     <p className="mt-0.5 text-small text-content-primary">
                       {money(customer.budgetMinGbp)} – {money(customer.budgetMaxGbp)}
                     </p>
                   </div>
-                )}
+                ) : null}
                 {customer.notes && (
                   <div>
                     <p className="text-caption font-semibold text-content-secondary">Notes</p>

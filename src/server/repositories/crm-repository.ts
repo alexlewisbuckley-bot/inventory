@@ -713,3 +713,260 @@ export async function tradeVsRetail() {
       : null,
   }))
 }
+
+// ---------------------------------------------------------------------------
+// Taste — what the purchase history says somebody wants next
+// ---------------------------------------------------------------------------
+
+/**
+ * What a customer actually buys, as opposed to what they said they liked.
+ *
+ * Declared preferences go stale and get filled in optimistically; the ledger
+ * does not. Brands bought, the band they spend in and how often they come
+ * back are the three things that make "who might want this watch" answerable.
+ */
+export async function tasteProfile(customerId: string) {
+  const [brandRows, band] = await Promise.all([
+    db.select({
+      brandId: brands.id,
+      brandName: brands.name,
+      bought: sql<number>`count(*)`,
+      spentGbp: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+    })
+      .from(sales)
+      .innerJoin(watches, eq(watches.id, sales.watchId))
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(and(eq(sales.customerId, customerId), liveSale()))
+      .groupBy(brands.id, brands.name)
+      .orderBy(desc(sql`count(*)`)),
+
+    db.select({
+      purchases: sql<number>`count(*)`,
+      minGbp: sql<number>`coalesce(min(${sales.saleAmountGbp}), 0)`,
+      maxGbp: sql<number>`coalesce(max(${sales.saleAmountGbp}), 0)`,
+      avgGbp: sql<number>`coalesce(avg(${sales.saleAmountGbp}), 0)`,
+      lastAt: sql<string | null>`max(${sales.saleDate})`,
+    })
+      .from(sales)
+      .where(and(eq(sales.customerId, customerId), liveSale())),
+  ])
+
+  const summary = band[0]
+  return {
+    brands: brandRows.map((row) => ({
+      ...row,
+      bought: Number(row.bought),
+      spentGbp: Number(row.spentGbp),
+    })),
+    purchases: Number(summary?.purchases ?? 0),
+    minGbp: Number(summary?.minGbp ?? 0),
+    maxGbp: Number(summary?.maxGbp ?? 0),
+    avgGbp: Math.round(Number(summary?.avgGbp ?? 0)),
+    lastPurchaseAt: summary?.lastAt ?? null,
+  }
+}
+
+export interface WatchSuggestion {
+  customerId: string
+  name: string
+  company: string | null
+  customerType: string
+  tier: string
+  phone: string | null
+  email: string | null
+  score: number
+  reasons: string[]
+  lastContactedAt: Date | null
+}
+
+/**
+ * Who might want this watch.
+ *
+ * Scored rather than filtered, because the useful answer is a short ranked
+ * list you could work down in ten minutes, not everyone who technically
+ * qualifies. The weights say what the business believes: somebody who asked
+ * for this exact reference outranks somebody who merely buys the brand, and
+ * both outrank a budget that happens to fit.
+ *
+ * Everything here is derived on read. A stored "recommended" flag would be
+ * wrong within a day of the next purchase.
+ */
+export async function whoMightWant(watchId: string): Promise<WatchSuggestion[]> {
+  const [watch] = await db.select({
+    id: watches.id,
+    brandId: watches.brandId,
+    brandName: brands.name,
+    model: watches.model,
+    estSaleGbp: watches.estSaleGbp,
+  })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(eq(watches.id, watchId))
+    .limit(1)
+  if (!watch) return []
+
+  const price = watch.estSaleGbp
+  const near = (value: number | null) => value !== null && price !== null
+    && value >= price * 0.7 && value <= price * 1.4
+
+  const [requests, buyers, declared] = await Promise.all([
+    // Asked for it outright.
+    db.select({
+      customerId: watchRequests.customerId,
+      referenceNo: watchRequests.referenceNo,
+      budgetGbp: watchRequests.budgetGbp,
+      priority: watchRequests.priority,
+    })
+      .from(watchRequests)
+      .where(and(
+        isNull(watchRequests.deletedAt),
+        inArray(watchRequests.status, ['OPEN', 'SOURCING', 'MATCHED']),
+        eq(watchRequests.brandId, watch.brandId),
+      )),
+
+    // Bought this brand before, and what they spent.
+    db.select({
+      customerId: sales.customerId,
+      bought: sql<number>`count(*)`,
+      avgGbp: sql<number>`coalesce(avg(${sales.saleAmountGbp}), 0)`,
+      sameModel: sql<number>`sum(case when ${watches.model} = ${watch.model} then 1 else 0 end)`,
+    })
+      .from(sales)
+      .innerJoin(watches, eq(watches.id, sales.watchId))
+      .where(and(liveSale(), eq(watches.brandId, watch.brandId), sql`${sales.customerId} IS NOT NULL`))
+      .groupBy(sales.customerId),
+
+    // Said they buy the brand, or their budget covers it.
+    db.select({
+      customerId: customers.id,
+      budgetMinGbp: customers.budgetMinGbp,
+      budgetMaxGbp: customers.budgetMaxGbp,
+      likesBrand: sql<number>`(
+        SELECT count(*) FROM customer_brands
+        WHERE customer_brands.customer_id = customers.id
+          AND customer_brands.brand_id = ${watch.brandId}
+      )`,
+    })
+      .from(customers)
+      .where(and(isNull(customers.deletedAt), eq(customers.status, 'ACTIVE'))),
+  ])
+
+  const scores = new Map<string, { score: number; reasons: string[] }>()
+  const add = (id: string | null, points: number, reason: string) => {
+    if (!id) return
+    const entry = scores.get(id) ?? { score: 0, reasons: [] }
+    entry.score += points
+    if (!entry.reasons.includes(reason)) entry.reasons.push(reason)
+    scores.set(id, entry)
+  }
+
+  for (const request of requests) {
+    const exact = request.referenceNo
+      && watch.model.toLowerCase().includes(request.referenceNo.toLowerCase())
+    add(request.customerId, exact ? 100 : 55,
+      exact ? 'Asked for this exact reference' : `Wants a ${watch.brandName}`)
+    if (request.priority === 'URGENT' || request.priority === 'HIGH') {
+      add(request.customerId, 10, 'Their request is marked urgent')
+    }
+  }
+
+  for (const buyer of buyers) {
+    const count = Number(buyer.bought)
+    add(buyer.customerId, 25 + Math.min(count, 4) * 5,
+      count === 1 ? `Bought a ${watch.brandName} before` : `Bought ${count} ${watch.brandName}s before`)
+    if (Number(buyer.sameModel) > 0) add(buyer.customerId, 15, 'Has bought this reference before')
+    if (near(Math.round(Number(buyer.avgGbp)))) add(buyer.customerId, 20, 'Spends in this price band')
+  }
+
+  for (const row of declared) {
+    if (Number(row.likesBrand) > 0) add(row.customerId, 20, `Collects ${watch.brandName}`)
+    if (price !== null && row.budgetMaxGbp !== null && price <= row.budgetMaxGbp * 1.1
+      && (row.budgetMinGbp === null || price >= row.budgetMinGbp * 0.7)) {
+      add(row.customerId, 15, 'Inside their stated budget')
+    }
+  }
+
+  if (scores.size === 0) return []
+
+  const people = await db.select({
+    id: customers.id,
+    name: sql<string>`trim(${customers.firstName} || ' ' || ${customers.lastName})`,
+    company: customers.company,
+    customerType: customers.customerType,
+    tier: customers.tier,
+    phone: customers.phone,
+    email: customers.email,
+    lastContactedAt: customers.lastContactedAt,
+  })
+    .from(customers)
+    .where(and(isNull(customers.deletedAt), inArray(customers.id, [...scores.keys()])))
+
+  return people
+    .map((person) => ({
+      customerId: person.id,
+      name: person.name,
+      company: person.company,
+      customerType: person.customerType,
+      tier: person.tier,
+      phone: person.phone,
+      email: person.email,
+      lastContactedAt: person.lastContactedAt,
+      score: scores.get(person.id)?.score ?? 0,
+      reasons: scores.get(person.id)?.reasons ?? [],
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+}
+
+/**
+ * The other direction: stock this customer might want.
+ *
+ * Same evidence read backwards, so the customer record can answer "what have
+ * we got for them" without anybody scrolling the inventory with their taste
+ * held in their head.
+ */
+export async function stockTheyMightWant(customerId: string, limit = 6) {
+  const profile = await tasteProfile(customerId)
+  const [customer] = await db.select({
+    budgetMinGbp: customers.budgetMinGbp,
+    budgetMaxGbp: customers.budgetMaxGbp,
+  }).from(customers).where(eq(customers.id, customerId)).limit(1)
+
+  const boughtBrands = profile.brands.map((brand) => brand.brandId)
+  const declaredBrands = await db.select({ brandId: customerBrands.brandId })
+    .from(customerBrands).where(eq(customerBrands.customerId, customerId))
+
+  const brandIds = [...new Set([...boughtBrands, ...declaredBrands.map((b) => b.brandId)])]
+  if (brandIds.length === 0) return []
+
+  // The band they buy in, widened a little, or their stated budget if they
+  // have not bought yet.
+  const floor = profile.purchases > 0 ? Math.round(profile.minGbp * 0.7) : customer?.budgetMinGbp ?? null
+  const ceiling = profile.purchases > 0 ? Math.round(profile.maxGbp * 1.4) : customer?.budgetMaxGbp ?? null
+
+  const clauses = [
+    isNull(watches.deletedAt),
+    eq(watches.status, 'IN_STOCK'),
+    inArray(watches.brandId, brandIds),
+  ]
+  if (ceiling !== null) {
+    clauses.push(or(isNull(watches.estSaleGbp), lte(watches.estSaleGbp, ceiling))!)
+  }
+  if (floor !== null) {
+    clauses.push(or(isNull(watches.estSaleGbp), gte(watches.estSaleGbp, floor))!)
+  }
+
+  return db.select({
+    id: watches.id,
+    stockNo: watches.stockNo,
+    model: watches.model,
+    brandName: brands.name,
+    estSaleGbp: watches.estSaleGbp,
+    condition: watches.condition,
+  })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(...clauses))
+    .orderBy(desc(watches.estSaleGbp))
+    .limit(limit)
+}

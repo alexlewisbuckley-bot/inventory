@@ -318,6 +318,12 @@ export const customerSchema = z.object({
   tier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
   customerType: z.enum(CUSTOMER_TYPES).default('RETAIL'),
   status: z.enum(CUSTOMER_STATUSES).default('ACTIVE'),
+  // Trade only. A private buyer has none of these and is never asked.
+  paymentTerms: z.enum(PAYMENT_TERMS).default('UNKNOWN'),
+  creditLimitGbp: moneyFromText,
+  vatNo: optionalText(40),
+  registrationNo: optionalText(40),
+  supplierId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   leadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
   budgetMinGbp: moneyFromText,
   budgetMaxGbp: moneyFromText,

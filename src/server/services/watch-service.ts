@@ -390,6 +390,13 @@ async function resolveBuyer(input: SaleCreateInput, actor: SessionUser): Promise
     tier: input.buyerTier,
     customerType: input.buyerType,
     status: 'ACTIVE',
+    // Trade paperwork is not asked for mid-sale; it is filled in on the record
+    // when somebody actually needs to raise an invoice against terms.
+    paymentTerms: 'UNKNOWN',
+    creditLimitGbp: null,
+    vatNo: null,
+    registrationNo: null,
+    supplierId: null,
     leadSource: input.buyerLeadSource,
     budgetMinGbp: null,
     budgetMaxGbp: null,

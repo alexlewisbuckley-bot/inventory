@@ -459,6 +459,16 @@ export const customers = pgTable(
     tier: text('tier', { enum: CUSTOMER_TIERS }).notNull().default('STANDARD'),
     /** Which side of the business they belong to: trade (B2B) or retail (B2C). */
     customerType: text('customer_type', { enum: CUSTOMER_TYPES }).notNull().default('RETAIL'),
+    /**
+     * Trade terms. A dealer buys against terms and a credit position rather
+     * than a budget, and needs the paperwork a company needs.
+     */
+    paymentTerms: text('payment_terms', { enum: PAYMENT_TERMS }).notNull().default('UNKNOWN'),
+    creditLimitGbp: integer('credit_limit_gbp'),
+    vatNo: text('vat_no'),
+    registrationNo: text('registration_no'),
+    /** The same firm on the buying side, when a dealer both buys and sells. */
+    supplierId: text('supplier_id').references((): AnyPgColumn => suppliers.id),
     leadSource: text('lead_source', { enum: LEAD_SOURCES }).notNull().default('UNKNOWN'),
     status: text('status', { enum: CUSTOMER_STATUSES }).notNull().default('ACTIVE'),
     /** Budget as a range in GBP minor units; a ceiling alone reads as a promise. */
@@ -482,6 +492,7 @@ export const customers = pgTable(
     phoneIdx: index('customers_phone_idx').on(t.phone),
     ownerIdx: index('customers_owner_idx').on(t.ownerId),
     typeIdx: index('customers_type_idx').on(t.customerType).where(sql`deleted_at IS NULL`),
+    supplierIdx: index('customers_supplier_idx').on(t.supplierId),
   }),
 )
 
