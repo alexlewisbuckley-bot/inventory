@@ -607,7 +607,6 @@ export async function ownershipHistory(watchId: string) {
     saleDate: sales.saleDate,
     amountGbp: sales.saleAmountGbp,
     profitGbp: sales.profitGbp,
-    voidedAt: sales.voidedAt,
     customerId: sales.customerId,
     customerName: sql<string | null>`coalesce(
       nullif(trim(coalesce(${customers.firstName}, '') || ' ' || coalesce(${customers.lastName}, '')), ''),
@@ -616,6 +615,8 @@ export async function ownershipHistory(watchId: string) {
   })
     .from(sales)
     .leftJoin(customers, eq(customers.id, sales.customerId))
-    .where(and(eq(sales.watchId, watchId), isNull(sales.deletedAt)))
+    // A voided sale is a sale that did not happen, so the buyer never owned
+    // the watch and does not belong in its ownership history.
+    .where(and(eq(sales.watchId, watchId), liveSale()))
     .orderBy(desc(sales.saleDate))
 }
