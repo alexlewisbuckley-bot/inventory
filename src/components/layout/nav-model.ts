@@ -1,6 +1,7 @@
 import {
-  BarChart3, Building2, Clock, Coins, LayoutDashboard,
-  LifeBuoy, MapPin, Package, Receipt, Settings, ShieldCheck, type LucideIcon,
+  BarChart3, Building2, CheckSquare, Clock, Coins, KanbanSquare, LayoutDashboard,
+  LifeBuoy, MapPin, Package, Receipt, Search, Settings, ShieldCheck, Users2,
+  type LucideIcon,
 } from 'lucide-react'
 import { can, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -10,6 +11,9 @@ export interface SidebarCounts {
   unpriced: number
   ageing: number
   sales: number
+  openDeals: number
+  tasksDue: number
+  openRequests: number
 }
 
 export interface NavItem {
@@ -44,6 +48,15 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/', label: 'Dashboard', icon: LayoutDashboard },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
+      ],
+    },
+    {
+      heading: 'Sell',
+      items: [
+        { href: '/pipeline', label: 'Pipeline', icon: KanbanSquare, capability: 'deal:read', match: '/pipeline', count: counts.openDeals },
+        { href: '/customers', label: 'Customers', icon: Users2, capability: 'customer:read', match: '/customers' },
+        { href: '/requests', label: 'Wanted', icon: Search, capability: 'request:read', match: '/requests', count: counts.openRequests },
+        { href: '/tasks', label: 'Tasks', icon: CheckSquare, capability: 'task:read', match: '/tasks', count: counts.tasksDue, attention: counts.tasksDue > 0 },
       ],
     },
     {

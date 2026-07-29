@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
-import { and, count, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, lte, not, or } from 'drizzle-orm'
 import { getSessionUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { liveSale } from '@/server/db/predicates'
-import { notifications } from '@/server/db/schema'
+import { deals, notifications, tasks, watchRequests } from '@/server/db/schema'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { KeyboardShortcuts } from '@/components/layout/KeyboardShortcuts'
@@ -28,7 +28,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
 
-  const [unread, rates, preferences, stock, unpriced, ageing, saleCount] = await Promise.all([
+  // The badges are the reason the sidebar is worth looking at, so they are
+  // counted here rather than on each page: a number that only appears once you
+  // are already on the screen it describes is not a prompt.
+  const endOfToday = new Date()
+  endOfToday.setHours(23, 59, 59, 999)
+
+  const [
+    unread, rates, preferences, stock, unpriced, ageing, saleCount,
+    openDeals, tasksDue, openRequests,
+  ] = await Promise.all([
     db.select({ value: count() }).from(notifications)
       .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt))),
     getRateTable(),
@@ -37,6 +46,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countUnpriced(),
     findAgeingStock(90, 500),
     db.select({ value: count() }).from(sales).where(liveSale()),
+    db.select({ value: count() }).from(deals)
+      .where(and(isNull(deals.deletedAt), not(inArray(deals.stage, ['WON', 'LOST'])))),
+    db.select({ value: count() }).from(tasks)
+      .where(and(
+        isNull(tasks.deletedAt), eq(tasks.status, 'OPEN'),
+        eq(tasks.assigneeId, user.id), lte(tasks.dueAt, endOfToday),
+      )),
+    db.select({ value: count() }).from(watchRequests)
+      .where(and(isNull(watchRequests.deletedAt), inArray(watchRequests.status, ['OPEN', 'SOURCING', 'MATCHED']))),
   ])
 
   const displayCurrency = isCurrency(preferences?.displayCurrency)
@@ -48,6 +66,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     unpriced,
     ageing: ageing.length,
     sales: Number(saleCount[0]?.value ?? 0),
+    openDeals: Number(openDeals[0]?.value ?? 0),
+    tasksDue: Number(tasksDue[0]?.value ?? 0),
+    openRequests: Number(openRequests[0]?.value ?? 0),
   }
 
   return (

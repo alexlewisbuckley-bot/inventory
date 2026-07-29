@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { flattenNav, isActive, navGroups } from '@/components/layout/nav-model'
 
-const COUNTS = { inStock: 26, unpriced: 7, ageing: 26, sales: 3 }
+const COUNTS = {
+  inStock: 26, unpriced: 7, ageing: 26, sales: 3,
+  openDeals: 8, tasksDue: 2, openRequests: 4,
+}
 const groups = navGroups('OWNER', COUNTS)
 const items = flattenNav(groups)
 const activeFor = (pathname: string) =>

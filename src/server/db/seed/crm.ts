@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../client'
 import {
   activities, brands, customers, customerBrands, deals, dealStageEvents,
-  offers, tasks, users, watches, watchRequests,
+  offers, sales, tasks, users, watches, watchRequests,
 } from '../schema'
 import { newId } from '@/lib/ids'
 import { DEAL_STAGE_PROBABILITY, type DealStage } from '@/lib/enums'
@@ -286,6 +286,29 @@ export async function seedCrm(): Promise<number> {
       status: spec.days > 15 ? 'SOURCING' : 'OPEN',
       ownerId: owner,
       createdAt: ago(spec.days),
+    })
+  }
+
+  // --- Attach the existing ledger to the book -------------------------------
+  //
+  // Sales seeded before the CRM existed carry a buyer's name and nothing else.
+  // Attributing a few of them is what makes lifetime value, repeat-purchase
+  // history and "what has this relationship been worth" true rather than
+  // theoretical on a fresh install.
+  const ledger = await db.select({ id: sales.id })
+    .from(sales)
+    .where(and(isNull(sales.deletedAt), isNull(sales.voidedAt)))
+    .orderBy(asc(sales.saleDate))
+    .limit(6)
+
+  const buyers = ['Henry', 'Faisal', 'Henry', 'Marcus', 'Charlotte', 'Henry']
+  for (const [position, sale] of ledger.entries()) {
+    const customerId = ids.get(buyers[position] ?? 'Henry')
+    if (!customerId) continue
+    await db.update(sales).set({ customerId }).where(eq(sales.id, sale.id))
+    await db.insert(activities).values({
+      id: newId('act'), type: 'SALE', subject: 'Bought a watch', isSystem: true,
+      customerId, actorId: owner, occurredAt: ago(60 + position * 20),
     })
   }
 
