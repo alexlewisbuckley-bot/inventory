@@ -14,7 +14,7 @@ import {
 import type { Capability } from '@/lib/permissions'
 import { MoveWatchModal } from './MoveWatchModal'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
-import { RecordSaleModal } from './RecordSaleModal'
+import { QuickSellModal, type SellCustomerOption, type SellDealOption } from './QuickSellModal'
 
 export interface DrawerRecord {
   id: string
@@ -43,11 +43,15 @@ export interface TimelineEntry {
 }
 
 /** Detail panel: facts, financials, actions and the full change history. */
-export function WatchDrawerClient({ record, timeline, images, capabilities }: {
+export function WatchDrawerClient({
+  record, timeline, images, capabilities, customers = [], deals = [],
+}: {
   record: DrawerRecord
   timeline: TimelineEntry[]
   images: GalleryImage[]
   capabilities: Record<Capability, boolean>
+  customers?: SellCustomerOption[]
+  deals?: SellDealOption[]
 }) {
   const router = useRouter()
   const { money, signed } = useCurrency()
@@ -186,11 +190,23 @@ export function WatchDrawerClient({ record, timeline, images, capabilities }: {
         currentLocationId={record.locationId}
         onMoved={() => { toast.success('Watch moved'); router.refresh() }}
       />
-      <RecordSaleModal
+      {/* The same form the inventory row opens. There used to be two, with
+          different fields in a different order, which is how one of them ended
+          up without any way to attribute the sale to a customer. */}
+      <QuickSellModal
         open={saleOpen}
         onClose={() => setSaleOpen(false)}
-        watch={record}
-        onRecorded={() => { toast.success('Sale recorded'); router.refresh() }}
+        watch={{
+          id: record.id,
+          stockNo: record.stockNo,
+          model: record.model,
+          brandName: record.brandName,
+          purchasePriceGbp: record.purchasePriceGbp,
+          estSaleGbp: record.estSaleGbp,
+        }}
+        customers={customers}
+        deals={deals}
+        onSold={() => { router.refresh() }}
       />
     </>
   )

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { auditForEntity } from '@/server/services/audit'
 import { listImages } from '@/server/services/image-service'
+import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawerClient } from './WatchDrawerClient'
 import type { Capability } from '@/lib/permissions'
 
@@ -19,9 +20,13 @@ export async function WatchDrawer({ watchId, capabilities }: {
   const record = await getWatchDetail(watchId).catch(() => null)
   if (!record) notFound()
 
-  const [timeline, images] = await Promise.all([
+  const [timeline, images, customers, dealsByWatch] = await Promise.all([
     auditForEntity('Watch', watchId, 12),
     listImages(watchId),
+    capabilities['customer:read'] ? customerOptions() : Promise.resolve([]),
+    capabilities['deal:read']
+      ? openDealsByWatch()
+      : Promise.resolve({} as Awaited<ReturnType<typeof openDealsByWatch>>),
   ])
 
   return (
@@ -66,6 +71,8 @@ export async function WatchDrawer({ watchId, capabilities }: {
         createdAt: entry.createdAt.toISOString(),
       }))}
       capabilities={capabilities}
+      customers={customers}
+      deals={dealsByWatch[watchId] ?? []}
     />
   )
 }

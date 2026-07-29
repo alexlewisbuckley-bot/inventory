@@ -94,7 +94,19 @@ await journey('status change', async (page) => {
   // watch. The journey also has to survive being run twice, so it reads the
   // current status rather than assuming one.
   await go(page, '/inventory')
-  const stockNo = (await page.locator('tbody tr').first().locator('td').nth(1).innerText()).trim()
+
+  // A sold watch offers no transitions, so the journey takes the first row
+  // that is not one. The list stays unfiltered for the reason above.
+  const rows = page.locator('tbody tr')
+  let stockNo = null
+  for (let index = 0; index < await rows.count(); index += 1) {
+    const label = await rows.nth(index).locator('button[aria-label^="Status:"]').getAttribute('aria-label')
+    if (label && !label.includes('Sold')) {
+      stockNo = (await rows.nth(index).locator('td').nth(1).innerText()).trim()
+      break
+    }
+  }
+  if (!stockNo) throw new Error('every row on the first page is already sold')
 
   const statusOf = async () => {
     const label = await statusButton(page, stockNo).getAttribute('aria-label')
@@ -173,6 +185,15 @@ await journey('mark as sold', async (page) => {
   const invoice = `INV-J-${Date.now().toString().slice(-7)}`
   await page.locator('[role="dialog"] input[inputmode="decimal"]').first().fill('12500')
   await page.fill('input[placeholder="INV-2026-001"]', invoice)
+
+  // The buyer fields are behind a disclosure now that a sale is normally
+  // attributed to a customer record; this journey deliberately takes the
+  // by-hand path, which is what a walk-in paying cash looks like.
+  const byHand = page.locator('[role="dialog"] button:has-text("Clear and enter the buyer by hand")')
+  if (await byHand.count() > 0) await byHand.click()
+  const reveal = page.locator('[role="dialog"] button:has-text("record their details")')
+  if (await reveal.count() > 0) await reveal.click()
+  await page.waitForTimeout(200)
   await page.fill('input[placeholder="Who took the watch"]', 'Journey Test Buyer')
   await page.locator('[role="dialog"] button:has-text("Record the sale")').click()
   await page.waitForTimeout(3000)
@@ -332,6 +353,53 @@ await journey('sign out other devices', async (page) => {
   // Whatever happened, the session reading the page must survive it.
   await go(page, '/settings/profile')
   if (page.url().includes('/login')) throw new Error('it signed the current device out too')
+})
+
+// --- 10b. Selling a watch attributes it to a customer and closes the deal ---
+await journey('sell links customer and deal', async (page) => {
+  // A watch with a deal open against it, so the form has both halves to join.
+  await go(page, '/inventory?status=IN_STOCK')
+  const trigger = page.locator('tbody button[aria-label^="Status:"]').first()
+  await trigger.click()
+  await page.waitForTimeout(300)
+  await page.locator('[role="menu"] button:has-text("Mark as sold")').click()
+  await page.waitForTimeout(900)
+
+  const dialog = page.locator('[role="dialog"]:has-text("Mark as sold")')
+  if (await dialog.count() === 0) throw new Error('the sell dialog did not open')
+
+  const picker = dialog.locator('button:has-text("Search the customer book"), button:has-text("·")').first()
+  if (await dialog.locator('text=Customer').count() === 0) {
+    throw new Error('the sell form has no way to attribute the sale to a customer')
+  }
+  void picker
+
+  // Choose the first customer on the book if the form has not pre-filled one.
+  const cleared = await dialog.locator('button:has-text("Clear and enter the buyer by hand")').count()
+  if (cleared === 0) {
+    await dialog.locator('button:has-text("Search the customer book")').click()
+    await page.waitForTimeout(300)
+    const option = page.locator('[role="listbox"] li, [role="option"]').first()
+    if (await option.count() > 0) await option.click()
+    await page.waitForTimeout(300)
+  }
+
+  const invoice = `INV-L-${Date.now().toString().slice(-7)}`
+  await dialog.locator('input[inputmode="decimal"]').first().fill('9500')
+  await page.fill('input[placeholder="INV-2026-001"]', invoice)
+  await dialog.locator('button:has-text("Record the sale")').click()
+  await page.waitForTimeout(3000)
+
+  if (await page.locator('[role="dialog"]').count() > 0) {
+    const shown = await page.locator('[role="dialog"]').innerText()
+    throw new Error(`the dialog stayed open: ${shown.split('\n').find((l) => /must|required|could not|already/i.test(l)) ?? ''}`)
+  }
+
+  // The sale has to be findable from the customer's own record, which is the
+  // whole point of joining the two halves.
+  await go(page, '/sales')
+  const row = page.locator(`tr:has-text("${invoice}")`)
+  if (await row.count() === 0) throw new Error(`sale ${invoice} is not in the ledger`)
 })
 
 // --- 11. The inventory list on a phone -------------------------------------

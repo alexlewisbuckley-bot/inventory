@@ -620,3 +620,61 @@ export async function ownershipHistory(watchId: string) {
     .where(and(eq(sales.watchId, watchId), liveSale()))
     .orderBy(desc(sales.saleDate))
 }
+
+/**
+ * The customer list as the sell form needs it.
+ *
+ * Small and flat on purpose: the picker is a search box over a few hundred
+ * names, and passing them with the page beats a round trip on every keystroke.
+ */
+export async function customerOptions() {
+  return db.select({
+    id: customers.id,
+    name: sql<string>`trim(${customers.firstName} || ' ' || ${customers.lastName})`,
+    company: customers.company,
+    email: customers.email,
+    phone: customers.phone,
+    country: customers.country,
+  })
+    .from(customers)
+    .where(isNull(customers.deletedAt))
+    .orderBy(asc(customers.lastName), asc(customers.firstName))
+    .limit(1000)
+}
+
+export interface WatchDealOption {
+  id: string
+  watchId: string | null
+  title: string
+  stage: string
+  valueGbp: number | null
+  customerId: string | null
+}
+
+/** Open deals keyed by the watch they are against, for the sell form. */
+export async function openDealsByWatch(): Promise<Record<string, WatchDealOption[]>> {
+  const rows = await db.select({
+    id: deals.id,
+    watchId: deals.watchId,
+    title: deals.title,
+    stage: deals.stage,
+    valueGbp: deals.valueGbp,
+    customerId: deals.customerId,
+  })
+    .from(deals)
+    .where(and(
+      isNull(deals.deletedAt),
+      ne(deals.stage, 'WON'),
+      ne(deals.stage, 'LOST'),
+      sql`${deals.watchId} IS NOT NULL`,
+    ))
+
+  const byWatch = new Map<string, WatchDealOption[]>()
+  for (const row of rows) {
+    if (!row.watchId) continue
+    const list = byWatch.get(row.watchId) ?? []
+    list.push(row)
+    byWatch.set(row.watchId, list)
+  }
+  return Object.fromEntries(byWatch)
+}

@@ -14,7 +14,9 @@ import { formatDate } from '@/lib/dates'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
 import { SavedViews } from './SavedViews'
-import { QuickSellModal, type QuickSellTarget } from './QuickSellModal'
+import {
+  QuickSellModal, type QuickSellTarget, type SellCustomerOption, type SellDealOption,
+} from './QuickSellModal'
 import { InlinePriceCell } from './InlinePriceCell'
 import { StatusCell } from './StatusCell'
 import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
@@ -50,6 +52,10 @@ export interface InventoryTableProps {
   result: WatchListResult
   locations: FilterOption[]
   capabilities: Record<Capability, boolean>
+  /** The customer book, so a sale can be attributed without leaving the row. */
+  customers?: SellCustomerOption[]
+  /** Open deals keyed by watch, so selling one closes the deal it came from. */
+  dealsByWatch?: Record<string, SellDealOption[]>
 }
 
 /**
@@ -60,7 +66,9 @@ export interface InventoryTableProps {
  * drawer via `?watch=` rather than navigating, so scroll position and
  * selection survive.
  */
-export function InventoryTable({ result, locations, capabilities }: InventoryTableProps) {
+export function InventoryTable({
+  result, locations, capabilities, customers = [], dealsByWatch = {},
+}: InventoryTableProps) {
   const query = useListQuery()
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -253,6 +261,8 @@ export function InventoryTable({ result, locations, capabilities }: InventoryTab
       <QuickSellModal
         open={sellTarget !== null}
         watch={sellTarget}
+        customers={customers}
+        deals={sellTarget ? dealsByWatch[sellTarget.id] ?? [] : []}
         onClose={() => setSellTarget(null)}
         onSold={() => router.refresh()}
       />

@@ -12,6 +12,7 @@ import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/inventory/FilterBar'
 import { SavedViews } from '@/components/inventory/SavedViews'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
+import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
 import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
 import { formatPct } from '@/lib/money'
@@ -53,7 +54,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   const user = await requireCapability('watch:read')
   const query = parseQuery(searchParams)
 
-  const [result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences, unpricedCount] = await Promise.all([
+  const [
+    result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences,
+    unpricedCount, customers, dealsByWatch,
+  ] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
     db.select({ id: locations.id, name: locations.name }).from(locations)
@@ -64,6 +68,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     getRateTable(),
     getPreferencesFor(user.id),
     countUnpriced(),
+    // Loaded with the page so the sell form can attribute a sale to a real
+    // customer, and close the deal it came from, without a round trip.
+    can(user.role, 'customer:read') ? customerOptions() : Promise.resolve([]),
+    can(user.role, 'deal:read') ? openDealsByWatch() : Promise.resolve({}),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -134,7 +142,13 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>
-          <InventoryTable result={result} locations={locationOptions} capabilities={capabilities} />
+          <InventoryTable
+            result={result}
+            locations={locationOptions}
+            capabilities={capabilities}
+            customers={customers}
+            dealsByWatch={dealsByWatch}
+          />
         </Suspense>
       </Card>
 

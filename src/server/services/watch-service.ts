@@ -277,6 +277,11 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       customerEmail: input.customerEmail ?? null,
       customerPhone: input.customerPhone ?? null,
       customerCountry: input.customerCountry ?? null,
+      customerId: input.customerId ?? null,
+      dealId: input.dealId ?? null,
+      paymentStatus: input.paymentStatus,
+      deliveryStatus: input.deliveryStatus,
+      depositGbp: input.depositGbp ?? 0,
       channel: input.channel,
       profitUsd,
       profitGbp,
@@ -298,6 +303,34 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     await notifyTeam('SALE_RECORDED', 'Sale recorded',
       `Stock ${watch.stockNo} (${watch.model}) sold for £${(saleGbp / 100).toLocaleString()}.`,
       'Watch', watch.id, actor.id)
+
+    // The CRM half of a sale. A watch leaving the building is the single most
+    // important thing that ever happens to a relationship, so it is written on
+    // to the customer's timeline here rather than being reconstructed later
+    // from the ledger — and the deal it came from is closed in the same breath,
+    // because nobody remembers to go back to the board afterwards.
+    if (input.customerId) {
+      const { logActivity } = await import('./crm-service')
+      await logActivity({
+        type: 'SALE',
+        subject: `Bought stock ${watch.stockNo}`,
+        body: `${watch.model} on invoice ${input.invoiceNo}.`,
+        isSystem: true,
+        scope: { customerId: input.customerId, watchId: watch.id, dealId: input.dealId },
+        actorId: actor.id,
+      })
+    }
+
+    if (input.dealId) {
+      const { moveDeal } = await import('./crm-service')
+      await moveDeal(input.dealId, 'WON', actor).catch((error) => {
+        // A deal that cannot be closed must not roll back a recorded sale: the
+        // money is the fact, the board is the view of it.
+        logger.warn('sale recorded but deal not closed', {
+          dealId: input.dealId, error: (error as Error).message,
+        })
+      })
+    }
 
     logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
     return id

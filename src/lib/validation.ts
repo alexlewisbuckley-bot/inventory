@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
-  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DENSITIES, ENTITY_TYPES,
-  LEAD_SOURCES, LOCATION_TYPES, PAYMENT_TERMS, PRIORITIES, REQUEST_STATUSES, ROLES,
-  SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
+  ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES,
+  REQUEST_STATUSES, ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
 
 /**
@@ -134,6 +134,21 @@ export const saleCreateSchema = z.object({
   customerEmail: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),
   customerPhone: optionalText(40),
   customerCountry: optionalText(80),
+  /**
+   * The customer record this sale belongs to.
+   *
+   * Optional, and the free-text fields above stay: a walk-in paying cash may
+   * leave nothing behind, and sales recorded before the customer book existed
+   * must keep reading correctly. When it is set, the name fields are filled
+   * from the record rather than typed twice.
+   */
+  customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  /** The pipeline deal this closes, if the sale came from one. */
+  dealId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  paymentStatus: z.enum(PAYMENT_STATUSES).default('PAID'),
+  deliveryStatus: z.enum(DELIVERY_STATUSES).default('COLLECTED'),
+  depositGbp: z.union([money('Deposit'), z.literal('')]).optional()
+    .transform((v) => (typeof v === 'number' ? v : null)),
   notes: optionalText(1000),
 })
 export type SaleCreateInput = z.infer<typeof saleCreateSchema>
