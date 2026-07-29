@@ -168,4 +168,15 @@
   .grid > * {
     min-width: 0;
   }
+
+  /* A region that scrolls itself.
+     An element with `overflow-x: auto` clips its content visually, but the
+     browser still counts that content towards the document's own scrollable
+     area — so a board wider than the window scrolls twice: once inside its own
+     box, and once dragging the sidebar and header off screen with it.
+     `contain: paint` promises nothing paints outside the box, which is exactly
+     true of a scroll container, and the page stops scrolling sideways. */
+  .scroll-region {
+    contain: paint;
+  }
 }
