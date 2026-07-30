@@ -15,6 +15,8 @@ import {
 } from '@/server/repositories/dashboard-repository'
 import { auditTrail } from '@/server/services/audit'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { SellingInsightsPanel } from '@/components/insights/SellingInsights'
+import { lostReasons, sellingInsights } from '@/server/repositories/insights-repository'
 import { Card, CardHeader, EmptyState, LinkButton, Chip } from '@/components/ui'
 import { MetricTile, percentChange } from '@/components/dashboard/MetricTile'
 import { AttentionQueue, type AttentionItem } from '@/components/dashboard/AttentionQueue'
@@ -47,7 +49,7 @@ export default async function InsightsPage() {
 
   const [
     summary, byLocation, ageing, unpriced, recentSales, activity, rates, preferences,
-    attention, buckets, flow, trading, intake, brandMix,
+    attention, buckets, flow, trading, intake, brandMix, selling, lost,
   ] = await Promise.all([
     summariseInventory(activeQuery),
     stockByLocation(),
@@ -73,6 +75,8 @@ export default async function InsightsPage() {
     salesComparison(WINDOW_DAYS),
     recentIntake(WINDOW_DAYS),
     capitalByBrand(5),
+    sellingInsights(),
+    lostReasons(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
@@ -240,6 +244,14 @@ export default async function InsightsPage() {
           icon={<Truck className="h-4 w-4" />}
           href="/inventory?sort=purchaseDate&dir=desc"
         />
+      </section>
+
+      {/* The selling questions, from stage events the product has recorded
+          since the CRM shipped and aggregated for the first time here. Above
+          the stock figures because the stock figures describe what is owned
+          and these describe what is happening. */}
+      <section aria-label="Selling" className="mt-8">
+        <SellingInsightsPanel data={selling} lost={lost} money={money} />
       </section>
 
       <section aria-label="Quick actions" className="mt-4">

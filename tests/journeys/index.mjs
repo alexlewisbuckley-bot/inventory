@@ -1169,6 +1169,46 @@ await journey('a view can be saved, applied and deleted', async (page) => {
   }
 })
 
+await journey('insights answers the selling questions with a table behind every chart', async (page) => {
+  await go(page, '/insights')
+  const body = await page.locator('main').innerText()
+
+  for (const heading of ['Where deals fall out', 'How often deals land', 'Where deals get stuck']) {
+    if (!body.includes(heading)) throw new Error(`the selling section is missing "${heading}"`)
+  }
+
+  // The funnel is monotonic by construction; the screen must agree. Read the
+  // numbers off the rendered chart and check each rung is <= the one before.
+  const funnelFrame = page.locator('section[aria-labelledby]:has(> div h3:text("Where deals fall out"))').last()
+  const shown = await funnelFrame.innerText()
+  const counts = [...shown.matchAll(/^\s*(\d+)\s*$/gm)].map((m) => Number(m[1]))
+  for (let i = 1; i < counts.length; i += 1) {
+    if (counts[i] > counts[i - 1]) {
+      throw new Error(`the rendered funnel is not monotonic: ${counts.join(', ')}`)
+    }
+  }
+
+  // Every chart carries a keyboard-reachable table view showing the same data.
+  const toggle = funnelFrame.locator('button:has-text("Table")')
+  if (await toggle.count() === 0) throw new Error('the funnel has no table view')
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(400)
+  const table = funnelFrame.locator('table')
+  if (await table.count() === 0) throw new Error('the table toggle showed no table')
+  const tableText = await table.innerText()
+  if (counts.length > 0 && !tableText.includes(String(counts[0]))) {
+    throw new Error('the table view does not show the same top-of-funnel number as the chart')
+  }
+
+  // Terminal outcomes are not stages and must not appear in the dwell chart.
+  const dwellFrame = page.locator('section[aria-labelledby]:has(> div h3:text("Where deals get stuck"))').last()
+  const dwellText = await dwellFrame.innerText()
+  if (/\bLost\b|\bWon\b/.test(dwellText)) {
+    throw new Error('the dwell chart lists a terminal outcome as a stage')
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render
