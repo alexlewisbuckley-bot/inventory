@@ -29,7 +29,17 @@ const ICONS: Record<NotificationType, typeof Bell> = {
   SYSTEM: Bell,
 }
 
-/** Notification feed with per-item and bulk read handling. */
+/**
+ * "What happened while I was away", grouped by day.
+ *
+ * A notification feed is read in one situation: returning after time off it.
+ * The question is "what happened yesterday", not "what is item 37" — so the
+ * grouping is by day, with the day named the way a person would say it.
+ *
+ * Unread is a dot, not a tint. Tinting whole rows made a half-unread list
+ * into a striped wall where the tint carried no information a dot did not,
+ * and the tint fought every other use of that colour on the page.
+ */
 export function NotificationList({ items }: { items: NotificationView[] }) {
   const router = useRouter()
   // Optimistic: mark read in the UI immediately, reconcile on refresh.
@@ -43,14 +53,22 @@ export function NotificationList({ items }: { items: NotificationView[] }) {
     }
   }
 
+  const groups = groupByDay(items)
+
   return (
-    <ul className="divide-y divide-line-subtle">
-        {items.map((item) => {
+    <div>
+      {groups.map((group) => (
+        <section key={group.label} aria-label={group.label}>
+          <h2 className="border-b border-line-subtle bg-surface-subtle px-6 py-2 text-micro font-semibold uppercase tracking-wide text-content-secondary">
+            {group.label}
+          </h2>
+          <ul className="divide-y divide-line-subtle">
+        {group.items.map((item) => {
           const Icon = ICONS[item.type]
           const unread = !item.readAt && !readLocally.has(item.id)
           const href = item.entityType === 'Watch' && item.entityId ? `/inventory/${item.entityId}` : null
           const body = (
-            <div className={cn('flex gap-4 px-6 py-4', unread && 'bg-teal-100/40')}>
+            <div className="flex gap-4 px-6 py-4">
               <span
                 className={cn(
                   'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md',
@@ -86,9 +104,44 @@ export function NotificationList({ items }: { items: NotificationView[] }) {
               )}
             </li>
           )
-      })}
-    </ul>
+        })}
+          </ul>
+        </section>
+      ))}
+    </div>
   )
+}
+
+/**
+ * Days, the way a person names them.
+ *
+ * "Today", "Yesterday", then the date. Grouping is by local calendar day
+ * rather than 24-hour windows, because "yesterday" means the day before, not
+ * 24-to-48 hours ago — a notification from 11pm last night belongs to
+ * yesterday even at 8am.
+ */
+function groupByDay(items: NotificationView[]): Array<{ label: string; items: NotificationView[] }> {
+  const startOfDay = (date: Date) => {
+    const day = new Date(date)
+    day.setHours(0, 0, 0, 0)
+    return day.getTime()
+  }
+  const today = startOfDay(new Date())
+  const DAY = 86_400_000
+
+  const groups = new Map<string, NotificationView[]>()
+  for (const item of items) {
+    const day = startOfDay(new Date(item.createdAt))
+    const label = day === today
+      ? 'Today'
+      : day === today - DAY
+        ? 'Yesterday'
+        : new Date(day).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+    const list = groups.get(label) ?? []
+    list.push(item)
+    groups.set(label, list)
+  }
+  return [...groups.entries()].map(([label, grouped]) => ({ label, items: grouped }))
 }
 
 /** The bulk action, rendered into the page header. */

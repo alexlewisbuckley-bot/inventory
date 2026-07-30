@@ -374,6 +374,21 @@ before `0011` runs anywhere real.
 
 ---
 
+### E8 — resolution, recorded 30 July 2026
+
+**Dropped, by this epic's own criterion.** The plan said: *"Confirm against
+the real book before `0011`. If the two lists turn out disjoint in practice,
+drop the epic and keep the `supplierId` link."* Measured: 11 customers and 7
+suppliers, **zero** overlap by email, zero by normalised phone, zero
+`supplier_id` links in use. The lists are disjoint in practice. The merge
+would have spent the plan's highest-risk migration buying a unification the
+data says nobody needs — so the Contact object is not built, the
+`supplier_id` link remains for the day a counterparty genuinely appears on
+both sides, and E9 proceeds against suppliers as they stand. Re-measure
+before ever reviving this: the criterion is written above.
+
+---
+
 ### E9 · Sourcing
 
 **Objectives.** The purchase workflow. Deals become bidirectional; watch
