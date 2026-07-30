@@ -54,9 +54,11 @@ const INITIAL: ActionState = { ok: false }
  * drift apart. In edit mode a hidden `version` field carries the optimistic
  * concurrency token read when the form was opened.
  */
-export function WatchForm({ mode, initial, brands, suppliers, locations }: {
+export function WatchForm({ mode, initial, brands, suppliers, locations, requestId }: {
   mode: 'create' | 'edit'
   initial?: Partial<WatchFormValues>
+  /** Set when intake is fulfilling a want: the action settles the request. */
+  requestId?: string
   brands: Option[]
   suppliers: Option[]
   locations: Option[]
@@ -92,6 +94,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations }: {
 
   return (
     <form action={formAction} noValidate>
+      {requestId && <input type="hidden" name="requestId" value={requestId} />}
       {mode === 'edit' && (
         <>
           <input type="hidden" name="id" value={values.id ?? ''} />

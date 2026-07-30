@@ -423,6 +423,27 @@ supplier response metrics derive correctly from the events.
 - *`watch_requests` migration.* Requests carry data deals do not; add the
   columns before migrating rather than losing dial and bracelet preferences.
 
+### E9 — resolution, recorded 30 July 2026
+
+Shipped at reduced scope, chosen deliberately: the loop is closed without the
+deals remodel. The Wanted board stays; what was missing was the downhill half
+of the workflow, and that is what was built. Each quoted enquiry on a want's
+card now carries "Book it in →", which opens intake pre-filled from the
+request and the quote (`sourcingPrefill`): customer named in the header, brand,
+model, supplier, quoted price as the purchase price, budget as the opening
+sale estimate — all editable, because a prefill is a head start, not a
+decision. After the watch is created, `completeSourcing` settles the paperwork
+outside the intake transaction: the want is FULFILLED, the timeline records the
+sourcing on customer, request and watch, the request's owner is notified
+(unless they did the booking-in themselves), and an offer task exists with an
+`autoKey` so a double book-in cannot create a second instruction. The
+`0014_deal_direction.sql` migration, inbound deal stages, and the deletion of
+`/requests` were not done — the bidirectional-deals remodel remains open as a
+future epic if buying volume ever justifies a pipeline of its own. The plan's
+end-to-end journey exists as written (want → enquiry → quote → accept →
+book-in → fulfilled + task), minus the three-supplier metrics, which belong to
+the remodel.
+
 ---
 
 ### E10 · Insights

@@ -5,7 +5,7 @@ import { asc, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, suppliers } from '@/server/db/schema'
-import { customerOptions, findRequests } from '@/server/repositories/crm-repository'
+import { customerOptions, enquiriesFor, findRequests } from '@/server/repositories/crm-repository'
 import { assignableUsers, matchesForRequest } from '@/server/services/crm-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
@@ -20,7 +20,8 @@ import { can } from '@/lib/permissions'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
-  BASE_CURRENCY, PRIORITY_LABELS, type Priority, type RequestStatus,
+  BASE_CURRENCY, PRIORITY_LABELS, REQUEST_ENQUIRY_STATUS_LABELS,
+  type Priority, type RequestEnquiryStatus, type RequestStatus,
 } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Wanted' }
@@ -58,12 +59,20 @@ export default async function RequestsPage() {
   const canCreate = can(user.role, 'request:create')
   const canUpdate = can(user.role, 'request:update')
   const canTask = can(user.role, 'task:create')
+  const canBookIn = can(user.role, 'watch:create')
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
-  const matches = await Promise.all(requests.map((request) => matchesForRequest(request.id)))
-  const withMatches = requests.map((request, index) => ({ request, matches: matches[index] ?? [] }))
+  const [matches, enquiryLists] = await Promise.all([
+    Promise.all(requests.map((request) => matchesForRequest(request.id))),
+    Promise.all(requests.map((request) => enquiriesFor(request.id))),
+  ])
+  const withMatches = requests.map((request, index) => ({
+    request,
+    matches: matches[index] ?? [],
+    enquiries: enquiryLists[index] ?? [],
+  }))
 
   const totalBudget = requests.reduce((sum, request) => sum + (request.budgetGbp ?? 0), 0)
   const matchable = withMatches.filter((row) => row.matches.length > 0).length
@@ -113,7 +122,7 @@ export default async function RequestsPage() {
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
-          {withMatches.map(({ request, matches: found }) => (
+          {withMatches.map(({ request, matches: found, enquiries: asked }) => (
             <Card key={request.id} as="section">
               <CardHeader
                 title={[request.brandName, request.model].filter(Boolean).join(' ') || 'Any watch'}
@@ -181,15 +190,39 @@ export default async function RequestsPage() {
                     ))}
                   </ul>
                 )}
-                {/* Always shown, not only when nothing matches. Knowing who
-                    has already been rung is what stops two people in the same
-                    office asking the same dealer the same question on the
-                    same afternoon. */}
-                <p className="px-6 pb-4 pt-1 text-caption text-content-secondary">
-                  {request.enquiries > 0
-                    ? `${request.enquiries} supplier ${request.enquiries === 1 ? 'enquiry' : 'enquiries'} out.`
-                    : 'No supplier has been asked yet.'}
-                </p>
+                {/* Who has been asked and what they said — the sourcing state
+                    of the want, on the card. A quote carries the action that
+                    accepts it: intake, pre-filled from the request and the
+                    quote, so taking a price never means retyping it. */}
+                {asked.length === 0 ? (
+                  <p className="px-6 pb-4 pt-1 text-caption text-content-secondary">
+                    No supplier has been asked yet.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-line-subtle pb-1 pt-1">
+                    {asked.map((enquiry) => (
+                      <li key={enquiry.id} className="flex items-center justify-between gap-3 px-6 py-2.5">
+                        <span className="min-w-0">
+                          <span className="block truncate text-small font-semibold text-content-primary">
+                            {enquiry.supplierName ?? 'Supplier'}
+                          </span>
+                          <span className="block text-caption text-content-secondary">
+                            {REQUEST_ENQUIRY_STATUS_LABELS[enquiry.status as RequestEnquiryStatus]}
+                            {enquiry.quotedGbp !== null && ` · quoted ${money(enquiry.quotedGbp)}`}
+                          </span>
+                        </span>
+                        {enquiry.quotedGbp !== null && canBookIn && (
+                          <Link
+                            href={`/inventory/new?request=${request.id}&enquiry=${enquiry.id}`}
+                            className="shrink-0 text-caption font-semibold text-content-accent hover:underline"
+                          >
+                            Book it in →
+                          </Link>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <EnquiryComposer

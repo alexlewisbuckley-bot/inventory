@@ -658,10 +658,13 @@ await journey('a supplier enquiry is logged against a want', async (page) => {
   // reorder the board, and a journey that reads "the first card" before and
   // after is then comparing two different requests — which is how this
   // assertion passed for the wrong reason the first time it was written.
+  //
+  // E9 replaced the "N supplier enquiries out" tally with a named list of who
+  // was asked and what they said, so the count is now of those rows: each one
+  // leads with its status label on its own line.
   const enquiriesOut = async () => {
     const body = await page.locator('main').innerText()
-    return [...body.matchAll(/(\d+) supplier (?:enquiry|enquiries) out/g)]
-      .reduce((sum, match) => sum + Number(match[1]), 0)
+    return (body.match(/^(Asked|Quoted|Declined|No reply)\b/gm) ?? []).length
   }
 
   await go(page, '/requests')
@@ -1317,6 +1320,77 @@ await journey('an Operations role sees no money in either direction', async () =
       throw new Error('Operations cannot see the stock they are meant to move')
     }
   })
+})
+
+// --- E9. Sourcing: accepting a quote closes the loop -------------------------
+
+await journey('accepting a supplier quote books the watch in and fulfils the want', async (page) => {
+  // The whole loop, end to end: a want is registered, a supplier quotes,
+  // the quote is accepted into intake pre-filled, and the want leaves the
+  // board with an offer task waiting. Any step that silently drops the
+  // thread is exactly the failure E9 exists to prevent.
+  const model = `Explorer II ${stamp}`
+
+  await go(page, '/requests')
+  await page.click('button:has-text("Register a want")')
+  await page.waitForTimeout(500)
+  await page.click('[role="dialog"] button:has-text("Choose a customer")')
+  await page.waitForTimeout(300)
+  await page.locator('[role="dialog"] [role="option"], [role="dialog"] li button').first().click()
+  await page.waitForTimeout(300)
+  await page.selectOption('[role="dialog"] select[name="brandId"]', { index: 1 })
+  await page.fill('[role="dialog"] input[name="model"]', model)
+  await page.fill('[role="dialog"] input[name="budgetGbp"]', '12500')
+  await page.click('[role="dialog"] button:has-text("Register it")')
+  await page.waitForTimeout(2500)
+
+  // A supplier quotes £8,250 against that want — logged on its card.
+  await go(page, '/requests')
+  const card = page.locator('section', { hasText: model }).first()
+  await card.locator('button:has-text("Log a supplier enquiry")').click()
+  await page.waitForTimeout(400)
+  await card.locator('select[name="supplierId"]').selectOption({ index: 1 })
+  await card.locator('input[name="quotedGbp"]').fill('8250')
+  await card.locator('button:has-text("Log it")').click()
+  await page.waitForTimeout(2500)
+
+  // The quote carries the action that accepts it.
+  await go(page, '/requests')
+  const bookIn = page.locator('section', { hasText: model }).locator('a:has-text("Book it in")')
+  if (await bookIn.count() === 0) throw new Error('a quoted enquiry offered no way to accept the quote')
+  await bookIn.first().click()
+  await page.waitForTimeout(1500)
+
+  // Intake starts from the request and the quote, not from a blank form.
+  const header = await page.locator('main').innerText()
+  if (!header.includes('Book in for')) throw new Error('intake did not announce who it is for')
+  const modelValue = await page.locator('input[name="model"]').inputValue()
+  if (!modelValue.includes(model)) throw new Error(`the model did not prefill: "${modelValue}"`)
+  const price = await page.locator('input[name="purchaseAmount"]').inputValue()
+  if (!/8,?250/.test(price)) throw new Error(`the quoted price did not prefill: "${price}"`)
+  const asking = await page.locator('input[name="estSaleAmount"]').inputValue()
+  if (!/12,?500/.test(asking)) throw new Error(`the budget did not seed the asking price: "${asking}"`)
+
+  // Complete what the prefill could not know, and book it in.
+  await page.fill('input[name="purchaseDate"]', '2026-07-30')
+  await page.selectOption('select[name="locationId"]', { index: 1 })
+  await page.click('button:has-text("Add watch to stock")')
+  await page.waitForTimeout(3000)
+
+  // The want has left the board — fulfilled, not lingering as open demand.
+  // Scoped to card titles: the watch that was just booked in may legitimately
+  // appear as a stock match on other cards for the same brand.
+  await go(page, '/requests')
+  if (await page.locator('section h2', { hasText: model }).count() > 0) {
+    throw new Error('the want stayed on the board after the watch was booked in')
+  }
+
+  // And the loop hands over to a person: the offer task exists.
+  await go(page, '/tasks')
+  const tasks = await page.locator('main').innerText()
+  if (!/Offer stock .* — sourced for them/.test(tasks)) {
+    throw new Error('no offer task was created for the sourced watch')
+  }
 })
 
 // --- Coverage floor before the redesign begins ------------------------------

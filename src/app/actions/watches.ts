@@ -13,6 +13,7 @@ import {
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { BASE_CURRENCY, WATCH_STATUSES, WATCH_STATUS_LABELS, type CurrencyCode, type WatchStatus } from '@/lib/enums'
+import { completeSourcing } from '@/server/services/sourcing-service'
 import type { ActionState } from './auth'
 
 /** Convert a thrown error into the serialisable shape forms expect. */
@@ -38,6 +39,24 @@ export async function createWatchAction(_prev: ActionState, formData: FormData):
 
   try {
     const id = await createWatch(parsed.data, actor)
+
+    // Intake that came from a want settles the paperwork: the want is
+    // fulfilled, its owner is told, and a task to offer the watch exists.
+    // Guarded, because the watch now exists in stock — that is a fact, and a
+    // hiccup in the follow-up must not unmake it or fail the form.
+    const requestId = formData.get('requestId')?.toString()
+    if (requestId) {
+      try {
+        await completeSourcing(id, requestId, actor)
+        revalidatePath('/requests')
+        revalidatePath('/tasks')
+      } catch (error) {
+        logger.warn('sourcing follow-up failed after intake', {
+          watchId: id, requestId, error: (error as Error).message,
+        })
+      }
+    }
+
     refreshInventory()
     return { ok: true, message: 'Watch added to stock.', errors: { id } }
   } catch (error) {
