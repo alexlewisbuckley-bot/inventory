@@ -215,7 +215,7 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
       detail: `Sent ${days} days ago with no reply.`,
       action: {
         label: 'Chase it',
-        href: row.dealId ? `/pipeline/${row.dealId}` : `/customers/${row.customerId}`,
+        href: row.dealId ? `/deals/${row.dealId}` : `/customers/${row.customerId}`,
       },
     })
   }
@@ -379,7 +379,7 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       who: [row.firstName, row.lastName].filter(Boolean).join(' ') || null,
       since: row.createdAt,
       amountGbp: row.amountGbp,
-      href: row.dealId ? `/pipeline/${row.dealId}` : `/customers/${row.customerId}`,
+      href: row.dealId ? `/deals/${row.dealId}` : `/customers/${row.customerId}`,
     })),
     ...stuckDeals.map((row) => ({
       id: `deal-${row.id}`,
@@ -387,7 +387,7 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       who: [row.firstName, row.lastName].filter(Boolean).join(' ') || null,
       since: row.stageChangedAt,
       amountGbp: row.valueGbp,
-      href: `/pipeline/${row.id}`,
+      href: `/deals/${row.id}`,
     })),
     ...unpaid.map((row) => ({
       id: `sale-${row.id}`,

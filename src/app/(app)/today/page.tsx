@@ -96,7 +96,7 @@ export default async function TodayPage() {
               footnote={pipeline.closingThisWeek > 0
                 ? `${pipeline.closingThisWeek} expected to close this week`
                 : 'Nothing expected to close this week'}
-              href="/pipeline"
+              href="/deals"
             >
               <StageBars stages={pipeline.byStage} />
             </Tile>

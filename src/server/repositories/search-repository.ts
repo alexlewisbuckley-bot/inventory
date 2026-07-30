@@ -229,7 +229,7 @@ async function dealHits(like: string, query: string): Promise<SearchHit[]> {
     title: String(row.title),
     subtitle: [row.customer_name, row.reference].filter(Boolean).join(' · '),
     meta: row.value_gbp === null ? null : gbp(Number(row.value_gbp)),
-    href: `/pipeline/${row.id}`,
+    href: `/deals/${row.id}`,
     exact: row.exact === true,
     updatedAt: new Date(row.updated_at as string),
   }))
@@ -433,7 +433,7 @@ async function peekDeal(id: string): Promise<PeekRecord | null> {
     id: String(row.id),
     title: String(row.title),
     subtitle: [row.customer_name, row.reference].filter(Boolean).join(' · '),
-    href: `/pipeline/${row.id}`,
+    href: `/deals/${row.id}`,
     facts: [
       { label: 'Stage', value: String(row.stage).replace('_', ' ').toLowerCase() },
       { label: 'Value', value: row.value_gbp === null ? '—' : gbp(Number(row.value_gbp)) },

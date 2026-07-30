@@ -35,7 +35,7 @@ function toState(error: unknown, fallback: string): ActionState {
 }
 
 const revalidateCrm = (extra: string[] = []) => {
-  for (const path of ['/crm', '/customers', '/pipeline', '/tasks', '/requests', '/today', '/', ...extra]) {
+  for (const path of ['/crm', '/customers', '/deals', '/tasks', '/requests', '/today', '/', ...extra]) {
     revalidatePath(path)
   }
 }
@@ -124,11 +124,11 @@ export async function saveDealAction(_prev: ActionState, formData: FormData): Pr
   try {
     if (id) {
       await updateDeal(id, parsed.data, actor)
-      revalidateCrm([`/pipeline/${id}`])
+      revalidateCrm([`/deals/${id}`])
       return { ok: true, message: 'Deal updated.' }
     }
     const dealId = await createDeal(parsed.data, actor)
-    revalidateCrm([`/pipeline/${dealId}`])
+    revalidateCrm([`/deals/${dealId}`])
     return { ok: true, message: 'Deal opened.', id: dealId }
   } catch (error) {
     return toState(error, 'Could not save the deal.')
@@ -153,7 +153,7 @@ export async function moveDealAction(
       lostReason: options.lostReason ?? null,
       sortOrder: options.sortOrder,
     })
-    revalidateCrm([`/pipeline/${id}`])
+    revalidateCrm([`/deals/${id}`])
     return { ok: true, message: 'Deal moved.' }
   } catch (error) {
     return toState(error, 'Could not move the deal.')
@@ -312,8 +312,8 @@ export async function createOfferAction(_prev: ActionState, formData: FormData):
 
     await createOffer(parsed.data, amountGbp, actor)
     revalidateCrm([
-      parsed.data.customerId ? `/customers/${parsed.data.customerId}` : '/pipeline',
-      parsed.data.watchId ? `/inventory/${parsed.data.watchId}` : '/pipeline',
+      parsed.data.customerId ? `/customers/${parsed.data.customerId}` : '/deals',
+      parsed.data.watchId ? `/inventory/${parsed.data.watchId}` : '/deals',
     ])
     return { ok: true, message: 'Offer recorded.' }
   } catch (error) {

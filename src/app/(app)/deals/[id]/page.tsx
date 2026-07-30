@@ -105,7 +105,7 @@ export default async function DealPage({ params }: { params: { id: string } }) {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: 'Pipeline', href: '/pipeline' }, { label: deal.reference }]}
+        breadcrumbs={[{ label: 'Deals', href: '/deals' }, { label: deal.reference }]}
         title={deal.title}
         description={
           <span className="flex flex-wrap items-center gap-x-4 gap-y-1.5">

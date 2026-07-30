@@ -276,7 +276,7 @@ function DealCardView({ deal, canEdit, dragging, onDragStart, onDragEnd, onMove,
               meant clicking a deal took you somewhere that could not tell you
               what had happened on it. */}
           <Link
-            href={`/pipeline/${deal.id}`}
+            href={`/deals/${deal.id}`}
             className="block text-small font-bold text-content-primary hover:underline"
           >
             {deal.title}

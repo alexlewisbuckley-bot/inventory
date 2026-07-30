@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import {
-  ArrowRight, Banknote, Briefcase, ListChecks, Package, Plus, Search,
-  Settings, Store, Truck, UserRound, Users,
+  ArrowRight, Banknote, BarChart3, Briefcase, LifeBuoy, ListChecks, Package, Plus,
+  Search, Settings, Store, Truck, UserRound, Users,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useMounted } from '@/hooks/useMounted'
@@ -43,14 +43,16 @@ interface Action {
 const ACTIONS: Action[] = [
   { id: 'add-watch', label: 'Add a watch', hint: 'Log a purchase', href: '/inventory/new', icon: Plus, keywords: 'new stock buy intake purchase' },
   { id: 'inventory', label: 'Stock', href: '/inventory', icon: Package, keywords: 'watches inventory list' },
-  { id: 'pipeline', label: 'Pipeline', href: '/pipeline', icon: Briefcase, keywords: 'deals board opportunities' },
+  { id: 'deals', label: 'Deals', href: '/deals', icon: Briefcase, keywords: 'pipeline board opportunities' },
   { id: 'customers', label: 'Customers', href: '/customers', icon: Users, keywords: 'contacts people book crm' },
   { id: 'requests', label: 'Wanted', href: '/requests', icon: Search, keywords: 'wants sourcing demand requests' },
   { id: 'tasks', label: 'Tasks', href: '/tasks', icon: ListChecks, keywords: 'follow ups todo' },
   { id: 'sales', label: 'Sales', href: '/sales', icon: Truck, keywords: 'ledger invoices revenue' },
   { id: 'suppliers', label: 'Suppliers', href: '/suppliers', icon: Store, keywords: 'dealers sources trade' },
   { id: 'reports', label: 'Reports', href: '/reports', icon: Banknote, keywords: 'margin ageing analysis' },
+  { id: 'insights', label: 'Insights', href: '/insights', icon: BarChart3, keywords: 'selling funnel win rate charts' },
   { id: 'settings', label: 'Settings', href: '/settings', icon: Settings, keywords: 'preferences users currency admin' },
+  { id: 'help', label: 'Help & shortcuts', href: '/help', icon: LifeBuoy, keywords: 'keyboard shortcuts guide support' },
 ]
 
 const KIND_ICON: Record<Kind, typeof Package> = {

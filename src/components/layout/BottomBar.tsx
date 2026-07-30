@@ -26,7 +26,7 @@ import { cn } from '@/lib/cn'
 const ITEMS = [
   { href: '/today', label: 'Today', icon: LayoutDashboard, match: '/today' },
   { href: '/search', label: 'Search', icon: Search, match: '/search' },
-  { href: '/pipeline', label: 'Deals', icon: KanbanSquare, match: '/pipeline' },
+  { href: '/deals', label: 'Deals', icon: KanbanSquare, match: '/deals' },
   { href: '/customers', label: 'Contacts', icon: Users2, match: '/customers' },
 ] as const
 

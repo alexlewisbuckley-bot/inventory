@@ -494,7 +494,7 @@ await journey('sell links customer and deal', async (page) => {
 
 // --- 10c. A customer can be added from wherever one is chosen ---------------
 await journey('add a customer from the deal form', async (page) => {
-  await go(page, '/pipeline')
+  await go(page, '/deals')
   await page.locator('button:has-text("New deal")').click()
   await page.waitForTimeout(800)
 
@@ -709,17 +709,17 @@ await journey('a viewer is shown no create controls at all', async () => {
 // --- E3. The deal record
 
 await journey('a deal record opens from the board and records what happens on it', async (page) => {
-  await go(page, '/pipeline')
+  await go(page, '/deals')
 
   // The card title links to the deal now. Before E3 it linked to the customer,
   // because the deal had nowhere to link to.
-  const link = page.locator('article a[href^="/pipeline/"]:visible').first()
+  const link = page.locator('article a[href^="/deals/"]:visible').first()
   await link.waitFor({ state: 'visible', timeout: 10_000 })
   await link.click()
   await page.waitForTimeout(1800)
 
   const record = new URL(page.url()).pathname
-  if (!/^\/pipeline\/.+/.test(record)) throw new Error(`the card did not open a deal: ${record}`)
+  if (!/^\/deals\/.+/.test(record)) throw new Error(`the card did not open a deal: ${record}`)
 
   const railText = await page.locator('main').innerText()
   // The rail is the thing that only this screen can show.
@@ -756,8 +756,8 @@ await journey('a deal record opens from the board and records what happens on it
 })
 
 await journey('moving a stage updates the rail on the record', async (page) => {
-  await go(page, '/pipeline')
-  const link = page.locator('article a[href^="/pipeline/"]:visible').first()
+  await go(page, '/deals')
+  const link = page.locator('article a[href^="/deals/"]:visible').first()
   await link.click()
   await page.waitForTimeout(1800)
   const record = new URL(page.url()).pathname
@@ -1289,7 +1289,7 @@ await journey('a Sales role sees prices but never costs — in the payload, not 
     }
 
     // Selling still works: the pipeline is theirs.
-    await salesPage.goto(BASE + '/pipeline', { waitUntil: 'domcontentloaded' })
+    await salesPage.goto(BASE + '/deals', { waitUntil: 'domcontentloaded' })
     await salesPage.waitForTimeout(1200)
     if (await salesPage.locator('main select, main article').count() === 0) {
       throw new Error('Sales cannot see the pipeline that is supposed to be their screen')

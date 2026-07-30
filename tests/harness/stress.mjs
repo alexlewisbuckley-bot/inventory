@@ -181,7 +181,7 @@ await check('touch targets at 390', async (page) => {
   // and 40 is the floor below which mis-taps are measurable. Elements inside
   // dense table rows are exempt (phones get the card view), as are inline text
   // links, which sit in prose and are as tall as their line.
-  for (const path of ['/today', '/search', '/pipeline', '/customers']) {
+  for (const path of ['/today', '/search', '/deals', '/customers']) {
     await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(1200)
     const undersized = await page.evaluate(() => {

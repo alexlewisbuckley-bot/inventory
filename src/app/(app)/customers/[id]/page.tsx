@@ -259,7 +259,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
               <ul className="divide-y divide-line-subtle">
                 {context.openDeals.map((deal) => (
                   <li key={deal.id} className="px-6 py-3.5">
-                    <Link href={`/pipeline?deal=${deal.id}`} className="block">
+                    <Link href={`/deals?deal=${deal.id}`} className="block">
                       <span className="flex items-start justify-between gap-3">
                         <span className="min-w-0 text-small font-bold text-content-primary hover:underline">
                           {deal.title}

@@ -102,7 +102,7 @@ export function AgendaRow({ task, overdue }: { task: AgendaTask; overdue: boolea
 
   if (hidden) return null
 
-  const href = task.dealId ? `/pipeline/${task.dealId}`
+  const href = task.dealId ? `/deals/${task.dealId}`
     : task.customerId ? `/customers/${task.customerId}`
     : task.watchId ? `/inventory/${task.watchId}`
     : '/tasks'

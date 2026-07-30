@@ -70,7 +70,7 @@ export function SellingInsightsPanel({ data, lost, money }: {
             // deals *currently in* Sourcing would show a different number, and
             // a drill-through that disagrees with its headline is worse than
             // none.
-            href: '/pipeline',
+            href: '/deals',
           }))}
         />
       </ChartFrame>

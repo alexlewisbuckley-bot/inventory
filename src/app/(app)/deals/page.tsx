@@ -17,7 +17,7 @@ import { BASE_CURRENCY } from '@/lib/enums'
 import { can } from '@/lib/permissions'
 import { sql } from 'drizzle-orm'
 
-export const metadata: Metadata = { title: 'Pipeline' }
+export const metadata: Metadata = { title: 'Deals' }
 export const dynamic = 'force-dynamic'
 
 export default async function PipelinePage({ searchParams }: {
@@ -54,7 +54,7 @@ export default async function PipelinePage({ searchParams }: {
   return (
     <>
       <PageHeader
-        title="Pipeline"
+        title="Deals"
         description="Every live opportunity, and what it is worth if it lands."
         actions={can(user.role, 'deal:create')
           ? <DealFormPanel customers={customerRows} stock={stock} owners={owners} />

@@ -9,6 +9,15 @@ const nextConfig = {
   // For production, self-host the font files and drop the <link> entirely.
   optimizeFonts: false,
   experimental: { optimizePackageImports: ['lucide-react', 'date-fns'] },
+  // E7e: the board lives at /deals — "the pipeline is a view, not a place".
+  // Permanent redirects, kept indefinitely, so bookmarks and shared links
+  // from before the rename never break.
+  async redirects() {
+    return [
+      { source: '/pipeline', destination: '/deals', permanent: true },
+      { source: '/pipeline/:id', destination: '/deals/:id', permanent: true },
+    ]
+  },
   async headers() {
     return [
       {

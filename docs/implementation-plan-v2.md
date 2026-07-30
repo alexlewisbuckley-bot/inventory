@@ -329,6 +329,28 @@ set. Full journey suite green after every sub-epic.
 - *Density multiplier regresses spacing in unexpected places.* It changes
   vertical padding only, and only inside components that opt in.
 
+### E7c and E7e — resolution, recorded 30 July 2026
+
+**E7c (overlays) — complete, delivered across other epics** rather than as its
+own commit: the palette and peek shipped with E4, modal/drawer/toast moved to
+V2 tokens through E7a–b, and toast undo is live behind the destructive verbs
+(status change, bulk actions, agenda completion). The strict computed-style
+audit covers all of them.
+
+**E7e (navigation and renames) — shipped at adjusted scope.** `/pipeline` is
+now `/deals` — the pipeline is a view, not a place — with permanent redirects
+kept indefinitely, on both the board and the record. Settings, Users and Help
+have left the rail; they live in the account menu and the palette, per E13.
+Two of the planned renames are dropped because their premises were resolved
+away: `/customers → /contacts` fell with E8 (there is no merged Contact
+object, and calling customers "contacts" without the merge is a lie), and
+`/reports → /insights` became a coexistence rather than a rename — E10 built
+Insights as its own screen for the selling questions while Reports kept the
+capital-deployment view, and the two answer different questions. The full
+five-item rail is likewise not taken: it depended on Contacts and on Sourcing
+folding into Deals, both resolved otherwise, and the strategy's own caution
+applies — do not shrink the rail past what the palette has earned.
+
 ---
 
 ### E8 · Contacts — the merge

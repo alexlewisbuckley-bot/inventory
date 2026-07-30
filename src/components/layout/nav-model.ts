@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, CheckSquare, Clock, Coins, KanbanSquare, LayoutDashboard,
-  LifeBuoy, MapPin, Package, Receipt, Search, Settings, ShieldCheck, Users2,
+  MapPin, Package, Receipt, Search, Users2,
   type LucideIcon,
 } from 'lucide-react'
 import { can, type Capability } from '@/lib/permissions'
@@ -57,7 +57,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
     {
       heading: 'Sell',
       items: [
-        { href: '/pipeline', label: 'Pipeline', icon: KanbanSquare, capability: 'deal:read', match: '/pipeline', count: counts.openDeals },
+        { href: '/deals', label: 'Deals', icon: KanbanSquare, capability: 'deal:read', match: '/deals', count: counts.openDeals },
         { href: '/customers', label: 'Customers', icon: Users2, capability: 'customer:read', match: '/customers' },
         { href: '/requests', label: 'Wanted', icon: Search, capability: 'request:read', match: '/requests', count: counts.openRequests },
         { href: '/tasks', label: 'Tasks', icon: CheckSquare, capability: 'task:read', match: '/tasks', count: counts.tasksDue, attention: counts.tasksDue > 0 },
@@ -79,14 +79,9 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/reports', label: 'Reports', icon: BarChart3, capability: 'report:read', match: '/reports' },
       ],
     },
-    {
-      heading: 'System',
-      items: [
-        { href: '/settings', label: 'Settings', icon: Settings, capability: 'settings:read', match: '/settings' },
-        { href: '/settings/users', label: 'Users', icon: ShieldCheck, capability: 'user:read' },
-        { href: '/help', label: 'Help', icon: LifeBuoy },
-      ],
-    },
+    // Settings, Users and Help live in the account menu and the palette, not
+    // the rail (E13). A destination visited weekly does not need to spend
+    // rail space on every screen of a working day.
   ]
 
   return groups
