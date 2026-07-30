@@ -12,21 +12,6 @@ import { REQUEST_STATUS_TONE } from '@/lib/tokens'
 import { cn } from '@/lib/cn'
 
 /**
- * The V2 status tones, mapped onto the chip tones V1 actually has.
- *
- * Kept as an explicit table rather than left to the component, so that when
- * E7 gives Chip the four real status tones this file changes in one place and
- * the mapping disappears entirely.
- */
-const CHIP_TONE: Record<string, 'success' | 'gold' | 'danger' | 'neutral'> = {
-  good: 'success',
-  warning: 'gold',
-  serious: 'gold',
-  critical: 'danger',
-  neutral: 'neutral',
-}
-
-/**
  * Moving a want along.
  *
  * The status was written by the matcher and readable on the card, and there
@@ -51,7 +36,7 @@ export function RequestStatusControl({ id, status, canUpdate }: {
   const [current, setCurrent] = useState<RequestStatus>(status)
 
   const chip = (value: RequestStatus) => (
-    <Chip tone={CHIP_TONE[REQUEST_STATUS_TONE[value]] ?? 'neutral'}>
+    <Chip tone={REQUEST_STATUS_TONE[value]}>
       {REQUEST_STATUS_LABELS[value]}
     </Chip>
   )

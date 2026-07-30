@@ -16,7 +16,7 @@ const CONTROL_HEIGHT = 'h-11'
 
 const control =
   `w-full ${CONTROL_HEIGHT} rounded-md bg-surface-raised border px-3.5 text-body text-content-primary ` +
-  'placeholder:text-content-secondary transition-colors ' +
+  'placeholder:text-content-muted transition-colors ' +
   'disabled:opacity-60 disabled:cursor-not-allowed'
 
 const normal = 'border-line-subtle hover:border-line-strong'

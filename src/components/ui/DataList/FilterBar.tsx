@@ -133,7 +133,7 @@ export function FilterBar({ fields, options, placeholder, actions }: {
             value={term}
             onChange={(event) => setTerm(event.target.value)}
             placeholder={placeholder}
-            className="h-11 w-full rounded-md border border-line-subtle bg-surface-raised pl-10 pr-3.5 text-body text-content-primary transition-colors placeholder:text-content-secondary hover:border-line-strong"
+            className="h-11 w-full rounded-md border border-line-subtle bg-surface-raised pl-10 pr-3.5 text-body text-content-primary transition-colors placeholder:text-content-muted hover:border-line-strong"
           />
           {term && (
             <button

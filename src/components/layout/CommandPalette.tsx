@@ -270,7 +270,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             role="dialog"
             aria-modal="true"
             aria-label="Search and commands"
-            className="relative z-10 w-full max-w-xl overflow-hidden rounded-lg bg-surface-raised shadow-overlay animate-slide-up"
+            className="relative z-10 w-full max-w-xl overflow-hidden rounded-lg bg-surface-overlay shadow-overlay animate-slide-up"
           >
             <div className="flex items-center gap-3 border-b border-line-subtle px-5">
               <Search className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
@@ -282,7 +282,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                 placeholder="Anyone, anything — a name, a number, a serial. Or > for actions."
                 aria-label="Search"
                 aria-controls="command-results"
-                className="w-full bg-transparent py-4 text-body-lg text-content-primary outline-none placeholder:text-content-secondary"
+                className="w-full bg-transparent py-4 text-body-lg text-content-primary outline-none placeholder:text-content-muted"
               />
             </div>
 

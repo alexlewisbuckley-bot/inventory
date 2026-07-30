@@ -2,15 +2,35 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { WATCH_STATUS_LABELS, WATCH_STATUS_TONE, type WatchStatus } from '@/lib/enums'
 
-export type ChipTone = 'accent' | 'gold' | 'navy' | 'neutral' | 'danger' | 'success'
+/**
+ * Tones, V1 and V2 together during the migration.
+ *
+ * The V2 names — good, warning, serious, critical — are the four reserved
+ * status colours from the design system, and the distinction between serious
+ * and critical is the reason there are four: an overdue task and a failed
+ * migration must not look identical. The V1 names (success, gold, danger)
+ * remain as aliases until every caller has moved; they render the V2 colours
+ * already, so the product changes once rather than twice.
+ */
+export type ChipTone =
+  | 'accent' | 'navy' | 'neutral'
+  | 'good' | 'warning' | 'serious' | 'critical'
+  // V1 aliases, removed when the last caller migrates.
+  | 'gold' | 'danger' | 'success'
 
 const TONES: Record<ChipTone, string> = {
   accent: 'bg-teal-100 text-content-accent',
-  gold: 'bg-state-gold/18 text-navy-700 dark:text-state-gold',
   navy: 'bg-navy-500/15 text-navy-700',
   neutral: 'bg-surface-subtle text-content-secondary border border-line-subtle',
-  danger: 'bg-state-danger/15 text-state-danger',
-  success: 'bg-state-success/15 text-state-success',
+  good: 'bg-state-good/12 text-state-good',
+  warning: 'bg-state-warning/14 text-state-warning',
+  serious: 'bg-state-serious/12 text-state-serious',
+  critical: 'bg-state-critical/12 text-state-critical',
+  // Aliases map onto the V2 colours, not the V1 ones, so a screen using the
+  // old name still shows the new system.
+  gold: 'bg-state-warning/14 text-state-warning',
+  danger: 'bg-state-critical/12 text-state-critical',
+  success: 'bg-state-good/12 text-state-good',
 }
 
 export interface ChipProps {

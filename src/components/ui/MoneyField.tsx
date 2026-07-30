@@ -97,7 +97,7 @@ export function MoneyField({
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'min-w-0 flex-1 bg-transparent pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-secondary',
+            'min-w-0 flex-1 bg-transparent pr-2 text-body tabular-nums text-content-primary outline-none placeholder:text-content-muted',
             symbolFor(currency) === currency && 'pl-3.5',
           )}
           placeholder="0.00"

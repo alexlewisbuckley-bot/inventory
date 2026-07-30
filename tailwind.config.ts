@@ -45,9 +45,14 @@ const config: Config = {
           2: 'rgb(var(--c-series-2) / <alpha-value>)',
         },
         state: {
-          success: 'rgb(var(--c-success) / <alpha-value>)',
-          gold: 'rgb(var(--c-gold) / <alpha-value>)',
-          danger: 'rgb(var(--c-danger) / <alpha-value>)',
+          // The V1 names now resolve to the V2 variables, which migrates all
+          // forty-odd consumers in one move: `text-state-danger` renders the
+          // V2 critical red everywhere it appears. The V1 CSS variables
+          // (--c-success, --c-gold, --c-danger) become unreferenced and are
+          // deleted from globals.css at the end of E7.
+          success: 'rgb(var(--c-state-good) / <alpha-value>)',
+          gold: 'rgb(var(--c-state-warning) / <alpha-value>)',
+          danger: 'rgb(var(--c-state-critical) / <alpha-value>)',
           info: 'rgb(var(--c-navy-500) / <alpha-value>)',
           // V2: four reserved statuses. `success`/`gold`/`danger` above are
           // the V1 names and are removed in E7 once nothing references them.

@@ -121,7 +121,7 @@ export function ComboSelect({
                   onKeyDown={(event) => { if (event.key === 'Enter' && canCreate) { event.preventDefault(); void create() } }}
                   placeholder={onCreate ? 'Search, or type to add new…' : 'Search…'}
                   aria-label="Search options"
-                  className="w-full bg-transparent py-2.5 text-body text-content-primary outline-none placeholder:text-content-secondary"
+                  className="w-full bg-transparent py-2.5 text-body text-content-primary outline-none placeholder:text-content-muted"
                 />
               </div>
 

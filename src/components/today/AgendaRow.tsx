@@ -151,7 +151,7 @@ export function AgendaRow({ task, overdue }: { task: AgendaTask; overdue: boolea
           )}
           <span>{TASK_KIND_LABELS[task.kind as TaskKind] ?? task.kind}</span>
           {task.priority !== 'NORMAL' && (
-            <Chip tone={task.priority === 'URGENT' ? 'danger' : 'gold'}>
+            <Chip tone={task.priority === 'URGENT' ? 'serious' : 'warning'}>
               {PRIORITY_LABELS[task.priority as Priority]}
             </Chip>
           )}

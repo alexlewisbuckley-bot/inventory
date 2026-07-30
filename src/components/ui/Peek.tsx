@@ -117,7 +117,7 @@ export function Peek({ target, onClose }: {
         role="dialog"
         aria-modal="true"
         aria-label={record ? `Preview of ${record.title}` : 'Preview'}
-        className="relative z-10 flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-lg bg-surface-raised shadow-overlay animate-slide-up"
+        className="relative z-10 flex max-h-full w-full max-w-sm flex-col overflow-hidden rounded-lg bg-surface-overlay shadow-overlay animate-slide-up"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line-subtle px-5 py-4">
           <div className="min-w-0">

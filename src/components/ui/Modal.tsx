@@ -52,7 +52,7 @@ export function Modal({
         aria-modal="true"
         aria-labelledby="modal-title"
         className={cn(
-          'relative z-10 my-auto w-full rounded-lg bg-surface-raised shadow-overlay animate-slide-up',
+          'relative z-10 my-auto w-full rounded-lg bg-surface-overlay shadow-overlay animate-slide-up',
           SIZES[size],
         )}
       >

@@ -45,7 +45,7 @@ export function ToolbarSearch({ value, onChange, placeholder, label, className }
         placeholder={placeholder}
         aria-label={label}
         type="search"
-        className={cn(CONTROL, 'w-full pl-10 pr-9 text-body placeholder:text-content-secondary')}
+        className={cn(CONTROL, 'w-full pl-10 pr-9 text-body placeholder:text-content-muted')}
       />
       {value && (
         <button

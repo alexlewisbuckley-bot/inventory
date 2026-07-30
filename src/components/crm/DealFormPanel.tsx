@@ -202,7 +202,7 @@ export function DealFormPanel({
               rows={3}
               defaultValue={deal?.notes ?? undefined}
               placeholder="What they want, what they have said, what happens next."
-              className="mt-1.5 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 text-body text-content-primary placeholder:text-content-secondary"
+              className="mt-1.5 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 text-body text-content-primary placeholder:text-content-muted"
             />
           </div>
 

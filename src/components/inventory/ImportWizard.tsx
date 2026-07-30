@@ -203,7 +203,7 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
                   rows={5}
                   aria-label="Paste rows"
                   placeholder={`${IMPORT_COLUMNS.map((c) => c.header).join(',')}\n${IMPORT_COLUMNS.map((c) => c.example).join(',')}`}
-                  className="mt-2 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 font-mono text-caption text-content-primary placeholder:text-content-secondary"
+                  className="mt-2 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 font-mono text-caption text-content-primary placeholder:text-content-muted"
                 />
               )}
             </div>
