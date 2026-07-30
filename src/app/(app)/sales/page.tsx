@@ -13,7 +13,8 @@ import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY, SALE_CHANNELS, type SaleChannel } from '@/lib/enums'
-import { can } from '@/lib/permissions'
+import { can, canSeeCost } from '@/lib/permissions'
+import { redactRows } from '@/server/redact'
 
 export const metadata: Metadata = { title: 'Sales' }
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,13 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const exportable = can(user.role, 'report:export')
+
+  // The cost side leaves the server only for roles that may see it. Nulled
+  // here rather than hidden in the table — hidden is still in the payload.
+  const showCost = canSeeCost(user.role)
+  const items = redactRows(user.role as never, result.items, {
+    cost: ['costGbp', 'profitGbp', 'marginBps', 'vsEstimateGbp'],
+  })
   // "Nothing here yet" and "nothing matches your filters" are different
   // situations and want different screens.
   // The V2 clauses count as filtering too. Without them, a URL carrying only
@@ -92,7 +100,10 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       <section aria-label="Sales summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="Sales" value={summary.count} caption="in the current view" />
         <StatCard label="Revenue" value={money(summary.revenueGbp)} caption="gross, excluding fees" />
-        <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
+        {showCost && (
+          <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
+        )}
+        {showCost && (
         <StatCard
           label="Weighted margin"
           value={formatPct(summary.avgMarginBps / 100)}
@@ -101,6 +112,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             : undefined}
           tone="accent"
         />
+        )}
       </section>
 
       {/* The date range keeps its own control — a from/to pair is the one
@@ -122,7 +134,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             action={<LinkButton href="/sales" variant="secondary">Clear filters</LinkButton>}
           />
         ) : (
-          <SalesTable result={result} />
+          <SalesTable result={{ ...result, items }} showCost={showCost} />
         )}
       </Card>
         </>

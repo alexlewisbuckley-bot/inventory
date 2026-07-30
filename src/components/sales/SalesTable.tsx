@@ -10,8 +10,15 @@ import { formatDate } from '@/lib/dates'
 import { SALE_CHANNEL_LABELS } from '@/lib/enums'
 import type { SaleListItem } from '@/server/repositories/sale-repository'
 
-export function SalesTable({ result }: {
+export function SalesTable({ result, showCost = true }: {
   result: { items: SaleListItem[]; total: number; page: number; perPage: number }
+  /**
+   * Whether the cost side — cost, profit, margin — exists on this table.
+   * The page has already nulled the figures for roles without `cost:read`;
+   * this removes the columns so the headers do not advertise data that will
+   * never arrive.
+   */
+  showCost?: boolean
 }) {
   const query = useListQuery()
   // Money renders in whatever currency the header is showing, so the table
@@ -33,10 +40,10 @@ export function SalesTable({ result }: {
             <TH>Watch</TH>
             <TH width="120px">Customer</TH>
             <TH width="100px">Channel</TH>
-            <TH width="110px" align="right">Cost</TH>
+            {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
-            <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>
-            <TH width="140px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>
+            {showCost && <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>}
+            {showCost && <TH width="140px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
           </TR>
         </THead>
         <TBody>
@@ -55,8 +62,10 @@ export function SalesTable({ result }: {
               <TD>
                 <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>
               </TD>
-              <TD align="right" className="text-content-secondary">{money(sale.costGbp)}</TD>
+              {showCost && <TD align="right" className="text-content-secondary">{money(sale.costGbp)}</TD>}
               <TD align="right" className="font-bold">{money(sale.amountGbp)}</TD>
+              {showCost && (
+              <>
               <TD align="right" className={cn('font-bold', sale.profitGbp >= 0 ? 'text-content-accent' : 'text-state-danger')}>
                 {signed(sale.profitGbp)}
               </TD>
@@ -72,6 +81,8 @@ export function SalesTable({ result }: {
                   </span>
                 )}
               </TD>
+              </>
+              )}
             </TR>
           ))}
         </TBody>

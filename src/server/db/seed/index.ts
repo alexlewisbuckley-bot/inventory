@@ -38,6 +38,8 @@ const SEED_USERS: Array<{ email: string; name: string; role: Role; jobTitle: str
   { email: 'sarah@bluecroft.co.uk', name: 'Sarah Whitfield', role: 'MANAGER', jobTitle: 'Head of Stock', password: 'Bluecroft2026!' },
   { email: 'omar@bluecroft.co.uk', name: 'Omar Haddad', role: 'STAFF', jobTitle: 'Sales Associate — Dubai', password: 'Bluecroft2026!' },
   { email: 'priya@bluecroft.co.uk', name: 'Priya Nair', role: 'VIEWER', jobTitle: 'Finance', password: 'Bluecroft2026!' },
+  { email: 'chloe@bluecroft.co.uk', name: 'Chloe Barnes', role: 'SALES', jobTitle: 'Sales — London', password: 'Bluecroft2026!' },
+  { email: 'daniel@bluecroft.co.uk', name: 'Daniel Kowalczyk', role: 'OPERATIONS', jobTitle: 'Logistics', password: 'Bluecroft2026!' },
 ]
 
 const SEED_LOCATIONS = [

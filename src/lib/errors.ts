@@ -24,6 +24,16 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
+  /**
+   * Next.js strips a server error's message before it reaches the client and
+   * substitutes a random digest — correct for a stack trace, wrong for "you
+   * are not allowed in here", which the person is supposed to read. Setting
+   * `digest` ourselves survives the stripping, so the error boundary can tell
+   * a refusal from a crash and say so instead of "something went wrong,
+   * try again" — which, for a permission refusal, is untrue twice.
+   */
+  readonly digest = 'FORBIDDEN'
+
   constructor(message = 'You do not have permission to do that.') {
     super(message, 403, 'FORBIDDEN')
   }

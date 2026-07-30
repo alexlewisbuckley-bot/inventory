@@ -23,7 +23,8 @@ import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY } from '@/lib/enums'
-import { CAPABILITIES, can, type Capability } from '@/lib/permissions'
+import { CAPABILITIES, can, canSeeCost, type Capability } from '@/lib/permissions'
+import { redactRows } from '@/server/redact'
 
 export const metadata: Metadata = { title: 'Inventory' }
 export const dynamic = 'force-dynamic'
@@ -85,6 +86,16 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
+  // Money the reader may not see is removed here, before render — not hidden
+  // by the table. Hidden is still in the payload, and the payload is the
+  // thing that leaks.
+  const showCost = canSeeCost(user.role)
+  const showRevenue = can(user.role, 'revenue:read')
+  const rows = redactRows(user.role as never, result.items, {
+    cost: ['purchasePriceGbp', 'estProfitGbp', 'actualProfitGbp'],
+    revenue: ['estSaleGbp', 'soldAmountGbp'],
+  })
+
   // Resolved once server-side so the client never re-derives permissions.
   const capabilities = Object.fromEntries(
     CAPABILITIES.map((c) => [c, can(user.role, c)]),
@@ -97,7 +108,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     <>
       <PageHeader
         title="Stock Inventory"
-        description={`${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${money(summary.totalCostGbp)} invested`}
+        description={showCost
+          ? `${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${money(summary.totalCostGbp)} invested`
+          : `${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view`}
         actions={
           <>
             {/* Visible from sm upwards; below that they fold into the overflow
@@ -134,14 +147,20 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
-        <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
-        <StatCard label="Est. sale value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
-        <StatCard
-          label="Est. profit"
-          value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
-          caption={margin !== null ? `${formatPct(margin)} on priced stock` : '—'}
-          tone="accent"
-        />
+        {showCost && (
+          <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
+        )}
+        {showRevenue && (
+          <StatCard label="Est. sale value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
+        )}
+        {showCost && (
+          <StatCard
+            label="Est. profit"
+            value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
+            caption={margin !== null ? `${formatPct(margin)} on priced stock` : '—'}
+            tone="accent"
+          />
+        )}
       </section>
 
       <ViewBar object="watch" builtIn={INVENTORY_VIEWS} saved={savedViews} />
@@ -159,7 +178,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>
           <InventoryTable
-            result={result}
+            result={{ ...result, items: rows }}
             locations={locationOptions}
             capabilities={capabilities}
             customers={customers}

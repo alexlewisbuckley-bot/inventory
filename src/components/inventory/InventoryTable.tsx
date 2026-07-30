@@ -79,9 +79,18 @@ export function InventoryTable({
   const [sellTarget, setSellTarget] = useState<QuickSellTarget | null>(null)
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
 
-  const columnKeys = useMemo(() => INVENTORY_COLUMNS.map((c) => c.key), [])
+  // Money columns the role may not see are not columns at all here — not
+  // hidden, absent. The page has already nulled the figures; this stops the
+  // headers advertising data that will never arrive.
+  const visibleColumns = useMemo(() => INVENTORY_COLUMNS.filter((column) => {
+    if ((column.key === 'cost' || column.key === 'profit') && !capabilities['cost:read']) return false
+    if (column.key === 'estSale' && !capabilities['revenue:read']) return false
+    return true
+  }), [capabilities])
+
+  const columnKeys = useMemo(() => visibleColumns.map((c) => c.key), [visibleColumns])
   const columns = useColumnPreferences(STORAGE_KEY, columnKeys, DEFAULT_HIDDEN)
-  const show = (key: string) => !columns.isHidden(key)
+  const show = (key: string) => !columns.isHidden(key) && columnKeys.includes(key)
 
   const sort = useMemo(
     () => ({ field: query.get('sort') ?? 'stockNo', dir: (query.get('dir') ?? 'desc') as 'asc' | 'desc' }),
@@ -146,7 +155,7 @@ export function InventoryTable({
         {/* The picker chooses table columns, and below sm there is no table. */}
         <div className="hidden sm:block">
         <ColumnPicker
-          columns={INVENTORY_COLUMNS}
+          columns={visibleColumns}
           isHidden={columns.isHidden}
           onToggle={columns.toggle}
           onReset={columns.showAll}

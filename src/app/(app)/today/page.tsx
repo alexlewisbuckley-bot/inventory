@@ -14,7 +14,7 @@ import { Agenda } from '@/components/today/Agenda'
 import { WorthKnowing } from '@/components/today/WorthKnowing'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { BASE_CURRENCY, DEAL_STAGE_LABELS, type DealStage } from '@/lib/enums'
-import { can } from '@/lib/permissions'
+import { can, canSeeCost } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Today' }
 export const dynamic = 'force-dynamic'
@@ -106,7 +106,9 @@ export default async function TodayPage() {
             <Tile
               label="Stock"
               value={`${stock.held} held`}
-              supporting={`${money(stock.capitalGbp)} of capital`}
+              supporting={canSeeCost(user.role)
+                ? `${money(stock.capitalGbp)} of capital`
+                : `${stock.unpriced} without a price`}
               footnote={stock.unpriced > 0
                 ? `${stock.unpriced} unpriced · ${stock.ageing} over 90 days`
                 : `${stock.ageing} over 90 days`}

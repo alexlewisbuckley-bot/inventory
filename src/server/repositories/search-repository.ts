@@ -75,7 +75,7 @@ export async function search(
 
   const jobs: Array<Promise<SearchHit[]>> = []
 
-  if (can(role, 'watch:read')) jobs.push(watchHits(like, numeric, query))
+  if (can(role, 'watch:read')) jobs.push(watchHits(like, numeric, query, can(role, 'revenue:read')))
   if (can(role, 'customer:read')) jobs.push(contactHits(like, numeric, query))
   if (can(role, 'supplier:read')) jobs.push(supplierHits(like, numeric))
   if (can(role, 'deal:read')) jobs.push(dealHits(like, query))
@@ -94,7 +94,12 @@ export async function search(
   return { hits: found.slice(0, limit), tookMs: Date.now() - started }
 }
 
-async function watchHits(like: string, numeric: string | null, query: string): Promise<SearchHit[]> {
+async function watchHits(
+  like: string,
+  numeric: string | null,
+  query: string,
+  showPrice: boolean,
+): Promise<SearchHit[]> {
   const exactStock = /^\d+$/.test(query) ? Number(query) : null
 
   const rows = await db.execute(sql`
@@ -133,7 +138,7 @@ async function watchHits(like: string, numeric: string | null, query: string): P
       row.serial ? `serial ${row.serial}` : 'no serial',
       row.nickname,
     ].filter(Boolean).join(' · '),
-    meta: row.est_sale_gbp === null ? 'unpriced' : gbp(Number(row.est_sale_gbp)),
+    meta: !showPrice ? null : row.est_sale_gbp === null ? 'unpriced' : gbp(Number(row.est_sale_gbp)),
     href: `/inventory/${row.id}`,
     exact: row.exact === true,
     updatedAt: new Date(row.updated_at as string),

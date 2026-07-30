@@ -7,7 +7,7 @@
  * so a new status can never be added in one layer and forgotten in another.
  */
 
-export const ROLES = ['OWNER', 'MANAGER', 'STAFF', 'VIEWER'] as const
+export const ROLES = ['OWNER', 'MANAGER', 'STAFF', 'SALES', 'OPERATIONS', 'VIEWER'] as const
 export type Role = (typeof ROLES)[number]
 
 export const WATCH_STATUSES = [
@@ -130,6 +130,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   OWNER: 'Owner',
   MANAGER: 'Manager',
   STAFF: 'Staff',
+  SALES: 'Sales',
+  OPERATIONS: 'Operations',
   VIEWER: 'Viewer',
 }
 
@@ -137,6 +139,8 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   OWNER: 'Full control including user management, settings and permanent deletion.',
   MANAGER: 'Manage stock, sales, suppliers and locations. Can export and import.',
   STAFF: 'Add and edit stock, move watches between locations and record sales.',
+  SALES: 'The customer book, the pipeline and selling — without cost prices or margins.',
+  OPERATIONS: 'Stock, movements and locations — without customers or any money at all.',
   VIEWER: 'Read-only access to stock and reports.',
 }
 

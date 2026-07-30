@@ -710,9 +710,7 @@ await journey('a deal record opens from the board and records what happens on it
 
   // The card title links to the deal now. Before E3 it linked to the customer,
   // because the deal had nowhere to link to.
-  const card = page.locator('a[href^="/pipeline/deal_"], a[href^="/pipeline/dea"]').first()
-  const anyDeal = page.locator('article a[href^="/pipeline/"]').first()
-  const link = (await card.count()) ? card : anyDeal
+  const link = page.locator('article a[href^="/pipeline/"]:visible').first()
   await link.waitFor({ state: 'visible', timeout: 10_000 })
   await link.click()
   await page.waitForTimeout(1800)
@@ -756,7 +754,7 @@ await journey('a deal record opens from the board and records what happens on it
 
 await journey('moving a stage updates the rail on the record', async (page) => {
   await go(page, '/pipeline')
-  const link = page.locator('article a[href^="/pipeline/"]').first()
+  const link = page.locator('article a[href^="/pipeline/"]:visible').first()
   await link.click()
   await page.waitForTimeout(1800)
   const record = new URL(page.url()).pathname
@@ -1245,6 +1243,80 @@ await journey('a phone gets the bottom bar, a stage list and full-screen search'
   if (results === 0) throw new Error('typing a surname on the search page found nobody')
 
   await page.setViewportSize({ width: 1440, height: 1000 })
+})
+
+// --- E11. The two new roles, asserted against the payload
+
+/** Sign a role's seed user in on a fresh context, run the checks, close. */
+const asRole = async (email, fn) => {
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const page = await ctx.newPage()
+  try {
+    await signIn(ctx, { email, password: 'Bluecroft2026!' })
+    await fn(page)
+  } finally {
+    await page.close()
+    await ctx.close()
+  }
+}
+
+await journey('a Sales role sees prices but never costs — in the payload, not the CSS', async () => {
+  // The fixture: stock 1364 cost £7,835 and asks £12,345. The claim is not
+  // "the cost is hidden" but "the cost never left the server" — asserted
+  // against page.content(), the HTML the browser received, because
+  // display:none is still a leak.
+  await asRole('chloe@bluecroft.co.uk', async (salesPage) => {
+    await salesPage.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+    await salesPage.waitForTimeout(1800)
+    const payload = await salesPage.content()
+    if (payload.includes('7,835')) throw new Error('the cost figure reached a Sales payload')
+    if (!payload.includes('12,345')) throw new Error('the asking price is missing for Sales — over-masked')
+    const visible = await salesPage.locator('main').innerText()
+    if (/\bCost\b|Est\. profit|Capital invested/.test(visible)) {
+      throw new Error('a cost column or tile is still advertised to Sales')
+    }
+
+    // The surfaces made entirely of cost figures answer with a refusal, not a
+    // half-empty page.
+    const insights = await salesPage.goto(BASE + '/insights', { waitUntil: 'domcontentloaded' })
+    await salesPage.waitForTimeout(800)
+    const body = await salesPage.locator('body').innerText()
+    if ((insights?.status() ?? 0) < 400 && !/not part of your role|cannot|permission|forbidden/i.test(body)) {
+      throw new Error('Sales reached the insights page, which is made of cost figures')
+    }
+
+    // Selling still works: the pipeline is theirs.
+    await salesPage.goto(BASE + '/pipeline', { waitUntil: 'domcontentloaded' })
+    await salesPage.waitForTimeout(1200)
+    if (await salesPage.locator('main select, main article').count() === 0) {
+      throw new Error('Sales cannot see the pipeline that is supposed to be their screen')
+    }
+  })
+})
+
+await journey('an Operations role sees no money in either direction', async () => {
+  await asRole('daniel@bluecroft.co.uk', async (opsPage) => {
+    await opsPage.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+    await opsPage.waitForTimeout(1800)
+    const payload = await opsPage.content()
+    if (payload.includes('7,835')) throw new Error('a cost figure reached an Operations payload')
+    if (payload.includes('12,345')) throw new Error('an asking price reached an Operations payload')
+
+    // The customer book is not theirs at all.
+    const customers = await opsPage.goto(BASE + '/customers', { waitUntil: 'domcontentloaded' })
+    await opsPage.waitForTimeout(800)
+    const body = await opsPage.locator('body').innerText()
+    if ((customers?.status() ?? 0) < 400 && !/not part of your role|cannot|permission|forbidden/i.test(body)) {
+      throw new Error('Operations reached the customer book')
+    }
+
+    // But the job works: the stock list renders for the person moving it.
+    await opsPage.goto(BASE + '/inventory', { waitUntil: 'domcontentloaded' })
+    await opsPage.waitForTimeout(1200)
+    if (await opsPage.locator('tbody tr').count() === 0) {
+      throw new Error('Operations cannot see the stock they are meant to move')
+    }
+  })
 })
 
 // --- Coverage floor before the redesign begins ------------------------------

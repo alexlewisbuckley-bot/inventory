@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowRight, Banknote, Camera, Clock, Coins, Handshake,
   ImageOff, Package, PoundSterling, Receipt, ShoppingBag, TrendingUp, Truck, Upload,
 } from 'lucide-react'
-import { requireUser } from '@/server/auth/session'
+import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { liveSale } from '@/server/db/predicates'
 import { brands, sales, watches } from '@/server/db/schema'
@@ -41,7 +41,10 @@ const AGEING_DAYS = 90
 const WINDOW_DAYS = 30
 
 export default async function InsightsPage() {
-  const user = await requireUser()
+  // Guarded like the reports it absorbed: this screen is cost figures end to
+  // end, and a role that may not see cost gets a refusal here rather than a
+  // page of gaps.
+  const user = await requireCapability('report:read')
 
   // Active stock only — sold and written-off watches are excluded from the
   // capital and margin figures so the tiles answer "what do we hold now?".

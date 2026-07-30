@@ -26,12 +26,57 @@ export const CAPABILITIES = [
   'activity:read', 'activity:create',
   'task:read', 'task:create', 'task:update',
   'request:read', 'request:create', 'request:update',
+  /**
+   * What money a person may see, separate from what they may do.
+   *
+   * `cost:read` covers purchase price, profit and margin — the figures that
+   * reveal the business's position rather than its prices. A salesperson can
+   * quote an asking price all day without ever needing to know what the watch
+   * cost, and in the trade, cost prices leaking through a departing
+   * salesperson is a real and expensive event. `revenue:read` covers sale
+   * amounts and pipeline values.
+   */
+  'cost:read', 'revenue:read',
 ] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
 
 const VIEWER: Capability[] = [
   'watch:read', 'sale:read', 'supplier:read', 'location:read', 'report:read',
+  'revenue:read', 'cost:read',
+]
+
+/**
+ * Sells, without seeing the cost side.
+ *
+ * Everything a Staff member does with customers, deals and tasks — but no
+ * cost, profit or margin anywhere: not on the inventory list, not on a sold
+ * row, not in a report. The capability is enforced at the read boundary, so
+ * the figures are absent from what the server sends, not hidden by CSS.
+ */
+const SALES: Capability[] = [
+  'watch:read', 'sale:read', 'sale:create', 'supplier:read', 'location:read',
+  'revenue:read',
+  'watch:price',
+  'customer:read', 'customer:create', 'customer:update',
+  'deal:read', 'deal:create', 'deal:update',
+  'activity:read', 'activity:create',
+  'task:read', 'task:create', 'task:update',
+  'request:read', 'request:create', 'request:update',
+]
+
+/**
+ * Moves stock, without the commercial layer.
+ *
+ * Intake, locations, movements, despatch. No customer book, no pipeline, and
+ * no money in either direction — an operations person books a watch in and
+ * moves it to the vault without ever being shown what it cost or what it is
+ * asking.
+ */
+const OPERATIONS: Capability[] = [
+  'watch:read', 'watch:create', 'watch:update', 'watch:move',
+  'supplier:read', 'location:read', 'location:manage',
+  'task:read', 'task:create', 'task:update',
 ]
 
 const STAFF: Capability[] = [
@@ -61,6 +106,8 @@ const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage']
 export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   VIEWER: VIEWER,
   STAFF: STAFF,
+  SALES: SALES,
+  OPERATIONS: OPERATIONS,
   MANAGER: MANAGER,
   OWNER: OWNER,
 }
@@ -80,7 +127,18 @@ export function canAll(role: Role | null | undefined, capabilities: Capability[]
 
 /** Roles a given actor is allowed to assign. Nobody may create an Owner but an Owner. */
 export function assignableRoles(actorRole: Role): Role[] {
-  if (actorRole === 'OWNER') return ['OWNER', 'MANAGER', 'STAFF', 'VIEWER']
-  if (actorRole === 'MANAGER') return ['STAFF', 'VIEWER']
+  if (actorRole === 'OWNER') return ['OWNER', 'MANAGER', 'STAFF', 'SALES', 'OPERATIONS', 'VIEWER']
+  if (actorRole === 'MANAGER') return ['STAFF', 'SALES', 'OPERATIONS', 'VIEWER']
   return []
+}
+
+/**
+ * May this role see what things cost — purchase price, profit, margin?
+ *
+ * A named helper rather than an inlined `can(...)` because the question is
+ * asked at every read boundary that returns money, and a grep for
+ * `canSeeCost` is how the next person audits that every one of them asks it.
+ */
+export function canSeeCost(role: Role | null | undefined): boolean {
+  return can(role, 'cost:read')
 }

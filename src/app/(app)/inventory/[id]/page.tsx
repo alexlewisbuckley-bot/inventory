@@ -21,7 +21,7 @@ import {
   type AuditAction, type BoxPapers, type Condition, type WatchStatus,
 } from '@/lib/enums'
 import { changeValue, fieldLabel } from '@/lib/audit-format'
-import { can } from '@/lib/permissions'
+import { canSeeCost, can } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,27 +88,37 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           : undefined}
       />
 
+      {/* Cost and margin leave the server only for roles that may see them.
+          Absent, not blanked: a tile reading "•••" is an advertisement for a
+          number the reader is not allowed, and it invites asking somebody who
+          is. */}
       <section aria-label="Financial summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-        <StatCard
-          label="Purchase price"
-          value={money(watch.purchasePriceGbp)}
-          caption={currency === BASE_CURRENCY ? undefined : describeRate(currency, rates)}
-        />
-        <StatCard
-          label="Est. sale price"
-          value={watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'Not set'}
-          caption={watch.estSaleGbp === null ? 'Needs a price' : 'Target'}
-        />
-        <StatCard
-          label={sale ? 'Actual profit' : 'Est. profit'}
-          value={sale ? signed(sale.profitGbp) : estProfit !== null ? signed(estProfit) : '—'}
-          caption={sale
-            ? formatPct(sale.marginBps / 100)
-            : estProfit !== null && watch.purchasePriceGbp > 0
-              ? `${formatPct((estProfit / watch.purchasePriceGbp) * 100)} margin`
-              : undefined}
-          tone="accent"
-        />
+        {canSeeCost(user.role) && (
+          <StatCard
+            label="Purchase price"
+            value={money(watch.purchasePriceGbp)}
+            caption={currency === BASE_CURRENCY ? undefined : describeRate(currency, rates)}
+          />
+        )}
+        {can(user.role, 'revenue:read') && (
+          <StatCard
+            label="Est. sale price"
+            value={watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'Not set'}
+            caption={watch.estSaleGbp === null ? 'Needs a price' : 'Target'}
+          />
+        )}
+        {canSeeCost(user.role) && (
+          <StatCard
+            label={sale ? 'Actual profit' : 'Est. profit'}
+            value={sale ? signed(sale.profitGbp) : estProfit !== null ? signed(estProfit) : '—'}
+            caption={sale
+              ? formatPct(sale.marginBps / 100)
+              : estProfit !== null && watch.purchasePriceGbp > 0
+                ? `${formatPct((estProfit / watch.purchasePriceGbp) * 100)} margin`
+                : undefined}
+            tone="accent"
+          />
+        )}
         <StatCard label="Days held" value={held ?? '—'} caption={`Purchased ${formatDate(watch.purchaseDate)}`} />
       </section>
 
@@ -157,7 +167,9 @@ export default async function WatchDetailPage({ params }: { params: { id: string
               <CardBody>
                 <dl className="grid gap-4 sm:grid-cols-2">
                   <Row label="Sale date" value={formatDate(sale.saleDate)} />
-                  <Row label="Sale amount" value={money(sale.saleAmountGbp)} />
+                  {can(user.role, 'revenue:read') && (
+                    <Row label="Sale amount" value={money(sale.saleAmountGbp)} />
+                  )}
                   <Row label="Customer" value={sale.customerName ?? '—'} />
                   <Row label="Channel" value={sale.channel} />
                 </dl>
