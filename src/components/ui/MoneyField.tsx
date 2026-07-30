@@ -63,6 +63,11 @@ export function MoneyField({
       </label>
 
       <div
+        // One control made of two elements. Marked so the computed-style
+        // audit measures the shell — 44px, on the scale — rather than the
+        // input and select inside it, which are 42 because of the shell's
+        // own border.
+        data-control="shell"
         className={cn(
           'focus-ring-none flex h-11 items-stretch overflow-hidden rounded-md border bg-surface-raised transition-colors',
           'focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/25',

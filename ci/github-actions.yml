@@ -73,6 +73,7 @@ jobs:
       # Adversarial input, four viewports, no sideways scroll, focus rings,
       # and nothing fetched from a third party.
       - run: npm run test:stress
+      - run: npm run test:tokens:strict
 
       # Design-system drift. Reporting only until epic E7, then --strict.
       - run: npm run test:tokens

@@ -49,7 +49,24 @@ for (const url of ROUTES) {
       // acting as a button is a surface — none of them are on the scale, and
       // counting them buries the drift that matters in noise.
       const onScale = tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT'
-      if (onScale && box.height >= 28 && box.height <= 60) {
+
+      // A control inside a control is a part, not a control. A money field is
+      // a 44px shell holding an input and a currency select; both measure 42
+      // because the shell's border is 1px top and bottom. Counting the parts
+      // reports a size the design system does not have and cannot fix — the
+      // thing on the scale is the shell, and the shell is the right height.
+      let nested = false
+      if (onScale) {
+        for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+          const tagName = parent.tagName
+          if (tagName === 'BUTTON' || tagName === 'LABEL' || parent.dataset.control === 'shell') {
+            nested = true
+            break
+          }
+        }
+      }
+
+      if (onScale && !nested && box.height >= 28 && box.height <= 60) {
         out.controlHeight.push(`${Math.round(box.height)}px`)
       }
     }

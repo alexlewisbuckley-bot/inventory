@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MoreHorizontal, PackageSearch, Receipt, SearchX } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useListQuery } from '@/hooks/useListQuery'
 import { useSelection } from '@/hooks/useSelection'
 import { SelectAllBanner } from '@/components/ui/DataList'
@@ -310,6 +311,8 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
   onVoid: () => void
 }) {
   const query = useListQuery()
+  const pathname = usePathname()
+  const params = useSearchParams()
   const { money, signed } = useCurrency()
   const sold = watch.status === 'SOLD'
   const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
@@ -367,6 +370,14 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
   )
 }
 
+
+/** The current query with one parameter set, for a link that opens a drawer. */
+function withParam(params: URLSearchParams, key: string, value: string): string {
+  const next = new URLSearchParams(params.toString())
+  next.set(key, value)
+  return next.toString()
+}
+
 function Row({
   watch, show, selectable, selected, onToggle,
   canSell, canPrice, canEditStatus, canVoid, onSell, onVoid,
@@ -384,6 +395,8 @@ function Row({
   onVoid: () => void
 }) {
   const query = useListQuery()
+  const pathname = usePathname()
+  const params = useSearchParams()
   const { money, signed } = useCurrency()
   const sold = watch.status === 'SOLD'
   // Sold rows show realised figures; everything else shows the estimate.
@@ -409,10 +422,19 @@ function Row({
       )}
       <TD className="font-bold text-navy-700">{watch.stockNo}</TD>
       <TD>
-        <button type="button" onClick={() => query.set('watch', watch.id)} className="text-left">
+        {/* A link, not a button. It goes to a URL — `?watch=…` opens the
+            drawer — so it should be middle-clickable and copyable like every
+            other route to a record. It was also the only two-line "control"
+            in the product, which is how a 38px height nothing else uses got
+            into the computed-style audit. */}
+        <Link
+          href={`${pathname}?${withParam(params, 'watch', watch.id)}`}
+          scroll={false}
+          className="block text-left"
+        >
           <span className="block font-bold text-content-primary hover:underline">{watch.model}</span>
           <span className="block text-caption text-content-secondary">{watch.brandName}</span>
-        </button>
+        </Link>
       </TD>
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
       {show('supplier') && (

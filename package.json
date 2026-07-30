@@ -25,7 +25,7 @@
     "test:tokens": "node tests/harness/audit.mjs",
     "test:tokens:strict": "node tests/harness/audit.mjs --strict",
     "shots": "node tests/harness/shots.mjs",
-    "test:all": "npm run typecheck && npm run test && npm run test:restock && npm run test:journeys && npm run test:stress",
+    "test:all": "npm run typecheck && npm run test && npm run test:restock && npm run test:journeys && npm run test:stress && npm run test:tokens:strict",
     "test:restock": "tsx tests/harness/restock.ts"
   },
   "dependencies": {

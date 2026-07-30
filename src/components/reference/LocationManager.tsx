@@ -125,11 +125,11 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                   {canManage && (
                     <div className="flex items-center gap-1">
                       <button type="button" onClick={() => setEditing(location)} aria-label={`Edit ${location.name}`}
-                        className="rounded-sm p-1.5 text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
+                        className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button type="button" onClick={() => setDeleting(location)} aria-label={`Delete ${location.name}`}
-                        className="rounded-sm p-1.5 text-content-secondary hover:bg-state-danger/10 hover:text-state-danger">
+                        className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-state-danger/10 hover:text-state-danger">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>

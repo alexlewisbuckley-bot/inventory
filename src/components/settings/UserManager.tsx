@@ -98,16 +98,16 @@ export function UserManager({ users, currentUserId, canManage, assignable }: {
                       <TD>
                         <div className="flex items-center justify-end gap-1">
                           <button type="button" onClick={() => setEditing(user)} aria-label={`Edit ${user.name}`}
-                            className="rounded-sm p-1.5 text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
+                            className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button type="button" onClick={() => setResetting(user)} aria-label={`Reset password for ${user.name}`}
-                            className="rounded-sm p-1.5 text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
+                            className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-surface-subtle hover:text-content-primary">
                             <KeyRound className="h-4 w-4" />
                           </button>
                           <button type="button" onClick={() => setDeleting(user)} aria-label={`Remove ${user.name}`}
                             disabled={user.id === currentUserId}
-                            className="rounded-sm p-1.5 text-content-secondary hover:bg-state-danger/10 hover:text-state-danger disabled:opacity-30 disabled:pointer-events-none">
+                            className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-state-danger/10 hover:text-state-danger disabled:opacity-30 disabled:pointer-events-none">
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
