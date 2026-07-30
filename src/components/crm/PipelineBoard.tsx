@@ -47,6 +47,10 @@ export function PipelineBoard({ deals, owners, canEdit }: {
 
   const [dragging, setDragging] = useState<string | null>(null)
   const [over, setOver] = useState<DealStage | null>(null)
+  // Which single column the phone shows. Defaults to the first stage that
+  // has anything in it, because an empty "New enquiry" list as the landing
+  // view reads as an empty pipeline.
+  const [mobileStage, setMobileStage] = useState<DealStage | null>(null)
   const [losing, setLosing] = useState<DealCard | null>(null)
 
   const columns = useMemo(() => OPEN_DEAL_STAGES.map((stage) => {
@@ -57,6 +61,13 @@ export function PipelineBoard({ deals, owners, canEdit }: {
       value: items.reduce((sum, deal) => sum + (deal.valueGbp ?? 0), 0),
     }
   }), [optimistic])
+
+  // The stage the phone shows: what was chosen, or the first stage with
+  // anything in it — an empty "New enquiry" as the landing view reads as an
+  // empty pipeline.
+  const shownStage: DealStage = mobileStage
+    ?? columns.find((column) => column.items.length > 0)?.stage
+    ?? columns[0]!.stage
 
   const won = optimistic.filter((deal) => deal.stage === 'WON')
   const lost = optimistic.filter((deal) => deal.stage === 'LOST')
@@ -107,7 +118,49 @@ export function PipelineBoard({ deals, owners, canEdit }: {
       {/* The scroller is width-constrained explicitly. A board wider than the
           viewport must scroll inside its own box; letting it push the document
           sideways drags the sidebar and the header out of view with it. */}
-      <div className="overflow-hidden">
+      {/* Below md the board does not shrink — it is replaced. A seven-column
+          drag surface on a phone is a horizontal scroll nobody can drag on,
+          so a phone gets a stage selector and one vertical list, which is the
+          shape of the question a phone is actually asked: "what is in
+          negotiation?", not "rebalance the board". */}
+      <div className="md:hidden">
+        <label className="block">
+          <span className="sr-only">Stage</span>
+          <select
+            value={shownStage}
+            onChange={(event) => setMobileStage(event.target.value as DealStage)}
+            className="h-11 w-full cursor-pointer rounded-md border border-line-subtle bg-surface-raised px-3.5 text-body font-semibold text-content-primary"
+          >
+            {columns.map((column) => (
+              <option key={column.stage} value={column.stage}>
+                {DEAL_STAGE_LABELS[column.stage]} · {column.items.length}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="mt-3 flex flex-col gap-2">
+          {(columns.find((column) => column.stage === shownStage)?.items ?? []).map((deal) => (
+            <DealCardView
+              key={deal.id}
+              deal={deal}
+              canEdit={canEdit}
+              dragging={false}
+              onDragStart={() => {}}
+              onDragEnd={() => {}}
+              onMove={(stage) => move(deal, stage)}
+              money={money}
+            />
+          ))}
+          {(columns.find((column) => column.stage === shownStage)?.items.length ?? 0) === 0 && (
+            <p className="px-1 py-6 text-center text-caption text-content-secondary">
+              Nothing in {DEAL_STAGE_LABELS[shownStage].toLowerCase()}.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden overflow-hidden md:block">
         <div className="scroll-region w-full overflow-x-auto pb-3">
           <div className="flex w-max gap-4">
           {columns.map((column) => (
@@ -275,7 +328,10 @@ function DealCardView({ deal, canEdit, dragging, onDragStart, onDragEnd, onMove,
           <select
             value={deal.stage}
             onChange={(event) => onMove(event.target.value as DealStage)}
-            className="h-8 w-full cursor-pointer rounded-sm border border-line-subtle bg-surface-subtle px-2 text-caption font-semibold text-content-secondary transition-colors hover:border-line-strong"
+            // Full touch height on a phone, where this select is the only
+            // way to move a deal; compact on a desktop, where it is the
+            // keyboard alternative to dragging.
+            className="h-11 w-full cursor-pointer rounded-sm border border-line-subtle bg-surface-subtle px-2 text-caption font-semibold text-content-secondary transition-colors hover:border-line-strong md:h-8"
           >
             {OPEN_DEAL_STAGES.map((stage) => (
               <option key={stage} value={stage}>{DEAL_STAGE_LABELS[stage]}</option>

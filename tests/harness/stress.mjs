@@ -174,6 +174,33 @@ for (const [label, viewport] of [
   }, viewport)
 }
 
+// 13b. Touch targets on a phone: computed style, not eyesight.
+await check('touch targets at 390', async (page) => {
+  // The consultation screens — the ones a thumb actually operates. Interactive
+  // chrome has to give the thumb 40px of real target; the guideline says 44,
+  // and 40 is the floor below which mis-taps are measurable. Elements inside
+  // dense table rows are exempt (phones get the card view), as are inline text
+  // links, which sit in prose and are as tall as their line.
+  for (const path of ['/today', '/search', '/pipeline', '/customers']) {
+    await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1200)
+    const undersized = await page.evaluate(() => {
+      const out = []
+      for (const el of document.querySelectorAll('nav button, nav a, main select, main input:not([type="checkbox"]), main > * button[class*="h-11"], [aria-label="Primary"] a')) {
+        const box = el.getBoundingClientRect()
+        if (box.width === 0 || box.height === 0) continue // hidden at this width
+        if (box.height < 40) {
+          out.push(`${el.tagName}:${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)} ${Math.round(box.height)}px`)
+        }
+      }
+      return out.slice(0, 5)
+    })
+    if (undersized.length) {
+      throw new Error(`${path}: too small to tap — ${undersized.join(' | ')}`)
+    }
+  }
+}, { width: 390, height: 844 })
+
 // 14. Keyboard: tab into the page and reach the primary action.
 await check('keyboard reachable', async (page) => {
   await go(page, '/inventory')

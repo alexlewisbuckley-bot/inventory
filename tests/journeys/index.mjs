@@ -1209,6 +1209,44 @@ await journey('insights answers the selling questions with a table behind every 
   }
 })
 
+await journey('a phone gets the bottom bar, a stage list and full-screen search', async (page) => {
+  // The consultation flow at 390px, end to end: navigate by thumb, read the
+  // pipeline as a list, find somebody by typing.
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await go(page, '/today')
+  const bar = page.locator('nav[aria-label="Primary"]')
+  if (await bar.count() === 0) throw new Error('no bottom bar on a phone')
+  for (const label of ['Today', 'Search', 'Deals', 'Contacts']) {
+    if (await bar.locator(`a:has-text("${label}")`).count() === 0) {
+      throw new Error(`the bottom bar is missing ${label}`)
+    }
+  }
+
+  // Deals: a stage selector and a vertical list, never a sideways board.
+  await bar.locator('a:has-text("Deals")').click()
+  await page.waitForTimeout(1500)
+  const select = page.locator('main select').first()
+  if (await select.count() === 0) throw new Error('no stage selector on the phone pipeline')
+  const box = await select.boundingBox()
+  if (!box || box.height < 40) throw new Error(`stage selector is ${Math.round(box?.height ?? 0)}px — not tappable`)
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  if (overflow > 1) throw new Error(`the pipeline still scrolls sideways by ${overflow}px on a phone`)
+
+  // Search is a destination: one tap, input focused, results are links.
+  await bar.locator('a:has-text("Search")').click()
+  await page.waitForTimeout(1500)
+  const focused = await page.evaluate(() => document.activeElement?.tagName)
+  if (focused !== 'INPUT') throw new Error(`search opened with focus on ${focused}, not the input`)
+  await page.keyboard.type('rein')
+  await page.waitForTimeout(1500)
+  const results = await page.locator('main a[href^="/customers/"]').count()
+  if (results === 0) throw new Error('typing a surname on the search page found nobody')
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render
