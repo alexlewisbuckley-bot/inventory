@@ -114,6 +114,66 @@ export function detectVatScheme(text: string): VatScheme {
   return 'UNKNOWN'
 }
 
+/**
+ * Undo text that a PDF drew twice.
+ *
+ * Several invoice generators fake bold by stroking the same string twice with
+ * a hair's offset. The text layer then interleaves the two copies run by run,
+ * so "INVOICE" arrives as "INVINVOICEOICE" and "BILL TO" as "BILL TBILL TOO".
+ *
+ * It is recoverable exactly, because the damage has a shape: the string is a
+ * sequence of chunks each immediately repeated — a1 a1 a2 a2 … — so taking the
+ * shortest repeated chunk at each step and keeping one copy rebuilds the
+ * original. Anything that does not decompose that way is left alone.
+ *
+ * This is worth doing properly rather than patching around: the run that
+ * corrupted "BILL TO" stopped the buyer's block being recognised, and the
+ * invoice was booked in against the customer instead of the supplier.
+ */
+export function undoubleText(text: string): string {
+  return text.split('\n').map(undoubleLine).join('\n')
+}
+
+function undoubleLine(line: string): string {
+  // Long lines are prose or a table row, not a drawn-twice heading, and the
+  // scan is quadratic in the line length.
+  if (line.length < 6 || line.length > 300) return line
+
+  const chunks: string[] = []
+  let i = 0
+  let skipped = 0
+  while (i < line.length) {
+    let matched = 0
+    for (let k = 1; i + 2 * k <= line.length; k += 1) {
+      if (line.slice(i, i + k) === line.slice(i + k, i + 2 * k)) { matched = k; break }
+    }
+    if (matched === 0) {
+      // The second copy of a run can lose its leading space, so a lone space
+      // sits unpaired between two paired runs: "GBP £9,800.00" comes out as
+      // "GBPGBP £9,£9,800.800.0000". Stepping over it keeps the decomposition
+      // going; without this the line survived doubled and was read as a
+      // second watch costing £9.
+      if (chunks.length > 0 && line[i] === ' ' && skipped < 3) {
+        chunks.push(' ')
+        skipped += 1
+        i += 1
+        continue
+      }
+      break
+    }
+    chunks.push(line.slice(i, i + matched))
+    i += 2 * matched
+  }
+
+  // Only the label is drawn twice, so the doubling is a prefix and the rest of
+  // the row is ordinary text: "TTOOTTALAL £9,800.00" is TOTAL followed by a
+  // perfectly normal amount. Consuming only the prefix is what stops that row
+  // being read as another watch.
+  const consumed = i
+  if (chunks.length < 2 || consumed < 6) return line
+  return chunks.join('') + line.slice(consumed)
+}
+
 /** A money figure as written on an invoice: £12,500.00, 12500, 9 500.50. */
 export function parseAmount(raw: string | null | undefined): number | null {
   if (!raw) return null
@@ -195,7 +255,7 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
     .filter((b) => b.trim().length > 1)
     .sort((a, b) => b.length - a.length)
 
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const lines = undoubleText(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const whole = lines.join('\n')
   const buyer = buyerBlock(lines)
   // Every fact about the seller is looked for outside the buyer's block, so a
@@ -207,13 +267,13 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
   const invoiceNo = firstMatch(whole, [
     /invoice\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
     /\binv\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
-  ])
+  ]) ?? labelledBelow(lines, /^invoice(\s*(?:no\.?|number|#))?\s*:?$/i, /^[A-Z0-9][A-Z0-9\-/]{2,}$/i)
 
   const invoiceDate = parseInvoiceDate(
     firstMatch(whole, [
       /(?:invoice\s*date|date\s*of\s*invoice|dated)\s*[:\-]?\s*([^\n]{6,30})/i,
       /\bdate\s*[:\-]\s*([^\n]{6,30})/i,
-    ]) ?? '',
+    ]) ?? labelledBelow(lines, /^(invoice\s*)?date\s*:?$/i, /\d/) ?? '',
   )
 
   // Every total must carry a currency symbol or pence. "Terms: NET 0" read as
@@ -326,10 +386,15 @@ function parseBlock(block: string[], brands: string[]): ExtractedLine | null {
   const descriptionText = (descriptionLines.length > 0 ? descriptionLines.join(' ') : moneyLine).trim()
 
   const brand = brands.find((candidate) => text.toLowerCase().includes(candidate.toLowerCase())) ?? null
-  const serial = firstMatch(text, [LABELLED_SERIAL])
+  let serial = firstMatch(text, [LABELLED_SERIAL])
+
+  // Nothing labelled, two bracketed codes: "Rolex GMT (126710BLNR) (5D2883J4)"
+  // is reference then serial, in that order, which is how the trade writes it.
+  const bracketed = [...text.matchAll(/\(([A-Z0-9][A-Z0-9\-/.]{3,15})\)/gi)].map((match) => match[1]!)
+  if (!serial && bracketed.length >= 2) serial = bracketed[1]!
   const year = yearIn(descriptionText)
 
-  let reference = firstMatch(text, [LABELLED_REFERENCE])
+  let reference = firstMatch(text, [LABELLED_REFERENCE]) ?? (bracketed.length >= 2 ? bracketed[0]! : null)
   if (!reference) {
     // Nothing labelled it, so look for something reference-shaped in the
     // description with the brand, the serial, the year and the money removed.
@@ -406,6 +471,21 @@ function parseSupplier(lines: string[], sellerText: string, buyer: Set<number>):
   }
 }
 
+/**
+ * A label on one line with its value on the next.
+ *
+ * A two-column invoice header renders as "INVOICE" then "INV0261" then "DATE"
+ * then the date — the colon a single-line pattern looks for never exists.
+ */
+function labelledBelow(lines: string[], label: RegExp, value: RegExp): string | null {
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    if (!label.test(lines[i]!)) continue
+    const next = lines[i + 1]!.trim()
+    if (value.test(next)) return next
+  }
+  return null
+}
+
 /** UK postcodes, which are the reliable anchor in an address block. */
 const POSTCODE = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i
 
@@ -432,6 +512,23 @@ function parseAddress(outside: string[]): {
 
   const line = outside[at]!
   const postcode = POSTCODE.exec(line)?.[1]?.replace(/\s+/g, ' ').toUpperCase() ?? null
+
+  // "7 Park Row, Leeds, LS1 5DH, UK" is a whole address on one line. Split on
+  // the commas and read outwards from the postcode: what precedes it is the
+  // town, what precedes that is the street.
+  const parts = line.split(',').map((part) => part.trim()).filter(Boolean)
+  if (parts.length >= 3) {
+    const postcodeAt = parts.findIndex((part) => POSTCODE.test(part))
+    if (postcodeAt > 0) {
+      const street = parts.slice(0, Math.max(0, postcodeAt - 1))
+      return {
+        line1: street[0] ?? null,
+        line2: street.slice(1).join(', ') || null,
+        city: parts[postcodeAt - 1] ?? null,
+        postcode,
+      }
+    }
+  }
 
   // "Hathersage, S32 1DD" puts the town on the same line as the postcode.
   const sameLineTown = line.replace(POSTCODE, '').replace(/[,\s]+$/, '').trim()

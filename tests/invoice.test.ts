@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseInvoiceText, detectVatScheme, parseAmount, parseInvoiceDate,
-  mergeExtractions, coerceExtraction, EMPTY_EXTRACTION,
+  mergeExtractions, coerceExtraction, undoubleText, EMPTY_EXTRACTION,
   type ExtractedInvoice,
 } from '@/lib/invoice'
 
@@ -239,6 +239,116 @@ Description Amount
 Rolex Explorer 224270 £6,400.00
 `)
     expect(parsed.supplier.phone).toBeNull()
+  })
+})
+
+/**
+ * A PDF that draws every string twice.
+ *
+ * Some invoice generators fake bold by stroking the text twice with a hair's
+ * offset, and the text layer interleaves the copies. Taken verbatim from a
+ * real invoice. The damage is not cosmetic: "BILL TO" arrived as "BILL TBILL
+ * TOO", so the buyer's block went unrecognised and the invoice was read as
+ * though the customer were the supplier — it booked stock in against
+ * Bluecroft's own company, with Bluecroft's email and phone.
+ */
+const DOUBLED_INVOICE = [
+  'NorNortth Jeh Jewwellers Lellers LTDTD',
+  '7 Park Row, Leeds, LS1 5DH, UK',
+  '+44 7824 533676',
+  'sales@northjewellers.com',
+  'INVINVOICEOICE',
+  'INV0261',
+  'DDAATETE',
+  '06/08/2026',
+  'BALBALANCE DUEANCE DUE',
+  'GBP £9,800.00',
+  'BILL TBILL TOO',
+  'BluecrBluecroft Toft Trraders Limitaders Limited (120264ed (12026413)13)',
+  '6 Ambassador Place, Stockport Road, Altrincham, Trafford, WA15 8DB, United Kingdom',
+  'Invoices@bluecroft.com',
+  'DESCRIPTIONDESCRIPTION RARATETE QQTYTY AMOUNTAMOUNT',
+  'Rolex GMT (126710BLNR) (5D2883J4) £9,800.00 1 £9,800.00',
+  'TTOOTTALAL £9,800.00',
+  'BALBALANCE DUEANCE DUE',
+  'GBPGBP £9,£9,800.800.0000',
+  'Company Number - 14675849',
+  'Vat Number - 454273686',
+  'This item is classified as second hand goods and is being sold under the VAT margin scheme.',
+].join('\n')
+
+describe('undoing text a PDF drew twice', () => {
+  it('rebuilds a wholly doubled string', () => {
+    expect(undoubleText('INVINVOICEOICE')).toBe('INVOICE')
+    expect(undoubleText('DDAATETE')).toBe('DATE')
+    expect(undoubleText('BILL TBILL TOO')).toBe('BILL TO')
+    expect(undoubleText('NorNortth Jeh Jewwellers Lellers LTDTD')).toBe('North Jewellers LTD')
+  })
+
+  it('rebuilds a doubled label followed by ordinary text', () => {
+    // Only the bold label is drawn twice; the amount beside it is normal.
+    expect(undoubleText('TTOOTTALAL £9,800.00')).toBe('TOTAL £9,800.00')
+  })
+
+  it('steps over a space the second copy dropped', () => {
+    expect(undoubleText('GBPGBP £9,£9,800.800.0000')).toBe('GBP £9,800.00')
+  })
+
+  it('leaves ordinary text completely alone', () => {
+    for (const line of [
+      '7 Park Row, Leeds, LS1 5DH, UK',
+      'sales@northjewellers.com',
+      '+44 7824 533676',
+      'Rolex GMT (126710BLNR) (5D2883J4) £9,800.00 1 £9,800.00',
+      'Company Number - 14675849',
+    ]) {
+      expect(undoubleText(line)).toBe(line)
+    }
+  })
+})
+
+describe('an invoice whose text layer is doubled', () => {
+  const parsed = parseInvoiceText(DOUBLED_INVOICE)
+
+  it('does not mistake the customer for the supplier', () => {
+    // The whole point: "BILL TBILL TOO" hid the buyer's block, and the invoice
+    // was booked in against the buyer's own company.
+    expect(parsed.supplier.name).toBe('North Jewellers LTD')
+    expect(parsed.supplier.name).not.toMatch(/Bluecroft/i)
+  })
+
+  it('takes the seller’s contact details, not the buyer’s', () => {
+    expect(parsed.supplier.email).toBe('sales@northjewellers.com')
+    expect(parsed.supplier.phone).toBe('+44 7824 533676')
+  })
+
+  it('splits a one-line comma-separated address', () => {
+    expect(parsed.supplier.addressLine1).toBe('7 Park Row')
+    expect(parsed.supplier.city).toBe('Leeds')
+    expect(parsed.supplier.postcode).toBe('LS1 5DH')
+  })
+
+  it('reads a label sitting above its value rather than beside it', () => {
+    expect(parsed.invoiceNo).toBe('INV0261')
+    expect(parsed.invoiceDate?.slice(0, 10)).toBe('2026-08-06')
+  })
+
+  it('reads the reference and serial from two bracketed codes', () => {
+    expect(parsed.lines).toHaveLength(1)
+    expect(parsed.lines[0]!.reference).toBe('126710BLNR')
+    expect(parsed.lines[0]!.serial).toBe('5D2883J4')
+    expect(parsed.lines[0]!.unitAmount).toBe(9800)
+  })
+
+  it('does not book the balance line in as a second watch', () => {
+    // Left doubled, "GBPGBP £9,£9,800.800.0000" parsed as a £9 watch.
+    expect(parsed.lines.every((line) => line.brand !== null)).toBe(true)
+  })
+
+  it('reads the company and VAT numbers, and the margin scheme', () => {
+    expect(parsed.supplier.registrationNo).toBe('14675849')
+    expect(parsed.supplier.vatNo).toBe('454273686')
+    expect(parsed.vatScheme).toBe('MARGIN')
   })
 })
 
