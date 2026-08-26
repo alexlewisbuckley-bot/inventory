@@ -7,7 +7,7 @@ import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
-  PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
+  PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
@@ -215,6 +215,13 @@ export const watches = pgTable(
     /** Human-facing stock number carried over from the legacy spreadsheet. */
     stockNo: integer('stock_no').notNull(),
 
+    /**
+     * Watch unless somebody says otherwise — see PRODUCT_TYPES. Defaulted in
+     * the database as well as in the schema so an insert written without it
+     * (the importer, a backfill) cannot land a row with no type at all.
+     */
+    productType: text('product_type', { enum: PRODUCT_TYPES }).notNull().default('WATCH'),
+
     brandId: text('brand_id').notNull().references(() => brands.id),
     model: text('model').notNull(),
     nickname: text('nickname'),
@@ -261,6 +268,7 @@ export const watches = pgTable(
     locationIdx: index('watches_location_idx').on(t.locationId),
     supplierIdx: index('watches_supplier_idx').on(t.supplierId),
     brandIdx: index('watches_brand_idx').on(t.brandId),
+    productTypeIdx: index('watches_product_type_idx').on(t.productType).where(sql`deleted_at IS NULL`),
     purchaseDateIdx: index('watches_purchase_date_idx').on(t.purchaseDate),
     serialIdx: index('watches_serial_idx').on(t.serial),
     statusLocationIdx: index('watches_status_location_idx').on(t.status, t.locationId),

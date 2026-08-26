@@ -17,8 +17,9 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatDate, formatDateTime, daysHeld } from '@/lib/dates'
 import {
-  AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
-  type AuditAction, type BoxPapers, type Condition, type WatchStatus,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
+  PRODUCT_TYPE_LABELS, referenceLabel,
+  type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import { changeValue, fieldLabel } from '@/lib/audit-format'
 import { canSeeCost, can } from '@/lib/permissions'
@@ -127,12 +128,16 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           <CardHeader title="Details" />
           <CardBody>
             <dl className="flex flex-col">
+              <Row label="Type" value={PRODUCT_TYPE_LABELS[watch.productType as ProductType]} />
               <Row label="Brand" value={brand.name} />
-              <Row label="Reference number" value={watch.model} />
+              <Row label={referenceLabel(watch.productType as ProductType)} value={watch.model} />
               <Row label="Serial" value={watch.serial ?? 'Not recorded'} />
               <Row label="Year" value={watch.year ? String(watch.year) : '—'} />
               <Row label="Condition" value={CONDITION_LABELS[watch.condition as Condition]} />
-              <Row label="Box & papers" value={BOX_PAPERS_LABELS[watch.boxPapers as BoxPapers]} />
+              <Row
+                label={accessoriesLabel(watch.productType as ProductType)}
+                value={BOX_PAPERS_LABELS[watch.boxPapers as BoxPapers]}
+              />
               <Row label="Supplier" value={supplier.name} />
               <Row label="Location" value={location.name} />
               <Row label="Added" value={formatDateTime(watch.createdAt)} />

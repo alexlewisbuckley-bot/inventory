@@ -49,6 +49,7 @@ export default async function EditWatchPage({ params }: { params: { id: string }
           initial={{
             id: watch.id,
             version: watch.version,
+            productType: watch.productType,
             brandId: watch.brandId,
             model: watch.model,
             serial: watch.serial ?? '',

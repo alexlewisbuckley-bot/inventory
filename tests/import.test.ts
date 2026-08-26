@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv, toCsv, csvCell } from '@/lib/csv'
-import { estimateFromSheet } from '@/server/services/import-service'
+import { estimateFromSheet, parseProductType } from '@/server/services/import-service'
+import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import {
   IMPORT_COLUMNS, REQUIRED_HEADERS, normaliseHeader, templateCsv,
 } from '@/lib/import-columns'
@@ -78,6 +79,40 @@ describe('imported estimates reach the reporting base', () => {
   })
 })
 
+/**
+ * The Type column.
+ *
+ * Optional, because every sheet the business already has predates it and every
+ * row in those sheets is a watch. A value nobody can read is a warning and a
+ * watch, not a rejected row: the price, supplier and date on that row are
+ * still right, and refusing the import over a misspelt word would cost more
+ * than the wrong label does.
+ */
+describe('imported product type', () => {
+  it('reads a blank column as a watch', () => {
+    expect(parseProductType('')).toBe('WATCH')
+    expect(parseProductType('   ')).toBe('WATCH')
+  })
+
+  it('accepts either the label or the stored code, in any case', () => {
+    expect(parseProductType('Handbag')).toBe('HANDBAG')
+    expect(parseProductType('HANDBAG')).toBe('HANDBAG')
+    expect(parseProductType('  jewellery ')).toBe('JEWELLERY')
+  })
+
+  it('reports anything else rather than guessing at it', () => {
+    // The caller turns null into a warning and imports the row as a watch.
+    expect(parseProductType('Bracelet')).toBeNull()
+    expect(parseProductType('jewelry')).toBeNull()
+  })
+
+  it('round-trips every type the system can store', () => {
+    for (const type of PRODUCT_TYPES) {
+      expect(parseProductType(PRODUCT_TYPE_LABELS[type])).toBe(type)
+    }
+  })
+})
+
 describe('import headers', () => {
   it('still accepts sheets written before Model was renamed to Reference', () => {
     // Every spreadsheet the business already has says "Model". Breaking those
@@ -85,6 +120,12 @@ describe('import headers', () => {
     expect(normaliseHeader('Model')).toBe('reference')
     expect(normaliseHeader('  MODEL REFERENCE  ')).toBe('reference')
     expect(normaliseHeader('Reference')).toBe('reference')
+  })
+
+  it('accepts the names people give the type column', () => {
+    expect(normaliseHeader('Type')).toBe('type')
+    expect(normaliseHeader('Product Type')).toBe('type')
+    expect(normaliseHeader('Category')).toBe('type')
   })
 
   it('normalises case and internal spacing', () => {

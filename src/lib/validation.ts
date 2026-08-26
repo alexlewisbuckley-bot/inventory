@@ -2,8 +2,9 @@ import { z } from 'zod'
 import type { FilterClause } from './filters'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
-  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
-  ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES,
+  CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DEFAULT_PRODUCT_TYPE,
+  DELIVERY_STATUSES, DENSITIES, ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, PAYMENT_STATUSES,
+  PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_STATUSES, ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
 
@@ -65,6 +66,12 @@ export const changePasswordSchema = z.object({
 // --- Watches ---------------------------------------------------------------
 
 export const watchCreateSchema = z.object({
+  /**
+   * Defaulted rather than required, so every existing caller — the importer,
+   * the sourcing hand-off, an older bookmarked form post — keeps working and
+   * lands a watch, which is what all of them meant.
+   */
+  productType: z.enum(PRODUCT_TYPES).default(DEFAULT_PRODUCT_TYPE),
   brandId: trimmed.min(1, 'Choose a brand.'),
   model: trimmed.min(1, 'Reference number is required.').max(80),
   nickname: optionalText(80),

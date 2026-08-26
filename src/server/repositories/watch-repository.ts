@@ -5,7 +5,7 @@ import { brands, locations, sales, suppliers, users, watches } from '../db/schem
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import type { WatchQuery } from '@/lib/validation'
-import type { WatchStatus } from '@/lib/enums'
+import type { ProductType, WatchStatus } from '@/lib/enums'
 
 /**
  * Read model for the inventory list.
@@ -16,6 +16,8 @@ import type { WatchStatus } from '@/lib/enums'
 export interface WatchListItem {
   id: string
   stockNo: number
+  /** Nearly always WATCH; carried so the rare piece is visible in the list. */
+  productType: ProductType
   brandName: string
   model: string
   nickname: string | null
@@ -60,6 +62,7 @@ export interface WatchListResult {
 const listSelection = {
   id: watches.id,
   stockNo: watches.stockNo,
+  productType: watches.productType,
   model: watches.model,
   nickname: watches.nickname,
   serial: watches.serial,
@@ -132,6 +135,7 @@ function buildFilters(query: WatchQuery): SQL | undefined {
  */
 const WATCH_COLUMNS: ColumnMap = {
   status: { column: watches.status, kind: 'enum' },
+  productType: { column: watches.productType, kind: 'enum' },
   condition: { column: watches.condition, kind: 'enum' },
   brandId: { column: watches.brandId, kind: 'enum' },
   locationId: { column: watches.locationId, kind: 'enum' },
@@ -187,6 +191,7 @@ export async function findWatches(query: WatchQuery): Promise<WatchListResult> {
     items: rows.map((row) => ({
       ...row,
       status: row.status as WatchStatus,
+      productType: row.productType as ProductType,
       estProfitUsd: row.estSaleUsd !== null && row.purchasePriceUsd !== null
         ? row.estSaleUsd - row.purchasePriceUsd
         : null,

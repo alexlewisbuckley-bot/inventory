@@ -7,6 +7,9 @@ import { toMinor } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
 import { REQUIRED_HEADERS, normaliseHeader } from '@/lib/import-columns'
+import {
+  DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType,
+} from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
 /**
@@ -25,6 +28,8 @@ import type { SessionUser } from '../auth/session'
 export interface ImportRow {
   line: number
   stockNo: number | null
+  /** Watch unless the sheet says otherwise — see `parseProductType`. */
+  productType: ProductType
   brand: string
   model: string
   serial: string | null
@@ -158,6 +163,16 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     // A wholly blank row is trailing formatting, not a mistake worth reporting.
     if (cells.every((cell) => cell.trim() === '')) continue
 
+    const rawType = value('type')
+    const productType = parseProductType(rawType)
+    if (rawType && productType === null) {
+      issues.push({
+        line, field: 'type',
+        message: `Did not recognise the type "${rawType}" — importing it as a watch.`,
+        severity: 'warning',
+      })
+    }
+
     const brand = value('brand')
     const model = value('reference')
     const supplier = value('supplier')
@@ -221,7 +236,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
 
     if (!errored) {
       rows.push({
-        line, stockNo: null, brand, model, serial,
+        line, stockNo: null, productType: productType ?? DEFAULT_PRODUCT_TYPE, brand, model, serial,
         supplier, location, purchaseDate: date!.toISOString(),
         purchasePriceGbp: price, estSaleGbp: est,
       })
@@ -291,6 +306,7 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
       await db.insert(watches).values({
         id,
         stockNo: nextStock,
+        productType: row.productType,
         brandId: brandIds.get(row.brand.toLowerCase())!,
         model: row.model,
         serial: row.serial,
@@ -325,6 +341,22 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
     logger.info('import committed', { count: rows.length, actorId: actor.id })
     return rows.length
   })
+}
+
+/**
+ * Read the Type column, by code or by label.
+ *
+ * Returns null for anything unrecognised rather than guessing, so the caller
+ * can say so and still import the row as a watch: a misspelt type is not a
+ * reason to reject a watch whose price, supplier and date are all correct.
+ */
+export function parseProductType(raw: string): ProductType | null {
+  const cleaned = raw.trim().toLowerCase()
+  if (!cleaned) return DEFAULT_PRODUCT_TYPE
+  const match = PRODUCT_TYPES.find((type) => (
+    type.toLowerCase() === cleaned || PRODUCT_TYPE_LABELS[type].toLowerCase() === cleaned
+  ))
+  return match ?? null
 }
 
 /** Accepts DD/MM/YYYY, YYYY-MM-DD and DD-MM-YYYY. */

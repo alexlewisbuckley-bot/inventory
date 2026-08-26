@@ -9,8 +9,9 @@ import { createBrandAction, createSupplierInlineAction } from '@/app/actions/ref
 import { ChevronDown } from 'lucide-react'
 import type { ActionState } from '@/app/actions/auth'
 import {
-  BASE_CURRENCY, CONDITIONS, CONDITION_LABELS, BOX_PAPERS, BOX_PAPERS_LABELS,
-  type CurrencyCode,
+  accessoriesLabel, BASE_CURRENCY, CONDITIONS, CONDITION_LABELS, BOX_PAPERS, BOX_PAPERS_LABELS,
+  DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, PRODUCT_TYPE_NOUNS, referenceLabel,
+  type CurrencyCode, type ProductType,
 } from '@/lib/enums'
 import { toMajor } from '@/lib/money'
 import { toDateInput } from '@/lib/dates'
@@ -20,6 +21,7 @@ export interface Option { id: string; name: string }
 export interface WatchFormValues {
   id?: string
   version?: number
+  productType: ProductType
   brandId: string
   model: string
   serial: string
@@ -37,12 +39,43 @@ export interface WatchFormValues {
 }
 
 const EMPTY: WatchFormValues = {
+  productType: DEFAULT_PRODUCT_TYPE,
   brandId: '', model: '', serial: '', year: '',
   condition: 'UNKNOWN', boxPapers: 'UNKNOWN', supplierId: '',
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
   locationId: '', notes: '',
+}
+
+/**
+ * The reference field, named for what is being added.
+ *
+ * A watch has a manufacturer's reference and everybody quotes it; a handbag
+ * has a model name. The field is the same one — the thing you would say to
+ * identify the piece — so it stays one field and changes what it asks for.
+ */
+const REFERENCE_COPY: Record<ProductType, { hint: string; placeholder: string }> = {
+  WATCH: {
+    hint: 'The manufacturer’s reference, e.g. 126711CHNR.',
+    placeholder: '126711CHNR',
+  },
+  JEWELLERY: {
+    hint: 'What the piece is called, or its reference if it has one.',
+    placeholder: 'Love bracelet, 18ct',
+  },
+  HANDBAG: {
+    hint: 'The model and size, as the maker names it.',
+    placeholder: 'Birkin 30',
+  },
+  ACCESSORY: {
+    hint: 'What the item is, in the words you would use to ask for it.',
+    placeholder: 'Cufflinks, onyx',
+  },
+  OTHER: {
+    hint: 'What the item is, in the words you would use to ask for it.',
+    placeholder: 'Describe the item',
+  },
 }
 
 const INITIAL: ActionState = { ok: false }
@@ -79,11 +112,19 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
 
   useEffect(() => {
     if (!state.ok) return
-    toast.success(mode === 'create' ? 'Watch added to stock' : 'Changes saved', state.message)
+    toast.success(
+      mode === 'create'
+        ? `${noun.charAt(0).toUpperCase()}${noun.slice(1)} added to stock`
+        : 'Changes saved',
+      state.message,
+    )
     router.push('/inventory')
     // Only fire on a successful submission.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ok])
+
+  const noun = PRODUCT_TYPE_NOUNS[values.productType]
+  const reference = REFERENCE_COPY[values.productType]
 
   const set = (key: keyof WatchFormValues) => (
     event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
@@ -111,6 +152,17 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
 
       <Card>
         <CardBody className="grid gap-5 sm:grid-cols-2">
+          {/* First, because it changes what the rest of the form asks for —
+              and pre-set to Watch, because that is what nearly every intake
+              is. Somebody adding a watch never has to touch it. */}
+          <SelectField
+            name="productType" label="Product type" className="sm:col-span-2"
+            hint="Watch unless you change it — for the occasional piece of jewellery or handbag."
+            value={values.productType}
+            onChange={(event) => setValues((c) => ({ ...c, productType: event.target.value as ProductType }))}
+            options={PRODUCT_TYPES.map((type) => ({ value: type, label: PRODUCT_TYPE_LABELS[type] }))}
+            error={state.errors?.productType}
+          />
           <ComboSelect
             name="brandId" label="Brand" required
             value={values.brandId}
@@ -127,10 +179,10 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
             error={state.errors?.brandId}
           />
           <TextField
-            name="model" label="Reference number" required
+            name="model" label={referenceLabel(values.productType)} required
             value={values.model} onChange={set('model')}
-            hint="The manufacturer's reference, e.g. 126711CHNR."
-            placeholder="126711CHNR" error={state.errors?.model}
+            hint={reference.hint}
+            placeholder={reference.placeholder} error={state.errors?.model}
           />
           <TextField
             name="serial" label="Serial number"
@@ -207,7 +259,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
             <span>
               <span className="block text-body font-bold text-content-primary">Additional details</span>
               <span className="block text-caption text-content-secondary">
-                Condition, box &amp; papers and year — all optional, and editable later.
+                Condition, {accessoriesLabel(values.productType).toLowerCase().replace('&', 'and')} and year — all optional, and editable later.
               </span>
             </span>
             <ChevronDown
@@ -225,7 +277,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
                 options={CONDITIONS.map((c) => ({ value: c, label: CONDITION_LABELS[c] }))}
               />
               <SelectField
-                name="boxPapers" label="Box & papers"
+                name="boxPapers" label={accessoriesLabel(values.productType)}
                 value={values.boxPapers} onChange={set('boxPapers')}
                 options={BOX_PAPERS.map((b) => ({ value: b, label: BOX_PAPERS_LABELS[b] }))}
               />
@@ -239,18 +291,18 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
         </div>
         <CardFooter>
           <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
-          <SubmitButton mode={mode} />
+          <SubmitButton mode={mode} noun={noun} />
         </CardFooter>
       </Card>
     </form>
   )
 }
 
-function SubmitButton({ mode }: { mode: 'create' | 'edit' }) {
+function SubmitButton({ mode, noun }: { mode: 'create' | 'edit'; noun: string }) {
   const { pending } = useFormStatus()
   return (
     <Button type="submit" loading={pending}>
-      {mode === 'create' ? 'Add watch to stock' : 'Save changes'}
+      {mode === 'create' ? `Add ${noun} to stock` : 'Save changes'}
     </Button>
   )
 }

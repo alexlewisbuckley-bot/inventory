@@ -8,6 +8,7 @@ import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { toMajor } from '@/lib/money'
 import { toCsv } from '@/lib/csv'
+import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import { db } from '@/server/db/client'
 import { watches } from '@/server/db/schema'
 
@@ -19,7 +20,7 @@ export const dynamic = 'force-dynamic'
  * offer both. Everything is in the GBP base the rest of the system reports in.
  */
 const COLUMNS = [
-  'Stock No', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
+  'Stock No', 'Type', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
   'Purchase Date', 'Purchase Price (GBP)', 'Est Sale (GBP)', 'Est Profit (GBP)',
   'Status',
 ] as const
@@ -72,7 +73,8 @@ export async function GET(request: NextRequest) {
   }
 
   const csv = toCsv(COLUMNS, rows.map((w) => [
-    w.stockNo, w.brandName, w.model, w.serial, w.supplierName, w.locationName,
+    w.stockNo, PRODUCT_TYPE_LABELS[w.productType], w.brandName, w.model, w.serial,
+    w.supplierName, w.locationName,
     w.purchaseDate.toISOString().slice(0, 10),
     toMajor(w.purchasePriceGbp).toFixed(2),
     w.estSaleGbp !== null ? toMajor(w.estSaleGbp).toFixed(2) : '',

@@ -1393,6 +1393,75 @@ await journey('accepting a supplier quote books the watch in and fulfils the wan
   }
 })
 
+// --- Stock that is not a watch ----------------------------------------------
+
+await journey('a handbag is booked in as a handbag, not as a watch', async (page) => {
+  // The business buys watches; a handbag arrives a few times a year. The form
+  // has to cost the common case nothing — Watch is already chosen — while
+  // letting the rare one be recorded as what it is instead of being filed as a
+  // watch and distinguishable only by a note somebody happened to write.
+  const model = `Birkin ${stamp}`
+
+  await go(page, '/inventory/new')
+
+  const typeSelect = page.locator('select[name="productType"]')
+  if (await typeSelect.inputValue() !== 'WATCH') {
+    throw new Error('intake did not open on Watch, so the common case costs a decision')
+  }
+  if (await page.locator('button:has-text("Add watch to stock")').count() === 0) {
+    throw new Error('the submit button did not name what is being added')
+  }
+
+  // Switching the type re-words the form around it.
+  await typeSelect.selectOption('HANDBAG')
+  await page.waitForTimeout(400)
+  if (await page.locator('button:has-text("Add handbag to stock")').count() === 0) {
+    throw new Error('the submit button still offered to add a watch')
+  }
+  const form = await page.locator('main').innerText()
+  if (form.includes('Reference number')) {
+    throw new Error('a handbag was still asked for a manufacturer reference number')
+  }
+
+  // Brand and supplier are combo selects: open, then take the first option.
+  for (const field of ['brandId', 'supplierId']) {
+    await page.locator(`input[name="${field}"] + button`).click()
+    await page.waitForTimeout(300)
+    await page.locator('[role="option"] button').first().click()
+    await page.waitForTimeout(300)
+  }
+  await page.fill('input[name="model"]', model)
+  await page.fill('input[name="purchaseDate"]', '2026-07-30')
+  await page.fill('input[name="purchaseAmount"]', '9500')
+  await page.selectOption('select[name="locationId"]', { index: 1 })
+  await page.click('button:has-text("Add handbag to stock")')
+  await page.waitForTimeout(3000)
+
+  // It is in stock, and the list says what it is.
+  await go(page, '/inventory');
+  {
+    const row = page.locator(`tr:has-text("${model}")`)
+    if (await row.count() === 0) throw new Error('the handbag was not booked into stock')
+    if (!(await row.first().innerText()).includes('Handbag')) {
+      throw new Error('the list showed the handbag with nothing to distinguish it from a watch')
+    }
+  }
+
+  // And the type is a filter, so "what non-watch stock do we hold?" is a
+  // question the list can answer rather than one somebody greps notes for.
+  await go(page, '/inventory?f=productType%3Ais%3AHANDBAG')
+  const rows = page.locator('tbody tr')
+  const count = await rows.count()
+  if (count === 0) throw new Error('filtering by type returned nothing at all')
+  const texts = await rows.allInnerTexts()
+  if (!texts.some((text) => text.includes(model))) throw new Error('filtering by type hid the handbag')
+  for (const text of texts) {
+    if (!text.includes('Handbag')) {
+      throw new Error(`the handbag filter returned something else: ${text.replace(/\n/g, ' | ')}`)
+    }
+  }
+})
+
 // --- Coverage floor before the redesign begins ------------------------------
 //
 // These are not workflow journeys; they are the net. Every route must render

@@ -1,6 +1,6 @@
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, ENTITY_TYPE_LABELS, LOCATION_TYPE_LABELS,
-  PAYMENT_TERMS_LABELS, ROLE_LABELS, SALE_CHANNEL_LABELS, WATCH_STATUS_LABELS,
+  PAYMENT_TERMS_LABELS, PRODUCT_TYPE_LABELS, ROLE_LABELS, SALE_CHANNEL_LABELS, WATCH_STATUS_LABELS,
 } from './enums'
 
 /**
@@ -29,6 +29,7 @@ const FIELD_LABELS: Record<string, string> = {
   locationId: 'Location',
   model: 'Reference number',
   paymentTerms: 'Payment terms',
+  productType: 'Type',
   purchaseAmount: 'Purchase price',
   purchaseCurrency: 'Purchase currency',
   purchaseDate: 'Purchase date',
@@ -52,6 +53,7 @@ const VALUE_LABELS: Record<string, string> = {
   ...WATCH_STATUS_LABELS,
   ...CONDITION_LABELS,
   ...BOX_PAPERS_LABELS,
+  ...PRODUCT_TYPE_LABELS,
   ...SALE_CHANNEL_LABELS,
   ...LOCATION_TYPE_LABELS,
   ...ENTITY_TYPE_LABELS,

@@ -26,6 +26,23 @@ export type LocationType = (typeof LOCATION_TYPES)[number]
 export const CONDITIONS = ['UNKNOWN', 'UNWORN', 'EXCELLENT', 'GOOD', 'FAIR'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
+/**
+ * What kind of thing a stock record is.
+ *
+ * The business is a watch business — near enough every record is a watch, and
+ * the whole product is written in those terms. But a handbag or a piece of
+ * jewellery occasionally comes in as part of a deal, and before this those
+ * were entered as watches and then only distinguishable by whatever somebody
+ * happened to type in the notes. WATCH is the default everywhere so the common
+ * case costs nobody a decision; the rest exist so the rare case is recorded as
+ * what it is rather than mislabelled as stock it is not.
+ */
+export const PRODUCT_TYPES = ['WATCH', 'JEWELLERY', 'HANDBAG', 'ACCESSORY', 'OTHER'] as const
+export type ProductType = (typeof PRODUCT_TYPES)[number]
+
+/** The default a new stock record takes, and what every historic row is. */
+export const DEFAULT_PRODUCT_TYPE: ProductType = 'WATCH'
+
 export const BOX_PAPERS = ['UNKNOWN', 'FULL_SET', 'WATCH_ONLY', 'BOX_ONLY', 'PAPERS_ONLY'] as const
 export type BoxPapers = (typeof BOX_PAPERS)[number]
 
@@ -191,6 +208,51 @@ export const CONDITION_LABELS: Record<Condition, string> = {
   EXCELLENT: 'Excellent',
   GOOD: 'Good',
   FAIR: 'Fair',
+}
+
+export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
+  WATCH: 'Watch',
+  JEWELLERY: 'Jewellery',
+  HANDBAG: 'Handbag',
+  ACCESSORY: 'Accessory',
+  OTHER: 'Other',
+}
+
+/**
+ * The noun for one of these, for copy that has to name the thing.
+ *
+ * "Add watch to stock" is wrong on a handbag, and "Add item to stock" is worse
+ * on the ninety-nine per cent that are watches. Both read correctly if the
+ * button simply says what is being added.
+ */
+export const PRODUCT_TYPE_NOUNS: Record<ProductType, string> = {
+  WATCH: 'watch',
+  JEWELLERY: 'piece',
+  HANDBAG: 'handbag',
+  ACCESSORY: 'accessory',
+  OTHER: 'item',
+}
+
+/**
+ * The identifier field, named for the thing it identifies.
+ *
+ * Every watch has a manufacturer's reference and the trade quotes it exactly;
+ * a handbag has a model name instead. One field, asked for in the words that
+ * fit what is being recorded.
+ */
+export function referenceLabel(type: ProductType): string {
+  return type === 'WATCH' ? 'Reference number' : 'Model or reference'
+}
+
+/**
+ * What came with it, named for the thing it came with.
+ *
+ * A watch has box and papers; a handbag has a dust bag and an authenticity
+ * card. The field records the same fact either way, so it stays one field and
+ * changes its label rather than splitting into two that mean the same.
+ */
+export function accessoriesLabel(type: ProductType): string {
+  return type === 'WATCH' ? 'Box & papers' : 'Box & documents'
 }
 
 export const BOX_PAPERS_LABELS: Record<BoxPapers, string> = {

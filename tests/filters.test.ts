@@ -23,6 +23,7 @@ describe('round trip', () => {
       { field: 'purchasePriceGbp', operator: 'gt', values: ['10000'] },
       { field: 'purchaseDate', operator: 'before', values: ['2026-03-01'] },
       { field: 'model', operator: 'contains', values: ['Daytona'] },
+      { field: 'productType', operator: 'is', values: ['HANDBAG', 'JEWELLERY'] },
       { field: 'serial', operator: 'isEmpty', values: [] },
     ]
     for (const clause of cases) expect(round(clause)).toEqual(clause)
@@ -63,6 +64,7 @@ describe('hostile input', () => {
     ['an unknown operator', 'status:sortOf:IN_STOCK'],
     ['an operator the field does not support', 'status:contains:IN_STOCK'],
     ['an enum value outside the enum', 'status:is:MELTED'],
+    ['a product type the system does not sell', 'productType:is:CAR'],
     ['a number that is not a number', 'purchasePriceGbp:gt:lots'],
     ['a date that is not a date', 'purchaseDate:before:soon'],
     ['a date that looks right and is not', 'purchaseDate:before:2026-13-45'],

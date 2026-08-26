@@ -8,8 +8,8 @@ import { formatPct } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
-  AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS,
-  type AuditAction, type BoxPapers, type Condition, type WatchStatus,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_LABELS,
+  type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import type { Capability } from '@/lib/permissions'
 import { MoveWatchModal } from './MoveWatchModal'
@@ -23,6 +23,7 @@ export interface DrawerRecord {
   serial: string | null
   status: string
   version: number
+  productType: ProductType
   condition: string
   boxPapers: string
   year: number | null
@@ -82,6 +83,11 @@ export function WatchDrawerClient({
           <>
             <span className="text-caption font-bold text-content-secondary">Stock No. {record.stockNo}</span>
             <StatusChip status={record.status as WatchStatus} />
+            {/* Only when it is not a watch. A "Watch" chip on every one of a
+                thousand watch records is a label nobody reads. */}
+            {record.productType !== 'WATCH' && (
+              <Chip tone="navy">{PRODUCT_TYPE_LABELS[record.productType]}</Chip>
+            )}
           </>
         }
         title={record.model}
@@ -120,7 +126,10 @@ export function WatchDrawerClient({
         <dl className="mb-6">
           <Fact label="Serial" value={record.serial ?? 'Not recorded'} />
           <Fact label="Condition" value={CONDITION_LABELS[record.condition as Condition]} />
-          <Fact label="Box & papers" value={BOX_PAPERS_LABELS[record.boxPapers as BoxPapers]} />
+          <Fact
+            label={accessoriesLabel(record.productType)}
+            value={BOX_PAPERS_LABELS[record.boxPapers as BoxPapers]}
+          />
           <Fact label="Supplier" value={record.supplierName} />
           <Fact label="Purchased" value={formatDate(record.purchaseDate)} />
           <Fact label="Location" value={record.locationName} />

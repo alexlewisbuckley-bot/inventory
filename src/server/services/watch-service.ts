@@ -13,7 +13,7 @@ import { convert, marginPct } from '@/lib/money'
 import { toBase } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
-import { WATCH_STATUS_LABELS, type WatchStatus } from '@/lib/enums'
+import { PRODUCT_TYPE_NOUNS, WATCH_STATUS_LABELS, type WatchStatus } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 import type { WatchCreateInput, WatchUpdateInput, SaleCreateInput } from '@/lib/validation'
 
@@ -63,6 +63,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
     await db.insert(watches).values({
       id,
       stockNo,
+      productType: input.productType,
       brandId: input.brandId,
       model: input.model,
       nickname: input.nickname ?? null,
@@ -98,8 +99,14 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       summary: `Stock ${stockNo} — ${input.model} added`,
     })
 
-    if (estGbp === null) await notifyTeam('PRICE_MISSING', 'Watch added without a sale price',
-      `Stock ${stockNo} (${input.model}) needs an estimated sale price.`, 'Watch', id, actor.id)
+    // Named for what it is: a handbag that arrives unpriced should not tell the
+    // team a watch did.
+    const noun = PRODUCT_TYPE_NOUNS[input.productType]
+    if (estGbp === null) await notifyTeam(
+      'PRICE_MISSING',
+      `${noun.charAt(0).toUpperCase()}${noun.slice(1)} added without a sale price`,
+      `Stock ${stockNo} (${input.model}) needs an estimated sale price.`, 'Watch', id, actor.id,
+    )
 
     logger.info('watch created', { watchId: id, stockNo, actorId: actor.id })
     return id
@@ -131,6 +138,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
       version: existing.version + 1,
     }
 
+    if (input.productType !== undefined) patch.productType = input.productType
     if (input.model !== undefined) patch.model = input.model
     if (input.nickname !== undefined) patch.nickname = input.nickname
     if (input.serial !== undefined) patch.serial = input.serial
@@ -173,7 +181,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     await db.update(watches).set(patch).where(eq(watches.id, input.id))
 
     const changes = diff(existing, patch, [
-      'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
+      'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
     ])
 

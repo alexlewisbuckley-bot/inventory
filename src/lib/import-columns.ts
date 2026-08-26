@@ -19,6 +19,7 @@ export interface ImportColumn {
 }
 
 export const IMPORT_COLUMNS: readonly ImportColumn[] = [
+  { header: 'Type', required: false, hint: 'Watch if left blank', example: 'Watch', width: 12 },
   { header: 'Brand', required: true, hint: 'Created automatically if new', example: 'Rolex', width: 16 },
   { header: 'Reference', required: true, hint: 'The manufacturer reference', example: '126711CHNR', width: 18 },
   { header: 'Serial', required: false, hint: 'Checked against existing stock', example: '1T41F071', width: 16 },
@@ -39,6 +40,9 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
  * dollars so the figure is not silently reinterpreted as sterling.
  */
 export const HEADER_ALIASES: Record<string, string> = {
+  'product type': 'type',
+  'item type': 'type',
+  category: 'type',
   model: 'reference',
   'model reference': 'reference',
   'reference number': 'reference',

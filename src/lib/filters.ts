@@ -2,7 +2,8 @@ import {
   CONDITIONS, CONDITION_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS,
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
-  PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, SALE_CHANNELS, SALE_CHANNEL_LABELS,
+  PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
+  SALE_CHANNELS, SALE_CHANNEL_LABELS,
   WATCH_STATUSES, WATCH_STATUS_LABELS,
 } from './enums'
 
@@ -119,6 +120,7 @@ const enumOptions = <T extends string>(values: readonly T[], labels: Record<T, s
 export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'status', label: 'Status', type: 'enum', options: enumOptions(WATCH_STATUSES, WATCH_STATUS_LABELS) },
   { key: 'condition', label: 'Condition', type: 'enum', options: enumOptions(CONDITIONS, CONDITION_LABELS) },
+  { key: 'productType', label: 'Type', type: 'enum', options: enumOptions(PRODUCT_TYPES, PRODUCT_TYPE_LABELS) },
   { key: 'brandId', label: 'Brand', type: 'reference', optionSource: 'brands' },
   { key: 'locationId', label: 'Location', type: 'reference', optionSource: 'locations' },
   { key: 'supplierId', label: 'Supplier', type: 'reference', optionSource: 'suppliers' },

@@ -38,6 +38,7 @@ export async function WatchDrawer({ watchId, capabilities }: {
         serial: record.watch.serial,
         status: record.watch.status,
         version: record.watch.version,
+        productType: record.watch.productType,
         condition: record.watch.condition,
         boxPapers: record.watch.boxPapers,
         year: record.watch.year,

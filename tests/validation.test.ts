@@ -45,6 +45,33 @@ describe('watch validation', () => {
     if (result.success) expect(result.data.purchaseCurrency).toBe('AED')
   })
 
+  /**
+   * The product type.
+   *
+   * Nearly every record is a watch, so the default has to hold for callers
+   * that never mention it — the importer, the sourcing hand-off, a form posted
+   * before the field existed. Anything the system does not recognise is a
+   * rejection rather than a silent WATCH, because a type it cannot read is a
+   * bug somewhere, not a watch.
+   */
+  it('defaults an unstated product type to a watch', () => {
+    const result = watchCreateSchema.safeParse(baseWatch)
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.productType).toBe('WATCH')
+  })
+
+  it('accepts the occasional piece that is not a watch', () => {
+    for (const type of ['JEWELLERY', 'HANDBAG', 'ACCESSORY', 'OTHER']) {
+      const result = watchCreateSchema.safeParse({ ...baseWatch, productType: type })
+      expect(result.success).toBe(true)
+      if (result.success) expect(result.data.productType).toBe(type)
+    }
+  })
+
+  it('rejects a product type it does not recognise', () => {
+    expect(watchCreateSchema.safeParse({ ...baseWatch, productType: 'CAR' }).success).toBe(false)
+  })
+
   it('requires the references a watch cannot exist without', () => {
     const result = watchCreateSchema.safeParse({ ...baseWatch, supplierId: '', locationId: '' })
     expect(result.success).toBe(false)

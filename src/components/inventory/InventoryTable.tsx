@@ -22,6 +22,7 @@ import {
 import { InlinePriceCell } from './InlinePriceCell'
 import { StatusCell } from './StatusCell'
 import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
+import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import type { WatchStatus } from '@/lib/enums'
 import type { WatchListItem, WatchListResult } from '@/server/repositories/watch-repository'
 import type { Capability } from '@/lib/permissions'
@@ -339,6 +340,7 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
           </span>
           <span className="mt-0.5 block truncate text-caption text-content-secondary">
             Stock {watch.stockNo} · {watch.locationName}
+            {watch.productType !== 'WATCH' && ` · ${PRODUCT_TYPE_LABELS[watch.productType]}`}
           </span>
         </button>
         <StatusCell
@@ -442,7 +444,15 @@ function Row({
           className="block text-left"
         >
           <span className="block font-bold text-content-primary hover:underline">{watch.model}</span>
-          <span className="block text-caption text-content-secondary">{watch.brandName}</span>
+          <span className="block text-caption text-content-secondary">
+            {watch.brandName}
+            {/* Marked only when it is not a watch. Nearly every row is one, so
+                a type on every row would be a column of the same word — the
+                thing worth seeing at a glance is the exception. */}
+            {watch.productType !== 'WATCH' && (
+              <> · <span className="font-bold text-navy-700">{PRODUCT_TYPE_LABELS[watch.productType]}</span></>
+            )}
+          </span>
         </Link>
       </TD>
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
