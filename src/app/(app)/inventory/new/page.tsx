@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { WatchForm } from '@/components/inventory/WatchForm'
 import { sourcingPrefill } from '@/server/services/sourcing-service'
 
-export const metadata: Metadata = { title: 'Add a watch' }
+export const metadata: Metadata = { title: 'Add an item' }
 export const dynamic = 'force-dynamic'
 
 export default async function NewWatchPage({ searchParams }: {
@@ -33,11 +33,11 @@ export default async function NewWatchPage({ searchParams }: {
   return (
     <>
       <PageHeader
-        title={prefill ? `Book in for ${prefill.customerName}` : 'Add a watch'}
+        title={prefill ? `Book in for ${prefill.customerName}` : 'Add an item'}
         description={prefill
           ? 'Started from their want and the accepted quote. Check it, complete it, and their request is marked fulfilled.'
           : 'Log a new purchase into stock. It appears in the inventory immediately.'}
-        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Add a watch' }]}
+        breadcrumbs={[{ label: 'Inventory', href: '/inventory' }, { label: 'Add an item' }]}
       />
       <div className="max-w-4xl">
         <WatchForm

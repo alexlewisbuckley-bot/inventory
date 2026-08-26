@@ -164,7 +164,7 @@ export default async function InsightsPage() {
 
   const quickActions: QuickAction[] = [
     can(user.role, 'watch:create') && {
-      href: '/inventory/new', label: 'Add a watch', hint: 'Book new stock in', icon: <Package className="h-4 w-4" />,
+      href: '/inventory/new', label: 'Add an item', hint: 'Book new stock in', icon: <Package className="h-4 w-4" />,
     },
     can(user.role, 'sale:create') && {
       href: '/inventory?status=SALE_AGREED', label: 'Mark one as sold', hint: 'Close an agreed deal', icon: <Receipt className="h-4 w-4" />,
@@ -202,7 +202,7 @@ export default async function InsightsPage() {
         title="Insights"
         description={describePosition(summary.inStockCount, activeLocations, trading.count, WINDOW_DAYS)}
         actions={can(user.role, 'watch:create')
-          ? <LinkButton href="/inventory/new" icon={<span aria-hidden>+</span>}>Add watch</LinkButton>
+          ? <LinkButton href="/inventory/new" icon={<span aria-hidden>+</span>}>Add item</LinkButton>
           : undefined}
       />
 

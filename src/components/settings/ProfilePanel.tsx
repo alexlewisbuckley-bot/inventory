@@ -106,7 +106,7 @@ function PreferencesForm({ preferences, locations }: {
           <SelectField
             name="defaultLocationId" label="Default location" defaultValue={preferences.defaultLocationId}
             placeholder="No default"
-            hint="Pre-selected when you add a watch."
+            hint="Pre-selected when you add an item."
             options={locations.map((l) => ({ value: l.id, label: l.name }))}
           />
           <div className="flex flex-col gap-3 sm:col-span-2">

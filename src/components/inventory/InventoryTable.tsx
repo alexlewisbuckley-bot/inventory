@@ -136,8 +136,8 @@ export function InventoryTable({
       <EmptyState
         icon={<PackageSearch className="h-6 w-6" />}
         title="No stock yet"
-        description="Add your first watch and it will appear here with its cost, target price and location."
-        action={capabilities['watch:create'] ? <LinkButton href="/inventory/new">Add a watch</LinkButton> : undefined}
+        description="Add your first item and it will appear here with its cost, target price and location."
+        action={capabilities['watch:create'] ? <LinkButton href="/inventory/new">Add an item</LinkButton> : undefined}
       />
     )
   }

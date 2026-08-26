@@ -138,7 +138,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                   : []),
               ]}
               primary={capabilities['watch:create']
-                ? <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add watch</LinkButton>
+                ? <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add item</LinkButton>
                 : undefined}
             />
           </>

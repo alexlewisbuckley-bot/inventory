@@ -19,7 +19,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: ['?'], action: 'Show the shortcut list', group: 'General' },
   { keys: ['['], action: 'Collapse or expand the sidebar', group: 'General' },
   { keys: ['Esc'], action: 'Close any dialog, drawer or menu', group: 'General' },
-  { keys: ['N'], action: 'Add a watch', group: 'Actions' },
+  { keys: ['N'], action: 'Add an item', group: 'Actions' },
   { keys: ['G', 'D'], action: 'Go to the dashboard', group: 'Navigation' },
   { keys: ['G', 'I'], action: 'Go to the inventory', group: 'Navigation' },
   { keys: ['G', 'S'], action: 'Go to sales', group: 'Navigation' },

@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Help' }
 
 
 const TASKS = [
-  { title: 'Add a watch', body: 'Inventory → Add watch. Leave the sale price blank if you have not priced it yet; it will be flagged for review.', href: '/inventory/new' },
+  { title: 'Add an item', body: 'Inventory → Add item. Nearly everything is a watch, so Watch is already chosen; switch the product type for the occasional piece of jewellery or handbag. Leave the sale price blank if you have not priced it yet; it will be flagged for review.', href: '/inventory/new' },
   { title: 'Move stock between stores', body: 'Open a watch and choose Move, or tick several rows in the inventory and use the bulk Move action. Every transfer is logged.', href: '/inventory' },
   { title: 'Mark a watch as sold', body: 'Click the status chip on any row and choose “Mark as sold”, or open the watch first. Profit and margin are worked out as you type.', href: '/inventory' },
   { title: 'Undo a sale recorded by mistake', body: 'Click the status chip on the sold row and choose “Void the sale”. The watch returns to stock and the invoice is kept, marked void.', href: '/inventory?status=SOLD' },

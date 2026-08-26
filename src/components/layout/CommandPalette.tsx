@@ -36,12 +36,12 @@ interface Action {
 /**
  * The actions, addressed by typing rather than by remembering where they live.
  *
- * `keywords` is what makes "new" find "Add a watch" and "wanted" find the
+ * `keywords` is what makes "new" find "Add an item" and "wanted" find the
  * sourcing board. A palette that only matches the words on the button helps
  * only the people who already know the button exists.
  */
 const ACTIONS: Action[] = [
-  { id: 'add-watch', label: 'Add a watch', hint: 'Log a purchase', href: '/inventory/new', icon: Plus, keywords: 'new stock buy intake purchase' },
+  { id: 'add-watch', label: 'Add an item', hint: 'Log a purchase', href: '/inventory/new', icon: Plus, keywords: 'new stock buy intake purchase watch jewellery handbag' },
   { id: 'inventory', label: 'Stock', href: '/inventory', icon: Package, keywords: 'watches inventory list' },
   { id: 'deals', label: 'Deals', href: '/deals', icon: Briefcase, keywords: 'pipeline board opportunities' },
   { id: 'customers', label: 'Customers', href: '/customers', icon: Users, keywords: 'contacts people book crm' },
