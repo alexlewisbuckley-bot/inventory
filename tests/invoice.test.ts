@@ -192,6 +192,56 @@ describe('an invoice whose watch spans four lines', () => {
   })
 })
 
+describe('the seller\u2019s address and phone', () => {
+  it('reads a footer address, anchored on the postcode', () => {
+    const parsed = parseInvoiceText(FOOTER_SUPPLIER_INVOICE)
+    expect(parsed.supplier.addressLine1).toBe('128 city road')
+    expect(parsed.supplier.city).toBe('London')
+    expect(parsed.supplier.postcode).toBe('EC1V 2NX')
+  })
+
+  it('reads a town printed on the same line as the postcode', () => {
+    // "Hathersage, S32 1DD" — the shape that was missed entirely, because
+    // nothing was asking for an address at all.
+    const parsed = parseInvoiceText(`
+Peak Horology Ltd
+12 Main Road
+Hathersage, S32 1DD
+01433 650 123
+Description Amount
+Rolex Explorer 224270 £6,400.00
+Total £6,400.00
+`)
+    expect(parsed.supplier.postcode).toBe('S32 1DD')
+    expect(parsed.supplier.city).toBe('Hathersage')
+    expect(parsed.supplier.addressLine1).toBe('12 Main Road')
+  })
+
+  it('reads a phone number that carries no label', () => {
+    const parsed = parseInvoiceText(`
+Peak Horology Ltd
+12 Main Road
+Hathersage, S32 1DD
+01433 650 123
+Description Amount
+Rolex Explorer 224270 £6,400.00
+`)
+    expect(parsed.supplier.phone).toBe('01433 650 123')
+  })
+
+  it('never reads a bank account or company number as a phone number', () => {
+    const parsed = parseInvoiceText(`
+Peak Horology Ltd
+Sort code: 23-08-01
+Account number: 19747625
+Company number: 16573151
+Description Amount
+Rolex Explorer 224270 £6,400.00
+`)
+    expect(parsed.supplier.phone).toBeNull()
+  })
+})
+
 describe('VAT treatment', () => {
   it('reads the margin scheme however it is worded', () => {
     expect(detectVatScheme('Sold under the VAT Margin Scheme')).toBe('MARGIN')

@@ -88,10 +88,17 @@ const INVOICE_TOOL: Anthropic.Beta.BetaToolUnion = {
           vatNo: absentAsEmpty('VAT registration number, digits and country prefix as printed.'),
           registrationNo: absentAsEmpty('Company registration number.'),
           email: absentAsEmpty("The seller's email address."),
-          phone: absentAsEmpty("The seller's telephone number."),
+          phone: absentAsEmpty("The seller's telephone number, however it is printed — a letterhead often gives it with no label."),
+          addressLine1: absentAsEmpty('First line of the seller\u2019s address, usually the street.'),
+          addressLine2: absentAsEmpty('Second address line, where there is one.'),
+          city: absentAsEmpty('Town or city, e.g. Hathersage.'),
+          postcode: absentAsEmpty('Postcode, e.g. S32 1DD.'),
           country: absentAsEmpty('Country the seller trades from.'),
         },
-        required: ['name', 'legalName', 'vatNo', 'registrationNo', 'email', 'phone', 'country'],
+        required: [
+          'name', 'legalName', 'vatNo', 'registrationNo', 'email', 'phone',
+          'addressLine1', 'addressLine2', 'city', 'postcode', 'country',
+        ],
       },
       invoiceNo: absentAsEmpty('The invoice number as printed.'),
       invoiceDate: absentAsEmpty('Invoice date as ISO YYYY-MM-DD. British invoices are day-first.'),
@@ -156,6 +163,7 @@ Rules that matter more than they look:
 - One line per watch. An invoice for three watches is three entries, even where the layout runs them together, and even where they share a price.
 - Prices are per line and exclude VAT unless the invoice says otherwise. If only a VAT-inclusive figure is given for a line, use it and record the scheme.
 - The VAT scheme is a legal fact about the sale, not a guess. Only report one the document supports.
+- Record the seller's full postal address and telephone number wherever they appear. Both are usually on the letterhead or in the footer, unlabelled, next to the bank details — not beside the words "Tel" or "Address".
 - Anything not stated is empty: "" for text, null for numbers. A plausible invention is worse than a gap, because a gap is visible and an invention is not.`
 
 export async function extractWithClaude(

@@ -361,14 +361,39 @@ async function resolveOrCreateSupplier(
 
   if (resolution.candidate) {
     // A match that arrived with details the record was missing improves it.
-    // Never overwrites: what somebody typed outranks what was read off a scan.
-    const fill: Record<string, string> = {}
-    if (!resolution.candidate.vatNo && invoice.supplier.vatNo) fill.vatNo = invoice.supplier.vatNo
-    if (!resolution.candidate.registrationNo && invoice.supplier.registrationNo) {
-      fill.registrationNo = invoice.supplier.registrationNo
-    }
-    if (Object.keys(fill).length > 0) {
-      await db.update(suppliers).set(fill).where(eq(suppliers.id, resolution.candidate.id))
+    // Never overwrites: what somebody typed outranks what was read off a scan,
+    // so only fields that are actually empty are filled. This is how the
+    // address and phone reach a supplier that was created from an earlier
+    // invoice that did not carry them.
+    const current = (await db.select().from(suppliers).where(eq(suppliers.id, resolution.candidate.id)).limit(1))[0]
+    if (current) {
+      const fill: Partial<typeof suppliers.$inferInsert> = {}
+      const fillable = {
+        vatNo: invoice.supplier.vatNo,
+        registrationNo: invoice.supplier.registrationNo,
+        email: invoice.supplier.email,
+        phone: invoice.supplier.phone,
+        addressLine1: invoice.supplier.addressLine1,
+        addressLine2: invoice.supplier.addressLine2,
+        city: invoice.supplier.city,
+        postcode: invoice.supplier.postcode,
+        country: invoice.supplier.country,
+        legalName: invoice.supplier.legalName,
+      } as const
+
+      for (const [field, value] of Object.entries(fillable)) {
+        if (value && !current[field as keyof typeof current]) {
+          Object.assign(fill, { [field]: value })
+        }
+      }
+
+      if (Object.keys(fill).length > 0) {
+        await db.update(suppliers).set(fill).where(eq(suppliers.id, resolution.candidate.id))
+        await recordAudit({
+          entityType: 'Supplier', entityId: resolution.candidate.id, action: 'UPDATE', actorId: actor.id,
+          summary: `${Object.keys(fill).length} detail(s) filled in from an invoice`,
+        })
+      }
     }
     return {
       supplierId: resolution.candidate.id,
@@ -386,6 +411,10 @@ async function resolveOrCreateSupplier(
     registrationNo: invoice.supplier.registrationNo,
     email: invoice.supplier.email,
     phone: invoice.supplier.phone,
+    addressLine1: invoice.supplier.addressLine1,
+    addressLine2: invoice.supplier.addressLine2,
+    city: invoice.supplier.city,
+    postcode: invoice.supplier.postcode,
     country: invoice.supplier.country,
     defaultCurrency: invoice.currency,
     entityType: /\b(limited|ltd|plc|llp|gmbh|inc)\b/i.test(invoice.supplier.legalName ?? name)

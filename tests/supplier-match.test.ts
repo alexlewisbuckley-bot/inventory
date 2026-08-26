@@ -28,7 +28,8 @@ const book = (rows: Partial<SupplierCandidate>[]): SupplierCandidate[] =>
 
 const invoice = (fields: Partial<ExtractedSupplier>): ExtractedSupplier => ({
   name: null, legalName: null, vatNo: null, registrationNo: null,
-  email: null, phone: null, country: null, ...fields,
+  email: null, phone: null, addressLine1: null, addressLine2: null,
+  city: null, postcode: null, country: null, ...fields,
 })
 
 describe('normalising a trading name', () => {

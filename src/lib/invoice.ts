@@ -41,6 +41,11 @@ export interface ExtractedSupplier {
   registrationNo: string | null
   email: string | null
   phone: string | null
+  /** The trading address, kept as the invoice lays it out. */
+  addressLine1: string | null
+  addressLine2: string | null
+  city: string | null
+  postcode: string | null
   country: string | null
 }
 
@@ -58,7 +63,10 @@ export interface ExtractedInvoice {
 }
 
 export const EMPTY_EXTRACTION: ExtractedInvoice = {
-  supplier: { name: null, legalName: null, vatNo: null, registrationNo: null, email: null, phone: null, country: null },
+  supplier: {
+    name: null, legalName: null, vatNo: null, registrationNo: null, email: null, phone: null,
+    addressLine1: null, addressLine2: null, city: null, postcode: null, country: null,
+  },
   invoiceNo: null,
   invoiceDate: null,
   currency: BASE_CURRENCY,
@@ -367,6 +375,7 @@ function parseLine(line: string, brands: string[]): ExtractedLine | null {
  */
 function parseSupplier(lines: string[], sellerText: string, buyer: Set<number>): ExtractedSupplier {
   const outside = lines.filter((_, index) => !buyer.has(index))
+  const address = parseAddress(outside)
 
   const named = firstMatch(sellerText, [/(?:from|supplier|vendor|seller)\s*[:\-]\s*([^\n]{2,80})/i])
   const legalName = outside.find((line) => (
@@ -388,9 +397,82 @@ function parseSupplier(lines: string[], sellerText: string, buyer: Set<number>):
     // From the seller's half of the document only: the buyer's address block
     // is usually the first email on the page.
     email: firstMatch(sellerText, [/\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/]),
-    phone: firstMatch(sellerText, [/(?:tel|phone|mob(?:ile)?)\s*[:\-]?\s*(\+?[\d\s()-]{9,20})/i])?.trim() ?? null,
+    phone: parsePhone(sellerText),
+    addressLine1: address.line1,
+    addressLine2: address.line2,
+    city: address.city,
+    postcode: address.postcode,
     country: firstMatch(sellerText, [/\b(United Kingdom|England|Scotland|Wales|Switzerland|United Arab Emirates|UAE|Hong Kong|Italy|France|Germany|USA|United States)\b/i]),
   }
+}
+
+/** UK postcodes, which are the reliable anchor in an address block. */
+const POSTCODE = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i
+
+/**
+ * The seller's address, found by anchoring on the postcode.
+ *
+ * An address block has no label and no fixed number of lines, but it almost
+ * always ends in a postcode — so the postcode is located first and the lines
+ * above it are read backwards: the line before it is the town, and what
+ * precedes that is the street.
+ */
+function parseAddress(outside: string[]): {
+  line1: string | null; line2: string | null; city: string | null; postcode: string | null
+} {
+  const empty = { line1: null, line2: null, city: null, postcode: null }
+
+  // The last postcode on the seller's half: a letterhead repeats the address in
+  // the footer, and the footer copy is the more complete one.
+  let at = -1
+  for (let i = outside.length - 1; i >= 0; i -= 1) {
+    if (POSTCODE.test(outside[i]!)) { at = i; break }
+  }
+  if (at < 0) return empty
+
+  const line = outside[at]!
+  const postcode = POSTCODE.exec(line)?.[1]?.replace(/\s+/g, ' ').toUpperCase() ?? null
+
+  // "Hathersage, S32 1DD" puts the town on the same line as the postcode.
+  const sameLineTown = line.replace(POSTCODE, '').replace(/[,\s]+$/, '').trim()
+
+  const above = outside.slice(Math.max(0, at - 3), at)
+    .map((value) => value.trim())
+    .filter((value) => (
+      value.length > 1
+      && !/@|\b(company|vat|reg|tel|phone|invoice|sort code|account|iban|swift)\b/i.test(value)
+      && !LEGAL_ENTITY.test(value)
+    ))
+
+  const city = sameLineTown || above[above.length - 1] || null
+  const street = sameLineTown ? above.slice(-2) : above.slice(0, -1).slice(-2)
+
+  return {
+    line1: street[0] ?? null,
+    line2: street[1] ?? null,
+    city,
+    postcode,
+  }
+}
+
+/**
+ * A telephone number, labelled or not.
+ *
+ * A letterhead often prints the number bare. The risk in matching a bare run
+ * of digits is everything else on an invoice that is also digits, so anything
+ * introduced by the words that precede an account, sort code, company or VAT
+ * number is refused outright.
+ */
+function parsePhone(text: string): string | null {
+  const labelled = firstMatch(text, [/(?:tel|phone|mob(?:ile)?|contact)\s*[:\-.]?\s*(\+?[\d\s()-]{9,20})/i])
+  if (labelled) return labelled.trim()
+
+  for (const line of text.split('\n')) {
+    if (/\b(account|sort\s*code|iban|swift|company|vat|invoice|reg)\b/i.test(line)) continue
+    const match = /(?:^|\s)(\+44\s?\d[\d\s-]{8,13}|0\d{2,4}[\s-]?\d{3}[\s-]?\d{3,4})(?=\s|$)/.exec(line)
+    if (match?.[1]) return match[1].trim()
+  }
+  return null
 }
 
 function yearIn(text: string): number | null {
@@ -440,6 +522,10 @@ export function mergeExtractions(ai: ExtractedInvoice | null, rules: ExtractedIn
       registrationNo: pick(ai.supplier.registrationNo, rules.supplier.registrationNo),
       email: pick(ai.supplier.email, rules.supplier.email),
       phone: pick(ai.supplier.phone, rules.supplier.phone),
+      addressLine1: pick(ai.supplier.addressLine1, rules.supplier.addressLine1),
+      addressLine2: pick(ai.supplier.addressLine2, rules.supplier.addressLine2),
+      city: pick(ai.supplier.city, rules.supplier.city),
+      postcode: pick(ai.supplier.postcode, rules.supplier.postcode),
       country: pick(ai.supplier.country, rules.supplier.country),
     },
     invoiceNo: pick(ai.invoiceNo, rules.invoiceNo),
@@ -469,6 +555,10 @@ export function coerceExtraction(raw: unknown): ExtractedInvoice | null {
       registrationNo: str(supplier.registrationNo),
       email: str(supplier.email),
       phone: str(supplier.phone),
+      addressLine1: str(supplier.addressLine1),
+      addressLine2: str(supplier.addressLine2),
+      city: str(supplier.city),
+      postcode: str(supplier.postcode),
       country: str(supplier.country),
     },
     invoiceNo: str(value.invoiceNo),
