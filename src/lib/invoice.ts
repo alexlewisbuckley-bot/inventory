@@ -155,14 +155,32 @@ const REFERENCE = /\b(?:[A-Z]{2,4})?\d{3,6}[A-Z]{0,6}(?:\/\d{1,3}[A-Z]{0,3})?\b/
 
 const NOISE_LINE = /^(invoice|bill to|ship to|subtotal|sub total|total|vat|net|amount due|balance|payment|terms|thank you|page \d)/i
 
+/** A line that is a form label rather than anybody's name. */
+const LABELLED_LINE = /^(invoice|tax invoice|date|dated|due|terms|bill|ship|sold|customer|description|qty|quantity|rate|amount|page|ref)\b/i
+
+const LEGAL_ENTITY = /\b(limited|ltd\.?|llp|plc|gmbh|s\.?a\.?r\.?l\.?|inc\.?|b\.?v\.?|n\.?v\.?|pty|s\.?p\.?a\.?)\b/i
+
+/** The row that introduces the items table: "Description  Quantity  Rate  Amount". */
+const ITEMS_HEADER = /^description\b.*\b(amount|rate|price|total|value|cost)\b/i
+
+/** Where the items stop and the arithmetic starts. */
+const TOTALS_LINE = /^(sub\s*total|total|paid|balance|amount\s+due|vat\b|net\b|discount)/i
+const PAYMENT_SECTION = /^(payment|bank\s+details|remittance|terms|thank you|notes?|international)\b/i
+
+/** Money as invoices write it: £18,600.00, $1,250, 8950.00. */
+const MONEY_G = /[£$]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b|\b\d{3,}\.\d{2}\b/g
+
+const LABELLED_REFERENCE = /\b(?:model|ref|reference)\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i
+const LABELLED_SERIAL = /\b(?:serial|s\/n|case)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9]{4,14})\b/i
+
 /**
  * Read what can be read from the invoice's text layer.
  *
- * Conservative on purpose. A line becomes stock only when it carries both an
- * identity (a brand or a reference) and a price — the two things a watch
- * cannot be booked in without. Everything else is left for Claude or reported
- * as an issue, because a confidently wrong row in the stock list costs more
- * than a row that says it needs attention.
+ * Conservative on purpose. A watch becomes stock only when the document gives
+ * it both an identity and a price — the two things it cannot be booked in
+ * without. Everything else is left for Claude or reported as an issue, because
+ * a confidently wrong row in the stock list costs more than a row that says it
+ * needs attention.
  */
 export function parseInvoiceText(text: string, extraBrands: string[] = []): ExtractedInvoice {
   const brands = [...new Set([...KNOWN_BRANDS, ...extraBrands])]
@@ -171,6 +189,10 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const whole = lines.join('\n')
+  const buyer = buyerBlock(lines)
+  // Every fact about the seller is looked for outside the buyer's block, so a
+  // "Bill To" address can never supply the supplier's name or email.
+  const sellerText = lines.filter((_, index) => !buyer.has(index)).join('\n')
 
   const currency = CURRENCY_HINTS.find(([pattern]) => pattern.test(whole))?.[1] ?? BASE_CURRENCY
 
@@ -186,23 +208,21 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
     ]) ?? '',
   )
 
-  const supplier = parseSupplier(lines, whole)
-
-  const netAmount = parseAmount(firstMatch(whole, [/(?:sub\s*total|net\s*(?:total|amount)?)\s*[:\-]?\s*([£$]?[\d,. ]+)/i]))
-  // "VAT Reg No: GB 384 2910 55" is not a VAT amount, and reading it as one
-  // put £3.8m of tax on a £26k invoice. A figure only counts as the VAT total
-  // if it carries a currency symbol or pence, and never straight after the
-  // words that introduce a registration number.
+  // Every total must carry a currency symbol or pence. "Terms: NET 0" read as
+  // a net total of zero, and "VAT Reg No: GB 384 2910 55" as £3.8m of tax.
+  const netAmount = parseAmount(firstMatch(whole, [
+    /(?:sub\s*total|net\s*(?:total|amount)|goods\s*total)\s*[:\-]?\s*([£$]\s?[\d,]+(?:\.\d{2})?|[\d,]+\.\d{2})/i,
+  ]))
   const vatAmount = parseAmount(firstMatch(whole, [
     /\bvat\b(?!\s*(?:reg|registration|no\b|number|id\b))[^\n\d]{0,15}?([£$]\s?[\d,]+(?:\.\d{2})?)/i,
     /\bvat\b(?!\s*(?:reg|registration|no\b|number|id\b))[^\n\d]{0,15}?\b([\d,]+\.\d{2})\b/i,
   ]))
   const grossAmount = parseAmount(firstMatch(whole, [
-    /(?:total\s*(?:due|payable|amount)?|amount\s*due|balance\s*due|grand\s*total)\s*[:\-]?\s*([£$]?[\d,. ]+)/i,
+    /(?:^|\n)\s*(?:grand\s*total|total\s*(?:due|payable|amount)?|amount\s*due|balance\s*due)\s*[:\-]?\s*([£$]\s?[\d,]+(?:\.\d{2})?|[\d,]+\.\d{2})/i,
   ]))
 
   return {
-    supplier,
+    supplier: parseSupplier(lines, sellerText, buyer),
     invoiceNo,
     invoiceDate,
     currency,
@@ -210,39 +230,114 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
     vatAmount,
     grossAmount,
     vatScheme: detectVatScheme(whole),
-    lines: lines.flatMap((line) => parseLine(line, brands) ?? []),
+    lines: parseItems(lines, brands, buyer),
   }
 }
 
-function parseLine(line: string, brands: string[]): ExtractedLine | null {
-  if (NOISE_LINE.test(line)) return null
+/**
+ * The lines describing the customer, so nothing reads them as the seller.
+ *
+ * Bounded rather than run to the next blank line, because the text layer of a
+ * PDF has no reliable blank lines — it has whatever order the renderer emitted
+ * the strings in.
+ */
+function buyerBlock(lines: string[]): Set<number> {
+  const start = lines.findIndex((line) => /^(bill\s*to|invoice\s*to|sold\s*to|ship\s*to|customer)\b/i.test(line))
+  if (start < 0) return new Set()
 
-  const brand = brands.find((candidate) => line.toLowerCase().includes(candidate.toLowerCase())) ?? null
+  const block = new Set<number>([start])
+  for (let i = start + 1; i < Math.min(lines.length, start + 6); i += 1) {
+    const line = lines[i]!
+    if (ITEMS_HEADER.test(line) || TOTALS_LINE.test(line) || new RegExp(MONEY_G.source).test(line)) break
+    block.add(i)
+  }
+  return block
+}
 
-  // The price is the last money-shaped figure on the line: an invoice row runs
-  // description → unit → total, and the rightmost is the one that was charged.
-  const amounts = [...line.matchAll(/[£$]?\s?\d{1,3}(?:,\d{3})+(?:\.\d{2})?|[£$]\s?\d+(?:\.\d{2})?|\b\d{4,}\.\d{2}\b/g)]
+/**
+ * The watches, however the invoice lays them out.
+ *
+ * The shape that matters is the multi-line one: a real invoice writes "Rolex
+ * Skydweller", then "Model no - 336934", then "Serial no - 30ER3414", then a
+ * quantity/rate/amount row — four lines for one watch. Reading line by line
+ * finds nothing at all on an invoice like that, because no single line carries
+ * both a maker and a price.
+ *
+ * So lines are gathered into a block and the block is closed by the row that
+ * carries the money. Where a document has no items table to anchor on, the
+ * old line-at-a-time reading still applies.
+ */
+function parseItems(lines: string[], brands: string[], buyer: Set<number>): ExtractedLine[] {
+  const headerAt = lines.findIndex((line) => ITEMS_HEADER.test(line))
+  if (headerAt < 0) {
+    return lines.flatMap((line, index) => (buyer.has(index) ? [] : parseLine(line, brands) ?? []))
+  }
+
+  const items: ExtractedLine[] = []
+  let block: string[] = []
+
+  for (let i = headerAt + 1; i < lines.length; i += 1) {
+    const line = lines[i]!
+    if (TOTALS_LINE.test(line) || PAYMENT_SECTION.test(line)) break
+    if (buyer.has(i)) continue
+
+    block.push(line)
+    if (hasMoney(line)) {
+      const item = parseBlock(block, brands)
+      if (item) items.push(item)
+      block = []
+    }
+  }
+  return items
+}
+
+const hasMoney = (line: string): boolean => new RegExp(MONEY_G.source).test(line)
+
+const moneyIn = (line: string): number[] =>
+  [...line.matchAll(MONEY_G)]
     .map((match) => parseAmount(match[0]))
     .filter((value): value is number => value !== null)
-  const unitAmount = amounts.length > 0 ? amounts[amounts.length - 1]! : null
 
-  const serial = firstMatch(line, [/(?:serial|s\/n|serial\s*no\.?)\s*[:\-]?\s*([A-Z0-9]{4,12})/i])
+/** One item block — its description lines plus the row carrying the money. */
+function parseBlock(block: string[], brands: string[]): ExtractedLine | null {
+  const moneyLine = block[block.length - 1]!
+  const descriptionLines = block.slice(0, -1)
+  const text = block.join('\n')
 
-  // Look for the reference in what is left once the brand, the serial and the
-  // money have been taken out — otherwise "12,500.00" reads as a reference.
-  let remainder = line
-  if (brand) remainder = remainder.replace(new RegExp(escapeRegExp(brand), 'ig'), ' ')
-  if (serial) remainder = remainder.replace(serial, ' ')
-  remainder = remainder.replace(/[£$]?\s?\d{1,3}(?:,\d{3})+(?:\.\d{2})?|[£$]\s?\d+(?:\.\d{2})?|\d+\.\d{2}\b/g, ' ')
-  const year = yearIn(remainder)
-  if (year) remainder = remainder.replace(String(year), ' ')
+  const amounts = moneyIn(moneyLine)
+  if (amounts.length === 0) return null
 
-  const reference = REFERENCE.exec(remainder)?.[0]?.trim() ?? null
+  // "1  £18,600.00  £18,600.00" is quantity, rate, then line total. The rate is
+  // what one watch cost, and one watch is what gets created.
+  const quantityMatch = /^\s*(\d{1,3})(?:\s|x|×)/i.exec(moneyLine)
+  const quantity = quantityMatch ? Math.min(Math.max(Number(quantityMatch[1]), 1), 50) : 1
+  const unitAmount = amounts.length >= 2 ? amounts[0]! : amounts[amounts.length - 1]!
 
-  if (!unitAmount || (!brand && !reference)) return null
+  // On a one-line item the description IS the money row, so the year, the
+  // reference and the description all read from the same text.
+  const descriptionText = (descriptionLines.length > 0 ? descriptionLines.join(' ') : moneyLine).trim()
+
+  const brand = brands.find((candidate) => text.toLowerCase().includes(candidate.toLowerCase())) ?? null
+  const serial = firstMatch(text, [LABELLED_SERIAL])
+  const year = yearIn(descriptionText)
+
+  let reference = firstMatch(text, [LABELLED_REFERENCE])
+  if (!reference) {
+    // Nothing labelled it, so look for something reference-shaped in the
+    // description with the brand, the serial, the year and the money removed.
+    let remainder = descriptionText
+    if (brand) remainder = remainder.replace(new RegExp(escapeRegExp(brand), 'ig'), ' ')
+    if (serial) remainder = remainder.replace(serial, ' ')
+    if (year) remainder = remainder.replace(String(year), ' ')
+    remainder = remainder.replace(MONEY_G, ' ')
+    reference = REFERENCE.exec(remainder)?.[0]?.trim() ?? null
+  }
+
+  if (!descriptionText) return null
+  if (!brand && !reference) return null
 
   return {
-    description: line,
+    description: descriptionText,
     brand,
     reference,
     serial,
@@ -250,38 +345,51 @@ function parseLine(line: string, brands: string[]): ExtractedLine | null {
     productType: DEFAULT_PRODUCT_TYPE,
     unitAmount,
     vatAmount: null,
-    quantity: 1,
+    quantity,
   }
+}
+
+/** One self-contained line, for invoices with no items table to anchor on. */
+function parseLine(line: string, brands: string[]): ExtractedLine | null {
+  if (NOISE_LINE.test(line)) return null
+  const item = parseBlock([line], brands)
+  return item && item.unitAmount ? item : null
 }
 
 /**
  * Who sent it.
  *
- * The letterhead is the top of the document, so the name is looked for there
- * first — but only above the "invoice to"/"bill to" block, because below it is
- * the buyer, and booking stock in against yourself is the one mistake that
- * would be silently self-consistent.
+ * Not "the top of the document". Plenty of invoices — including every one
+ * generated by the common bookkeeping tools — put the customer at the top and
+ * the seller in the footer beside the bank details. What identifies the seller
+ * is that it is a company somewhere outside the "Bill To" block, so that is
+ * what is looked for, and the letterhead is only the fallback.
  */
-function parseSupplier(lines: string[], whole: string): ExtractedSupplier {
-  const buyerAt = lines.findIndex((line) => /^(invoice\s*to|bill\s*to|sold\s*to|customer)\b/i.test(line))
-  const letterhead = (buyerAt > 0 ? lines.slice(0, buyerAt) : lines.slice(0, 8))
-    .filter((line) => !/^(tax\s*)?invoice$/i.test(line) && !NOISE_LINE.test(line))
+function parseSupplier(lines: string[], sellerText: string, buyer: Set<number>): ExtractedSupplier {
+  const outside = lines.filter((_, index) => !buyer.has(index))
 
-  const named = firstMatch(whole, [/(?:from|supplier|vendor|seller)\s*[:\-]\s*([^\n]{2,80})/i])
-  const legalName = letterhead.find((line) => /\b(limited|ltd\.?|llp|plc|gmbh|s\.?a\.?r\.?l\.?|inc\.?|b\.?v\.?)\b/i.test(line)) ?? null
+  const named = firstMatch(sellerText, [/(?:from|supplier|vendor|seller)\s*[:\-]\s*([^\n]{2,80})/i])
+  const legalName = outside.find((line) => (
+    LEGAL_ENTITY.test(line) && !NOISE_LINE.test(line) && !LABELLED_LINE.test(line) && line.length < 80
+  )) ?? null
+  const letterhead = outside.find((line) => (
+    !NOISE_LINE.test(line) && !LABELLED_LINE.test(line) && !hasMoney(line) && line.length > 2 && line.length < 80
+  )) ?? null
 
   return {
-    name: (named ?? letterhead[0] ?? legalName)?.trim() ?? null,
+    name: (named ?? legalName ?? letterhead)?.trim() ?? null,
     legalName: legalName?.trim() ?? null,
-    vatNo: firstMatch(whole, [
+    vatNo: firstMatch(sellerText, [
       /\bvat\s*(?:reg(?:istration)?\.?\s*)?(?:no\.?|number|#)?\s*[:\-]?\s*((?:GB|IE|FR|DE|NL|IT|ES)?\s?\d[\d\s]{6,14})/i,
     ])?.replace(/\s+/g, '') ?? null,
-    registrationNo: firstMatch(whole, [
+    registrationNo: firstMatch(sellerText, [
       /(?:company|co\.?|reg(?:istration)?)\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Z]{0,2}\d{6,8})/i,
     ]) ?? null,
-    email: firstMatch(whole, [/\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/]),
-    phone: firstMatch(whole, [/(?:tel|phone|mob(?:ile)?)\s*[:\-]?\s*(\+?[\d\s()-]{9,20})/i])?.trim() ?? null,
-    country: firstMatch(whole, [/\b(United Kingdom|England|Scotland|Wales|Switzerland|United Arab Emirates|UAE|Hong Kong|Italy|France|Germany|USA|United States)\b/i]),
+    // From the seller's half of the document only: the buyer's address block
+    // is usually the first email on the page.
+    email: firstMatch(sellerText, [/\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/]),
+    phone: firstMatch(sellerText, [/(?:tel|phone|mob(?:ile)?)\s*[:\-]?\s*(\+?[\d\s()-]{9,20})/i])?.trim() ?? null,
+    country: firstMatch(sellerText, [/\b(United Kingdom|England|Scotland|Wales|Switzerland|United Arab Emirates|UAE|Hong Kong|Italy|France|Germany|USA|United States)\b/i]),
   }
 }
 

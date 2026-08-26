@@ -102,6 +102,96 @@ describe('reading a supplier invoice', () => {
   })
 })
 
+/**
+ * The layout the common bookkeeping tools generate.
+ *
+ * Taken from a real supplier invoice, with the identifying details changed.
+ * It broke every assumption the first parser made, and each of those
+ * assumptions was reasonable right up until a real document arrived:
+ *
+ *  - one watch spans four lines, so no single line carries both a maker and a
+ *    price and a line-at-a-time reader finds nothing at all;
+ *  - the seller is in the footer beside the bank details, while the top of the
+ *    page is the customer;
+ *  - the first email on the page belongs to the buyer;
+ *  - "Terms: NET 0" is not a net total of zero.
+ */
+const FOOTER_SUPPLIER_INVOICE = `
+Invoice No: 1409
+Date: 25/08/2026
+Terms: NET 0
+Due Date: 25/08/2026
+Invoice
+Bill To: Bluecroft Traders Ltd
+buyer@example.com
+6 Ambassador Place, Stockport Road,
+Altrincham, WA15 8DB
+Description Quantity Rate Amount
+Rolex skydweller
+Model no - 336934
+Serial no - 30ER3414
+1 £18,600.00 £18,600.00*
+*Indicates non-taxable item
+Payment Instructions
+Bank Details
+Northgate Watch Traders Ltd
+Sort code: 00-00-00
+Account number: 00000000
+THIS INVOICE HAS BEEN PREPARED FOR THE SECOND HAND
+MARGIN SCHEME - NO TAX DUE.
+Subtotal £18,600.00
+Total £18,600.00
+Paid £0.00
+Balance Due £18,600.00
+Northgate Watch Traders Ltd
+128 city road
+London
+EC1V 2NX
+seller@example.com
+Company number: 16573151
+1 / 1
+`
+
+describe('an invoice whose watch spans four lines', () => {
+  const parsed = parseInvoiceText(FOOTER_SUPPLIER_INVOICE)
+
+  it('finds the watch, though no single line carries both a maker and a price', () => {
+    expect(parsed.lines).toHaveLength(1)
+    const watch = parsed.lines[0]!
+    expect(watch.brand).toBe('Rolex')
+    expect(watch.reference).toBe('336934')
+    expect(watch.serial).toBe('30ER3414')
+    expect(watch.unitAmount).toBe(18_600)
+    expect(watch.quantity).toBe(1)
+  })
+
+  it('takes the seller from the footer, not the customer from the top', () => {
+    expect(parsed.supplier.name).toBe('Northgate Watch Traders Ltd')
+    expect(parsed.supplier.name).not.toMatch(/Bluecroft/i)
+    expect(parsed.supplier.registrationNo).toBe('16573151')
+  })
+
+  it('takes the seller’s email, not the first one on the page', () => {
+    expect(parsed.supplier.email).toBe('seller@example.com')
+  })
+
+  it('reads "no tax due" prose as the margin scheme', () => {
+    expect(parsed.vatScheme).toBe('MARGIN')
+  })
+
+  it('does not read "Terms: NET 0" as a net total', () => {
+    // Zero here would report the watch as bought for nothing.
+    expect(parsed.netAmount).toBe(18_600)
+    expect(parsed.grossAmount).toBe(18_600)
+  })
+
+  it('stops at the totals rather than booking them in as stock', () => {
+    for (const line of parsed.lines) {
+      expect(line.description).not.toMatch(/subtotal|balance|paid/i)
+    }
+  })
+})
+
 describe('VAT treatment', () => {
   it('reads the margin scheme however it is worded', () => {
     expect(detectVatScheme('Sold under the VAT Margin Scheme')).toBe('MARGIN')
