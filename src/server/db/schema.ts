@@ -7,8 +7,9 @@ import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
-  PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES, REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
-  ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
+  EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
+  REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
+  ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES, VAT_SCHEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -253,6 +254,12 @@ export const watches = pgTable(
     locationId: text('location_id').notNull().references(() => locations.id),
     status: text('status', { enum: WATCH_STATUSES }).notNull().default('IN_STOCK'),
 
+    /** The supplier invoice this watch was booked in from, when it came from one. */
+    invoiceId: text('invoice_id').references((): AnyPgColumn => purchaseInvoices.id),
+    /** Travels with the watch: margin-scheme stock cannot be resold as standard rated. */
+    vatScheme: text('vat_scheme', { enum: VAT_SCHEMES }).notNull().default('UNKNOWN'),
+    vatAmountGbp: integer('vat_amount_gbp'),
+
     notes: text('notes'),
     createdById: text('created_by_id').notNull().references(() => users.id),
 
@@ -273,6 +280,7 @@ export const watches = pgTable(
     serialIdx: index('watches_serial_idx').on(t.serial),
     statusLocationIdx: index('watches_status_location_idx').on(t.status, t.locationId),
     deletedIdx: index('watches_deleted_idx').on(t.deletedAt),
+    invoiceIdx: index('watches_invoice_idx').on(t.invoiceId),
   }),
 )
 
@@ -280,6 +288,51 @@ export const watches = pgTable(
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => 'bytea',
 })
+
+/**
+ * A supplier invoice, as sent.
+ *
+ * Holds the document itself alongside the figures read out of it, so the
+ * numbers in the system can always be checked against the paper they came
+ * from. `issues` records the lines that could not be booked in — an invoice
+ * that half-imported and said nothing would be worse than one that refused.
+ */
+export const purchaseInvoices = pgTable(
+  'purchase_invoices',
+  {
+    id: text('id').primaryKey(),
+    supplierId: text('supplier_id').notNull().references(() => suppliers.id),
+    invoiceNo: text('invoice_no'),
+    invoiceDate: timestamp('invoice_date', { withTimezone: true }),
+
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('GBP'),
+    netAmount: integer('net_amount'),
+    vatAmount: integer('vat_amount'),
+    grossAmount: integer('gross_amount'),
+    vatScheme: text('vat_scheme', { enum: VAT_SCHEMES }).notNull().default('UNKNOWN'),
+
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    data: bytea('data').notNull(),
+    rawText: text('raw_text'),
+
+    extractedBy: text('extracted_by', { enum: EXTRACTION_METHODS }).notNull().default('RULES'),
+    supplierMatch: text('supplier_match').notNull().default('CREATED'),
+    lineCount: integer('line_count').notNull().default(0),
+    createdCount: integer('created_count').notNull().default(0),
+    /** JSON array of the lines that did not become stock, and why. */
+    issues: text('issues'),
+
+    createdById: text('created_by_id').notNull().references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    supplierIdx: index('purchase_invoices_supplier_idx').on(t.supplierId),
+    dateIdx: index('purchase_invoices_date_idx').on(t.invoiceDate),
+  }),
+)
 
 /**
  * Image bytes stored in the database.

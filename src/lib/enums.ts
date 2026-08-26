@@ -46,6 +46,38 @@ export const DEFAULT_PRODUCT_TYPE: ProductType = 'WATCH'
 export const BOX_PAPERS = ['UNKNOWN', 'FULL_SET', 'WATCH_ONLY', 'BOX_ONLY', 'PAPERS_ONLY'] as const
 export type BoxPapers = (typeof BOX_PAPERS)[number]
 
+/**
+ * How VAT was treated on a purchase.
+ *
+ * The distinction that matters most in this trade is the second-hand margin
+ * scheme: VAT is due on the profit rather than the sale price, and none of it
+ * is reclaimable on the way in. A watch bought under the margin scheme and
+ * later sold as standard-rated is a real and expensive accounting error, so
+ * the scheme travels with the watch rather than living only on the invoice.
+ */
+export const VAT_SCHEMES = [
+  'UNKNOWN', 'MARGIN', 'STANDARD', 'ZERO_RATED', 'REVERSE_CHARGE',
+] as const
+export type VatScheme = (typeof VAT_SCHEMES)[number]
+
+export const VAT_SCHEME_LABELS: Record<VatScheme, string> = {
+  UNKNOWN: 'Not stated',
+  MARGIN: 'Margin scheme',
+  STANDARD: 'Standard rated',
+  ZERO_RATED: 'Zero rated',
+  REVERSE_CHARGE: 'Reverse charge',
+}
+
+/** How an invoice was read. Recorded so a bad batch can be traced to its reader. */
+export const EXTRACTION_METHODS = ['RULES', 'AI', 'AI_RULES'] as const
+export type ExtractionMethod = (typeof EXTRACTION_METHODS)[number]
+
+export const EXTRACTION_METHOD_LABELS: Record<ExtractionMethod, string> = {
+  RULES: 'Pattern matching',
+  AI: 'Claude',
+  AI_RULES: 'Claude, checked against the text',
+}
+
 export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT'] as const
 export type SaleChannel = (typeof SALE_CHANNELS)[number]
 

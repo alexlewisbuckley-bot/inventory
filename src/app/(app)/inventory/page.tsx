@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { asc, eq, isNull } from 'drizzle-orm'
-import { Download, Plus, Upload } from 'lucide-react'
+import { Download, FileText, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, suppliers } from '@/server/db/schema'
@@ -131,7 +131,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
             <PageActions
               secondary={[
                 ...(capabilities['data:import']
-                  ? [{ id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> }]
+                  ? [
+                    { id: 'invoice', label: 'Book in from an invoice', href: '/inventory/invoice', icon: <FileText className="h-3.5 w-3.5" /> },
+                    { id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> },
+                  ]
                   : []),
                 ...(capabilities['report:export']
                   ? [{ id: 'export', label: 'Export as CSV', href: '/api/export/watches', icon: <Download className="h-3.5 w-3.5" /> }]
