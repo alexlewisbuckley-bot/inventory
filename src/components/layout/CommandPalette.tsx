@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import {
-  ArrowRight, Banknote, BarChart3, Briefcase, LifeBuoy, ListChecks, Package, Plus,
+  ArrowRight, Banknote, BarChart3, Briefcase, FileText, LifeBuoy, ListChecks, Package, Plus,
   Search, Settings, Store, Truck, UserRound, Users,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -42,6 +42,7 @@ interface Action {
  */
 const ACTIONS: Action[] = [
   { id: 'add-watch', label: 'Add an item', hint: 'Log a purchase', href: '/inventory/new', icon: Plus, keywords: 'new stock buy intake purchase watch jewellery handbag' },
+  { id: 'book-invoice', label: 'Book in from an invoice', hint: 'Drop a supplier PDF', href: '/inventory/invoice', icon: FileText, keywords: 'invoice pdf upload drop scan supplier intake bulk' },
   { id: 'inventory', label: 'Stock', href: '/inventory', icon: Package, keywords: 'watches inventory list' },
   { id: 'deals', label: 'Deals', href: '/deals', icon: Briefcase, keywords: 'pipeline board opportunities' },
   { id: 'customers', label: 'Customers', href: '/customers', icon: Users, keywords: 'contacts people book crm' },

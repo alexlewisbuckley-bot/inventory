@@ -9,6 +9,7 @@ export const metadata: Metadata = { title: 'Help' }
 
 
 const TASKS = [
+  { title: 'Book stock in from a supplier invoice', body: 'Inventory → Book in invoice, then drop the PDF anywhere on the page. Every watch on it is created with its reference, serial, cost and VAT scheme, and the supplier is matched to your book or added to it. Nothing is retyped and there is no confirm step — anything it could not read is listed afterwards.', href: '/inventory/invoice' },
   { title: 'Add an item', body: 'Inventory → Add item. Nearly everything is a watch, so Watch is already chosen; switch the product type for the occasional piece of jewellery or handbag. Leave the sale price blank if you have not priced it yet; it will be flagged for review.', href: '/inventory/new' },
   { title: 'Move stock between stores', body: 'Open a watch and choose Move, or tick several rows in the inventory and use the bulk Move action. Every transfer is logged.', href: '/inventory' },
   { title: 'Mark a watch as sold', body: 'Click the status chip on any row and choose “Mark as sold”, or open the watch first. Profit and margin are worked out as you type.', href: '/inventory' },

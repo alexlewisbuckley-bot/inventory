@@ -118,6 +118,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                 secondary buttons. */}
             <span className="hidden sm:contents">
               {capabilities['data:import'] && (
+                <LinkButton href="/inventory/invoice" variant="secondary" icon={<FileText className="h-4 w-4" />}>
+                  Book in invoice
+                </LinkButton>
+              )}
+              {capabilities['data:import'] && (
                 <LinkButton href="/inventory/import" variant="ghost" icon={<Upload className="h-4 w-4" />}>
                   Import
                 </LinkButton>
