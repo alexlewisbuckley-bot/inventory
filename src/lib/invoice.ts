@@ -228,8 +228,14 @@ const LABELLED_LINE = /^(invoice|tax invoice|date|dated|due|terms|bill|ship|sold
 
 const LEGAL_ENTITY = /\b(limited|ltd\.?|llp|plc|gmbh|s\.?a\.?r\.?l\.?|inc\.?|b\.?v\.?|n\.?v\.?|pty|s\.?p\.?a\.?)\b/i
 
-/** The row that introduces the items table: "Description  Quantity  Rate  Amount". */
-const ITEMS_HEADER = /^description\b.*\b(amount|rate|price|total|value|cost)\b/i
+/**
+ * The row that introduces the items table.
+ *
+ * Not anchored on "Description": plenty of invoices lead with the quantity
+ * ("Quantity  Description  Unit Price  Total"), and requiring it first meant
+ * the table was never found and not a single watch was read off the document.
+ */
+const ITEMS_HEADER = /^(?=.{0,90}$)(?=.*\bdescriptions?\b)(?=.*\b(amount|rate|price|total|value|cost|qty|quantity)\b).+/i
 
 /** Where the items stop and the arithmetic starts. */
 const TOTALS_LINE = /^(sub\s*total|total|paid|balance|amount\s+due|vat\b|net\b|discount)/i
@@ -238,7 +244,19 @@ const PAYMENT_SECTION = /^(payment|bank\s+details|remittance|terms|thank you|not
 /** Money as invoices write it: £18,600.00, $1,250, 8950.00. */
 const MONEY_G = /[£$]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b|\b\d{3,}\.\d{2}\b/g
 
-const LABELLED_REFERENCE = /\b(?:model|ref|reference)\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i
+/**
+ * "Reference:" is asked for before "Model:".
+ *
+ * An invoice that carries both means them as different things — "Model:
+ * DATEJUST 26 JUB/SIL" names the watch, "Reference: 69174" identifies it —
+ * and taking whichever appeared first put the model name in the reference
+ * field. Where only "Model no" is given, as on invoices that use it to mean
+ * the reference, the second pattern still catches it.
+ */
+const LABELLED_REFERENCE = [
+  /\b(?:reference|ref)\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i,
+  /\bmodel\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i,
+]
 const LABELLED_SERIAL = /\b(?:serial|s\/n|case)\s*(?:no\.?|number|#)?\s*[:\-]?\s*([A-Z0-9]{4,14})\b/i
 
 /**
@@ -273,6 +291,9 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
     firstMatch(whole, [
       /(?:invoice\s*date|date\s*of\s*invoice|dated)\s*[:\-]?\s*([^\n]{6,30})/i,
       /\bdate\s*[:\-]\s*([^\n]{6,30})/i,
+      // "INVOICE NO. 00813 DATE 03/08/2026" — no colon, so the value has to
+      // be date-shaped for this to be safe.
+      /\bdate\s*[:\-]?\s+(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4})/i,
     ]) ?? labelledBelow(lines, /^(invoice\s*)?date\s*:?$/i, /\d/) ?? '',
   )
 
@@ -394,7 +415,7 @@ function parseBlock(block: string[], brands: string[]): ExtractedLine | null {
   if (!serial && bracketed.length >= 2) serial = bracketed[1]!
   const year = yearIn(descriptionText)
 
-  let reference = firstMatch(text, [LABELLED_REFERENCE]) ?? (bracketed.length >= 2 ? bracketed[0]! : null)
+  let reference = firstMatch(text, LABELLED_REFERENCE) ?? (bracketed.length >= 2 ? bracketed[0]! : null)
   if (!reference) {
     // Nothing labelled it, so look for something reference-shaped in the
     // description with the brand, the serial, the year and the money removed.
@@ -502,11 +523,15 @@ function parseAddress(outside: string[]): {
 } {
   const empty = { line1: null, line2: null, city: null, postcode: null }
 
-  // The last postcode on the seller's half: a letterhead repeats the address in
-  // the footer, and the footer copy is the more complete one.
-  let at = -1
-  for (let i = outside.length - 1; i >= 0; i -= 1) {
-    if (POSTCODE.test(outside[i]!)) { at = i; break }
+  // A line holding nothing but the postcode is the end of a proper address
+  // block, and the lines above it are the address. Preferred over the last
+  // postcode on the page, which is usually inside a registered-office line in
+  // the footer and takes the company name with it.
+  let at = outside.findIndex((line) => /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}(,?\s*(UK|United Kingdom))?$/i.test(line.trim()))
+  if (at < 0) {
+    for (let i = outside.length - 1; i >= 0; i -= 1) {
+      if (POSTCODE.test(outside[i]!)) { at = i; break }
+    }
   }
   if (at < 0) return empty
 
@@ -533,20 +558,24 @@ function parseAddress(outside: string[]): {
   // "Hathersage, S32 1DD" puts the town on the same line as the postcode.
   const sameLineTown = line.replace(POSTCODE, '').replace(/[,\s]+$/, '').trim()
 
-  const above = outside.slice(Math.max(0, at - 3), at)
+  const above = outside.slice(Math.max(0, at - 4), at)
     .map((value) => value.trim())
     .filter((value) => (
       value.length > 1
       && !/@|\b(company|vat|reg|tel|phone|invoice|sort code|account|iban|swift)\b/i.test(value)
       && !LEGAL_ENTITY.test(value)
+      // A footer address often sits directly under the totals; neither a
+      // figure nor "Balance Due" is a line of anybody's address.
+      && !hasMoney(value)
+      && !TOTALS_LINE.test(value)
     ))
 
   const city = sameLineTown || above[above.length - 1] || null
-  const street = sameLineTown ? above.slice(-2) : above.slice(0, -1).slice(-2)
+  const street = sameLineTown ? above.slice(-2) : above.slice(0, -1)
 
   return {
     line1: street[0] ?? null,
-    line2: street[1] ?? null,
+    line2: street.slice(1).join(', ') || null,
     city,
     postcode,
   }

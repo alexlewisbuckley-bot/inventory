@@ -352,6 +352,80 @@ describe('an invoice whose text layer is doubled', () => {
   })
 })
 
+/**
+ * A quantity-first table with a labelled, stacked item block.
+ *
+ * From a third supplier. Two things here defeated the reader completely:
+ * the header row leads with Quantity rather than Description, so the items
+ * table was never located and not one watch was read; and the item is a stack
+ * of labelled fields with the price several lines below it.
+ */
+const LABELLED_STACK_INVOICE = [
+  'MKA Acquisition LTD',
+  'Sidings House',
+  'Sidings Court',
+  'Lakeside',
+  'Doncaster',
+  'DN4 5NU',
+  'T: 07983 403 653',
+  'E: Invoices@MKA-AcquisitionLTD.com',
+  'INVOICE NO. 00813 DATE 03/08/2026',
+  'BILL TO SHIP TO INSTRUCTIONS',
+  'BLUECROFT TRADERS',
+  'LIMITED,',
+  '6 AMBASSADOR PLACE,',
+  'WA15 8DB',
+  'Quantity Description Unit Price Total',
+  'Brand: ROLEX',
+  'Model: DATEJUST 26 JUB/SIL',
+  'Reference: 69174',
+  'Serial: U984956',
+  'Warranty: 08/10/1999',
+  'QTY',
+  '1',
+  'Amount',
+  '£3,300.00',
+  'Company No. 14364483 VAT No. 435379475',
+  'SOLD AS PRE OWNED ON THE UK VAT MARGIN SCHEME',
+].join('\n')
+
+describe('a quantity-first table with labelled item fields', () => {
+  const parsed = parseInvoiceText(LABELLED_STACK_INVOICE)
+
+  it('finds the items table even though Description is not the first column', () => {
+    expect(parsed.lines).toHaveLength(1)
+  })
+
+  it('reads the labelled fields, preferring Reference over Model', () => {
+    const watch = parsed.lines[0]!
+    expect(watch.brand).toBe('Rolex')
+    // "Model: DATEJUST 26 JUB/SIL" names it; "Reference: 69174" identifies it.
+    expect(watch.reference).toBe('69174')
+    expect(watch.serial).toBe('U984956')
+    expect(watch.unitAmount).toBe(3300)
+  })
+
+  it('reads a phone and email given as bare T: and E:', () => {
+    expect(parsed.supplier.phone).toBe('07983 403 653')
+    expect(parsed.supplier.email).toBe('Invoices@MKA-AcquisitionLTD.com')
+  })
+
+  it('reads the address block that ends on a postcode-only line', () => {
+    expect(parsed.supplier.addressLine1).toBe('Sidings House')
+    expect(parsed.supplier.city).toBe('Doncaster')
+    expect(parsed.supplier.postcode).toBe('DN4 5NU')
+  })
+
+  it('reads a date that follows its label with only a space', () => {
+    expect(parsed.invoiceNo).toBe('00813')
+    expect(parsed.invoiceDate?.slice(0, 10)).toBe('2026-08-03')
+  })
+
+  it('still takes the seller, not the BILL TO company', () => {
+    expect(parsed.supplier.name).toBe('MKA Acquisition LTD')
+  })
+})
+
 describe('VAT treatment', () => {
   it('reads the margin scheme however it is worded', () => {
     expect(detectVatScheme('Sold under the VAT Margin Scheme')).toBe('MARGIN')
