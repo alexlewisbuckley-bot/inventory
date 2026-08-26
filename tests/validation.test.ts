@@ -18,6 +18,34 @@ describe('watch validation', () => {
     if (!result.success) expect(fieldErrors(result.error).purchaseDate).toMatch(/future/i)
   })
 
+  /**
+   * Regression: the money inputs group thousands as they are typed and the
+   * intake form posts that string as-is, so every purchase over £999 entered
+   * by hand came back as "Purchase price must be a number" — on a field
+   * showing a perfectly good number.
+   */
+  it('accepts a price typed with the grouping the input itself adds', () => {
+    const result = watchCreateSchema.safeParse({ ...baseWatch, purchaseAmount: '13,105.51' })
+    expect(result.success).toBe(true)
+    if (result.success) expect(result.data.purchaseAmount).toBe(13_105.51)
+  })
+
+  it('groups the optional estimate the same way, without losing the blank case', () => {
+    const grouped = watchCreateSchema.safeParse({ ...baseWatch, estSaleAmount: '14,980.00' })
+    expect(grouped.success).toBe(true)
+    if (grouped.success) expect(grouped.data.estSaleAmount).toBe(14_980)
+    // And a blank one is still unpriced rather than free.
+    const blank = watchCreateSchema.safeParse({ ...baseWatch, estSaleAmount: '' })
+    expect(blank.success).toBe(true)
+    if (blank.success) expect(blank.data.estSaleAmount).toBeNull()
+  })
+
+  it('still rejects text that is not a number in disguise', () => {
+    const result = watchCreateSchema.safeParse({ ...baseWatch, purchaseAmount: 'about ten grand' })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(fieldErrors(result.error).purchaseAmount).toMatch(/number/i)
+  })
+
   it('rejects a negative purchase price', () => {
     expect(watchCreateSchema.safeParse({ ...baseWatch, purchaseAmount: -5 }).success).toBe(false)
   })

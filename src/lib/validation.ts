@@ -16,10 +16,31 @@ import {
  * shown to users, so messages stay consistent across the app.
  */
 
+/**
+ * An amount as the form actually posts it.
+ *
+ * The money inputs group thousands while they are typed — 9500 shows as
+ * "9,500", which is the point of the control, since a mis-scanned 13105.51 is
+ * one keystroke from a ten-times pricing error. The intake form posts that
+ * string verbatim, and `z.coerce.number()` reads "9,500" as NaN: every
+ * purchase over £999 entered by hand was rejected as "must be a number" while
+ * the field plainly showed one. The quick-sell dialog escaped it only because
+ * it parses the value itself before building its FormData.
+ *
+ * Stripped here rather than in each form, because the server should accept
+ * what its own controls produce — and the next form to use MoneyField would
+ * otherwise reintroduce this.
+ */
+const ungrouped = (value: unknown) =>
+  (typeof value === 'string' ? value.replace(/[\s,]/g, '') : value)
+
 const money = (label: string) =>
-  z.coerce.number({ invalid_type_error: `${label} must be a number.` })
-    .min(0, `${label} cannot be negative.`)
-    .max(100_000_000, `${label} looks too large — please check.`)
+  z.preprocess(
+    ungrouped,
+    z.coerce.number({ invalid_type_error: `${label} must be a number.` })
+      .min(0, `${label} cannot be negative.`)
+      .max(100_000_000, `${label} looks too large — please check.`),
+  )
 
 /**
  * Optional money.
