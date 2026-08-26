@@ -81,7 +81,12 @@ async function readText(file: { name: string; mimeType: string; buffer: ArrayBuf
     // Imported here rather than at module scope: it pulls in a PDF engine that
     // has no business loading on every request that touches this file.
     const { extractText, getDocumentProxy } = await import('unpdf')
-    const pdf = await getDocumentProxy(new Uint8Array(file.buffer))
+    // `.slice(0)` is load-bearing: pdf.js takes ownership of the array it is
+    // given and detaches the underlying ArrayBuffer. Handing it the original
+    // left every later read of those bytes — the Claude call, and the copy
+    // stored on the invoice row — throwing "detached ArrayBuffer", so a PDF
+    // upload failed outright once a key was configured.
+    const pdf = await getDocumentProxy(new Uint8Array(file.buffer.slice(0)))
     // `mergePages` returns the whole document as one string rather than an
     // array per page; the parser wants it whole so a line wrapped across a
     // page break still reads as one line.

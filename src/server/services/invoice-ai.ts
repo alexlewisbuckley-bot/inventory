@@ -36,7 +36,27 @@ export function aiConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY)
 }
 
-const nullableString = (description: string) => ({ type: ['string', 'null'], description })
+/**
+ * Absent text is an empty string, not null.
+ *
+ * A strict schema allows at most 16 union-typed parameters, and declaring
+ * every field `["string", "null"]` came to 18 — a 400 on every request, which
+ * the caller then swallowed as "Claude unavailable" and quietly answered from
+ * the rule-based parser instead. Text uses "" for "the invoice does not say"
+ * and `coerceExtraction` turns that back into null.
+ */
+const absentAsEmpty = (description: string) => ({
+  type: 'string',
+  description: `${description} Empty string if the invoice does not state it.`,
+})
+
+/**
+ * Numbers stay nullable, and are worth two of the sixteen.
+ *
+ * Zero is a real answer on an invoice — a margin-scheme sale states VAT of
+ * £0.00 — so "not stated" cannot be encoded as 0 without losing the
+ * difference between no VAT and no VAT line.
+ */
 const nullableNumber = (description: string) => ({ type: ['number', 'null'], description })
 
 /**
@@ -52,7 +72,7 @@ const INVOICE_TOOL: Anthropic.Beta.BetaToolUnion = {
   name: 'record_invoice',
   description:
     'Record every fact read from this supplier invoice for luxury watches. '
-    + 'Use null for anything the document does not state — never invent a value.',
+    + 'Leave text empty and numbers null for anything the document does not state — never invent a value.',
   strict: true,
   input_schema: {
     type: 'object',
@@ -63,18 +83,18 @@ const INVOICE_TOOL: Anthropic.Beta.BetaToolUnion = {
         additionalProperties: false,
         description: 'The firm that SENT the invoice — the seller, not the buyer.',
         properties: {
-          name: nullableString('Trading name of the seller.'),
-          legalName: nullableString('Registered entity, e.g. "GB Luxury Trading Limited".'),
-          vatNo: nullableString('VAT registration number, digits and country prefix as printed.'),
-          registrationNo: nullableString('Company registration number.'),
-          email: nullableString("The seller's email address."),
-          phone: nullableString("The seller's telephone number."),
-          country: nullableString('Country the seller trades from.'),
+          name: absentAsEmpty('Trading name of the seller.'),
+          legalName: absentAsEmpty('Registered entity, e.g. "GB Luxury Trading Limited".'),
+          vatNo: absentAsEmpty('VAT registration number, digits and country prefix as printed.'),
+          registrationNo: absentAsEmpty('Company registration number.'),
+          email: absentAsEmpty("The seller's email address."),
+          phone: absentAsEmpty("The seller's telephone number."),
+          country: absentAsEmpty('Country the seller trades from.'),
         },
         required: ['name', 'legalName', 'vatNo', 'registrationNo', 'email', 'phone', 'country'],
       },
-      invoiceNo: nullableString('The invoice number as printed.'),
-      invoiceDate: nullableString('Invoice date as ISO YYYY-MM-DD. British invoices are day-first.'),
+      invoiceNo: absentAsEmpty('The invoice number as printed.'),
+      invoiceDate: absentAsEmpty('Invoice date as ISO YYYY-MM-DD. British invoices are day-first.'),
       currency: {
         type: 'string',
         enum: [...CURRENCIES],
@@ -99,11 +119,11 @@ const INVOICE_TOOL: Anthropic.Beta.BetaToolUnion = {
           additionalProperties: false,
           properties: {
             description: { type: 'string', description: 'The line as printed, verbatim.' },
-            brand: nullableString('Maker, e.g. Rolex, Patek Philippe, Cartier.'),
-            reference: nullableString(
+            brand: absentAsEmpty('Maker, e.g. Rolex, Patek Philippe, Cartier.'),
+            reference: absentAsEmpty(
               "The manufacturer's reference, e.g. 126711CHNR, 5711/1A. Not the serial number.",
             ),
-            serial: nullableString('The serial or case number unique to this individual watch.'),
+            serial: absentAsEmpty('The serial or case number unique to this individual watch.'),
             year: nullableNumber('Year of manufacture, if stated.'),
             productType: {
               type: 'string',
@@ -136,7 +156,7 @@ Rules that matter more than they look:
 - One line per watch. An invoice for three watches is three entries, even where the layout runs them together, and even where they share a price.
 - Prices are per line and exclude VAT unless the invoice says otherwise. If only a VAT-inclusive figure is given for a line, use it and record the scheme.
 - The VAT scheme is a legal fact about the sale, not a guess. Only report one the document supports.
-- Anything not stated is null. A plausible invention is worse than a gap, because a gap is visible and an invention is not.`
+- Anything not stated is empty: "" for text, null for numbers. A plausible invention is worse than a gap, because a gap is visible and an invention is not.`
 
 export async function extractWithClaude(
   file: { name: string; mimeType: string; buffer: ArrayBuffer },
@@ -182,7 +202,7 @@ export async function extractWithClaude(
     const response = await client.beta.messages.create({
       model: MODEL,
       max_tokens: 16_000,
-      output_config: { effort: 'medium' },
+      output_config: { effort: 'low' },
       // A refusal would leave the upload with nothing to show for itself; the
       // server-side fallback re-runs the same request on another model inside
       // the same call rather than returning empty-handed.
