@@ -174,6 +174,38 @@ function undoubleLine(line: string): string {
   return chunks.join('') + line.slice(consumed)
 }
 
+/**
+ * Collapse text a PDF letter-spaced.
+ *
+ * Some generators emit every character as its own positioned glyph run, so the
+ * text layer reads "I N V O I C E" and "M o d e l : 1 2 6 3 3 4". It is not
+ * cosmetic either: "T o :" meant the customer's block went unrecognised, and
+ * the buyer's company number and email were recorded as the supplier's.
+ *
+ * A line qualifies when most of its space-separated tokens are single
+ * characters — which prose and addresses never are — and the spaces are then
+ * dropped entirely. Word boundaries are lost with them ("16Jul2026"), because
+ * the extractor gives the same single space between letters of a word as
+ * between words; the readers below cope with that rather than guessing where
+ * the gaps were.
+ */
+export function unspaceText(text: string): string {
+  return text.split('\n').map(unspaceLine).join('\n')
+}
+
+function unspaceLine(line: string): string {
+  const trimmed = line.trim()
+  if (trimmed.length < 5 || trimmed.length > 300) return line
+
+  const tokens = trimmed.split(/\s+/)
+  if (tokens.length < 3) return line
+
+  const singles = tokens.filter((token) => token.length === 1).length
+  if (singles / tokens.length < 0.6) return line
+
+  return tokens.join('')
+}
+
 /** A money figure as written on an invoice: £12,500.00, 12500, 9 500.50. */
 export function parseAmount(raw: string | null | undefined): number | null {
   if (!raw) return null
@@ -208,6 +240,13 @@ export function parseInvoiceDate(raw: string | null | undefined): string | null 
     const month = MONTHS.indexOf(named[2]!.slice(0, 3).toLowerCase())
     if (month >= 0) return new Date(Date.UTC(Number(named[3]), month, Number(named[1]))).toISOString()
   }
+
+  // "16Jul2026" — a letter-spaced date with its spaces collapsed away.
+  const compact = /\b(\d{1,2})([A-Za-z]{3,9})(\d{4})\b/.exec(text)
+  if (compact) {
+    const month = MONTHS.indexOf(compact[2]!.slice(0, 3).toLowerCase())
+    if (month >= 0) return new Date(Date.UTC(Number(compact[3]), month, Number(compact[1]))).toISOString()
+  }
   return null
 }
 
@@ -235,10 +274,23 @@ const LEGAL_ENTITY = /\b(limited|ltd\.?|llp|plc|gmbh|s\.?a\.?r\.?l\.?|inc\.?|b\.
  * ("Quantity  Description  Unit Price  Total"), and requiring it first meant
  * the table was never found and not a single watch was read off the document.
  */
-const ITEMS_HEADER = /^(?=.{0,90}$)(?=.*\bdescriptions?\b)(?=.*\b(amount|rate|price|total|value|cost|qty|quantity)\b).+/i
+const ITEMS_HEADER = /^(?=.{0,90}$)(?=.*descriptions?)(?=.*(amount|rate|price|total|value|cost|qty|quantity)).+/i
 
 /** Where the items stop and the arithmetic starts. */
 const TOTALS_LINE = /^(sub\s*total|total|paid|balance|amount\s+due|vat\b|net\b|discount)/i
+
+/**
+ * A totals row, even with the figure printed before its label.
+ *
+ * Letter-spacing collapses "£10,350.00  S U B T O TA L" into
+ * "£10,350.00SUBTOTAL", which is not anchored at the start and was therefore
+ * read as another watch costing £10,350.
+ */
+function looksLikeTotals(line: string): boolean {
+  if (TOTALS_LINE.test(line)) return true
+  const letters = line.replace(/[^a-z]/gi, '').toLowerCase()
+  return letters.length < 25 && /(subtotal|total|balancedue|amountdue|paid)/.test(letters)
+}
 const PAYMENT_SECTION = /^(payment|bank\s+details|remittance|terms|thank you|notes?|international)\b/i
 
 /** Money as invoices write it: £18,600.00, $1,250, 8950.00. */
@@ -273,7 +325,8 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
     .filter((b) => b.trim().length > 1)
     .sort((a, b) => b.length - a.length)
 
-  const lines = undoubleText(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const lines = unspaceText(undoubleText(text))
+    .split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const whole = lines.join('\n')
   const buyer = buyerBlock(lines)
   // Every fact about the seller is looked for outside the buyer's block, so a
@@ -282,10 +335,19 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
 
   const currency = CURRENCY_HINTS.find(([pattern]) => pattern.test(whole))?.[1] ?? BASE_CURRENCY
 
+  // `[^\S\n]` rather than `\s`: with `\s` the pattern walked off the end of
+  // "Invoice#:" and across the newline to capture the next label, so the
+  // invoice number came out as "Date".
   const invoiceNo = firstMatch(whole, [
-    /invoice\s*(?:no\.?|number|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
-    /\binv\s*[:\-#]\s*([A-Z0-9][A-Z0-9\-/]{2,})/i,
+    /invoice[^\S\n]*(?:no\.?|number|#)[^\S\n]*[:\-]?[^\S\n]*([A-Z0-9][A-Z0-9\-/]{2,})/i,
+    /\binv[^\S\n]*[:\-#][^\S\n]*([A-Z0-9][A-Z0-9\-/]{2,})/i,
   ]) ?? labelledBelow(lines, /^invoice(\s*(?:no\.?|number|#))?\s*:?$/i, /^[A-Z0-9][A-Z0-9\-/]{2,}$/i)
+    ?? labelledAbove(
+      lines,
+      /^invoice\s*(?:no\.?|number|#)?\s*:$/i,
+      // Not the date sitting beside it in the same header block.
+      (value) => /^[A-Z0-9][A-Z0-9\-/]{1,19}$/i.test(value) && parseInvoiceDate(value) === null,
+    )
 
   const invoiceDate = parseInvoiceDate(
     firstMatch(whole, [
@@ -294,7 +356,8 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
       // "INVOICE NO. 00813 DATE 03/08/2026" — no colon, so the value has to
       // be date-shaped for this to be safe.
       /\bdate\s*[:\-]?\s+(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4})/i,
-    ]) ?? labelledBelow(lines, /^(invoice\s*)?date\s*:?$/i, /\d/) ?? '',
+    ]) ?? labelledBelow(lines, /^(invoice\s*)?date\s*:?$/i, /\d/)
+      ?? labelledAbove(lines, /^(invoice\s*)?date\s*:$/i, (value) => parseInvoiceDate(value) !== null) ?? '',
   )
 
   // Every total must carry a currency symbol or pence. "Terms: NET 0" read as
@@ -331,7 +394,13 @@ export function parseInvoiceText(text: string, extraBrands: string[] = []): Extr
  * the strings in.
  */
 function buyerBlock(lines: string[]): Set<number> {
-  const start = lines.findIndex((line) => /^(bill\s*to|invoice\s*to|sold\s*to|ship\s*to|customer)\b/i.test(line))
+  // A bare "To:" on its own line counts. It is only safe because it must be
+  // the whole line — "to" inside a sentence is not a customer block — and
+  // missing it put the customer's company number and email on the supplier.
+  const start = lines.findIndex((line) => (
+    /^(bill\s*to|invoice\s*to|sold\s*to|ship\s*to|customer)\b/i.test(line)
+    || /^to\s*:$/i.test(line.trim())
+  ))
   if (start < 0) return new Set()
 
   const block = new Set<number>([start])
@@ -367,7 +436,7 @@ function parseItems(lines: string[], brands: string[], buyer: Set<number>): Extr
 
   for (let i = headerAt + 1; i < lines.length; i += 1) {
     const line = lines[i]!
-    if (TOTALS_LINE.test(line) || PAYMENT_SECTION.test(line)) break
+    if (looksLikeTotals(line) || PAYMENT_SECTION.test(line)) break
     if (buyer.has(i)) continue
 
     block.push(line)
@@ -498,6 +567,25 @@ function parseSupplier(lines: string[], sellerText: string, buyer: Set<number>):
  * A two-column invoice header renders as "INVOICE" then "INV0261" then "DATE"
  * then the date — the colon a single-line pattern looks for never exists.
  */
+/**
+ * A label printed after its value rather than before it.
+ *
+ * A two-column header can reach the text layer as its values first and its
+ * labels after — "INVOICE / 103 / 16Jul2026 / Invoice#: / Date:" — so the
+ * value for a label is found by reading backwards, skipping anything that is
+ * itself a label.
+ */
+function labelledAbove(lines: string[], label: RegExp, accept: (value: string) => boolean): string | null {
+  const at = lines.findIndex((line) => label.test(line.trim()))
+  if (at <= 0) return null
+  for (let i = at - 1; i >= Math.max(0, at - 4); i -= 1) {
+    const candidate = lines[i]!.trim()
+    if (/:$/.test(candidate)) continue
+    if (accept(candidate)) return candidate
+  }
+  return null
+}
+
 function labelledBelow(lines: string[], label: RegExp, value: RegExp): string | null {
   for (let i = 0; i < lines.length - 1; i += 1) {
     if (!label.test(lines[i]!)) continue
@@ -506,6 +594,8 @@ function labelledBelow(lines: string[], label: RegExp, value: RegExp): string | 
   }
   return null
 }
+
+const STREET_WORD = /\b(road|rd|street|st|lane|ln|avenue|ave|drive|dr|way|court|place|house|park|row|close|crescent|hill|square|terrace|gardens?|mews|wharf|quay)\b/i
 
 /** UK postcodes, which are the reliable anchor in an address block. */
 const POSTCODE = /\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b/i
@@ -570,8 +660,16 @@ function parseAddress(outside: string[]): {
       && !TOTALS_LINE.test(value)
     ))
 
-  const city = sameLineTown || above[above.length - 1] || null
-  const street = sameLineTown ? above.slice(-2) : above.slice(0, -1)
+  // "Altrincham Road, SK9 4LY" puts a street beside the postcode, not a town —
+  // so it becomes an address line and the town is taken from the line above.
+  const townIsStreet = Boolean(sameLineTown) && STREET_WORD.test(sameLineTown)
+  const aboveTown = above[above.length - 1] ?? null
+  const city = townIsStreet
+    ? (aboveTown?.split(',').pop()?.trim() ?? null)
+    : (sameLineTown || aboveTown || null)
+  const street = townIsStreet
+    ? [...above.slice(-1), sameLineTown]
+    : sameLineTown ? above.slice(-2) : above.slice(0, -1)
 
   return {
     line1: street[0] ?? null,

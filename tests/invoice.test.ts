@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseInvoiceText, detectVatScheme, parseAmount, parseInvoiceDate,
-  mergeExtractions, coerceExtraction, undoubleText, EMPTY_EXTRACTION,
+  mergeExtractions, coerceExtraction, undoubleText, unspaceText, EMPTY_EXTRACTION,
   type ExtractedInvoice,
 } from '@/lib/invoice'
 
@@ -423,6 +423,104 @@ describe('a quantity-first table with labelled item fields', () => {
 
   it('still takes the seller, not the BILL TO company', () => {
     expect(parsed.supplier.name).toBe('MKA Acquisition LTD')
+  })
+})
+
+/**
+ * A PDF that letter-spaces its text.
+ *
+ * A fourth generator, a fourth kind of damage: every character is its own
+ * positioned glyph run, so the text layer reads "I N V O I C E". Verbatim
+ * from a real invoice.
+ *
+ * "T o :" is the costly one. The customer's block is found by its heading, so
+ * a letter-spaced "To:" meant it was never recognised — and the buyer's
+ * company number and email address were recorded as the supplier's. On this
+ * document that is Bluecroft's own company number, on Bluecroft's supplier
+ * record.
+ */
+const LETTER_SPACED_INVOICE = [
+  'CHURCHILL&CO Ltd',
+  'The Colony, Wilmslow',
+  'Altrincham Road, SK9 4LY',
+  '+447799847635',
+  'I N V O I C E',
+  '1 0 3',
+  '1 6 J u l 2 0 2 6',
+  'I n v o i c e # :',
+  'D a t e :',
+  'T o :',
+  'Bluecroft Traders Limited',
+  '6 Ambassador Place, Stockport Road, Altrincham,',
+  'Trafford, WA15 8DB, United kingdom',
+  'Invoices@bluecroft.com',
+  'Company No: 12026413',
+  'I t e m D E S C R I P T I O N Q T Y. P R I C E T O TA L',
+  '1 Ro l ex D a t e j u s t 41 F l u t e d',
+  'M o d e l : 1 2 6 3 3 4',
+  'S e r i a l : L1 1 0 0 6 C 1',
+  '1 £ 1 0,3 5 0.0 0 £ 1 0,3 5 0.0 0',
+  '£10,350.00S U B T O TA L',
+  '£10,350.00TOTAL',
+].join('\n')
+
+describe('undoing text a PDF letter-spaced', () => {
+  it('collapses a line whose characters are all separate', () => {
+    expect(unspaceText('I N V O I C E')).toBe('INVOICE')
+    expect(unspaceText('T o :')).toBe('To:')
+    expect(unspaceText('M o d e l : 1 2 6 3 3 4')).toBe('Model:126334')
+  })
+
+  it('leaves ordinary lines alone', () => {
+    for (const line of [
+      'CHURCHILL&CO Ltd',
+      'The Colony, Wilmslow',
+      'Bluecroft Traders Limited',
+      'Company No: 12026413',
+      '1 £18,600.00 £18,600.00*',
+      'Description Quantity Rate Amount',
+    ]) {
+      expect(unspaceText(line)).toBe(line)
+    }
+  })
+})
+
+describe('an invoice whose text layer is letter-spaced', () => {
+  const parsed = parseInvoiceText(LETTER_SPACED_INVOICE)
+
+  it('never records the buyer’s company number as the supplier’s', () => {
+    // 12026413 is Bluecroft's own. Reading it here would put the customer's
+    // identity on a supplier record, and could later match a real firm to it.
+    expect(parsed.supplier.registrationNo).not.toBe('12026413')
+    // Null here is the right answer: this invoice gives no seller email.
+    expect(parsed.supplier.email ?? '').not.toMatch(/bluecroft/i)
+    expect(parsed.supplier.name).toBe('CHURCHILL&CO Ltd')
+  })
+
+  it('reads the watch, which letter-spacing hid completely', () => {
+    expect(parsed.lines).toHaveLength(1)
+    expect(parsed.lines[0]!.brand).toBe('Rolex')
+    expect(parsed.lines[0]!.reference).toBe('126334')
+    expect(parsed.lines[0]!.serial).toBe('L11006C1')
+    expect(parsed.lines[0]!.unitAmount).toBe(10_350)
+  })
+
+  it('does not book the subtotal in as a second watch', () => {
+    // "£10,350.00SUBTOTAL" puts the figure before its label, so the row is
+    // not anchored on the word the totals check looks for.
+    expect(parsed.lines.every((line) => line.brand !== null)).toBe(true)
+  })
+
+  it('reads a label printed after its value', () => {
+    // The header arrives as its values first, then its labels.
+    expect(parsed.invoiceNo).toBe('103')
+    expect(parsed.invoiceDate?.slice(0, 10)).toBe('2026-07-16')
+  })
+
+  it('takes the town from the line above when a street sits beside the postcode', () => {
+    expect(parsed.supplier.postcode).toBe('SK9 4LY')
+    expect(parsed.supplier.city).toBe('Wilmslow')
+    expect(parsed.supplier.phone).toBe('+447799847635')
   })
 })
 
