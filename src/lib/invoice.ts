@@ -9,9 +9,11 @@ import {
  * Two readers produce the same shape. The rule-based one below works on the
  * text layer of the PDF and never leaves the process; Claude reads the
  * document itself and copes with layouts nobody anticipated, including scans
- * with no text layer at all. Neither is trusted alone: `mergeExtractions`
- * prefers Claude's reading and falls back to the rules field by field, so a
- * missing API key degrades the result rather than removing the feature.
+ * with no text layer at all. `reconcile` decides between them: Claude's
+ * reading stands where it succeeded, the rules stand in when it did not, and
+ * anywhere the two disagree the disagreement is reported rather than quietly
+ * settled. A missing API key degrades the result; it does not remove the
+ * feature.
  *
  * Everything here is pure and string-in, object-out — which is what makes the
  * interesting cases (a margin-scheme invoice, a serial that looks like a
@@ -722,46 +724,79 @@ function escapeRegExp(value: string): string {
 // Merging the two readings
 // ---------------------------------------------------------------------------
 
-const pick = <T>(preferred: T | null | undefined, fallback: T | null | undefined): T | null =>
-  preferred !== null && preferred !== undefined && preferred !== '' ? preferred : (fallback ?? null)
-
 /**
- * Claude's reading, backed by the rules.
+ * What the two readers agreed to, and where they did not.
  *
- * Field by field rather than whole-object: Claude reads layout and prose far
- * better, but the rule-based pass is the one that can be relied on for the
- * things regular expressions are actually good at — a VAT number, a company
- * number, an email address — and it fills any gap Claude left. Lines come from
- * whichever reader found more of them, because a reader that found three
- * watches on a three-watch invoice beats one that found one.
+ * Claude's reading stands when it succeeds. That is a deliberate reversal:
+ * the previous design let the rule-based pass fill any field Claude left
+ * blank, on the reasoning that a value beats a gap. It does not. A blank from
+ * something that read the whole document is evidence the document does not
+ * state it; a regular expression's guess is far weaker evidence, and letting
+ * the weaker one win is exactly how a customer's company number — the only one
+ * printed on the page — ended up recorded as the supplier's.
+ *
+ * So the rules no longer top up Claude's answer. They still run, and where the
+ * two disagree on something that matters the disagreement is reported against
+ * the invoice rather than silently resolved in either direction. A conflict a
+ * person can see beats a merge nobody can.
  */
-export function mergeExtractions(ai: ExtractedInvoice | null, rules: ExtractedInvoice): ExtractedInvoice {
-  if (!ai) return rules
+export interface Reconciliation {
+  invoice: ExtractedInvoice
+  source: 'AI' | 'RULES'
+  /** Human-readable notes, for showing on the invoice. Never blocking. */
+  disagreements: string[]
+}
 
-  return {
-    supplier: {
-      name: pick(ai.supplier.name, rules.supplier.name),
-      legalName: pick(ai.supplier.legalName, rules.supplier.legalName),
-      vatNo: pick(ai.supplier.vatNo, rules.supplier.vatNo),
-      registrationNo: pick(ai.supplier.registrationNo, rules.supplier.registrationNo),
-      email: pick(ai.supplier.email, rules.supplier.email),
-      phone: pick(ai.supplier.phone, rules.supplier.phone),
-      addressLine1: pick(ai.supplier.addressLine1, rules.supplier.addressLine1),
-      addressLine2: pick(ai.supplier.addressLine2, rules.supplier.addressLine2),
-      city: pick(ai.supplier.city, rules.supplier.city),
-      postcode: pick(ai.supplier.postcode, rules.supplier.postcode),
-      country: pick(ai.supplier.country, rules.supplier.country),
-    },
-    invoiceNo: pick(ai.invoiceNo, rules.invoiceNo),
-    invoiceDate: pick(ai.invoiceDate, rules.invoiceDate),
-    currency: ai.currency ?? rules.currency,
-    netAmount: pick(ai.netAmount, rules.netAmount),
-    vatAmount: pick(ai.vatAmount, rules.vatAmount),
-    grossAmount: pick(ai.grossAmount, rules.grossAmount),
-    // An explicit scheme from either reader beats UNKNOWN from the other.
-    vatScheme: ai.vatScheme !== 'UNKNOWN' ? ai.vatScheme : rules.vatScheme,
-    lines: ai.lines.length >= rules.lines.length ? ai.lines : rules.lines,
+const loose = (value: string | null): string =>
+  (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const bothStated = (a: string | null, b: string | null): boolean =>
+  Boolean(a) && Boolean(b)
+
+export function reconcile(ai: ExtractedInvoice | null, rules: ExtractedInvoice): Reconciliation {
+  if (!ai) return { invoice: rules, source: 'RULES', disagreements: [] }
+
+  const disagreements: string[] = []
+
+  if (bothStated(ai.supplier.name, rules.supplier.name)
+    && loose(ai.supplier.name) !== loose(rules.supplier.name)) {
+    disagreements.push(
+      `Supplier read as "${ai.supplier.name}", but the text pattern reader saw "${rules.supplier.name}".`,
+    )
   }
+
+  if (bothStated(ai.invoiceNo, rules.invoiceNo) && loose(ai.invoiceNo) !== loose(rules.invoiceNo)) {
+    disagreements.push(
+      `Invoice number read as ${ai.invoiceNo}, but the text pattern reader saw ${rules.invoiceNo}.`,
+    )
+  }
+
+  // A count that differs means one reader saw a watch the other did not, which
+  // is the disagreement most worth a second pair of eyes.
+  if (rules.lines.length > 0 && ai.lines.length !== rules.lines.length) {
+    disagreements.push(
+      `${ai.lines.length} item${ai.lines.length === 1 ? '' : 's'} read from this invoice, `
+      + `where the text pattern reader found ${rules.lines.length}.`,
+    )
+  }
+
+  const total = (invoice: ExtractedInvoice): number =>
+    invoice.lines.reduce((sum, line) => sum + (line.unitAmount ?? 0) * line.quantity, 0)
+  const aiTotal = total(ai)
+  const rulesTotal = total(rules)
+  // A pound of rounding is not a disagreement; a different figure is.
+  if (aiTotal > 0 && rulesTotal > 0 && Math.abs(aiTotal - rulesTotal) > 1) {
+    disagreements.push(
+      `Line totals differ: ${aiTotal.toFixed(2)} read from the document, `
+      + `${rulesTotal.toFixed(2)} from the text patterns.`,
+    )
+  }
+
+  if (ai.vatScheme !== rules.vatScheme && rules.vatScheme !== 'UNKNOWN' && ai.vatScheme !== 'UNKNOWN') {
+    disagreements.push(`VAT treatment read as ${ai.vatScheme}, where the text patterns said ${rules.vatScheme}.`)
+  }
+
+  return { invoice: ai, source: 'AI', disagreements }
 }
 
 /** Coerce whatever Claude returned into the shape the rest of the code expects. */

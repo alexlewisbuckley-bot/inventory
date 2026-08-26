@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, CheckCircle2, FileText, Loader2, Sparkles, Upload } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FileText, Loader2, ScanSearch, Sparkles, Upload } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Chip, useToast } from '@/components/ui'
 import { bookInInvoiceAction, type InvoiceActionState } from '@/app/actions/invoices'
 import { EXTRACTION_METHOD_LABELS, VAT_SCHEME_LABELS, type ExtractionMethod, type VatScheme } from '@/lib/enums'
@@ -188,6 +188,25 @@ export function InvoiceDropZone({ aiEnabled }: { aiEnabled: boolean }) {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {result.disagreements.length > 0 && (
+              <div className="rounded-md border border-line-subtle bg-surface-subtle p-4">
+                <h3 className="mb-2 flex items-center gap-1.5 text-small font-bold text-content-primary">
+                  <ScanSearch className="h-4 w-4 text-content-secondary" aria-hidden />
+                  Worth a look
+                </h3>
+                {/* Both readers ran; where they differed, the difference is
+                    shown rather than settled quietly in either direction. */}
+                <ul className="flex flex-col gap-1.5">
+                  {result.disagreements.map((note, index) => (
+                    <li key={index} className="text-caption text-content-secondary">{note}</li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-caption text-content-secondary">
+                  The reading of the document was used. Open the stock records above if anything looks wrong.
+                </p>
+              </div>
             )}
 
             {result.issues.length > 0 && (

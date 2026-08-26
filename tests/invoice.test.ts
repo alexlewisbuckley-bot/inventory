@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseInvoiceText, detectVatScheme, parseAmount, parseInvoiceDate,
-  mergeExtractions, coerceExtraction, undoubleText, unspaceText, EMPTY_EXTRACTION,
+  reconcile, coerceExtraction, undoubleText, unspaceText, EMPTY_EXTRACTION,
   type ExtractedInvoice,
 } from '@/lib/invoice'
 
@@ -576,10 +576,16 @@ describe('amounts and dates', () => {
   })
 })
 
-describe('merging the two readings', () => {
+describe('reconciling the two readers', () => {
   const rules: ExtractedInvoice = {
     ...EMPTY_EXTRACTION,
-    supplier: { ...EMPTY_EXTRACTION.supplier, name: 'GB Luxury', vatNo: 'GB384291055' },
+    supplier: {
+      ...EMPTY_EXTRACTION.supplier,
+      name: 'GB Luxury',
+      // The buyer's, picked up off the page by a pattern that cannot tell
+      // whose it is. This is the value that must never reach the record.
+      registrationNo: '12026413',
+    },
     invoiceNo: 'GBL-2026-0418',
     vatScheme: 'MARGIN',
     lines: [{
@@ -588,35 +594,75 @@ describe('merging the two readings', () => {
     }],
   }
 
-  it('falls back to the rules entirely when Claude is not configured', () => {
-    expect(mergeExtractions(null, rules)).toEqual(rules)
+  it('uses the rules entirely when Claude did not answer', () => {
+    const result = reconcile(null, rules)
+    expect(result.source).toBe('RULES')
+    expect(result.invoice).toEqual(rules)
+    expect(result.disagreements).toEqual([])
   })
 
-  it('prefers Claude but fills its gaps from the rules', () => {
+  it('never fills a blank Claude left, because the blank is the answer', () => {
+    // Claude read the whole document and found no company number for the
+    // seller. Topping that up from the page is how the customer's number was
+    // recorded as the supplier's.
     const ai: ExtractedInvoice = {
       ...EMPTY_EXTRACTION,
-      supplier: { ...EMPTY_EXTRACTION.supplier, name: 'GB Luxury Trading Limited', vatNo: null },
-      invoiceNo: null,
-      lines: [],
+      supplier: { ...EMPTY_EXTRACTION.supplier, name: 'GB Luxury Trading Limited', registrationNo: null },
+      invoiceNo: 'GBL-2026-0418',
+      vatScheme: 'MARGIN',
+      lines: rules.lines,
     }
-    const merged = mergeExtractions(ai, rules)
+    const { invoice, source } = reconcile(ai, rules)
 
-    expect(merged.supplier.name).toBe('GB Luxury Trading Limited')
-    // The VAT number is a regular expression's job, and Claude left it out.
-    expect(merged.supplier.vatNo).toBe('GB384291055')
-    expect(merged.invoiceNo).toBe('GBL-2026-0418')
-    // An explicit scheme from either reader beats UNKNOWN from the other.
-    expect(merged.vatScheme).toBe('MARGIN')
-    // And the reader that found watches wins the lines.
-    expect(merged.lines).toHaveLength(1)
+    expect(source).toBe('AI')
+    expect(invoice.supplier.registrationNo).toBeNull()
+    expect(invoice.supplier.name).toBe('GB Luxury Trading Limited')
   })
 
-  it('takes Claude’s lines when it found more of them', () => {
+  it('reports a supplier the two readers read differently', () => {
+    const ai: ExtractedInvoice = {
+      ...EMPTY_EXTRACTION,
+      supplier: { ...EMPTY_EXTRACTION.supplier, name: 'Northgate Watch Traders' },
+      lines: rules.lines,
+    }
+    const { disagreements } = reconcile(ai, rules)
+    expect(disagreements.some((note) => /Supplier read as/.test(note))).toBe(true)
+  })
+
+  it('says nothing when the two agree bar punctuation and case', () => {
+    const ai: ExtractedInvoice = {
+      ...rules,
+      supplier: { ...rules.supplier, name: 'G.B. LUXURY' },
+    }
+    expect(reconcile(ai, rules).disagreements).toEqual([])
+  })
+
+  it('reports a watch one reader saw and the other did not', () => {
     const ai: ExtractedInvoice = {
       ...EMPTY_EXTRACTION,
       lines: [rules.lines[0]!, { ...rules.lines[0]!, reference: '126711CHNR' }],
     }
-    expect(mergeExtractions(ai, rules).lines).toHaveLength(2)
+    const { invoice, disagreements } = reconcile(ai, rules)
+    // Claude's reading still stands — the difference is flagged, not merged.
+    expect(invoice.lines).toHaveLength(2)
+    expect(disagreements.some((note) => /2 items read/.test(note))).toBe(true)
+  })
+
+  it('reports line totals that do not agree', () => {
+    const ai: ExtractedInvoice = {
+      ...EMPTY_EXTRACTION,
+      lines: [{ ...rules.lines[0]!, unitAmount: 89_500 }],
+    }
+    const { disagreements } = reconcile(ai, rules)
+    expect(disagreements.some((note) => /Line totals differ/.test(note))).toBe(true)
+  })
+
+  it('ignores a penny of rounding between the two', () => {
+    const ai: ExtractedInvoice = {
+      ...EMPTY_EXTRACTION,
+      lines: [{ ...rules.lines[0]!, unitAmount: 8950.5 }],
+    }
+    expect(reconcile(ai, rules).disagreements).toEqual([])
   })
 })
 

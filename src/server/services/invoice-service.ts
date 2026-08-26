@@ -13,7 +13,7 @@ import { convert } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { ConflictError, ValidationError } from '@/lib/errors'
 import {
-  parseInvoiceText, mergeExtractions, EMPTY_EXTRACTION,
+  parseInvoiceText, reconcile, EMPTY_EXTRACTION,
   type ExtractedInvoice, type ExtractedLine,
 } from '@/lib/invoice'
 import { resolveSupplier, type MatchKind, type SupplierCandidate } from '@/lib/supplier-match'
@@ -70,6 +70,8 @@ export interface InvoiceIntakeResult {
   lineCount: number
   created: CreatedWatch[]
   issues: InvoiceIssue[]
+  /** Where the two readers differed. Informational — nothing was blocked. */
+  disagreements: string[]
 }
 
 /** The text layer, where the document has one. */
@@ -117,13 +119,16 @@ export async function bookInInvoice(
   const text = await readText(file)
   const brandRows = await db.select({ name: brands.name }).from(brands)
 
-  // Both readers run. The rules are cheap and local; Claude is the one that
-  // copes with an unfamiliar layout. Neither is allowed to be the only answer.
+  // Both readers run. Claude reads the document; the rules read its text layer
+  // and are what stands in when Claude cannot. Where both produce a reading,
+  // Claude's is the answer and the rules become a cross-check.
   const rules = text.trim() ? parseInvoiceText(text, brandRows.map((b) => b.name)) : EMPTY_EXTRACTION
   const ai = await extractWithClaude(file, text)
-  const invoice = mergeExtractions(ai, rules)
+  const { invoice, source, disagreements } = reconcile(ai, rules)
 
-  const extractedBy: ExtractionMethod = ai ? (rules.lines.length > 0 ? 'AI_RULES' : 'AI') : 'RULES'
+  const extractedBy: ExtractionMethod = source === 'RULES'
+    ? 'RULES'
+    : rules.lines.length > 0 ? 'AI_RULES' : 'AI'
 
   if (invoice.lines.length === 0) {
     // Say what actually happened rather than guessing at one cause. The two
@@ -282,8 +287,17 @@ export async function bookInInvoice(
     }
 
     await db.update(purchaseInvoices)
-      .set({ createdCount: created.length, issues: issues.length > 0 ? JSON.stringify(issues) : null })
+      .set({
+        createdCount: created.length,
+        issues: issues.length > 0 || disagreements.length > 0
+          ? JSON.stringify({ issues, disagreements })
+          : null,
+      })
       .where(eq(purchaseInvoices.id, invoiceId))
+
+    if (disagreements.length > 0) {
+      logger.info('readers disagreed on an invoice', { invoiceId, disagreements })
+    }
 
     await recordAudit({
       entityType: 'Watch',
@@ -312,6 +326,7 @@ export async function bookInInvoice(
       lineCount: invoice.lines.length,
       created,
       issues,
+      disagreements,
     }
   })
 }
