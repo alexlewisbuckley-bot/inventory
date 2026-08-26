@@ -126,10 +126,23 @@ export async function bookInInvoice(
   const extractedBy: ExtractionMethod = ai ? (rules.lines.length > 0 ? 'AI_RULES' : 'AI') : 'RULES'
 
   if (invoice.lines.length === 0) {
+    // Say what actually happened rather than guessing at one cause. The two
+    // facts that decide it — whether any text came out of the PDF, and whether
+    // Claude was configured and answered — are both known here, and reporting
+    // neither turned a five-minute diagnosis into a long one.
+    const characters = text.trim().length
+    const read = characters > 0
+      ? `${characters} characters of text were read from it`
+      : 'no text layer could be read from it'
+    const reader = !aiConfigured()
+      ? 'Claude is not configured — ANTHROPIC_API_KEY is unset on this deployment'
+      : ai
+        ? 'Claude read it and found no watches on it'
+        : 'Claude is configured but the request did not come back — check the logs'
+
     throw new ValidationError(
-      aiConfigured()
-        ? 'Nothing on that document looked like a watch. Check it is the supplier invoice rather than a delivery note or a statement.'
-        : 'No watches could be read from that invoice. Setting ANTHROPIC_API_KEY lets Claude read layouts the pattern matcher cannot.',
+      `Nothing on that document looked like a watch: ${read}, and ${reader}. `
+      + 'If it is definitely a supplier invoice, send it over and it can be read against.',
     )
   }
 
