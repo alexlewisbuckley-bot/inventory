@@ -260,7 +260,13 @@ export function parseInvoiceDate(raw: string | null | undefined): string | null 
  * that matches no watch ever made, and one that would then fail to match the
  * same watch arriving on a second invoice.
  */
-const REFERENCE = /\b(?:[A-Z]{2,4})?\d{3,6}[A-Z]{0,6}(?:\/\d{1,3}[A-Z]{0,3})?\b/
+/**
+ * A dotted reference is tried first, whole.
+ *
+ * Omega and Cartier write references as "310.30.42.50.01.002"; matched by the
+ * general pattern it comes out as "310", which identifies nothing.
+ */
+const REFERENCE = /\b\d{2,3}(?:\.\d{2,3}){3,}\b|\b(?:[A-Z]{1,4})?\d{3,9}[A-Z]{0,6}(?:\/\d{1,3}[A-Z]{0,3})?\b/
 
 const NOISE_LINE = /^(invoice|bill to|ship to|subtotal|sub total|total|vat|net|amount due|balance|payment|terms|thank you|page \d)/i
 
@@ -295,8 +301,14 @@ function looksLikeTotals(line: string): boolean {
 }
 const PAYMENT_SECTION = /^(payment|bank\s+details|remittance|terms|thank you|notes?|international)\b/i
 
-/** Money as invoices write it: £18,600.00, $1,250, 8950.00. */
-const MONEY_G = /[£$]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\.\d{2})?\b|\b\d{3,}\.\d{2}\b/g
+/**
+ * Money as invoices write it: £18,600.00, $1,250, 8950.00.
+ *
+ * The lookarounds keep it out of a dotted reference. An Omega Speedmaster is
+ * "310.30.42.50.01.002", and without them "310.30" reads as a price — which
+ * booked a £4,180 watch in at £310.30 and left its reference as "002".
+ */
+const MONEY_G = /[£$]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|(?<![\d.])\d{1,3}(?:,\d{3})+(?:\.\d{2})?(?![\d.])|(?<![\d.])\d{3,}\.\d{2}(?![\d.])/g
 
 /**
  * "Reference:" is asked for before "Model:".
@@ -307,6 +319,14 @@ const MONEY_G = /[£$]\s?\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\b\d{1,3}(?:,\d{3})+(?:\
  * field. Where only "Model no" is given, as on invoices that use it to mean
  * the reference, the second pattern still catches it.
  */
+/**
+ * Lines that carry a price but are not a thing you bought.
+ *
+ * A part-exchange allowance is money moving the other way; read as stock it
+ * created a watch out of the customer's trade-in, at the allowance as its cost.
+ */
+const NOT_STOCK = /\b(part[- ]?exchange|allowance|credit|discount|deposit|refund|carriage|postage|shipping|delivery|adjustment|rounding)\b/i
+
 const LABELLED_REFERENCE = [
   /\b(?:reference|ref)\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i,
   /\bmodel\s*(?:no\.?|number|#)?\s*[:\-]\s*([A-Z0-9][A-Z0-9\-/.]{2,17})/i,
@@ -461,6 +481,14 @@ const moneyIn = (line: string): number[] =>
 /** One item block — its description lines plus the row carrying the money. */
 function parseBlock(block: string[], brands: string[]): ExtractedLine | null {
   const moneyLine = block[block.length - 1]!
+  // Tested against the line that names the item, not the whole block. One real
+  // invoice prints "PART EXCHANGE / WATCH REGISTER- / NO MATCH" as form noise
+  // below a perfectly ordinary Rolex, and matching anywhere in the block threw
+  // that watch away.
+  if (NOT_STOCK.test(block[0] ?? '')) return null
+  // A negative figure is a credit however it is written.
+  if (/-\s*[£$]|\(\s*[£$]/.test(moneyLine)) return null
+
   const descriptionLines = block.slice(0, -1)
   const text = block.join('\n')
 

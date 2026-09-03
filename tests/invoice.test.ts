@@ -524,6 +524,73 @@ describe('an invoice whose text layer is letter-spaced', () => {
   })
 })
 
+/**
+ * Faults found by generating test invoices and reading them back.
+ *
+ * Each of these produced a confident, wrong answer rather than a visible
+ * failure, which is the kind that reaches the stock list unnoticed.
+ */
+describe('prices, credits and awkward references', () => {
+  it('does not read part of a dotted reference as the price', () => {
+    // "310.30.42.50.01.002" contains "310.30", which was taken as the amount:
+    // a £4,180 Omega booked in at £310.30 with a reference of "002".
+    const parsed = parseInvoiceText(`
+Watch Co Ltd
+Description Amount
+Omega Speedmaster Professional 310.30.42.50.01.002, 2021, serial 94117622 £4,180.00
+Total £4,180.00
+`)
+    expect(parsed.lines).toHaveLength(1)
+    expect(parsed.lines[0]!.unitAmount).toBe(4180)
+    expect(parsed.lines[0]!.reference).toBe('310.30.42.50.01.002')
+  })
+
+  it('reads a reference that leads with letters', () => {
+    const parsed = parseInvoiceText(`
+Watch Co Ltd
+Description Amount
+Breitling Navitimer B01 AB0138241, 2021, serial 4118822 £3,975.00
+Total £3,975.00
+`)
+    expect(parsed.lines[0]!.reference).toBe('AB0138241')
+  })
+
+  it('does not book a part-exchange allowance in as stock', () => {
+    // Money going the other way. Read as stock it created a watch out of the
+    // customer's trade-in, priced at the allowance.
+    const parsed = parseInvoiceText(`
+Watch Co Ltd
+Description Qty Amount
+Tudor Black Bay 58 79030N, 2023, serial LR44821 1 £2,890.00
+Part exchange allowance — customer's Omega Seamaster 1 -£1,500.00
+Total £1,390.00
+`)
+    expect(parsed.lines).toHaveLength(1)
+    expect(parsed.lines[0]!.brand).toBe('Tudor')
+  })
+
+  it('still books a watch whose block mentions part exchange as form noise', () => {
+    // A real invoice prints these as labels under an ordinary watch. Matching
+    // them anywhere in the block threw the watch away.
+    const parsed = parseInvoiceText(`
+Watch Co Ltd
+Quantity Description Unit Price Total
+Brand: ROLEX
+Reference: 69174
+Serial: U984956
+PART EXCHANGE
+WATCH REGISTER-
+NO MATCH
+1
+£3,300.00
+Total £3,300.00
+`)
+    expect(parsed.lines).toHaveLength(1)
+    expect(parsed.lines[0]!.reference).toBe('69174')
+    expect(parsed.lines[0]!.unitAmount).toBe(3300)
+  })
+})
+
 describe('VAT treatment', () => {
   it('reads the margin scheme however it is worded', () => {
     expect(detectVatScheme('Sold under the VAT Margin Scheme')).toBe('MARGIN')
