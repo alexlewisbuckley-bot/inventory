@@ -1,5 +1,5 @@
 import type {
-  EntityType, RegisterCheckStatus, VatCheckStatus,
+  EntityType, IdCheckStatus, RegisterCheckStatus, VatCheckStatus,
 } from './enums'
 
 /**
@@ -37,6 +37,16 @@ export interface CheckState {
  */
 export const VAT_RECHECK_DAYS = 90
 
+/**
+ * How long identifying a director stays good for.
+ *
+ * Counted in calendar months rather than in days, because six months is what
+ * was asked for and 180 days is not six months — it drifts by up to three days
+ * a year, which is exactly the kind of quiet inaccuracy a compliance date
+ * should not have.
+ */
+export const ID_VALIDITY_MONTHS = 6
+
 const asDate = (value: Date | string | null | undefined): Date | null => {
   if (!value) return null
   const date = value instanceof Date ? value : new Date(value)
@@ -54,6 +64,88 @@ export function daysSince(value: Date | string | null | undefined, now: Date = n
 export function vatRecheckDueAt(checkedAt: Date | string | null | undefined): Date | null {
   const date = asDate(checkedAt)
   return date ? new Date(date.getTime() + VAT_RECHECK_DAYS * 86_400_000) : null
+}
+
+/**
+ * The same calendar day, n months on.
+ *
+ * Clamped to the end of the month, so a check made on 31 August falls due on
+ * 28 February rather than rolling forward into March — the direction that
+ * matters, since the other way round would leave a lapsed check looking
+ * current for three days.
+ */
+export function addMonths(value: Date | string | null | undefined, months: number): Date | null {
+  const date = asDate(value)
+  if (!date) return null
+  const day = date.getUTCDate()
+  const shifted = new Date(date.getTime())
+  shifted.setUTCDate(1)
+  shifted.setUTCMonth(shifted.getUTCMonth() + months)
+  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate()
+  shifted.setUTCDate(Math.min(day, lastDay))
+  return shifted
+}
+
+/** When the director's identification falls due again, or null if never done. */
+export function idRecheckDueAt(checkedAt: Date | string | null | undefined): Date | null {
+  return addMonths(checkedAt, ID_VALIDITY_MONTHS)
+}
+
+export interface IdCheckFacts {
+  directorName: string | null
+  idCheckStatus: IdCheckStatus
+  idCheckedAt: Date | string | null
+  /** The expiry of the document the check was made against, where it has one. */
+  idDocumentExpiresOn: Date | string | null
+}
+
+/**
+ * Whether the person behind the supplier has been identified, and recently.
+ *
+ * Three separate things have to hold, and each fails differently:
+ *
+ *  - somebody is named as the director,
+ *  - a document was seen and accepted, within the last six months,
+ *  - that document has not itself expired since.
+ *
+ * The last is the one that is easy to miss, and it is why the document's
+ * expiry is carried on the check. A verification made five months ago against
+ * a passport that ran out last week is in date and worthless; without this it
+ * would show green until the day the check lapsed.
+ */
+export function idCheckState(facts: IdCheckFacts, now: Date = new Date()): CheckState {
+  if (facts.idCheckStatus === 'REJECTED') {
+    return { tone: 'RED', label: 'ID rejected', detail: 'The identity document offered for this supplier was not accepted. Do not trade with them until somebody has resolved it.' }
+  }
+
+  if (!facts.directorName) {
+    return { tone: 'AMBER', label: 'No director named', detail: 'Nobody is recorded as the director of this supplier, so there is no person to identify. Add them to the supplier record.' }
+  }
+
+  if (facts.idCheckStatus !== 'VERIFIED') {
+    return { tone: 'AMBER', label: 'ID not checked', detail: `No identity document has been checked for ${facts.directorName}. Attach one to the supplier record and record the check.` }
+  }
+
+  // An expired passport is not identification, whatever the check said.
+  const expiry = asDate(facts.idDocumentExpiresOn)
+  if (expiry && expiry.getTime() < now.getTime()) {
+    return { tone: 'RED', label: 'ID expired', detail: `The identity document ${facts.directorName} was identified from expired on ${expiry.toISOString().slice(0, 10)}. It is no longer identification — a current one is needed.` }
+  }
+
+  const dueAt = idRecheckDueAt(facts.idCheckedAt)
+  if (!dueAt) {
+    return { tone: 'AMBER', label: 'Re-check due', detail: 'This supplier was verified, but not when. Record the check again to put a date on it.' }
+  }
+  if (dueAt.getTime() < now.getTime()) {
+    const age = daysSince(facts.idCheckedAt, now)
+    return { tone: 'AMBER', label: 'Re-check due', detail: `${facts.directorName} was identified ${age} days ago. Identification lasts ${ID_VALIDITY_MONTHS} months, so it is due again.` }
+  }
+
+  return {
+    tone: 'GREEN',
+    label: 'ID verified',
+    detail: `${facts.directorName} identified from the document on file. Due again ${dueAt.toISOString().slice(0, 10)}.`,
+  }
 }
 
 export interface VatCheckFacts {
@@ -169,36 +261,43 @@ export function worstTone(...tones: CheckTone[]): CheckTone {
 
 export interface WatchChecks {
   vat: CheckState
+  /** The director behind the supplier, identified. */
+  id: CheckState
   register: CheckState
-  /** The worse of the two: what the watch shows in a list. */
+  /** The worst of the three: what the watch shows in a list. */
   tone: CheckTone
   /** What that colour is about, when it is not green. */
   summary: string
 }
 
 /**
- * Both checks for one watch.
+ * Every check for one watch.
  *
- * The VAT half belongs to the supplier, not the watch, so every watch bought
- * from a supplier with a lapsed check goes amber at once. That is the intended
- * behaviour: the exposure is per-watch even though the fault is per-supplier.
+ * Two of the three belong to the supplier rather than to the watch, so every
+ * watch bought from a supplier whose VAT check has lapsed or whose director is
+ * unidentified goes amber at once. That is the intended behaviour: the
+ * exposure is per-watch even though the fault is per-supplier, and a list of
+ * suppliers to chase does not tell you which stock is affected.
  */
 export function watchChecks(
-  facts: VatCheckFacts & RegisterCheckFacts,
+  facts: VatCheckFacts & IdCheckFacts & RegisterCheckFacts,
   now: Date = new Date(),
 ): WatchChecks {
   const vat = vatCheckState(facts, now)
+  const id = idCheckState(facts, now)
   const register = registerCheckState(facts, now)
-  const tone = worstTone(vat.tone, register.tone)
+  const tone = worstTone(vat.tone, id.tone, register.tone)
 
-  // Red first, then whichever is amber — the summary is what a person reads
-  // instead of opening the record, so it has to name the worst thing.
-  const worst = [register, vat].filter((state) => state.tone === tone)
+  // The register first, then identity, then VAT — the summary is what a person
+  // reads instead of opening the record, so when several are equally bad it
+  // leads with the one that stops a sale rather than the one that delays a
+  // reclaim.
+  const worst = [register, id, vat].filter((state) => state.tone === tone)
   const summary = tone === 'GREEN'
-    ? 'Supplier VAT confirmed and the serial is clear.'
+    ? 'Supplier identified and VAT confirmed; the serial is clear.'
     : worst.map((state) => state.label).join(' · ')
 
-  return { vat, register, tone, summary }
+  return { vat, id, register, tone, summary }
 }
 
 /** The Chip tone each traffic light renders as. */

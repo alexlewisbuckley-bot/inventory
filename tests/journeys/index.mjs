@@ -1537,16 +1537,17 @@ await journey('a register check recorded on a watch turns its light green', asyn
   // does nothing when the button is pressed. The action is called straight from
   // a click handler rather than submitted as a form, so nothing but a real
   // click proves it writes.
-  await go(page, '/inventory')
-
   // The register is searched by serial, so a watch without one cannot be
-  // checked and is the wrong subject. Walk the list until one has a serial
-  // rather than assuming the first row does — an earlier version of this
-  // journey passed by silently taking the no-serial branch.
+  // checked and is the wrong subject. Asked for directly rather than by
+  // walking the list hoping to meet one: every suite run leaves more
+  // serial-less stock behind it, and the version of this journey that took
+  // the first dozen rows started failing once they were all fixtures.
+  await go(page, '/inventory?f=serial%3AisNotEmpty')
+
   const ids = (await page.locator('table tbody tr a[href*="watch="]').evaluateAll(
     (nodes) => nodes.map((node) => new URL(node.href).searchParams.get('watch')),
-  )).filter(Boolean).slice(0, 12)
-  if (ids.length === 0) throw new Error('no stock to check')
+  )).filter(Boolean).slice(0, 8)
+  if (ids.length === 0) throw new Error('no stock with a serial to check')
 
   let record = null
   for (const id of ids) {
@@ -1556,7 +1557,7 @@ await journey('a register check recorded on a watch turns its light green', asyn
       break
     }
   }
-  if (!record) throw new Error('no watch on the first page has a serial, so nothing could be checked')
+  if (!record) throw new Error('nothing with a serial could be checked')
 
   // The reference, not the word "Clear", is what proves this run wrote
   // something: it is stamped per run, so the assertion holds on the second
@@ -1578,6 +1579,123 @@ await journey('a register check recorded on a watch turns its light green', asyn
   }
   if (!after.includes(`TWR-${stamp}`)) {
     throw new Error('the register reference was not kept')
+  }
+})
+
+await journey('a director is identified, and the ID falls due in six months', async (page) => {
+  // The whole chain in one pass: name the officer, attach the evidence, record
+  // that somebody looked at it, and watch the light change. Every step is a
+  // different mechanism — a form, a file upload through a route handler, a
+  // server action, and a rule — and none of them proves the others work.
+  const NAME = 'Journey Due Diligence Ltd'
+  const DIRECTOR = 'Helena Marsh'
+
+  const findRow = async () => {
+    await go(page, `/suppliers?q=${encodeURIComponent(NAME)}`)
+    await page.fill('input[aria-label="Search suppliers"], input[placeholder*="Search by name"]', NAME)
+    await page.waitForTimeout(600)
+    return page.locator(`tbody tr:has-text("${NAME}")`).first()
+  }
+
+  let row = await findRow()
+  if (await row.count() === 0) {
+    await page.click('button:has-text("Add supplier"), a:has-text("Add supplier")')
+    await page.waitForTimeout(700)
+    await page.fill('[role="dialog"] input[name="name"]', NAME)
+    await page.fill('[role="dialog"] input[name="directorName"]', DIRECTOR)
+    await page.click('[role="dialog"] button:has-text("Add supplier")')
+    await page.waitForTimeout(2500)
+    row = await findRow()
+    if (await row.count() === 0) throw new Error('the supplier was not created')
+  }
+
+  // Expand it, and make sure the director is on the record either way.
+  await row.locator('button[aria-label^="Show details"]').click()
+  await page.waitForTimeout(600)
+  if (!(await page.locator('main').innerText()).includes(DIRECTOR)) {
+    await row.locator('button[aria-label^="Edit"]').click()
+    await page.waitForTimeout(700)
+    await page.fill('[role="dialog"] input[name="directorName"]', DIRECTOR)
+    await page.click('[role="dialog"] button:has-text("Save changes")')
+    await page.waitForTimeout(2500)
+    row = await findRow()
+    await row.locator('button[aria-label^="Show details"]').click()
+    await page.waitForTimeout(600)
+  }
+
+  const panel = 'section[aria-label="Director and identification"]'
+
+  // Start from nothing on file, so the run is the same every time.
+  for (let guard = 0; guard < 6; guard += 1) {
+    const bin = page.locator(`${panel} button[aria-label^="Remove"]`).first()
+    if (await bin.count() === 0) break
+    await bin.click()
+    await page.waitForTimeout(1500)
+  }
+
+  // A verification with no evidence behind it is the false green the whole
+  // feature exists to prevent, so it must be refused.
+  await page.locator(`${panel} button:has-text("Record ID check")`).click()
+  await page.waitForTimeout(600)
+  const dialog = page.locator('[role="dialog"]')
+  if (!(await dialog.innerText()).includes('Attach the identity document first')) {
+    throw new Error('verifying with no document on file was not refused')
+  }
+  await dialog.locator('button:has-text("Cancel")').click()
+  await page.waitForTimeout(400)
+
+  // Attach one. The input is visually hidden behind an Attach button; setting
+  // it directly is what a file picker does.
+  await page.locator(`${panel} input[type="date"][name="expiresOn"]`).fill('2031-04-01')
+  await page.locator(`${panel} input[type="file"]`).setInputFiles({
+    name: 'passport.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n% journey fixture, not a real document\n'),
+  })
+  await page.waitForTimeout(3000)
+
+  const withDoc = await page.locator(`${panel}`).innerText()
+  if (!/passport/i.test(withDoc)) throw new Error(`the document was not attached: ${withDoc.replace(/\n/g, ' | ')}`)
+
+  // The document comes back out again. Storing a passport you cannot produce
+  // on request is the same as not holding one.
+  const href = await page.locator(`${panel} a[href^="/api/supplier-documents/"]`).first().getAttribute('href')
+  if (!href) throw new Error('the attached document has no link to open it')
+  const served = await page.request.get(BASE + href)
+  if (!served.ok()) throw new Error(`opening the document returned ${served.status()}`)
+  if (!/pdf/.test(served.headers()['content-type'] ?? '')) {
+    throw new Error(`the document came back as ${served.headers()['content-type']}`)
+  }
+  // Not cached to disk: this is a passport scan, not an invoice.
+  if (!/no-store/.test(served.headers()['cache-control'] ?? '')) {
+    throw new Error('an identity document was served cacheable')
+  }
+
+  // Record the check against it.
+  await page.locator(`${panel} button:has-text("Record ID check")`).click()
+  await page.waitForTimeout(700)
+  await page.locator('[role="dialog"] button:has-text("Record it")').click()
+  await page.waitForTimeout(3000)
+
+  // Say what the form complained about rather than only that nothing changed.
+  if (await page.locator('[role="dialog"]').count() > 0) {
+    throw new Error(`the ID check dialog stayed open: ${(await page.locator('[role="dialog"]').innerText()).replace(/\n/g, ' | ')}`)
+  }
+
+  row = await findRow()
+  await row.locator('button[aria-label^="Show details"]').click()
+  await page.waitForTimeout(800)
+  const after = await page.locator(panel).innerText()
+  if (!/ID verified/.test(after)) {
+    throw new Error(`the ID light did not go green: ${after.replace(/\n/g, ' | ')}`)
+  }
+
+  // Six calendar months on, not a hundred and eighty days on.
+  const due = new Date()
+  due.setUTCMonth(due.getUTCMonth() + 6)
+  const expected = due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  if (!after.includes(expected.replace(/ /g, ' ')) && !after.includes(String(due.getUTCFullYear()))) {
+    throw new Error(`the six-month due date is not shown: expected around ${expected}, got ${after.replace(/\n/g, ' | ')}`)
   }
 })
 

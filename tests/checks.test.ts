@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  VAT_RECHECK_DAYS, daysSince, registerCheckState, vatCheckState, vatRecheckDueAt,
-  watchChecks, worstTone,
+  VAT_RECHECK_DAYS, addMonths, daysSince, idCheckState, idRecheckDueAt,
+  registerCheckState, vatCheckState, vatRecheckDueAt, watchChecks, worstTone,
 } from '@/lib/checks'
 
 /**
@@ -90,6 +90,79 @@ describe('the supplier VAT light', () => {
   })
 })
 
+describe('the director ID light', () => {
+  const director = (over: Partial<Parameters<typeof idCheckState>[0]> = {}) => ({
+    directorName: 'Helena Marsh',
+    idCheckStatus: 'VERIFIED' as const,
+    idCheckedAt: daysAgo(30),
+    idDocumentExpiresOn: '2031-04-01',
+    ...over,
+  })
+
+  it('is green while the identification is inside its six months', () => {
+    const state = idCheckState(director(), NOW)
+    expect(state.tone).toBe('GREEN')
+    expect(state.detail).toContain('Helena Marsh')
+  })
+
+  it('falls due six calendar months on, not a hundred and eighty days on', () => {
+    // 3 September + 6 months is 3 March. Day-counting would put it on
+    // 2 March, which is a compliance date that is quietly wrong.
+    expect(idRecheckDueAt('2026-09-03')!.toISOString().slice(0, 10)).toBe('2027-03-03')
+    const justInside = idCheckState(director({ idCheckedAt: '2026-03-04' }), NOW)
+    expect(justInside.tone).toBe('GREEN')
+    const justOutside = idCheckState(director({ idCheckedAt: '2026-03-02' }), NOW)
+    expect(justOutside.tone).toBe('AMBER')
+    expect(justOutside.label).toBe('Re-check due')
+  })
+
+  it('clamps onto the end of a short month rather than rolling into the next', () => {
+    // 31 August + 6 months has no 31 February to land on. Rolling forward
+    // would make the check outlive its six months by three days.
+    expect(addMonths('2026-08-31', 6)!.toISOString().slice(0, 10)).toBe('2027-02-28')
+    expect(addMonths('2027-08-31', 6)!.toISOString().slice(0, 10)).toBe('2028-02-29')
+  })
+
+  it('is amber when nobody is named as the director', () => {
+    const state = idCheckState(director({ directorName: null }), NOW)
+    expect(state.tone).toBe('AMBER')
+    expect(state.label).toBe('No director named')
+  })
+
+  it('is amber when the director is named but nothing has been checked', () => {
+    const state = idCheckState(director({ idCheckStatus: 'UNCHECKED', idCheckedAt: null }), NOW)
+    expect(state.tone).toBe('AMBER')
+    expect(state.label).toBe('ID not checked')
+  })
+
+  it('is red when the document has expired since it was accepted', () => {
+    // The failure this exists to catch. Verified five months ago — well inside
+    // its six — against a passport that has since run out. Without the
+    // document's own expiry this shows green for another month.
+    const state = idCheckState(
+      director({ idCheckedAt: daysAgo(150), idDocumentExpiresOn: '2026-08-01' }),
+      NOW,
+    )
+    expect(state.tone).toBe('RED')
+    expect(state.label).toBe('ID expired')
+  })
+
+  it('is red when a document was looked at and refused', () => {
+    const state = idCheckState(director({ idCheckStatus: 'REJECTED' }), NOW)
+    expect(state.tone).toBe('RED')
+    expect(state.detail).toMatch(/do not trade/i)
+  })
+
+  it('will not call an identification green without knowing when it was made', () => {
+    expect(idCheckState(director({ idCheckedAt: null }), NOW).tone).toBe('AMBER')
+  })
+
+  it('accepts a document with no expiry printed on it', () => {
+    // Some national identity cards carry none. Absent is not expired.
+    expect(idCheckState(director({ idDocumentExpiresOn: null }), NOW).tone).toBe('GREEN')
+  })
+})
+
 describe('the watch register light', () => {
   const watch = (over: Partial<Parameters<typeof registerCheckState>[0]> = {}) => ({
     serial: '8Q371049',
@@ -142,20 +215,32 @@ describe('the watch register light', () => {
 })
 
 describe('the two together', () => {
-  const facts = (over = {}) => ({ ...supplier(), serial: 'X1', registerCheckStatus: 'CLEAR' as const, registerCheckedAt: daysAgo(1), ...over })
+  const facts = (over = {}) => ({
+    ...supplier(),
+    directorName: 'A Director',
+    idCheckStatus: 'VERIFIED' as const,
+    idCheckedAt: daysAgo(10),
+    idDocumentExpiresOn: '2030-01-01',
+    serial: 'X1',
+    registerCheckStatus: 'CLEAR' as const,
+    registerCheckedAt: daysAgo(1),
+    ...over,
+  })
 
   it('is green only when both are', () => {
     expect(watchChecks(facts(), NOW).tone).toBe('GREEN')
   })
 
-  it('takes the worse of the two', () => {
+  it('takes the worst of the three', () => {
     expect(watchChecks(facts({ registerCheckStatus: 'UNCHECKED' }), NOW).tone).toBe('AMBER')
     expect(watchChecks(facts({ registerCheckStatus: 'RECORDED' }), NOW).tone).toBe('RED')
     // A supplier problem reaches every watch bought from them.
     expect(watchChecks(facts({ vatCheckStatus: 'NOT_FOUND' }), NOW).tone).toBe('RED')
+    expect(watchChecks(facts({ directorName: null }), NOW).tone).toBe('AMBER')
+    expect(watchChecks(facts({ idCheckStatus: 'REJECTED' }), NOW).tone).toBe('RED')
   })
 
-  it('names the worst thing in the summary, not the first thing', () => {
+  it('leads with what stops a sale, not what delays a reclaim', () => {
     const both = watchChecks(facts({ vatCheckStatus: 'UNCHECKED', registerCheckStatus: 'RECORDED' }), NOW)
     expect(both.tone).toBe('RED')
     expect(both.summary).toBe('On the register')

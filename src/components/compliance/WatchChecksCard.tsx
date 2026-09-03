@@ -13,6 +13,8 @@ export interface WatchChecksCardProps {
   watchId: string
   serial: string | null
   vat: CheckState
+  /** The director behind the supplier, identified. */
+  id: CheckState
   register: CheckState
   supplierName: string
   /** The name HMRC holds against the supplier's number, where it answered. */
@@ -33,7 +35,7 @@ export interface WatchChecksCardProps {
  * burying them among twenty rows of specification is how they get skipped.
  */
 export function WatchChecksCard({
-  watchId, serial, vat, register, supplierName, registeredName,
+  watchId, serial, vat, id, register, supplierName, registeredName,
   registerCheckedAt, registerCheckedBy, registerCheckRef, registerCheckNotes,
   registerUrl, canRecord,
 }: WatchChecksCardProps) {
@@ -43,10 +45,10 @@ export function WatchChecksCard({
     <Card>
       <CardHeader
         title="Checks"
-        description="Who you bought from, and whether the piece is reported stolen"
+        description="Who you bought from, who signs for them, and whether the piece is reported stolen"
       />
       <CardBody>
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-3">
           <section>
             <div className="mb-2 flex items-center justify-between gap-3">
               <h3 className="text-caption font-semibold text-content-secondary">Supplier VAT</h3>
@@ -60,6 +62,17 @@ export function WatchChecksCard({
             )}
             <p className="mt-1.5 text-caption text-content-secondary">
               Checked against {supplierName} on the supplier record.
+            </p>
+          </section>
+
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-caption font-semibold text-content-secondary">Director ID</h3>
+              <CheckLight state={id} />
+            </div>
+            <p className="text-small text-content-primary">{id.detail}</p>
+            <p className="mt-1.5 text-caption text-content-secondary">
+              Held on {supplierName}, who this was bought from.
             </p>
           </section>
 

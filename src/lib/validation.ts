@@ -218,6 +218,21 @@ export const supplierSchema = z.object({
   contactEmail: z.union([emailSchema, z.literal('')]).optional().transform((v) => (v ? v : null)),
   contactPhone: optionalText(40),
 
+  /**
+   * The officer of the company, kept apart from the sales contact above.
+   *
+   * Still optional at this layer, for the same reason as everything else here:
+   * a supplier can be created with nothing but a name from the watch form, and
+   * refusing that would break the intake it exists to serve. It is required
+   * before you can trade with them, which is a different thing and is enforced
+   * where that decision is made rather than at the point of typing a name.
+   */
+  directorName: optionalText(120),
+  directorRole: optionalText(120),
+  directorDob: z.union([
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the date picker.'), z.literal(''),
+  ]).optional().transform((v) => (v ? v : null)),
+
   addressLine1: optionalText(160),
   addressLine2: optionalText(160),
   city: optionalText(80),

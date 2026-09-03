@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { requireCapability } from '@/server/auth/session'
 import { listSuppliers } from '@/server/services/reference-service'
 import { listSupplierInvoices } from '@/server/services/invoice-service'
+import { listSupplierDocuments } from '@/server/services/compliance-service'
+import type { IdDocument } from '@/components/compliance/SupplierIdPanel'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CreateAction } from '@/components/ui'
 import { SupplierManager, type InvoiceLink } from '@/components/reference/SupplierManager'
@@ -12,7 +14,13 @@ export const dynamic = 'force-dynamic'
 
 export default async function SuppliersPage() {
   const user = await requireCapability('supplier:read')
-  const [suppliers, invoices] = await Promise.all([listSuppliers(), listSupplierInvoices()])
+  const [suppliers, invoices, documents] = await Promise.all([
+    listSuppliers(),
+    listSupplierInvoices(),
+    // Never their bytes — see listSupplierDocuments. This is the list of what
+    // is on file, not the passports themselves.
+    listSupplierDocuments(),
+  ])
 
   // Grouped here rather than queried per row: one query for the page beats one
   // per supplier, and the list is small enough to group in memory.
@@ -26,6 +34,19 @@ export default async function SuppliersPage() {
       grossAmount: invoice.grossAmount,
       vatScheme: invoice.vatScheme,
       watchCount: invoice.createdCount,
+    })
+  }
+
+  const documentsBySupplier: Record<string, IdDocument[]> = {}
+  for (const document of documents) {
+    (documentsBySupplier[document.supplierId] ??= []).push({
+      id: document.id,
+      kind: document.kind,
+      holderName: document.holderName,
+      expiresOn: document.expiresOn,
+      fileName: document.fileName,
+      byteSize: document.byteSize,
+      uploadedByName: document.uploadedByName,
     })
   }
 
@@ -44,8 +65,10 @@ export default async function SuppliersPage() {
           inStockCount: Number(s.inStockCount),
           soldCount: Number(s.soldCount),
           vatCheckedAt: s.vatCheckedAt?.toISOString() ?? null,
+          idCheckedAt: s.idCheckedAt?.toISOString() ?? null,
         }))}
         invoicesBySupplier={invoicesBySupplier}
+        documentsBySupplier={documentsBySupplier}
         canManage={can(user.role, 'supplier:manage')}
       />
     </>

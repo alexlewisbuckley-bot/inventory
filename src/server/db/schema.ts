@@ -6,7 +6,8 @@ import {
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
-  ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
+  ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS,
+  IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES,
@@ -27,6 +28,11 @@ import {
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 const updatedAt = () => timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
 const deletedAt = () => timestamp('deleted_at', { withTimezone: true })
+
+/** Postgres BYTEA mapped to a Node Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+})
 
 // ---------------------------------------------------------------------------
 // Identity & access
@@ -198,6 +204,32 @@ export const suppliers = pgTable(
     vatCheckReference: text('vat_check_reference'),
     vatCheckMessage: text('vat_check_message'),
 
+    /**
+     * The named officer of the company, as distinct from `contactName` — the
+     * salesperson you deal with day to day. Usually different people, and
+     * conflating them is how a due diligence file ends up naming a
+     * salesperson who signs nothing.
+     */
+    directorName: text('director_name'),
+    directorRole: text('director_role'),
+    /** What makes a name match an identity document rather than resemble one. */
+    directorDob: date('director_dob'),
+
+    /** Whether that person has been identified, and when. Expires — see ID_VALIDITY_MONTHS. */
+    idCheckStatus: text('id_check_status', { enum: ID_CHECK_STATUSES }).notNull().default('UNCHECKED'),
+    idCheckedAt: timestamp('id_checked_at', { withTimezone: true }),
+    idCheckedById: text('id_checked_by_id').references(() => users.id),
+    idCheckNotes: text('id_check_notes'),
+    /**
+     * The expiry of the document this check was made against.
+     *
+     * A fact about the check rather than a cache of the latest upload, which
+     * is why it can be read without a join: an in-date check made against a
+     * passport that has since lapsed is not identification, and that has to be
+     * visible on a list of four hundred watches without four hundred lookups.
+     */
+    idDocumentExpiresOn: date('id_document_expires_on'),
+
     notes: text('notes'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -207,8 +239,43 @@ export const suppliers = pgTable(
   (t) => ({
     nameIdx: uniqueIndex('suppliers_name_idx').on(t.name),
     vatCheckedIdx: index('suppliers_vat_checked_idx').on(t.vatCheckedAt),
+    idCheckedIdx: index('suppliers_id_checked_idx').on(t.idCheckedAt),
     activeIdx: index('suppliers_active_idx').on(t.isActive),
     countryIdx: index('suppliers_country_idx').on(t.country),
+  }),
+)
+
+/**
+ * Identity documents held against a supplier.
+ *
+ * The most sensitive thing in the database — these are passport scans — so
+ * reading one is gated on supplier:manage rather than supplier:read and every
+ * read is written to the audit trail. Stored in the row for the same reason
+ * invoices are: evidence you cannot produce on request is evidence you do not
+ * have, and a database backup should be a complete one.
+ */
+export const supplierDocuments = pgTable(
+  'supplier_documents',
+  {
+    id: text('id').primaryKey(),
+    supplierId: text('supplier_id').notNull().references(() => suppliers.id),
+    kind: text('kind', { enum: ID_DOCUMENT_KINDS }).notNull().default('PASSPORT'),
+    /** The name printed on the document — the thing that has to match the director. */
+    holderName: text('holder_name'),
+    /** The document's own expiry: an in-date check against a lapsed passport is not a check. */
+    expiresOn: date('expires_on'),
+
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    data: bytea('data').notNull(),
+
+    uploadedById: text('uploaded_by_id').notNull().references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    supplierIdx: index('supplier_documents_supplier_idx').on(t.supplierId),
   }),
 )
 
@@ -315,11 +382,6 @@ export const watches = pgTable(
     invoiceIdx: index('watches_invoice_idx').on(t.invoiceId),
   }),
 )
-
-/** Postgres BYTEA mapped to a Node Buffer. */
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => 'bytea',
-})
 
 /**
  * A supplier invoice, as sent.

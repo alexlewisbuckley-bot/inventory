@@ -69,6 +69,10 @@ export default async function WatchDetailPage({ params }: { params: { id: string
     entityType: supplier.entityType,
     vatCheckStatus: supplier.vatCheckStatus,
     vatCheckedAt: supplier.vatCheckedAt,
+    directorName: supplier.directorName,
+    idCheckStatus: supplier.idCheckStatus,
+    idCheckedAt: supplier.idCheckedAt,
+    idDocumentExpiresOn: supplier.idDocumentExpiresOn,
     serial: watch.serial,
     registerCheckStatus: watch.registerCheckStatus,
     registerCheckedAt: watch.registerCheckedAt,
@@ -189,6 +193,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
             watchId={watch.id}
             serial={watch.serial}
             vat={checks.vat}
+            id={checks.id}
             register={checks.register}
             supplierName={supplier.name}
             registeredName={supplier.vatCheckName}

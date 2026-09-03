@@ -141,6 +141,7 @@ export function WatchDrawerClient({
             <dt className="text-small text-content-secondary">Checks</dt>
             <dd className="flex flex-wrap justify-end gap-1.5">
               <CheckLight state={record.checks.vat} />
+              <CheckLight state={record.checks.id} />
               <CheckLight state={record.checks.register} />
             </dd>
           </div>

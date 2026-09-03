@@ -650,3 +650,45 @@ export const REGISTER_CHECK_STATUS_LABELS: Record<RegisterCheckStatus, string> =
   RECORDED: 'On the register',
   NO_SERIAL: 'No serial to check',
 }
+
+/**
+ * Knowing who you are actually dealing with.
+ *
+ * A watch dealer is a high value dealer for money-laundering purposes, and the
+ * obligation is not to hold a company name — it is to have identified a real
+ * person behind it and to have looked at their identity document. The company
+ * is a wrapper; the director is who signs.
+ *
+ * The identification expires. Not because the person changes, but because the
+ * evidence goes stale: directors resign, documents lapse, and a passport
+ * photocopied two years ago proves only what was true two years ago.
+ */
+export const ID_DOCUMENT_KINDS = [
+  'PASSPORT', 'DRIVING_LICENCE', 'NATIONAL_ID', 'RESIDENCE_PERMIT', 'OTHER',
+] as const
+export type IdDocumentKind = (typeof ID_DOCUMENT_KINDS)[number]
+
+export const ID_DOCUMENT_KIND_LABELS: Record<IdDocumentKind, string> = {
+  PASSPORT: 'Passport',
+  DRIVING_LICENCE: 'Driving licence',
+  NATIONAL_ID: 'National identity card',
+  RESIDENCE_PERMIT: 'Residence permit',
+  OTHER: 'Other document',
+}
+
+/** Whether the director's identity has been checked, and how it went. */
+export const ID_CHECK_STATUSES = [
+  /** Nobody has looked. */
+  'UNCHECKED',
+  /** A document was seen and accepted. Expires — see ID_VALIDITY_MONTHS. */
+  'VERIFIED',
+  /** A document was seen and did not stand up. */
+  'REJECTED',
+] as const
+export type IdCheckStatus = (typeof ID_CHECK_STATUSES)[number]
+
+export const ID_CHECK_STATUS_LABELS: Record<IdCheckStatus, string> = {
+  UNCHECKED: 'Not checked',
+  VERIFIED: 'Verified',
+  REJECTED: 'Rejected',
+}

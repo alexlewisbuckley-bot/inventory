@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import {
-  recordRegisterCheck, runVatCheck, sweepVatChecks,
+  recordIdCheck, recordRegisterCheck, runVatCheck, sweepVatChecks,
   type VatCheckOutcome,
 } from '@/server/services/compliance-service'
 import { hmrcConfigured } from '@/server/services/vat-check-service'
@@ -112,6 +112,39 @@ export async function recordRegisterCheckAction(
   } catch (error) {
     if (isAppError(error)) return { ok: false, message: error.message }
     logger.error('register check failed', { watchId, error: (error as Error).message })
+    return { ok: false, message: 'That check could not be recorded.' }
+  }
+}
+
+/**
+ * Record that somebody has identified the director.
+ *
+ * `supplier:manage`: accepting identity evidence is the same class of act as
+ * changing who the supplier is, and neither belongs to everyone who can read
+ * the supplier book.
+ */
+export async function recordIdCheckAction(
+  supplierId: string,
+  status: 'VERIFIED' | 'REJECTED',
+  documentId: string | null,
+  notes: string | null,
+): Promise<CheckActionState> {
+  const actor = await requireCapability('supplier:manage')
+
+  try {
+    await recordIdCheck(supplierId, { status, documentId, notes }, actor)
+    revalidatePath('/suppliers')
+    revalidatePath('/inventory')
+
+    return {
+      ok: true,
+      message: status === 'VERIFIED'
+        ? 'Identification recorded. It falls due again in six months.'
+        : 'Recorded as rejected. This supplier will show red until it is resolved.',
+    }
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message }
+    logger.error('id check failed', { supplierId, error: (error as Error).message })
     return { ok: false, message: 'That check could not be recorded.' }
   }
 }

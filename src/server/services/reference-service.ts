@@ -1,6 +1,7 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { brands, locations, sales, suppliers, watches } from '../db/schema'
+import { alias } from 'drizzle-orm/pg-core'
+import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
@@ -15,6 +16,9 @@ type LocationInput = z.infer<typeof locationSchema>
 // --- Suppliers -------------------------------------------------------------
 
 /** Supplier list with the trading history that makes the row useful. */
+/** A handle on `users` for whoever accepted the director's identity document. */
+const idChecker = alias(users, 'id_checker')
+
 export async function listSuppliers() {
   return db
     .select({
@@ -44,6 +48,14 @@ export async function listSuppliers() {
       vatCheckAddress: suppliers.vatCheckAddress,
       vatCheckReference: suppliers.vatCheckReference,
       vatCheckMessage: suppliers.vatCheckMessage,
+      directorName: suppliers.directorName,
+      directorRole: suppliers.directorRole,
+      directorDob: suppliers.directorDob,
+      idCheckStatus: suppliers.idCheckStatus,
+      idCheckedAt: suppliers.idCheckedAt,
+      idCheckNotes: suppliers.idCheckNotes,
+      idDocumentExpiresOn: suppliers.idDocumentExpiresOn,
+      idCheckedByName: idChecker.name,
       watchCount: count(watches.id),
       totalCostGbp: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
       inStockCount: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then 1 else 0 end), 0)`,
@@ -51,8 +63,11 @@ export async function listSuppliers() {
     })
     .from(suppliers)
     .leftJoin(watches, and(eq(watches.supplierId, suppliers.id), isNull(watches.deletedAt)))
+    .leftJoin(idChecker, eq(idChecker.id, suppliers.idCheckedById))
     .where(isNull(suppliers.deletedAt))
-    .groupBy(suppliers.id)
+    // The joined name has to be grouped too: Postgres only lets you select
+    // ungrouped columns that hang off the grouped table's own primary key.
+    .groupBy(suppliers.id, idChecker.name)
     .orderBy(suppliers.name)
 }
 
@@ -86,6 +101,7 @@ export async function updateSupplier(id: string, input: Partial<SupplierInput>, 
         'name', 'legalName', 'entityType', 'registrationNo', 'vatNo', 'website',
         'contactName', 'contactRole', 'contactEmail', 'contactPhone',
         'addressLine1', 'addressLine2', 'city', 'postcode', 'country',
+        'directorName', 'directorRole', 'directorDob',
         'paymentTerms', 'defaultCurrency', 'notes', 'isActive',
       ]),
     })

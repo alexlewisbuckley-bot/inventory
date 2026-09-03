@@ -1,11 +1,13 @@
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
-import { suppliers, watches } from '../db/schema'
+import { supplierDocuments, suppliers, users, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { checkVatNumber, hmrcConfigured } from './vat-check-service'
 import { NotFoundError, ValidationError } from '@/lib/errors'
-import { VAT_RECHECK_DAYS } from '@/lib/checks'
-import type { RegisterCheckStatus } from '@/lib/enums'
+import { ID_VALIDITY_MONTHS, VAT_RECHECK_DAYS, addMonths } from '@/lib/checks'
+import type { IdCheckStatus, IdDocumentKind, RegisterCheckStatus } from '@/lib/enums'
+import { newId } from '@/lib/ids'
 import type { SessionUser } from '../auth/session'
 import { logger } from '@/lib/logger'
 
@@ -262,5 +264,242 @@ export async function findPendingRegisterChecks(limit = 100) {
       eq(watches.registerCheckStatus, 'UNCHECKED'),
     ))
     .orderBy(sql`${watches.purchaseDate} desc`)
+    .limit(limit)
+}
+
+// ---------------------------------------------------------------------------
+// The director, and the evidence they are who the company says they are
+// ---------------------------------------------------------------------------
+
+/**
+ * How big an identity document may be.
+ *
+ * A phone photograph of a passport page is a couple of megabytes; eight is
+ * generous. The cap exists because these go in the row, and a row nobody can
+ * read back is worse than a rejected upload.
+ */
+export const MAX_ID_BYTES = 8 * 1024 * 1024
+
+const ALLOWED_ID_TYPES = new Set([
+  'application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+])
+
+export interface SupplierDocumentRow {
+  id: string
+  supplierId: string
+  kind: IdDocumentKind
+  holderName: string | null
+  expiresOn: string | null
+  fileName: string
+  mimeType: string
+  byteSize: number
+  uploadedByName: string | null
+  createdAt: Date
+}
+
+/**
+ * The documents held against a supplier, without their bytes.
+ *
+ * The `data` column is deliberately not selected: listing what is on file
+ * should not drag several megabytes of passport scans through the process, and
+ * the only thing that should ever read those bytes is the one route that
+ * serves a single document and writes the access to the audit trail.
+ */
+export async function listSupplierDocuments(supplierId?: string): Promise<SupplierDocumentRow[]> {
+  const uploader = alias(users, 'document_uploader')
+  const rows = await db
+    .select({
+      id: supplierDocuments.id,
+      supplierId: supplierDocuments.supplierId,
+      kind: supplierDocuments.kind,
+      holderName: supplierDocuments.holderName,
+      expiresOn: supplierDocuments.expiresOn,
+      fileName: supplierDocuments.fileName,
+      mimeType: supplierDocuments.mimeType,
+      byteSize: supplierDocuments.byteSize,
+      uploadedByName: uploader.name,
+      createdAt: supplierDocuments.createdAt,
+    })
+    .from(supplierDocuments)
+    .leftJoin(uploader, eq(uploader.id, supplierDocuments.uploadedById))
+    .where(and(
+      isNull(supplierDocuments.deletedAt),
+      supplierId ? eq(supplierDocuments.supplierId, supplierId) : undefined,
+    ))
+    .orderBy(desc(supplierDocuments.createdAt))
+  return rows
+}
+
+export interface IdDocumentInput {
+  supplierId: string
+  kind: IdDocumentKind
+  holderName?: string | null
+  /** The document's own expiry, as printed on it. */
+  expiresOn?: string | null
+  fileName: string
+  mimeType: string
+  buffer: ArrayBuffer
+}
+
+/** Attach an identity document to a supplier. */
+export async function addSupplierDocument(
+  input: IdDocumentInput,
+  actor: SessionUser,
+): Promise<string> {
+  const rows = await db.select({ id: suppliers.id, name: suppliers.name, deletedAt: suppliers.deletedAt })
+    .from(suppliers).where(eq(suppliers.id, input.supplierId)).limit(1)
+  const supplier = rows[0]
+  if (!supplier || supplier.deletedAt) throw new NotFoundError('Supplier')
+
+  if (input.buffer.byteLength === 0) throw new ValidationError('That file is empty.')
+  if (input.buffer.byteLength > MAX_ID_BYTES) {
+    throw new ValidationError('That file is over 8 MB. A photograph of the page is enough — it does not need to be a full scan.')
+  }
+  if (!ALLOWED_ID_TYPES.has(input.mimeType)) {
+    throw new ValidationError('Attach a PDF or a photograph of the document.')
+  }
+
+  const id = newId('sdo')
+  await db.insert(supplierDocuments).values({
+    id,
+    supplierId: input.supplierId,
+    kind: input.kind,
+    holderName: input.holderName?.trim() || null,
+    expiresOn: input.expiresOn || null,
+    fileName: input.fileName.slice(0, 200),
+    mimeType: input.mimeType,
+    byteSize: input.buffer.byteLength,
+    data: Buffer.from(input.buffer),
+    uploadedById: actor.id,
+  })
+
+  await recordAudit({
+    entityType: 'Supplier',
+    entityId: input.supplierId,
+    action: 'UPDATE',
+    actorId: actor.id,
+    // Names the document but not its contents: an audit summary is read by
+    // more people than the document is.
+    summary: `Identity document attached to ${supplier.name} (${input.kind.toLowerCase().replace('_', ' ')})`,
+  })
+
+  return id
+}
+
+/**
+ * Remove a document.
+ *
+ * Soft, like everything else here. An identity document that was attached and
+ * then vanished without trace is precisely the gap an audit is looking for.
+ */
+export async function deleteSupplierDocument(id: string, actor: SessionUser): Promise<void> {
+  const rows = await db.select().from(supplierDocuments).where(eq(supplierDocuments.id, id)).limit(1)
+  const document = rows[0]
+  if (!document || document.deletedAt) throw new NotFoundError('Document')
+
+  await db.update(supplierDocuments).set({ deletedAt: new Date() }).where(eq(supplierDocuments.id, id))
+  await recordAudit({
+    entityType: 'Supplier',
+    entityId: document.supplierId,
+    action: 'DELETE',
+    actorId: actor.id,
+    summary: `Identity document ${document.fileName} removed`,
+  })
+}
+
+export interface IdCheckInput {
+  status: Extract<IdCheckStatus, 'VERIFIED' | 'REJECTED'>
+  /** The document relied on. Required to verify; there is nothing to verify without one. */
+  documentId?: string | null
+  notes?: string | null
+}
+
+/**
+ * Record that somebody has looked at the director's identity document.
+ *
+ * Verifying without naming the document is refused. The whole value of the
+ * record is that it says which piece of evidence was relied on — a green light
+ * with no document behind it is the false green this is meant to prevent, and
+ * the document's expiry is copied onto the check so a passport that lapses
+ * afterwards turns the light red rather than waiting out the six months.
+ */
+export async function recordIdCheck(
+  supplierId: string,
+  input: IdCheckInput,
+  actor: SessionUser,
+): Promise<void> {
+  const rows = await db.select().from(suppliers).where(eq(suppliers.id, supplierId)).limit(1)
+  const supplier = rows[0]
+  if (!supplier || supplier.deletedAt) throw new NotFoundError('Supplier')
+
+  if (!supplier.directorName) {
+    throw new ValidationError(
+      `No director is recorded for ${supplier.name}, so there is nobody to identify. Add them to the supplier record first.`,
+      { directorName: 'Required before an ID check.' },
+    )
+  }
+
+  let expiresOn: string | null = null
+  if (input.status === 'VERIFIED') {
+    if (!input.documentId) {
+      throw new ValidationError('Choose the identity document this check was made against.')
+    }
+    const found = await db.select({
+      id: supplierDocuments.id,
+      supplierId: supplierDocuments.supplierId,
+      expiresOn: supplierDocuments.expiresOn,
+      deletedAt: supplierDocuments.deletedAt,
+    }).from(supplierDocuments).where(eq(supplierDocuments.id, input.documentId)).limit(1)
+    const document = found[0]
+    if (!document || document.deletedAt || document.supplierId !== supplierId) {
+      throw new NotFoundError('Document')
+    }
+    expiresOn = document.expiresOn
+  }
+
+  await db.update(suppliers).set({
+    idCheckStatus: input.status,
+    idCheckedAt: new Date(),
+    idCheckedById: actor.id,
+    idCheckNotes: input.notes?.trim() || null,
+    idDocumentExpiresOn: expiresOn,
+    updatedAt: new Date(),
+  }).where(eq(suppliers.id, supplierId))
+
+  await recordAudit({
+    entityType: 'Supplier',
+    entityId: supplierId,
+    action: 'UPDATE',
+    actorId: actor.id,
+    summary: input.status === 'VERIFIED'
+      ? `${supplier.directorName} identified for ${supplier.name}`
+      : `Identity document for ${supplier.name} rejected`,
+    changes: { idCheckStatus: { from: supplier.idCheckStatus, to: input.status } },
+  })
+}
+
+/** Suppliers whose identification has lapsed, is missing, or was never made. */
+export async function findDueIdChecks(limit = 100) {
+  const cutoff = addMonths(new Date(), -ID_VALIDITY_MONTHS)!
+  return db
+    .select({
+      id: suppliers.id,
+      name: suppliers.name,
+      directorName: suppliers.directorName,
+      idCheckStatus: suppliers.idCheckStatus,
+      idCheckedAt: suppliers.idCheckedAt,
+    })
+    .from(suppliers)
+    .where(and(
+      isNull(suppliers.deletedAt),
+      eq(suppliers.isActive, true),
+      or(
+        isNull(suppliers.directorName),
+        ne(suppliers.idCheckStatus, 'VERIFIED'),
+        isNull(suppliers.idCheckedAt),
+        lt(suppliers.idCheckedAt, cutoff),
+      ),
+    ))
+    .orderBy(sql`${suppliers.idCheckedAt} asc nulls first`)
     .limit(limit)
 }

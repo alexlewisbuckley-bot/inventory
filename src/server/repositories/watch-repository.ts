@@ -7,7 +7,7 @@ import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import type { WatchQuery } from '@/lib/validation'
 import type {
-  EntityType, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
+  EntityType, IdCheckStatus, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
 } from '@/lib/enums'
 
 /**
@@ -64,6 +64,10 @@ export interface WatchListItem {
   supplierEntityType: EntityType
   supplierVatCheckStatus: VatCheckStatus
   supplierVatCheckedAt: Date | null
+  supplierDirectorName: string | null
+  supplierIdCheckStatus: IdCheckStatus
+  supplierIdCheckedAt: Date | null
+  supplierIdDocumentExpiresOn: string | null
 }
 
 export interface WatchListResult {
@@ -104,6 +108,10 @@ const listSelection = {
   supplierEntityType: suppliers.entityType,
   supplierVatCheckStatus: suppliers.vatCheckStatus,
   supplierVatCheckedAt: suppliers.vatCheckedAt,
+  supplierDirectorName: suppliers.directorName,
+  supplierIdCheckStatus: suppliers.idCheckStatus,
+  supplierIdCheckedAt: suppliers.idCheckedAt,
+  supplierIdDocumentExpiresOn: suppliers.idDocumentExpiresOn,
 } as const
 
 function buildFilters(query: WatchQuery): SQL | undefined {

@@ -12,11 +12,13 @@ import { saveSupplierAction, deleteSupplierAction } from '@/app/actions/referenc
 import type { ActionState } from '@/app/actions/auth'
 import {
   CURRENCIES, ENTITY_TYPES, ENTITY_TYPE_LABELS, PAYMENT_TERMS, PAYMENT_TERMS_LABELS,
-  VAT_SCHEME_LABELS, type EntityType, type PaymentTerms, type VatCheckStatus, type VatScheme,
+  VAT_SCHEME_LABELS, type EntityType, type IdCheckStatus, type PaymentTerms,
+  type VatCheckStatus, type VatScheme,
 } from '@/lib/enums'
-import { VAT_RECHECK_DAYS, vatCheckState, vatRecheckDueAt } from '@/lib/checks'
+import { VAT_RECHECK_DAYS, idCheckState, vatCheckState, vatRecheckDueAt } from '@/lib/checks'
 import { runVatCheckAction, sweepVatChecksAction } from '@/app/actions/compliance'
 import { CheckLight } from '@/components/compliance/CheckLight'
+import { SupplierIdPanel, type IdDocument } from '@/components/compliance/SupplierIdPanel'
 import { formatMoney, type Currency } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { cn } from '@/lib/cn'
@@ -49,6 +51,15 @@ export interface SupplierRow {
   vatCheckAddress: string | null
   vatCheckReference: string | null
   vatCheckMessage: string | null
+  /** The officer of the company, and whether they have been identified. */
+  directorName: string | null
+  directorRole: string | null
+  directorDob: string | null
+  idCheckStatus: IdCheckStatus
+  idCheckedAt: string | null
+  idCheckedByName: string | null
+  idCheckNotes: string | null
+  idDocumentExpiresOn: string | null
   watchCount: number
   totalCostGbp: number
   inStockCount: number
@@ -68,6 +79,9 @@ const INITIAL: ActionState = { ok: false }
 const REQUIRED_FOR_TRADING = [
   { key: 'legalName', label: 'Legal entity name' },
   { key: 'entityType', label: 'Entity type' },
+  // The person, not the company. Everything above identifies a legal entity;
+  // this identifies somebody who signs.
+  { key: 'directorName', label: 'Company director' },
   { key: 'contactName', label: 'Named representative' },
   { key: 'contactEmail', label: 'Contact email' },
   { key: 'country', label: 'Country' },
@@ -99,9 +113,12 @@ export interface InvoiceLink {
   watchCount: number
 }
 
-export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage }: {
+export function SupplierManager({
+  suppliers, invoicesBySupplier = {}, documentsBySupplier = {}, canManage,
+}: {
   suppliers: SupplierRow[]
   invoicesBySupplier?: Record<string, InvoiceLink[]>
+  documentsBySupplier?: Record<string, IdDocument[]>
   canManage: boolean
 }) {
   const toast = useToast()
@@ -115,13 +132,19 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
   const [busy, setBusy] = useState(false)
 
   const [search, setSearch] = useState('')
-  const [view, setView] = useState<'all' | 'incomplete' | 'vat' | 'inactive'>('all')
+  const [view, setView] = useState<'all' | 'incomplete' | 'vat' | 'id' | 'inactive'>('all')
   const [sweeping, setSweeping] = useState(false)
 
   const incomplete = suppliers.filter((s) => s.isActive && missingFields(s).length > 0).length
   // Amber or red on the VAT check: never asked, gone stale, or HMRC said no.
   const vatUnresolved = suppliers.filter(
     (s) => s.isActive && vatCheckState(s).tone !== 'GREEN',
+  ).length
+
+  // Amber or red on the ID check: no director, no document, never verified, or
+  // six months gone by.
+  const idUnresolved = suppliers.filter(
+    (s) => s.isActive && idCheckState(s).tone !== 'GREEN',
   ).length
 
   const sweep = async () => {
@@ -144,6 +167,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
     return suppliers.filter((supplier) => {
       if (view === 'incomplete' && (!supplier.isActive || missingFields(supplier).length === 0)) return false
       if (view === 'vat' && (!supplier.isActive || vatCheckState(supplier).tone === 'GREEN')) return false
+      if (view === 'id' && (!supplier.isActive || idCheckState(supplier).tone === 'GREEN')) return false
       if (view === 'inactive' && supplier.isActive) return false
       if (!needle) return true
       return [
@@ -174,6 +198,16 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
 
       {/* VAT checks expire, so this line is never permanently clear — it is a
           standing job rather than a one-off setup task, and it reads as one. */}
+      {idUnresolved > 0 && (
+        <div className="mb-4 rounded-md border border-line-subtle bg-surface-subtle px-4 py-3">
+          <p className="text-small text-content-secondary">
+            <span className="font-bold text-state-warning">{idUnresolved}</span>{' '}
+            {idUnresolved === 1 ? 'supplier has' : 'suppliers have'} no current identification for a
+            company director. Identification lasts six months.
+          </p>
+        </div>
+      )}
+
       {vatUnresolved > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-subtle bg-surface-subtle px-4 py-3">
           <p className="text-small text-content-secondary">
@@ -206,6 +240,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
               { value: 'all', label: 'All suppliers' },
               { value: 'incomplete', label: 'Missing details' },
               { value: 'vat', label: 'VAT check due' },
+              { value: 'id', label: 'ID check due' },
               { value: 'inactive', label: 'Inactive' },
             ]}
           />
@@ -299,6 +334,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
                             <Chip tone="gold">{gaps.length} to fill</Chip>
                           )}
                           <CheckLight state={vatCheckState(supplier)} />
+                          <CheckLight state={idCheckState(supplier)} />
                         </div>
                       </TD>
                       {canManage && (
@@ -324,6 +360,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
                             supplier={supplier}
                             gaps={gaps}
                             invoices={invoicesBySupplier[supplier.id] ?? []}
+                            documents={documentsBySupplier[supplier.id] ?? []}
                             canCheck={canManage}
                             onEdit={canManage ? () => setEditing(supplier) : undefined}
                           />
@@ -363,10 +400,11 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
 }
 
 /** The trading detail, shown in place rather than by opening the edit form to read it. */
-function SupplierDetail({ supplier, gaps, invoices, canCheck, onEdit }: {
+function SupplierDetail({ supplier, gaps, invoices, documents, canCheck, onEdit }: {
   supplier: SupplierRow
   gaps: string[]
   invoices: InvoiceLink[]
+  documents: IdDocument[]
   canCheck: boolean
   onEdit?: () => void
 }) {
@@ -423,6 +461,17 @@ function SupplierDetail({ supplier, gaps, invoices, canCheck, onEdit }: {
       </div>
 
       <VatCheckPanel supplier={supplier} canCheck={canCheck} />
+
+      <SupplierIdPanel
+        supplierId={supplier.id}
+        supplierName={supplier.name}
+        director={{ name: supplier.directorName, role: supplier.directorRole, dob: supplier.directorDob }}
+        facts={supplier}
+        checkedByName={supplier.idCheckedByName}
+        notes={supplier.idCheckNotes}
+        documents={documents}
+        canManage={canCheck}
+      />
 
       {invoices.length > 0 && (
         <div className="mt-6 border-t border-line-subtle pt-4">
@@ -484,10 +533,10 @@ function VatCheckPanel({ supplier, canCheck }: { supplier: SupplierRow; canCheck
   }
 
   return (
-    <div className="mt-6 border-t border-line-subtle pt-4">
+    <section aria-label="VAT check" className="mt-6 border-t border-line-subtle pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <p className="text-caption font-semibold text-content-secondary">VAT check</p>
+          <h4 className="text-caption font-semibold text-content-secondary">VAT check</h4>
           <CheckLight state={state} />
         </div>
         {canCheck && supplier.vatNo && (
@@ -522,7 +571,7 @@ function VatCheckPanel({ supplier, canCheck }: { supplier: SupplierRow; canCheck
           {supplier.vatCheckMessage}
         </p>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -601,6 +650,18 @@ function SupplierFormModal({ open, supplier, onClose, onSaved }: {
           <TextField name="contactEmail" label="Email" type="email" defaultValue={supplier?.contactEmail ?? ''}
             error={state.errors?.contactEmail} />
           <TextField name="contactPhone" label="Phone" defaultValue={supplier?.contactPhone ?? ''} />
+        </Section>
+
+        <Section
+          title="Who signs for them"
+          hint="The officer of the company, not the salesperson — usually different people, and only one of them signs."
+        >
+          <TextField name="directorName" label="Company director" defaultValue={supplier?.directorName ?? ''}
+            hint="The name you will identify against a document." />
+          <TextField name="directorRole" label="Position" defaultValue={supplier?.directorRole ?? ''}
+            placeholder="e.g. Managing director" />
+          <TextField name="directorDob" type="date" label="Date of birth" defaultValue={supplier?.directorDob ?? ''}
+            hint="What makes a name match an ID rather than resemble one." />
         </Section>
 
         <Section title="Where they are">
