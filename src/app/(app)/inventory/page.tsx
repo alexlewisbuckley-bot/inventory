@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
 import { asc, eq, isNull } from 'drizzle-orm'
 import { Download, FileText, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
@@ -12,7 +13,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { INVENTORY_VIEWS } from '@/components/inventory/views'
+import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
 import { listViews } from '@/server/services/views-service'
 import { InventoryTable } from '@/components/inventory/InventoryTable'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -60,7 +61,43 @@ function parseQuery(searchParams: SearchParams) {
 
 export default async function InventoryPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('watch:read')
+
+  /**
+   * A bare /inventory means stock you hold, not stock you have ever held.
+   *
+   * Done as a redirect rather than as a default applied when no status filter
+   * is present, because a hidden default would make the URL stop describing
+   * what is on the screen — and the view chips decide which one is lit by
+   * comparing themselves against the URL, so a filter that is real but
+   * invisible would leave every chip dark on the page you land on.
+   *
+   * Only a completely bare URL redirects. /inventory?supplierId=… is somebody
+   * asking a specific question, and answering a different one would be wrong.
+   */
+  if (Object.keys(searchParams).length === 0) {
+    redirect(`/inventory?${AVAILABLE_QUERY}`)
+  }
+
   const query = parseQuery(searchParams)
+
+  /**
+   * Export what is on the screen, not everything ever bought.
+   *
+   * The route has always accepted the list's own query parameters; the button
+   * never sent them, so "Export CSV" from the Sold view handed you the whole
+   * book. Now that the two views people work from are stock-you-hold and
+   * sold, exporting the wrong one of them silently is the difference between
+   * a stock take and a nonsense.
+   *
+   * `page` is dropped: which page you happened to be on is not part of what
+   * you are looking at, and the export pages through the whole result anyway.
+   */
+  const exportHref = (() => {
+    const params = toSearchParams(searchParams)
+    for (const key of ['page', 'watch', 'cols']) params.delete(key)
+    const qs = params.toString()
+    return qs ? `/api/export/watches?${qs}` : '/api/export/watches'
+  })()
 
   const [
     result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences,
@@ -128,7 +165,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                 </LinkButton>
               )}
               {capabilities['report:export'] && (
-                <LinkButton href="/api/export/watches" variant="secondary" icon={<Download className="h-4 w-4" />}>
+                <LinkButton href={exportHref} variant="secondary" icon={<Download className="h-4 w-4" />}>
                   Export CSV
                 </LinkButton>
               )}
@@ -142,7 +179,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                   ]
                   : []),
                 ...(capabilities['report:export']
-                  ? [{ id: 'export', label: 'Export as CSV', href: '/api/export/watches', icon: <Download className="h-3.5 w-3.5" /> }]
+                  ? [{ id: 'export', label: 'Export as CSV', href: exportHref, icon: <Download className="h-3.5 w-3.5" /> }]
                   : []),
               ]}
               primary={capabilities['watch:create']

@@ -1468,6 +1468,70 @@ await journey('a handbag is booked in as a handbag, not as a watch', async (page
 // for every role, and the money paths must survive whatever the redesign does
 // to the screens around them.
 
+await journey('the stock list holds stock, and sold has its own sheet', async (page) => {
+  // The two lists the business actually works from. What makes this worth a
+  // journey rather than a unit test is that "the stock list" is a redirect, a
+  // filter grammar, a chip that decides it is lit by comparing itself against
+  // the URL, and a query builder — four things that have to agree, none of
+  // which agree in a unit test.
+  await go(page, '/inventory')
+  const landed = new URL(page.url())
+  if (!landed.search.includes('status')) {
+    throw new Error(`a bare /inventory did not land on the stock view: ${landed.search || '(no query)'}`)
+  }
+
+  const views = '[role="group"][aria-label="Views"]'
+  const active = await page.locator(`${views} button[aria-pressed="true"]`).innerText()
+  if (!/all stock/i.test(active)) {
+    throw new Error(`the lit chip on landing was "${active}", not the stock view`)
+  }
+  const chips = await page.locator(`${views} button`).allInnerTexts()
+  if (chips.some((chip) => chip.trim() === 'In stock')) {
+    throw new Error('the redundant In stock view is still offered')
+  }
+
+  const { stockNo, invoice } = await sellFirstInStock(page, 'SHEETS')
+  try {
+    // Gone from the list of things you hold...
+    await go(page, '/inventory')
+    if (await page.locator(`tbody tr:has(td:text-is("${stockNo}"))`).count() > 0) {
+      throw new Error(`stock ${stockNo} was sold but is still on the available list`)
+    }
+
+    // ...and on the one that records what you sold.
+    await page.locator(`${views} button:has-text("Sold")`).click()
+    await page.waitForTimeout(2000)
+    if (await page.locator(`tbody tr:has(td:text-is("${stockNo}"))`).count() === 0) {
+      throw new Error(`stock ${stockNo} was sold but is not on the Sold sheet`)
+    }
+    if (!(await page.locator(`${views} button[aria-pressed="true"]`).innerText()).match(/sold/i)) {
+      throw new Error('the Sold chip does not light up on its own view')
+    }
+
+    // And the export follows the view rather than always handing back the
+    // whole book. The route only ever understood the older named parameters,
+    // so a CSV taken from a view written in the filter grammar was silently
+    // everything — which looks exactly like a correct export.
+    const csv = async (query) => {
+      const response = await page.request.get(`${BASE}/api/export/watches?${query}`)
+      if (!response.ok()) throw new Error(`export ${query} returned ${response.status()}`)
+      return response.text()
+    }
+    const held = await csv('f=status%3AisNot%3ASOLD')
+    if (new RegExp(`^${stockNo},`, 'm').test(held)) {
+      throw new Error(`the stock export still contains sold stock ${stockNo}`)
+    }
+    const soldCsv = await csv('f=status%3Ais%3ASOLD')
+    if (!new RegExp(`^${stockNo},`, 'm').test(soldCsv)) {
+      throw new Error(`the sold export is missing ${stockNo}`)
+    }
+  } finally {
+    // Restored whatever happened above, so the suite survives a second run.
+    await returnToStock(page, stockNo)
+  }
+  void invoice
+})
+
 await journey('a register check recorded on a watch turns its light green', async (page) => {
   // The class of bug this file exists for: a modal that renders, typechecks and
   // does nothing when the button is pressed. The action is called straight from

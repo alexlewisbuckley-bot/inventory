@@ -4,6 +4,7 @@ import { getSessionUser } from '@/server/auth/session'
 import { can } from '@/lib/permissions'
 import { findWatches } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
+import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { toMajor } from '@/lib/money'
@@ -58,6 +59,11 @@ export async function GET(request: NextRequest) {
     dir: params.get('dir') ?? 'asc',
     perPage: PAGE_SIZE,
     page: 1,
+    // The V2 filter grammar, which is what the view chips and the filter bar
+    // now write. Without this the route accepted only the older named
+    // parameters, so exporting from "Sold" — a view expressed entirely as
+    // `f=` — silently handed back the whole book instead.
+    f: parseFilters(params, WATCH_FIELDS),
   })
 
   let rows: Awaited<ReturnType<typeof findWatches>>['items'] = []
