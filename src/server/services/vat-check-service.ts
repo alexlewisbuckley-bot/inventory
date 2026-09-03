@@ -86,9 +86,9 @@ async function accessToken(): Promise<string> {
       grant_type: 'client_credentials',
       client_id: process.env.HMRC_CLIENT_ID!,
       client_secret: process.env.HMRC_CLIENT_SECRET!,
-      // Overridable because the exact scope string is the detail most likely
-      // to differ from what the documentation implied.
-      scope: process.env.HMRC_VAT_API_SCOPE?.trim() || 'read:vat-registered-companies',
+      // read:vat, per the securitySchemes block of HMRC's own OpenAPI spec.
+      // Overridable in case it changes without the spec being republished.
+      scope: process.env.HMRC_VAT_API_SCOPE?.trim() || 'read:vat',
     }),
   })
 
@@ -126,20 +126,28 @@ export async function checkVatNumber(
   if (format.status === 'ABSENT') {
     return { status: 'UNCHECKED', vatNumber: null, name: null, address: null, consultationNumber: null, message: null }
   }
-  if (format.status !== 'VALID') {
-    // No point asking HMRC about a number that cannot exist.
-    return {
-      status: 'MALFORMED',
-      vatNumber: format.normalised,
-      name: null,
-      address: null,
-      consultationNumber: null,
-      message: format.message,
-    }
-  }
 
   const vatNumber = format.normalised!
+
+  // Deliberately NOT short-circuiting on a failed checksum.
+  //
+  // The obvious optimisation — don't ask HMRC about a number that cannot
+  // exist — makes the sandbox untestable: 39 of the 40 test VRNs HMRC
+  // publishes fail the real mod-97 algorithm, because they are synthetic. It
+  // is also the wrong precedence in production. HMRC is the register; the
+  // checksum is a guess about what the register will say, and a guess does not
+  // get to veto asking.
   if (!hmrcConfigured()) {
+    if (format.status !== 'VALID') {
+      return {
+        status: 'MALFORMED',
+        vatNumber: format.normalised,
+        name: null,
+        address: null,
+        consultationNumber: null,
+        message: format.message,
+      }
+    }
     // Deliberately silent. "Not checked against HMRC" on every invoice is a
     // notice nobody reads, and it would be on every invoice until credentials
     // exist. The status still says so for anything that wants to know.
