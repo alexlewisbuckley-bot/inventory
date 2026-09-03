@@ -2,10 +2,13 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, 
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import { brands, locations, purchaseInvoices, sales, suppliers, users, watches } from '../db/schema'
+import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import type { WatchQuery } from '@/lib/validation'
-import type { ProductType, WatchStatus } from '@/lib/enums'
+import type {
+  EntityType, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
+} from '@/lib/enums'
 
 /**
  * Read model for the inventory list.
@@ -48,6 +51,19 @@ export interface WatchListItem {
    */
   soldAmountGbp: number | null
   actualProfitGbp: number | null
+  /**
+   * Everything the compliance light needs, carried on the row.
+   *
+   * The VAT half belongs to the supplier and is joined in rather than looked
+   * up per row: the alternative is one query per watch to colour a column, and
+   * the join is already here for the supplier's name.
+   */
+  registerCheckStatus: RegisterCheckStatus
+  registerCheckedAt: Date | null
+  supplierVatNo: string | null
+  supplierEntityType: EntityType
+  supplierVatCheckStatus: VatCheckStatus
+  supplierVatCheckedAt: Date | null
 }
 
 export interface WatchListResult {
@@ -82,6 +98,12 @@ const listSelection = {
   locationId: locations.id,
   soldAmountGbp: sales.saleAmountGbp,
   actualProfitGbp: sales.profitGbp,
+  registerCheckStatus: watches.registerCheckStatus,
+  registerCheckedAt: watches.registerCheckedAt,
+  supplierVatNo: suppliers.vatNo,
+  supplierEntityType: suppliers.entityType,
+  supplierVatCheckStatus: suppliers.vatCheckStatus,
+  supplierVatCheckedAt: suppliers.vatCheckedAt,
 } as const
 
 function buildFilters(query: WatchQuery): SQL | undefined {
@@ -136,6 +158,7 @@ function buildFilters(query: WatchQuery): SQL | undefined {
 const WATCH_COLUMNS: ColumnMap = {
   status: { column: watches.status, kind: 'enum' },
   productType: { column: watches.productType, kind: 'enum' },
+  registerCheckStatus: { column: watches.registerCheckStatus, kind: 'enum' },
   condition: { column: watches.condition, kind: 'enum' },
   brandId: { column: watches.brandId, kind: 'enum' },
   locationId: { column: watches.locationId, kind: 'enum' },
@@ -262,6 +285,9 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
 }
 
 /** Full record for the detail drawer, including joined display names. */
+/** A second handle on `users`, for the person who ran the register search. */
+const registerChecker = alias(users, 'register_checker')
+
 export async function findWatchById(id: string) {
   const rows = await db
     .select({
@@ -272,6 +298,8 @@ export async function findWatchById(id: string) {
       sale: sales,
       createdByName: users.name,
       createdByInitials: users.initials,
+      /** Who ran the register search, where one has been run. */
+      registerCheckedByName: registerChecker.name,
       // The paperwork this watch was bought on, where it came in from one.
       invoice: {
         id: purchaseInvoices.id,
@@ -287,6 +315,7 @@ export async function findWatchById(id: string) {
     .innerJoin(suppliers, eq(suppliers.id, watches.supplierId))
     .innerJoin(locations, eq(locations.id, watches.locationId))
     .innerJoin(users, eq(users.id, watches.createdById))
+    .leftJoin(registerChecker, eq(registerChecker.id, watches.registerCheckedById))
     .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))
     .leftJoin(purchaseInvoices, eq(purchaseInvoices.id, watches.invoiceId))
     .where(eq(watches.id, id))

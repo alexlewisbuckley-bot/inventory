@@ -589,3 +589,64 @@ export const SAVED_VIEW_OBJECT_LABELS: Record<SavedViewObject, string> = {
   contact: 'Contacts',
   sale: 'Sales',
 }
+
+/**
+ * The two checks every piece of stock has to pass.
+ *
+ * They are separate because they answer separate questions and go stale at
+ * separate rates. The VAT check asks whether the supplier is who they say they
+ * are, belongs to the supplier, and expires — a registration can be cancelled
+ * at any time, so an answer from last year is not an answer. The register
+ * check asks whether this specific watch is reported stolen, belongs to the
+ * watch, and is a fact about one serial number.
+ */
+
+/** What HMRC said about a supplier's VAT number, and when they last said it. */
+export const VAT_CHECK_STATUSES = [
+  /** Never asked. */
+  'UNCHECKED',
+  /** HMRC confirmed the registration. */
+  'REGISTERED',
+  /** HMRC holds no such registration. */
+  'NOT_FOUND',
+  /** The number fails its own check digits — a misread or a typo. */
+  'MALFORMED',
+  /** HMRC was asked and could not answer. Says nothing about the supplier. */
+  'UNAVAILABLE',
+] as const
+export type VatCheckStatus = (typeof VAT_CHECK_STATUSES)[number]
+
+export const VAT_CHECK_STATUS_LABELS: Record<VatCheckStatus, string> = {
+  UNCHECKED: 'Not checked',
+  REGISTERED: 'Registered',
+  NOT_FOUND: 'Not registered',
+  MALFORMED: 'Invalid number',
+  UNAVAILABLE: 'Could not check',
+}
+
+/**
+ * Whether a watch appears on The Watch Register.
+ *
+ * The register is the trade's database of stolen and lost pieces. Buying one
+ * back into stock is the expensive mistake this exists to prevent: title does
+ * not pass on stolen goods, so the watch is returned to its owner and the
+ * money is gone.
+ */
+export const REGISTER_CHECK_STATUSES = [
+  /** Never searched. */
+  'UNCHECKED',
+  /** Searched, nothing found. */
+  'CLEAR',
+  /** Found on the register: reported lost or stolen. Do not sell. */
+  'RECORDED',
+  /** Nothing to search on — no serial number recorded. */
+  'NO_SERIAL',
+] as const
+export type RegisterCheckStatus = (typeof REGISTER_CHECK_STATUSES)[number]
+
+export const REGISTER_CHECK_STATUS_LABELS: Record<RegisterCheckStatus, string> = {
+  UNCHECKED: 'Not checked',
+  CLEAR: 'Clear',
+  RECORDED: 'On the register',
+  NO_SERIAL: 'No serial to check',
+}

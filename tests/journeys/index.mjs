@@ -1468,6 +1468,55 @@ await journey('a handbag is booked in as a handbag, not as a watch', async (page
 // for every role, and the money paths must survive whatever the redesign does
 // to the screens around them.
 
+await journey('a register check recorded on a watch turns its light green', async (page) => {
+  // The class of bug this file exists for: a modal that renders, typechecks and
+  // does nothing when the button is pressed. The action is called straight from
+  // a click handler rather than submitted as a form, so nothing but a real
+  // click proves it writes.
+  await go(page, '/inventory')
+
+  // The register is searched by serial, so a watch without one cannot be
+  // checked and is the wrong subject. Walk the list until one has a serial
+  // rather than assuming the first row does — an earlier version of this
+  // journey passed by silently taking the no-serial branch.
+  const ids = (await page.locator('table tbody tr a[href*="watch="]').evaluateAll(
+    (nodes) => nodes.map((node) => new URL(node.href).searchParams.get('watch')),
+  )).filter(Boolean).slice(0, 12)
+  if (ids.length === 0) throw new Error('no stock to check')
+
+  let record = null
+  for (const id of ids) {
+    await go(page, `/inventory/${id}`)
+    if (await page.locator('button:has-text("Record result")').count()) {
+      record = `/inventory/${id}`
+      break
+    }
+  }
+  if (!record) throw new Error('no watch on the first page has a serial, so nothing could be checked')
+
+  // The reference, not the word "Clear", is what proves this run wrote
+  // something: it is stamped per run, so the assertion holds on the second
+  // pass over a watch this journey already marked clear.
+  const section = 'section:has(h3:has-text("The Watch Register"))'
+
+  await page.click('button:has-text("Record result")')
+  await page.waitForTimeout(600)
+  await page.click('button[role="radio"]:has-text("Clear")')
+  await page.fill('input[name="reference"]', `TWR-${stamp}`)
+  await page.click('button:has-text("Record it")')
+  await page.waitForTimeout(2500)
+
+  // Reloaded, not merely re-rendered: the point is that it was written down.
+  await go(page, record)
+  const after = await page.locator(section).innerText()
+  if (!after.includes('Clear')) {
+    throw new Error('the register check did not stick: the light is still not clear')
+  }
+  if (!after.includes(`TWR-${stamp}`)) {
+    throw new Error('the register reference was not kept')
+  }
+})
+
 await journey('every route renders', async (page) => {
   const broken = []
   for (const route of ROUTES) {

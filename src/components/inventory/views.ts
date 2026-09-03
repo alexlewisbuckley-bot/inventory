@@ -39,6 +39,15 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
     description: 'Committed but not yet completed',
   },
   {
+    // The register-check queue. Live stock only: a watch that has already been
+    // sold is somebody else's to worry about, and leaving them in makes a list
+    // nobody can ever clear.
+    id: 'register-due',
+    label: 'Register check due',
+    query: 'f=registerCheckStatus%3Ais%3AUNCHECKED&f=status%3Ais%3AIN_STOCK%7CRESERVED%7CSALE_AGREED',
+    description: 'Not yet searched against The Watch Register',
+  },
+  {
     id: 'ageing',
     label: 'Ageing',
     query: 'f=status%3Ais%3AIN_STOCK%7CRESERVED&sort=purchaseDate&dir=asc',

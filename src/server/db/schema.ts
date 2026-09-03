@@ -9,7 +9,8 @@ import {
   ENTITY_TYPES, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
-  ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES, VAT_SCHEMES, WATCH_STATUSES,
+  REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES,
+  VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
 /**
@@ -181,6 +182,22 @@ export const suppliers = pgTable(
     paymentTerms: text('payment_terms', { enum: PAYMENT_TERMS }).notNull().default('UNKNOWN'),
     defaultCurrency: text('default_currency', { enum: CURRENCIES }).notNull().default('GBP'),
 
+    /**
+     * What HMRC last said about `vatNo`, and when.
+     *
+     * Expires: see VAT_RECHECK_DAYS. A registration can be cancelled on any
+     * day, and HMRC does not tell you when one of your suppliers deregisters,
+     * so an old answer only ever proved something about the day it was given.
+     */
+    vatCheckStatus: text('vat_check_status', { enum: VAT_CHECK_STATUSES }).notNull().default('UNCHECKED'),
+    vatCheckedAt: timestamp('vat_checked_at', { withTimezone: true }),
+    /** The registered name and address, which is how you spot a number that is real but somebody else's. */
+    vatCheckName: text('vat_check_name'),
+    vatCheckAddress: text('vat_check_address'),
+    /** HMRC's consultation number: dated proof the check was made. */
+    vatCheckReference: text('vat_check_reference'),
+    vatCheckMessage: text('vat_check_message'),
+
     notes: text('notes'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -189,6 +206,7 @@ export const suppliers = pgTable(
   },
   (t) => ({
     nameIdx: uniqueIndex('suppliers_name_idx').on(t.name),
+    vatCheckedIdx: index('suppliers_vat_checked_idx').on(t.vatCheckedAt),
     activeIdx: index('suppliers_active_idx').on(t.isActive),
     countryIdx: index('suppliers_country_idx').on(t.country),
   }),
@@ -259,6 +277,20 @@ export const watches = pgTable(
     /** Travels with the watch: margin-scheme stock cannot be resold as standard rated. */
     vatScheme: text('vat_scheme', { enum: VAT_SCHEMES }).notNull().default('UNKNOWN'),
     vatAmountGbp: integer('vat_amount_gbp'),
+
+    /**
+     * Whether this serial has been searched against The Watch Register.
+     *
+     * Per watch and made once, unlike the supplier's VAT check: it is a search
+     * of a database of theft reports, not a status that lapses.
+     */
+    registerCheckStatus: text('register_check_status', { enum: REGISTER_CHECK_STATUSES }).notNull().default('UNCHECKED'),
+    registerCheckedAt: timestamp('register_checked_at', { withTimezone: true }),
+    /** Who ran it. A check with nobody's name against it is not a check. */
+    registerCheckedById: text('register_checked_by_id').references(() => users.id),
+    /** The register's own search or certificate reference, where one was issued. */
+    registerCheckRef: text('register_check_ref'),
+    registerCheckNotes: text('register_check_notes'),
 
     notes: text('notes'),
     createdById: text('created_by_id').notNull().references(() => users.id),

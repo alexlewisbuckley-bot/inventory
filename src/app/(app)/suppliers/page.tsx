@@ -43,6 +43,7 @@ export default async function SuppliersPage() {
           totalCostGbp: Number(s.totalCostGbp),
           inStockCount: Number(s.inStockCount),
           soldCount: Number(s.soldCount),
+          vatCheckedAt: s.vatCheckedAt?.toISOString() ?? null,
         }))}
         invoicesBySupplier={invoicesBySupplier}
         canManage={can(user.role, 'supplier:manage')}

@@ -1,4 +1,5 @@
 import { checkVatFormat, normaliseVatNumber } from '@/lib/vat'
+import type { VatCheckStatus } from '@/lib/enums'
 import { logger } from '@/lib/logger'
 
 /**
@@ -33,17 +34,13 @@ import { logger } from '@/lib/logger'
  * call should say precisely what is wrong rather than merely not working.
  */
 
-export type VatCheckStatus =
-  /** HMRC confirmed the number is registered. */
-  | 'REGISTERED'
-  /** HMRC has no such registration. */
-  | 'NOT_FOUND'
-  /** Well-formed, but nothing asked HMRC — no credentials configured. */
-  | 'UNCHECKED'
-  /** The number cannot be right: it fails its own check digits. */
-  | 'MALFORMED'
-  /** HMRC was asked and could not answer. */
-  | 'UNAVAILABLE'
+/**
+ * Declared in `@/lib/enums` rather than here, because the same five values are
+ * a stored column on `suppliers` and drive the traffic light in
+ * `@/lib/checks`. Two definitions of this set would drift the first time one
+ * gained a member.
+ */
+export type { VatCheckStatus }
 
 export interface VatCheckResult {
   status: VatCheckStatus

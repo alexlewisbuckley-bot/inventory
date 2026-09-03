@@ -4,6 +4,7 @@ import { auditForEntity } from '@/server/services/audit'
 import { listImages } from '@/server/services/image-service'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawerClient } from './WatchDrawerClient'
+import { watchChecks } from '@/lib/checks'
 import type { Capability } from '@/lib/permissions'
 
 /**
@@ -54,6 +55,17 @@ export async function WatchDrawer({ watchId, capabilities }: {
         invoice: record.invoice?.id
           ? { id: record.invoice.id, label: record.invoice.invoiceNo ?? record.invoice.fileName }
           : null,
+        // Computed here rather than in the drawer, so the light in the panel
+        // and the dot in the row behind it are the same calculation.
+        checks: watchChecks({
+          vatNo: record.supplier.vatNo,
+          entityType: record.supplier.entityType,
+          vatCheckStatus: record.supplier.vatCheckStatus,
+          vatCheckedAt: record.supplier.vatCheckedAt,
+          serial: record.watch.serial,
+          registerCheckStatus: record.watch.registerCheckStatus,
+          registerCheckedAt: record.watch.registerCheckedAt,
+        }),
         sale: record.sale
           ? {
               invoiceNo: record.sale.invoiceNo,

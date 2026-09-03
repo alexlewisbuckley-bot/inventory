@@ -22,6 +22,9 @@ import {
   PRODUCT_TYPE_LABELS, referenceLabel,
   type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
+import { watchChecks } from '@/lib/checks'
+import { WATCH_REGISTER_URL } from '@/server/services/compliance-service'
+import { WatchChecksCard } from '@/components/compliance/WatchChecksCard'
 import { changeValue, fieldLabel } from '@/lib/audit-format'
 import { canSeeCost, can } from '@/lib/permissions'
 
@@ -57,7 +60,19 @@ export default async function WatchDetailPage({ params }: { params: { id: string
     can(user.role, 'deal:read') ? interestInWatch(params.id) : Promise.resolve(null),
     can(user.role, 'customer:read') ? ownershipHistory(params.id) : Promise.resolve([]),
   ])
-  const { watch, brand, supplier, location, sale, invoice } = record
+  const { watch, brand, supplier, location, sale, invoice, registerCheckedByName } = record
+
+  // Both lights, computed on the server so the table, the drawer and this page
+  // cannot disagree about what green means.
+  const checks = watchChecks({
+    vatNo: supplier.vatNo,
+    entityType: supplier.entityType,
+    vatCheckStatus: supplier.vatCheckStatus,
+    vatCheckedAt: supplier.vatCheckedAt,
+    serial: watch.serial,
+    registerCheckStatus: watch.registerCheckStatus,
+    registerCheckedAt: watch.registerCheckedAt,
+  })
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
@@ -170,6 +185,21 @@ export default async function WatchDetailPage({ params }: { params: { id: string
         </Card>
 
         <div className="flex flex-col gap-6 lg:col-span-2">
+          <WatchChecksCard
+            watchId={watch.id}
+            serial={watch.serial}
+            vat={checks.vat}
+            register={checks.register}
+            supplierName={supplier.name}
+            registeredName={supplier.vatCheckName}
+            registerCheckedAt={watch.registerCheckedAt?.toISOString() ?? null}
+            registerCheckedBy={registerCheckedByName}
+            registerCheckRef={watch.registerCheckRef}
+            registerCheckNotes={watch.registerCheckNotes}
+            registerUrl={WATCH_REGISTER_URL}
+            canRecord={can(user.role, 'watch:update')}
+          />
+
           <Card>
             <CardHeader title="Images" description="Photographs of the watch and its paperwork" />
             <CardBody>

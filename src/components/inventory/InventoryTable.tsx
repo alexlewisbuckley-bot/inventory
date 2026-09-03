@@ -21,6 +21,8 @@ import {
 } from './QuickSellModal'
 import { InlinePriceCell } from './InlinePriceCell'
 import { StatusCell } from './StatusCell'
+import { CheckDot } from '@/components/compliance/CheckLight'
+import { CHECK_TONE_LABELS, watchChecks } from '@/lib/checks'
 import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
 import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import type { WatchStatus } from '@/lib/enums'
@@ -45,6 +47,7 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'profit', label: 'Est. profit' },
   { key: 'location', label: 'Location' },
   { key: 'status', label: 'Status' },
+  { key: 'checks', label: 'Checks' },
 ]
 
 const DEFAULT_HIDDEN = ['serial', 'supplier'] as const
@@ -219,6 +222,7 @@ export function InventoryTable({
               {show('profit') && <TH width="120px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
               {show('location') && <TH width="170px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
               {show('status') && <TH width="128px">Status</TH>}
+              {show('checks') && <TH width="72px" align="center">Checks</TH>}
               <TH width="88px" align="right"><span className="sr-only">Actions</span></TH>
             </TR>
           </THead>
@@ -412,6 +416,15 @@ function Row({
   const sold = watch.status === 'SOLD'
   // Sold rows show realised figures; everything else shows the estimate.
   const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
+  const checks = watchChecks({
+    vatNo: watch.supplierVatNo,
+    entityType: watch.supplierEntityType,
+    vatCheckStatus: watch.supplierVatCheckStatus,
+    vatCheckedAt: watch.supplierVatCheckedAt,
+    serial: watch.serial,
+    registerCheckStatus: watch.registerCheckStatus,
+    registerCheckedAt: watch.registerCheckedAt,
+  })
 
   return (
     <TR
@@ -493,6 +506,11 @@ function Row({
             canVoid={canVoid}
             onVoid={onVoid}
           />
+        </TD>
+      )}
+      {show('checks') && (
+        <TD align="center">
+          <CheckDot tone={checks.tone} label={`${CHECK_TONE_LABELS[checks.tone]} — ${checks.summary}`} />
         </TD>
       )}
       <TD>

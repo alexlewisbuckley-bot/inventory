@@ -3,6 +3,7 @@ import {
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS,
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
   PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
+  REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS,
   WATCH_STATUSES, WATCH_STATUS_LABELS,
 } from './enums'
@@ -130,6 +131,12 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'estSaleGbp', label: 'Asking price', type: 'money' },
   { key: 'purchaseDate', label: 'Bought', type: 'date' },
   { key: 'year', label: 'Year', type: 'number' },
+  {
+    key: 'registerCheckStatus',
+    label: 'Register check',
+    type: 'enum',
+    options: enumOptions(REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS),
+  },
 ]
 
 export const CONTACT_FIELDS: readonly FieldSpec[] = [

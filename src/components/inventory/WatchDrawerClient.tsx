@@ -12,6 +12,8 @@ import {
   type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import type { Capability } from '@/lib/permissions'
+import type { WatchChecks } from '@/lib/checks'
+import { CheckLight } from '@/components/compliance/CheckLight'
 import { MoveWatchModal } from './MoveWatchModal'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { QuickSellModal, type SellCustomerOption, type SellDealOption } from './QuickSellModal'
@@ -38,6 +40,8 @@ export interface DrawerRecord {
   createdByName: string
   /** The supplier invoice this watch was booked in from, when it came from one. */
   invoice: { id: string; label: string } | null
+  /** Both compliance lights, already resolved on the server. */
+  checks: WatchChecks
   sale: { invoiceNo: string; saleDate: string; amountGbp: number; profitGbp: number; marginBps: number } | null
 }
 
@@ -133,6 +137,13 @@ export function WatchDrawerClient({
             value={BOX_PAPERS_LABELS[record.boxPapers as BoxPapers]}
           />
           <Fact label="Supplier" value={record.supplierName} />
+          <div className="flex items-start justify-between gap-4 border-b border-line-subtle py-2.5 last:border-0">
+            <dt className="text-small text-content-secondary">Checks</dt>
+            <dd className="flex flex-wrap justify-end gap-1.5">
+              <CheckLight state={record.checks.vat} />
+              <CheckLight state={record.checks.register} />
+            </dd>
+          </div>
           <Fact label="Purchased" value={formatDate(record.purchaseDate)} />
           <Fact label="Location" value={record.locationName} />
           <Fact label="Added by" value={record.createdByName} />

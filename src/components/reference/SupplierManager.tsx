@@ -2,7 +2,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Building2, ChevronDown, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Building2, ChevronDown, FileText, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import {
   Card, Table, THead, TBody, TR, TD, TH, Button, Modal, TextField, SelectField,
   TextareaField, Checkbox, Chip, ConfirmDialog, EmptyState, useToast, useCurrency, useCreateFlag,
@@ -12,8 +12,11 @@ import { saveSupplierAction, deleteSupplierAction } from '@/app/actions/referenc
 import type { ActionState } from '@/app/actions/auth'
 import {
   CURRENCIES, ENTITY_TYPES, ENTITY_TYPE_LABELS, PAYMENT_TERMS, PAYMENT_TERMS_LABELS,
-  VAT_SCHEME_LABELS, type EntityType, type PaymentTerms, type VatScheme,
+  VAT_SCHEME_LABELS, type EntityType, type PaymentTerms, type VatCheckStatus, type VatScheme,
 } from '@/lib/enums'
+import { VAT_RECHECK_DAYS, vatCheckState, vatRecheckDueAt } from '@/lib/checks'
+import { runVatCheckAction, sweepVatChecksAction } from '@/app/actions/compliance'
+import { CheckLight } from '@/components/compliance/CheckLight'
 import { formatMoney, type Currency } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { cn } from '@/lib/cn'
@@ -39,6 +42,13 @@ export interface SupplierRow {
   defaultCurrency: string
   notes: string | null
   isActive: boolean
+  /** The VAT check, as HMRC last answered it. See `@/lib/checks`. */
+  vatCheckStatus: VatCheckStatus
+  vatCheckedAt: string | null
+  vatCheckName: string | null
+  vatCheckAddress: string | null
+  vatCheckReference: string | null
+  vatCheckMessage: string | null
   watchCount: number
   totalCostGbp: number
   inStockCount: number
@@ -105,9 +115,22 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
   const [busy, setBusy] = useState(false)
 
   const [search, setSearch] = useState('')
-  const [view, setView] = useState<'all' | 'incomplete' | 'inactive'>('all')
+  const [view, setView] = useState<'all' | 'incomplete' | 'vat' | 'inactive'>('all')
+  const [sweeping, setSweeping] = useState(false)
 
   const incomplete = suppliers.filter((s) => s.isActive && missingFields(s).length > 0).length
+  // Amber or red on the VAT check: never asked, gone stale, or HMRC said no.
+  const vatUnresolved = suppliers.filter(
+    (s) => s.isActive && vatCheckState(s).tone !== 'GREEN',
+  ).length
+
+  const sweep = async () => {
+    setSweeping(true)
+    const result = await sweepVatChecksAction()
+    setSweeping(false)
+    if (result.ok) toast.success(result.message ?? 'Checked')
+    else toast.error('Could not run the checks', result.message)
+  }
 
   /**
    * Filtered in the browser, not on the server: the whole list is already here
@@ -120,6 +143,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
     const needle = search.trim().toLowerCase()
     return suppliers.filter((supplier) => {
       if (view === 'incomplete' && (!supplier.isActive || missingFields(supplier).length === 0)) return false
+      if (view === 'vat' && (!supplier.isActive || vatCheckState(supplier).tone === 'GREEN')) return false
       if (view === 'inactive' && supplier.isActive) return false
       if (!needle) return true
       return [
@@ -148,6 +172,24 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
         </p>
       )}
 
+      {/* VAT checks expire, so this line is never permanently clear — it is a
+          standing job rather than a one-off setup task, and it reads as one. */}
+      {vatUnresolved > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-subtle bg-surface-subtle px-4 py-3">
+          <p className="text-small text-content-secondary">
+            <span className="font-bold text-state-warning">{vatUnresolved}</span>{' '}
+            {vatUnresolved === 1 ? 'supplier needs' : 'suppliers need'} a VAT check.
+            Checks expire after {VAT_RECHECK_DAYS} days.
+          </p>
+          {canManage && (
+            <Button size="sm" variant="secondary" onClick={sweep} loading={sweeping}>
+              <ShieldCheck className="h-4 w-4" aria-hidden />
+              Check them with HMRC
+            </Button>
+          )}
+        </div>
+      )}
+
       {suppliers.length > 0 && (
         <ToolbarRow className="mb-4">
           <ToolbarSearch
@@ -163,6 +205,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
             options={[
               { value: 'all', label: 'All suppliers' },
               { value: 'incomplete', label: 'Missing details' },
+              { value: 'vat', label: 'VAT check due' },
               { value: 'inactive', label: 'Inactive' },
             ]}
           />
@@ -255,6 +298,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
                           {gaps.length > 0 && supplier.isActive && (
                             <Chip tone="gold">{gaps.length} to fill</Chip>
                           )}
+                          <CheckLight state={vatCheckState(supplier)} />
                         </div>
                       </TD>
                       {canManage && (
@@ -280,6 +324,7 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
                             supplier={supplier}
                             gaps={gaps}
                             invoices={invoicesBySupplier[supplier.id] ?? []}
+                            canCheck={canManage}
                             onEdit={canManage ? () => setEditing(supplier) : undefined}
                           />
                         </TD>
@@ -318,10 +363,11 @@ export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage 
 }
 
 /** The trading detail, shown in place rather than by opening the edit form to read it. */
-function SupplierDetail({ supplier, gaps, invoices, onEdit }: {
+function SupplierDetail({ supplier, gaps, invoices, canCheck, onEdit }: {
   supplier: SupplierRow
   gaps: string[]
   invoices: InvoiceLink[]
+  canCheck: boolean
   onEdit?: () => void
 }) {
   const address = [supplier.addressLine1, supplier.addressLine2, supplier.city, supplier.postcode, supplier.country]
@@ -376,6 +422,8 @@ function SupplierDetail({ supplier, gaps, invoices, onEdit }: {
         </div>
       </div>
 
+      <VatCheckPanel supplier={supplier} canCheck={canCheck} />
+
       {invoices.length > 0 && (
         <div className="mt-6 border-t border-line-subtle pt-4">
           <p className="mb-2 text-caption font-semibold text-content-secondary">
@@ -409,6 +457,80 @@ function SupplierDetail({ supplier, gaps, invoices, onEdit }: {
           </ul>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The supplier's VAT standing, and the button that refreshes it.
+ *
+ * The registered name is shown next to the trading name deliberately. A VAT
+ * number that is real but belongs to somebody else passes every offline check
+ * there is — the digits are valid, HMRC confirms the registration — and the
+ * only thing that reveals it is reading the name that came back.
+ */
+function VatCheckPanel({ supplier, canCheck }: { supplier: SupplierRow; canCheck: boolean }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const state = vatCheckState(supplier)
+  const dueAt = vatRecheckDueAt(supplier.vatCheckedAt)
+
+  const check = async () => {
+    setBusy(true)
+    const result = await runVatCheckAction(supplier.id)
+    setBusy(false)
+    if (result.ok) toast.success(result.message ?? 'Checked with HMRC')
+    else toast.error('VAT check', result.message)
+  }
+
+  return (
+    <div className="mt-6 border-t border-line-subtle pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <p className="text-caption font-semibold text-content-secondary">VAT check</p>
+          <CheckLight state={state} />
+        </div>
+        {canCheck && supplier.vatNo && (
+          <Button size="sm" variant="secondary" onClick={check} loading={busy}>
+            <ShieldCheck className="h-4 w-4" aria-hidden />
+            Check with HMRC
+          </Button>
+        )}
+      </div>
+
+      <p className="mt-2 text-small text-content-primary">{state.detail}</p>
+
+      <dl className="mt-2 flex flex-col gap-1">
+        {supplier.vatCheckName && (
+          <CheckFact label="Registered to" value={supplier.vatCheckName} />
+        )}
+        {supplier.vatCheckAddress && (
+          <CheckFact label="Registered address" value={supplier.vatCheckAddress} />
+        )}
+        {supplier.vatCheckReference && (
+          // HMRC's dated proof the check happened. Worth surfacing rather than
+          // merely storing: it is what you quote if a reclaim is questioned.
+          <CheckFact label="HMRC reference" value={supplier.vatCheckReference} />
+        )}
+        {dueAt && state.tone === 'GREEN' && (
+          <CheckFact label="Due again" value={formatDate(dueAt)} />
+        )}
+      </dl>
+
+      {supplier.vatCheckMessage && state.tone !== 'GREEN' && (
+        <p className="mt-2 rounded-md border border-state-warning/40 bg-state-warning/8 p-3 text-caption text-content-primary">
+          {supplier.vatCheckMessage}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function CheckFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="shrink-0 text-caption text-content-secondary">{label}</dt>
+      <dd className="min-w-0 truncate text-right text-small text-content-primary" title={value}>{value}</dd>
     </div>
   )
 }

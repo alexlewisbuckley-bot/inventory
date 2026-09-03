@@ -17,7 +17,8 @@ import {
   type ExtractedInvoice, type ExtractedLine,
 } from '@/lib/invoice'
 import { resolveSupplier, type MatchKind, type SupplierCandidate } from '@/lib/supplier-match'
-import { checkVatNumber } from './vat-check-service'
+import { checkVatNumber, hmrcConfigured } from './vat-check-service'
+import { runVatCheck } from './compliance-service'
 import type { ExtractionMethod } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
@@ -188,7 +189,7 @@ export async function bookInInvoice(
     throw new ValidationError('Create a location first — stock has to be booked in somewhere.')
   }
 
-  return withTransaction(async () => {
+  const result = await withTransaction(async () => {
     const { supplierId, supplierName, matchKind } = await resolveOrCreateSupplier(checked, actor)
 
     // The same invoice dropped twice is the likeliest way to double-book
@@ -365,6 +366,38 @@ export async function bookInInvoice(
       disagreements,
     }
   })
+
+  /**
+   * Ask HMRC about the supplier, now the stock is safely in.
+   *
+   * Outside the transaction on purpose: a network call with an eight-second
+   * timeout has no business holding a write transaction open, and the answer
+   * changes nothing that was just written.
+   *
+   * Never allowed to fail the intake, for the same reason. The entire value of
+   * this feature is that dropping a PDF books stock in; an HMRC outage must
+   * not be able to take that away. A supplier the reader invented from a
+   * letterhead is exactly the one worth checking, which is why this runs on
+   * every intake rather than only on a newly created supplier — a supplier
+   * matched today may have been checked four months ago.
+   */
+  if (hmrcConfigured()) {
+    try {
+      const check = await runVatCheck(result.supplierId, actor)
+      if (!check.registered || check.nameMismatch) {
+        logger.warn('vat check on invoice intake', {
+          invoiceId: result.invoiceId, supplierId: result.supplierId, status: check.status,
+        })
+      }
+    } catch (error) {
+      // Includes the ordinary case of a supplier with no VAT number at all.
+      logger.info('vat check skipped on intake', {
+        supplierId: result.supplierId, reason: (error as Error).message,
+      })
+    }
+  }
+
+  return result
 }
 
 /** One invoice as the supplier list shows it. */
