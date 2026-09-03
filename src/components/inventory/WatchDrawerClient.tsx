@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRightLeft, Pencil, Receipt } from 'lucide-react'
+import { ArrowRightLeft, FileText, Pencil, Receipt } from 'lucide-react'
 import { Drawer, Button, LinkButton, StatusChip, Chip, useToast, useCurrency } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
@@ -36,6 +36,8 @@ export interface DrawerRecord {
   locationName: string
   locationId: string
   createdByName: string
+  /** The supplier invoice this watch was booked in from, when it came from one. */
+  invoice: { id: string; label: string } | null
   sale: { invoiceNo: string; saleDate: string; amountGbp: number; profitGbp: number; marginBps: number } | null
 }
 
@@ -134,6 +136,22 @@ export function WatchDrawerClient({
           <Fact label="Purchased" value={formatDate(record.purchaseDate)} />
           <Fact label="Location" value={record.locationName} />
           <Fact label="Added by" value={record.createdByName} />
+          {record.invoice && (
+            <div className="flex items-start justify-between gap-4 border-b border-line-subtle py-2.5 last:border-0">
+              <dt className="text-small text-content-secondary">Invoice</dt>
+              <dd className="text-right">
+                <a
+                  href={`/api/invoices/${record.invoice.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-small font-bold text-content-accent hover:underline"
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden />
+                  {record.invoice.label}
+                </a>
+              </dd>
+            </div>
+          )}
         </dl>
 
         <section aria-label="Financials" className="mb-6 rounded-md bg-surface-subtle p-4">

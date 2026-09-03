@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
-import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
+import { brands, locations, purchaseInvoices, sales, suppliers, users, watches } from '../db/schema'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import type { WatchQuery } from '@/lib/validation'
@@ -272,6 +272,15 @@ export async function findWatchById(id: string) {
       sale: sales,
       createdByName: users.name,
       createdByInitials: users.initials,
+      // The paperwork this watch was bought on, where it came in from one.
+      invoice: {
+        id: purchaseInvoices.id,
+        invoiceNo: purchaseInvoices.invoiceNo,
+        invoiceDate: purchaseInvoices.invoiceDate,
+        fileName: purchaseInvoices.fileName,
+        mimeType: purchaseInvoices.mimeType,
+        byteSize: purchaseInvoices.byteSize,
+      },
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
@@ -279,6 +288,7 @@ export async function findWatchById(id: string) {
     .innerJoin(locations, eq(locations.id, watches.locationId))
     .innerJoin(users, eq(users.id, watches.createdById))
     .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))
+    .leftJoin(purchaseInvoices, eq(purchaseInvoices.id, watches.invoiceId))
     .where(eq(watches.id, id))
     .limit(1)
   return rows[0] ?? null

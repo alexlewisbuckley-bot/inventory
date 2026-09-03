@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { FileText, Pencil } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { auditForEntity } from '@/server/services/audit'
@@ -56,7 +57,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
     can(user.role, 'deal:read') ? interestInWatch(params.id) : Promise.resolve(null),
     can(user.role, 'customer:read') ? ownershipHistory(params.id) : Promise.resolve([]),
   ])
-  const { watch, brand, supplier, location, sale } = record
+  const { watch, brand, supplier, location, sale, invoice } = record
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
@@ -140,6 +141,22 @@ export default async function WatchDetailPage({ params }: { params: { id: string
               />
               <Row label="Supplier" value={supplier.name} />
               <Row label="Location" value={location.name} />
+              {invoice && (
+                <Row
+                  label="Invoice"
+                  value={
+                    <a
+                      href={`/api/invoices/${invoice.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 font-bold text-content-accent hover:underline"
+                    >
+                      <FileText className="h-3.5 w-3.5" aria-hidden />
+                      {invoice.invoiceNo ?? invoice.fileName}
+                    </a>
+                  }
+                />
+              )}
               <Row label="Added" value={formatDateTime(watch.createdAt)} />
               <Row label="Last updated" value={formatDateTime(watch.updatedAt)} />
             </dl>
@@ -303,7 +320,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   )
 }
 
-function Row({ label, value }: { label: string; value: string | number }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-line-subtle py-2.5 last:border-0">
       <dt className="text-small text-content-secondary">{label}</dt>

@@ -51,6 +51,9 @@ export async function WatchDrawer({ watchId, capabilities }: {
         locationName: record.location.name,
         locationId: record.location.id,
         createdByName: record.createdByName,
+        invoice: record.invoice?.id
+          ? { id: record.invoice.id, label: record.invoice.invoiceNo ?? record.invoice.fileName }
+          : null,
         sale: record.sale
           ? {
               invoiceNo: record.sale.invoiceNo,
