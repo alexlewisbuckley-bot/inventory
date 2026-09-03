@@ -17,6 +17,7 @@ import {
   type ExtractedInvoice, type ExtractedLine,
 } from '@/lib/invoice'
 import { resolveSupplier, type MatchKind, type SupplierCandidate } from '@/lib/supplier-match'
+import { checkVatNumber } from './vat-check-service'
 import type { ExtractionMethod } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
@@ -157,47 +158,72 @@ export async function bookInInvoice(
     )
   }
 
+  // Checked before the transaction opens: it is a network call, and a network
+  // call inside a transaction holds a database connection open on somebody
+  // else's latency.
+  const vatCheck = await checkVatNumber(invoice.supplier.vatNo)
+  if (vatCheck.message) disagreements.push(vatCheck.message)
+  if (vatCheck.status === 'REGISTERED' && vatCheck.name && invoice.supplier.name) {
+    const loose = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '')
+    if (!loose(vatCheck.name).includes(loose(invoice.supplier.name).slice(0, 12))
+      && !loose(invoice.supplier.name).includes(loose(vatCheck.name).slice(0, 12))) {
+      disagreements.push(
+        `HMRC holds VAT ${vatCheck.vatNumber} against "${vatCheck.name}", `
+        + `but the invoice is from "${invoice.supplier.name}".`,
+      )
+    }
+  }
+
+  // A VAT number that fails its own check digits is not written to the
+  // supplier book. It is almost certainly a misread, and suppliers are matched
+  // on VAT number — so storing a wrong one does not merely record a bad fact,
+  // it risks silently attaching a future invoice to the wrong firm. What the
+  // document said is still reported above.
+  const checked: ExtractedInvoice = vatCheck.status === 'MALFORMED'
+    ? { ...invoice, supplier: { ...invoice.supplier, vatNo: null } }
+    : { ...invoice, supplier: { ...invoice.supplier, vatNo: vatCheck.vatNumber } }
+
   const [rates, rate, defaultLocationId] = await Promise.all([getRateTable(), usdRate(), pickLocation(actor)])
   if (!defaultLocationId) {
     throw new ValidationError('Create a location first — stock has to be booked in somewhere.')
   }
 
   return withTransaction(async () => {
-    const { supplierId, supplierName, matchKind } = await resolveOrCreateSupplier(invoice, actor)
+    const { supplierId, supplierName, matchKind } = await resolveOrCreateSupplier(checked, actor)
 
     // The same invoice dropped twice is the likeliest way to double-book
     // stock, and with no review step nobody would see it happen.
-    if (invoice.invoiceNo) {
+    if (checked.invoiceNo) {
       const existing = await db.select({ id: purchaseInvoices.id })
         .from(purchaseInvoices)
         .where(and(
           eq(purchaseInvoices.supplierId, supplierId),
-          eq(purchaseInvoices.invoiceNo, invoice.invoiceNo),
+          eq(purchaseInvoices.invoiceNo, checked.invoiceNo),
           isNull(purchaseInvoices.deletedAt),
         ))
         .limit(1)
       if (existing[0]) {
         throw new ConflictError(
-          `Invoice ${invoice.invoiceNo} from ${supplierName} has already been booked in.`,
+          `Invoice ${checked.invoiceNo} from ${supplierName} has already been booked in.`,
         )
       }
     }
 
     const invoiceId = newId('inv')
-    const purchaseDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date()
+    const purchaseDate = checked.invoiceDate ? new Date(checked.invoiceDate) : new Date()
     const issues: InvoiceIssue[] = []
     const created: CreatedWatch[] = []
 
     await db.insert(purchaseInvoices).values({
       id: invoiceId,
       supplierId,
-      invoiceNo: invoice.invoiceNo,
-      invoiceDate: invoice.invoiceDate ? new Date(invoice.invoiceDate) : null,
-      currency: invoice.currency,
-      netAmount: minor(invoice.netAmount),
-      vatAmount: minor(invoice.vatAmount),
-      grossAmount: minor(invoice.grossAmount),
-      vatScheme: invoice.vatScheme,
+      invoiceNo: checked.invoiceNo,
+      invoiceDate: checked.invoiceDate ? new Date(checked.invoiceDate) : null,
+      currency: checked.currency,
+      netAmount: minor(checked.netAmount),
+      vatAmount: minor(checked.vatAmount),
+      grossAmount: minor(checked.grossAmount),
+      vatScheme: checked.vatScheme,
       fileName: file.name,
       mimeType: file.mimeType,
       byteSize: file.buffer.byteLength,
@@ -205,11 +231,11 @@ export async function bookInInvoice(
       rawText: text.slice(0, 200_000) || null,
       extractedBy,
       supplierMatch: matchKind,
-      lineCount: invoice.lines.length,
+      lineCount: checked.lines.length,
       createdById: actor.id,
     })
 
-    for (const line of invoice.lines) {
+    for (const line of checked.lines) {
       const problem = unbookable(line)
       if (problem) {
         issues.push({ line: describe(line), reason: problem })
@@ -218,9 +244,9 @@ export async function bookInInvoice(
 
       const brandId = await findOrCreateBrand(line.brand!)
       const unitMinor = Math.round(line.unitAmount! * 100)
-      const priceGbp = toBase(unitMinor, invoice.currency, rates)
+      const priceGbp = toBase(unitMinor, checked.currency, rates)
       const lineVatGbp = line.vatAmount !== null
-        ? toBase(Math.round(line.vatAmount * 100), invoice.currency, rates)
+        ? toBase(Math.round(line.vatAmount * 100), checked.currency, rates)
         : null
 
       // A quantity of three identical watches is three stock records: they are
@@ -262,20 +288,20 @@ export async function bookInInvoice(
           purchasePriceUsd: convert(priceGbp, rate),
           purchaseFxRate: Math.round(rate * 10_000),
           purchaseAmount: unitMinor,
-          purchaseCurrency: invoice.currency,
+          purchaseCurrency: checked.currency,
           // Deliberately unpriced. The invoice says what it cost, never what it
           // is worth, and inventing an asking price would put a number nobody
           // chose into every margin forecast.
           estSaleGbp: null,
           estSaleAmount: null,
-          estSaleCurrency: invoice.currency,
+          estSaleCurrency: checked.currency,
           estSaleUsd: null,
           locationId: defaultLocationId,
           status: 'IN_STOCK',
           invoiceId,
-          vatScheme: invoice.vatScheme,
+          vatScheme: checked.vatScheme,
           vatAmountGbp: lineVatGbp,
-          notes: `Booked in from ${file.name}${invoice.invoiceNo ? ` (invoice ${invoice.invoiceNo})` : ''}.`,
+          notes: `Booked in from ${file.name}${checked.invoiceNo ? ` (invoice ${checked.invoiceNo})` : ''}.`,
           createdById: actor.id,
         })
 
@@ -329,11 +355,11 @@ export async function bookInInvoice(
       supplierName,
       supplierCreated: matchKind === 'CREATED',
       matchKind,
-      invoiceNo: invoice.invoiceNo,
-      currency: invoice.currency,
-      vatScheme: invoice.vatScheme,
+      invoiceNo: checked.invoiceNo,
+      currency: checked.currency,
+      vatScheme: checked.vatScheme,
       extractedBy,
-      lineCount: invoice.lines.length,
+      lineCount: checked.lines.length,
       created,
       issues,
       disagreements,
