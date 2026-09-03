@@ -166,11 +166,25 @@ Rules that matter more than they look:
 - Record the seller's full postal address and telephone number wherever they appear. Both are usually on the letterhead or in the footer, unlabelled, next to the bank details — not beside the words "Tel" or "Address".
 - Anything not stated is empty: "" for text, null for numbers. A plausible invention is worse than a gap, because a gap is visible and an invention is not.`
 
+/**
+ * What came back, and if nothing, why.
+ *
+ * The reason used to go only to the logs. On a hosted deployment nobody has
+ * the logs to hand when an upload fails, so "the request did not come back"
+ * was as much as anyone could learn — a rejected key, an exhausted credit
+ * balance and a timeout all looked identical. The reason now travels with the
+ * result and reaches the person who dropped the file.
+ */
+export interface AiReading {
+  extraction: ExtractedInvoice | null
+  error: string | null
+}
+
 export async function extractWithClaude(
   file: { name: string; mimeType: string; buffer: ArrayBuffer },
   text: string | null,
-): Promise<ExtractedInvoice | null> {
-  if (!aiConfigured()) return null
+): Promise<AiReading> {
+  if (!aiConfigured()) return { extraction: null, error: null }
 
   const content: Anthropic.Beta.BetaContentBlockParam[] = []
 
@@ -201,7 +215,9 @@ export async function extractWithClaude(
     content.push({ type: 'text', text: `Text layer extracted from ${file.name}:\n\n${text.slice(0, 120_000)}` })
   }
 
-  if (content.length === 0) return null
+  if (content.length === 0) {
+    return { extraction: null, error: `nothing readable could be sent for a ${file.mimeType} file` }
+  }
   content.push({ type: 'text', text: 'Record every watch on this invoice by calling record_invoice.' })
 
   const client = new Anthropic({ timeout: TIMEOUT_MS, maxRetries: 1 })
@@ -226,7 +242,12 @@ export async function extractWithClaude(
       logger.warn('invoice extraction returned no tool call', {
         file: file.name, stopReason: response.stop_reason,
       })
-      return null
+      return {
+        extraction: null,
+        error: response.stop_reason === 'refusal'
+          ? 'the request was declined'
+          : `no reading came back (stopped: ${response.stop_reason})`,
+      }
     }
 
     const extraction = coerceExtraction(call.input)
@@ -236,15 +257,38 @@ export async function extractWithClaude(
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     })
-    return extraction
+    return { extraction, error: null }
   } catch (error) {
     // Every failure here is survivable: the caller still has the rule-based
     // reading. Logged rather than raised so a rate limit or a lapsed key does
-    // not turn into a failed upload.
+    // not turn into a failed upload — but the reason is carried out, because
+    // these four are different problems with different fixes.
     logger.warn('invoice extraction failed, falling back to pattern matching', {
       file: file.name,
       error: error instanceof Error ? error.message : String(error),
     })
-    return null
+    return { extraction: null, error: describeFailure(error) }
   }
+}
+
+function describeFailure(error: unknown): string {
+  if (error instanceof Anthropic.AuthenticationError) {
+    return 'the API key was rejected — check ANTHROPIC_API_KEY in the deployment'
+  }
+  if (error instanceof Anthropic.PermissionDeniedError) {
+    return 'the API key is not permitted to use this model'
+  }
+  if (error instanceof Anthropic.RateLimitError) {
+    return 'the API rate limit or credit balance was hit'
+  }
+  if (error instanceof Anthropic.BadRequestError) {
+    return `the request was rejected: ${error.message.slice(0, 200)}`
+  }
+  if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    return `it did not answer within ${TIMEOUT_MS / 1000}s`
+  }
+  if (error instanceof Anthropic.APIConnectionError) {
+    return 'the connection to the API failed'
+  }
+  return error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
 }

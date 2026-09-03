@@ -123,12 +123,18 @@ export async function bookInInvoice(
   // and are what stands in when Claude cannot. Where both produce a reading,
   // Claude's is the answer and the rules become a cross-check.
   const rules = text.trim() ? parseInvoiceText(text, brandRows.map((b) => b.name)) : EMPTY_EXTRACTION
-  const ai = await extractWithClaude(file, text)
+  const { extraction: ai, error: aiError } = await extractWithClaude(file, text)
   const { invoice, source, disagreements } = reconcile(ai, rules)
 
   const extractedBy: ExtractionMethod = source === 'RULES'
     ? 'RULES'
     : rules.lines.length > 0 ? 'AI_RULES' : 'AI'
+
+  // Read by patterns alone because Claude failed, not because it was switched
+  // off. Worth saying on the result rather than only in a log nobody reads.
+  if (source === 'RULES' && aiError) {
+    disagreements.unshift(`Read by pattern matching only: Claude could not read it — ${aiError}.`)
+  }
 
   if (invoice.lines.length === 0) {
     // Say what actually happened rather than guessing at one cause. The two
@@ -143,7 +149,7 @@ export async function bookInInvoice(
       ? 'Claude is not configured — ANTHROPIC_API_KEY is unset on this deployment'
       : ai
         ? 'Claude read it and found no watches on it'
-        : 'Claude is configured but the request did not come back — check the logs'
+        : `Claude could not read it — ${aiError ?? 'no reason given'}`
 
     throw new ValidationError(
       `Nothing on that document looked like a watch: ${read}, and ${reader}. `
@@ -297,6 +303,10 @@ export async function bookInInvoice(
 
     if (disagreements.length > 0) {
       logger.info('readers disagreed on an invoice', { invoiceId, disagreements })
+    }
+
+    if (aiError) {
+      logger.warn('booked in without Claude', { invoiceId, aiError })
     }
 
     await recordAudit({
