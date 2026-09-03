@@ -37,6 +37,20 @@ export function aiConfigured(): boolean {
 }
 
 /**
+ * The workspace an identity-linked key acts in.
+ *
+ * Keys issued against a person rather than a workspace must name the
+ * workspace on every request, and the API rejects them outright otherwise —
+ * in under a second, which looked exactly like every other failure until the
+ * reason was carried out of the catch. Optional: a workspace-scoped key needs
+ * no header and this stays unset.
+ */
+function workspaceHeaders(): Record<string, string> | undefined {
+  const workspace = process.env.ANTHROPIC_WORKSPACE_ID?.trim()
+  return workspace ? { 'anthropic-workspace-id': workspace } : undefined
+}
+
+/**
  * Absent text is an empty string, not null.
  *
  * A strict schema allows at most 16 union-typed parameters, and declaring
@@ -220,7 +234,11 @@ export async function extractWithClaude(
   }
   content.push({ type: 'text', text: 'Record every watch on this invoice by calling record_invoice.' })
 
-  const client = new Anthropic({ timeout: TIMEOUT_MS, maxRetries: 1 })
+  const client = new Anthropic({
+    timeout: TIMEOUT_MS,
+    maxRetries: 1,
+    defaultHeaders: workspaceHeaders(),
+  })
 
   try {
     const response = await client.beta.messages.create({
@@ -282,6 +300,11 @@ function describeFailure(error: unknown): string {
     return 'the API rate limit or credit balance was hit'
   }
   if (error instanceof Anthropic.BadRequestError) {
+    // The one rejection with a specific, non-obvious remedy.
+    if (/anthropic-workspace-id/i.test(error.message)) {
+      return 'this API key is linked to a person rather than a workspace, so it must name one — '
+        + 'set ANTHROPIC_WORKSPACE_ID on the deployment, or issue a workspace-scoped key instead'
+    }
     return `the request was rejected: ${error.message.slice(0, 200)}`
   }
   if (error instanceof Anthropic.APIConnectionTimeoutError) {
