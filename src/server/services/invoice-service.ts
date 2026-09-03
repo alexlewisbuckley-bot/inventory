@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
   appSettings, brands, locations, purchaseInvoices, stockMovements, suppliers, userPreferences, watches,
@@ -365,6 +365,44 @@ export async function bookInInvoice(
       disagreements,
     }
   })
+}
+
+/** One invoice as the supplier list shows it. */
+export interface SupplierInvoiceRow {
+  id: string
+  supplierId: string
+  invoiceNo: string | null
+  invoiceDate: Date | null
+  fileName: string
+  currency: string
+  grossAmount: number | null
+  vatScheme: string
+  createdCount: number
+}
+
+/**
+ * Every stored invoice, newest first, for listing against its supplier.
+ *
+ * Deliberately without the bytes: this feeds a list, and selecting a bytea
+ * column would pull every stored document into memory to render a table of
+ * links to them.
+ */
+export async function listSupplierInvoices(): Promise<SupplierInvoiceRow[]> {
+  return db
+    .select({
+      id: purchaseInvoices.id,
+      supplierId: purchaseInvoices.supplierId,
+      invoiceNo: purchaseInvoices.invoiceNo,
+      invoiceDate: purchaseInvoices.invoiceDate,
+      fileName: purchaseInvoices.fileName,
+      currency: purchaseInvoices.currency,
+      grossAmount: purchaseInvoices.grossAmount,
+      vatScheme: purchaseInvoices.vatScheme,
+      createdCount: purchaseInvoices.createdCount,
+    })
+    .from(purchaseInvoices)
+    .where(isNull(purchaseInvoices.deletedAt))
+    .orderBy(desc(purchaseInvoices.invoiceDate), desc(purchaseInvoices.createdAt))
 }
 
 /** Why this line cannot become stock, or null when it can. */

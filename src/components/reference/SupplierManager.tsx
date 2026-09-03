@@ -2,7 +2,7 @@
 import { Fragment, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Building2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Building2, ChevronDown, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   Card, Table, THead, TBody, TR, TD, TH, Button, Modal, TextField, SelectField,
   TextareaField, Checkbox, Chip, ConfirmDialog, EmptyState, useToast, useCurrency, useCreateFlag,
@@ -12,8 +12,10 @@ import { saveSupplierAction, deleteSupplierAction } from '@/app/actions/referenc
 import type { ActionState } from '@/app/actions/auth'
 import {
   CURRENCIES, ENTITY_TYPES, ENTITY_TYPE_LABELS, PAYMENT_TERMS, PAYMENT_TERMS_LABELS,
-  type EntityType, type PaymentTerms,
+  VAT_SCHEME_LABELS, type EntityType, type PaymentTerms, type VatScheme,
 } from '@/lib/enums'
+import { formatMoney, type Currency } from '@/lib/money'
+import { formatDate } from '@/lib/dates'
 import { cn } from '@/lib/cn'
 
 export interface SupplierRow {
@@ -76,7 +78,22 @@ function missingFields(supplier: SupplierRow): string[] {
  * dedicated routes — the user never loses sight of the list. The row expands to
  * show the trading detail rather than opening the form to read it.
  */
-export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierRow[]; canManage: boolean }) {
+/** One stored invoice, as the expanded supplier row lists it. */
+export interface InvoiceLink {
+  id: string
+  label: string
+  date: string | null
+  currency: string
+  grossAmount: number | null
+  vatScheme: string
+  watchCount: number
+}
+
+export function SupplierManager({ suppliers, invoicesBySupplier = {}, canManage }: {
+  suppliers: SupplierRow[]
+  invoicesBySupplier?: Record<string, InvoiceLink[]>
+  canManage: boolean
+}) {
   const toast = useToast()
   const { money } = useCurrency()
   const [editing, setEditing] = useState<SupplierRow | null>(null)
@@ -259,7 +276,12 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
                     {isOpen && (
                       <TR className="bg-surface-subtle">
                         <TD colSpan={canManage ? 9 : 8}>
-                          <SupplierDetail supplier={supplier} gaps={gaps} onEdit={canManage ? () => setEditing(supplier) : undefined} />
+                          <SupplierDetail
+                            supplier={supplier}
+                            gaps={gaps}
+                            invoices={invoicesBySupplier[supplier.id] ?? []}
+                            onEdit={canManage ? () => setEditing(supplier) : undefined}
+                          />
                         </TD>
                       </TR>
                     )}
@@ -296,9 +318,10 @@ export function SupplierManager({ suppliers, canManage }: { suppliers: SupplierR
 }
 
 /** The trading detail, shown in place rather than by opening the edit form to read it. */
-function SupplierDetail({ supplier, gaps, onEdit }: {
+function SupplierDetail({ supplier, gaps, invoices, onEdit }: {
   supplier: SupplierRow
   gaps: string[]
+  invoices: InvoiceLink[]
   onEdit?: () => void
 }) {
   const address = [supplier.addressLine1, supplier.addressLine2, supplier.city, supplier.postcode, supplier.country]
@@ -306,50 +329,86 @@ function SupplierDetail({ supplier, gaps, onEdit }: {
     .join(', ')
 
   return (
-    <div className="grid gap-6 py-2 lg:grid-cols-3">
-      <Facts title="Entity" items={[
-        ['Trading name', supplier.name],
-        ['Legal entity', supplier.legalName],
-        ['Type', supplier.entityType === 'UNKNOWN' ? null : ENTITY_TYPE_LABELS[supplier.entityType]],
-        ['Registration no.', supplier.registrationNo],
-        ['VAT no.', supplier.vatNo],
-        ['Website', supplier.website],
-      ]} />
-
-      <Facts title="Representative" items={[
-        ['Name', supplier.contactName],
-        ['Role', supplier.contactRole],
-        ['Email', supplier.contactEmail],
-        ['Phone', supplier.contactPhone],
-        ['Address', address || null],
-      ]} />
-
-      <div className="flex flex-col gap-3">
-        <Facts title="Commercial" items={[
-          ['Payment terms', supplier.paymentTerms === 'UNKNOWN' ? null : PAYMENT_TERMS_LABELS[supplier.paymentTerms]],
-          ['Invoices in', supplier.defaultCurrency],
-          ['Sold on', `${supplier.soldCount} of ${supplier.watchCount}`],
+    <div className="py-2">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Facts title="Entity" items={[
+          ['Trading name', supplier.name],
+          ['Legal entity', supplier.legalName],
+          ['Type', supplier.entityType === 'UNKNOWN' ? null : ENTITY_TYPE_LABELS[supplier.entityType]],
+          ['Registration no.', supplier.registrationNo],
+          ['VAT no.', supplier.vatNo],
+          ['Website', supplier.website],
         ]} />
 
-        {gaps.length > 0 && (
-          <div className="rounded-md border border-state-gold/40 bg-state-gold/8 p-3">
-            <p className="text-caption font-semibold text-content-primary">Still to record</p>
-            <p className="mt-1 text-caption text-content-secondary">{gaps.join(', ')}.</p>
-            {onEdit && (
-              <button type="button" onClick={onEdit} className="mt-2 text-caption font-bold text-content-accent hover:underline">
-                Fill these in
-              </button>
-            )}
-          </div>
-        )}
+        <Facts title="Representative" items={[
+          ['Name', supplier.contactName],
+          ['Role', supplier.contactRole],
+          ['Email', supplier.contactEmail],
+          ['Phone', supplier.contactPhone],
+          ['Address', address || null],
+        ]} />
 
-        {supplier.notes && (
-          <div>
-            <p className="text-caption font-semibold text-content-secondary">Notes</p>
-            <p className="mt-1 whitespace-pre-line text-small text-content-primary">{supplier.notes}</p>
-          </div>
-        )}
+        <div className="flex flex-col gap-3">
+          <Facts title="Commercial" items={[
+            ['Payment terms', supplier.paymentTerms === 'UNKNOWN' ? null : PAYMENT_TERMS_LABELS[supplier.paymentTerms]],
+            ['Invoices in', supplier.defaultCurrency],
+            ['Sold on', `${supplier.soldCount} of ${supplier.watchCount}`],
+          ]} />
+
+          {gaps.length > 0 && (
+            <div className="rounded-md border border-state-gold/40 bg-state-gold/8 p-3">
+              <p className="text-caption font-semibold text-content-primary">Still to record</p>
+              <p className="mt-1 text-caption text-content-secondary">{gaps.join(', ')}.</p>
+              {onEdit && (
+                <button type="button" onClick={onEdit} className="mt-2 text-caption font-bold text-content-accent hover:underline">
+                  Fill these in
+                </button>
+              )}
+            </div>
+          )}
+
+          {supplier.notes && (
+            <div>
+              <p className="text-caption font-semibold text-content-secondary">Notes</p>
+              <p className="mt-1 whitespace-pre-line text-small text-content-primary">{supplier.notes}</p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {invoices.length > 0 && (
+        <div className="mt-6 border-t border-line-subtle pt-4">
+          <p className="mb-2 text-caption font-semibold text-content-secondary">
+            Invoices on file
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {invoices.map((invoice) => (
+              <li key={invoice.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                <a
+                  href={`/api/invoices/${invoice.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-w-0 items-center gap-1.5 text-small font-bold text-content-accent hover:underline"
+                >
+                  <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span className="truncate">{invoice.label}</span>
+                </a>
+                <span className="text-caption text-content-secondary">
+                  {[
+                    formatDate(invoice.date, ''),
+                    formatMoney(invoice.grossAmount, invoice.currency as Currency, { decimals: true, fallback: '' }),
+                    VAT_SCHEME_LABELS[invoice.vatScheme as VatScheme],
+                    // Zero happens: an invoice whose every line was a duplicate
+                    // serial books in nothing, and the file is still worth
+                    // keeping against the supplier.
+                    `${invoice.watchCount} ${invoice.watchCount === 1 ? 'item' : 'items'}`,
+                  ].filter(Boolean).join(' · ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
