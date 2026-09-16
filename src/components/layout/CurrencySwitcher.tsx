@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn'
 import { useCurrency } from '@/components/ui/CurrencyProvider'
 import { updateDisplayCurrencyAction } from '@/app/actions/admin'
 import { CURRENCIES, CURRENCY_LABELS, type CurrencyCode } from '@/lib/enums'
-import { describeRate } from '@/lib/currency'
+import { describeRateFrom } from '@/lib/currency'
 
 /**
  * Display-currency picker in the header.
@@ -59,8 +59,14 @@ export function CurrencySwitcher() {
 
       {open && (
         <div role="listbox" className="absolute right-0 z-40 mt-1 w-60 overflow-hidden rounded-md border border-line-subtle bg-surface-raised shadow-raised">
+          {/* What switching does, rather than where the numbers live. Which
+              currency they are stored in is an implementation detail, and
+              leading with it here put the word "base" next to one currency
+              while the tick sat next to another — which reads as a
+              contradiction to anybody not holding the schema in their head. */}
           <p className="border-b border-line-subtle px-4 py-2.5 text-caption text-content-secondary">
-            Amounts are stored in GBP and converted for display.
+            Converted at the rates below. Switching changes what you see, never
+            what was recorded.
           </p>
           <ul className="py-1">
             {CURRENCIES.map((code) => (
@@ -73,7 +79,11 @@ export function CurrencySwitcher() {
                   <span className="w-10 shrink-0 text-body font-bold text-content-primary">{code}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-caption text-content-secondary">{CURRENCY_LABELS[code]}</span>
-                    <span className="block truncate text-micro text-content-secondary">{describeRate(code, rates)}</span>
+                    <span className="block truncate text-micro text-content-secondary">
+                      {code === currency
+                        ? 'Currently showing'
+                        : describeRateFrom(currency, code, rates)}
+                    </span>
                   </span>
                   {code === currency && <Check className="h-4 w-4 shrink-0 text-content-accent" aria-hidden />}
                 </button>

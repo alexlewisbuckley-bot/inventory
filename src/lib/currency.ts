@@ -120,10 +120,47 @@ export function symbolFor(currency: CurrencyCode): string {
   return CURRENCY_SYMBOLS[currency]
 }
 
-/** Human-readable rate, e.g. "1 GBP = 4.88 AED". */
+const trimZeros = (value: string) => value.replace(/0+$/, '').replace(/\.$/, '')
+
+/**
+ * Human-readable rate against the base, e.g. "1 GBP = 4.88 AED".
+ *
+ * For the rates screen, where the base is the thing you are editing against
+ * and naming it is the point.
+ */
 export function describeRate(currency: CurrencyCode, rates: RateTable): string {
   if (currency === BASE_CURRENCY) return 'Base currency'
   const rate = rates[currency]
   if (!rate) return 'No rate set'
-  return `1 ${BASE_CURRENCY} = ${(rate / RATE_SCALE).toFixed(4).replace(/0+$/, '').replace(/\.$/, '')} ${currency}`
+  return `1 ${BASE_CURRENCY} = ${trimZeros((rate / RATE_SCALE).toFixed(4))} ${currency}`
+}
+
+/**
+ * The same rate, seen from whatever you are currently reading in.
+ *
+ * "1 GBP = 1.33 USD" is the right sentence on a settings screen and the wrong
+ * one in a menu: somebody looking at dollars wants to know what a dollar buys,
+ * not what a pound does. Which currency the figures happen to be stored in is
+ * not their question, and answering it anyway invites the reasonable follow-up
+ * of why the badge says one thing while the tick says another.
+ *
+ * Derived from the same table — every rate is per base, so crossing two of
+ * them gives the pair — which keeps one set of numbers to maintain.
+ */
+export function describeRateFrom(
+  from: CurrencyCode,
+  to: CurrencyCode,
+  rates: RateTable,
+): string | null {
+  if (from === to) return null
+  const fromRate = from === BASE_CURRENCY ? RATE_SCALE : rates[from]
+  const toRate = to === BASE_CURRENCY ? RATE_SCALE : rates[to]
+  if (!fromRate || !toRate) return 'No rate set'
+
+  const crossed = toRate / fromRate
+  // Enough digits to be worth reading and no more. Two for the ordinary case,
+  // a third below one so a reciprocal does not collapse to 0.75, and more only
+  // where a rate would otherwise round away to nothing.
+  const decimals = crossed >= 1 ? 2 : crossed >= 0.1 ? 3 : crossed >= 0.01 ? 4 : 6
+  return `1 ${from} = ${trimZeros(crossed.toFixed(decimals))} ${to}`
 }

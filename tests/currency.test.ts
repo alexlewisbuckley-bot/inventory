@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  fromBase, toBase, formatCurrency, formatBase, formatBaseSigned, describeRate, hasRate,
-  isCurrency, RATE_SCALE,
+  fromBase, toBase, formatCurrency, formatBase, formatBaseSigned, describeRate, describeRateFrom,
+  hasRate, isCurrency, RATE_SCALE,
 } from '@/lib/currency'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 
@@ -97,5 +97,43 @@ describe('showing dollars over sterling figures', () => {
   it('still converts normally once a rate exists', () => {
     expect(hasRate('USD', RATES)).toBe(true)
     expect(formatBaseSigned(250_000, 'USD', RATES)).toBe('+$3,325')
+  })
+})
+
+describe('rates seen from the currency you are reading in', () => {
+  it('crosses two base rates rather than needing a second table', () => {
+    // 1 GBP buys 1.33 USD and 4.88 AED, so a dollar buys 4.88/1.33 dirhams.
+    expect(describeRateFrom('USD', 'AED', RATES)).toBe('1 USD = 3.67 AED')
+    expect(describeRateFrom('USD', 'HKD', RATES)).toBe('1 USD = 7.74 HKD')
+  })
+
+  it('inverts to the base without needing a rate for it', () => {
+    // The base has no row of its own — it is 1 by definition — so this is the
+    // direction that breaks if the identity is not spelled out.
+    expect(describeRateFrom('USD', 'GBP', RATES)).toBe('1 USD = 0.752 GBP')
+    expect(describeRateFrom('GBP', 'USD', RATES)).toBe('1 GBP = 1.33 USD')
+  })
+
+  it('says nothing about a currency against itself', () => {
+    expect(describeRateFrom('USD', 'USD', RATES)).toBeNull()
+    expect(describeRateFrom('GBP', 'GBP', RATES)).toBeNull()
+  })
+
+  it('admits a missing rate in either direction', () => {
+    const noAed = { GBP: RATE_SCALE, USD: 13_300 }
+    expect(describeRateFrom('USD', 'AED', noAed)).toBe('No rate set')
+    expect(describeRateFrom('AED', 'USD', noAed)).toBe('No rate set')
+  })
+
+  it('keeps enough digits for a small number to say something', () => {
+    // A currency worth a tiny fraction of the one you are reading in would
+    // round to "0.00" at two decimals, which is not a rate.
+    expect(describeRateFrom('HKD', 'GBP', RATES)).toBe('1 HKD = 0.0971 GBP')
+    expect(describeRateFrom('HKD', 'USD', RATES)).toBe('1 HKD = 0.129 USD')
+  })
+
+  it('still names the base on the screen where the base is the point', () => {
+    expect(describeRate('GBP', RATES)).toBe('Base currency')
+    expect(describeRate('AED', RATES)).toBe('1 GBP = 4.88 AED')
   })
 })
