@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import type { Role } from '@/lib/enums'
+import { formatBase, type DisplayMoney } from '@/lib/currency'
 import { can } from '@/lib/permissions'
 
 /**
@@ -61,8 +62,10 @@ const digitsOf = (value: string) => value.replace(/\D/g, '')
 export async function search(
   raw: string,
   role: Role,
+  display: DisplayMoney,
   limit = 18,
 ): Promise<SearchResults> {
+
   const query = raw.trim()
   if (query.length < 2) return { hits: [], tookMs: 0 }
 
@@ -75,11 +78,11 @@ export async function search(
 
   const jobs: Array<Promise<SearchHit[]>> = []
 
-  if (can(role, 'watch:read')) jobs.push(watchHits(like, numeric, query, can(role, 'revenue:read')))
+  if (can(role, 'watch:read')) jobs.push(watchHits(like, numeric, query, can(role, 'revenue:read'), display))
   if (can(role, 'customer:read')) jobs.push(contactHits(like, numeric, query))
   if (can(role, 'supplier:read')) jobs.push(supplierHits(like, numeric))
-  if (can(role, 'deal:read')) jobs.push(dealHits(like, query))
-  if (can(role, 'sale:read')) jobs.push(saleHits(like, query))
+  if (can(role, 'deal:read')) jobs.push(dealHits(like, query, display))
+  if (can(role, 'sale:read')) jobs.push(saleHits(like, query, display))
   if (can(role, 'task:read')) jobs.push(taskHits(like))
 
   const found = (await Promise.all(jobs)).flat()
@@ -99,7 +102,9 @@ async function watchHits(
   numeric: string | null,
   query: string,
   showPrice: boolean,
+  display: DisplayMoney,
 ): Promise<SearchHit[]> {
+  const gbp = shortMoney(display)
   const exactStock = /^\d+$/.test(query) ? Number(query) : null
 
   const rows = await db.execute(sql`
@@ -210,7 +215,8 @@ async function supplierHits(like: string, numeric: string | null): Promise<Searc
   }))
 }
 
-async function dealHits(like: string, query: string): Promise<SearchHit[]> {
+async function dealHits(like: string, query: string, display: DisplayMoney): Promise<SearchHit[]> {
+  const gbp = shortMoney(display)
   const rows = await db.execute(sql`
     SELECT d.id, d.reference, d.title, d.stage, d.value_gbp, d.updated_at,
            nullif(trim(coalesce(c.first_name, '') || ' ' || coalesce(c.last_name, '')), '') AS customer_name,
@@ -235,7 +241,8 @@ async function dealHits(like: string, query: string): Promise<SearchHit[]> {
   }))
 }
 
-async function saleHits(like: string, query: string): Promise<SearchHit[]> {
+async function saleHits(like: string, query: string, display: DisplayMoney): Promise<SearchHit[]> {
+  const gbp = shortMoney(display)
   const rows = await db.execute(sql`
     SELECT s.id, s.invoice_no, s.sale_amount_gbp, s.sale_date, s.updated_at, s.watch_id,
            b.name AS brand_name, w.model, w.stock_no,
@@ -289,14 +296,20 @@ async function taskHits(like: string): Promise<SearchHit[]> {
 /**
  * A short money string for a result row.
  *
- * Deliberately not the currency-aware formatter: the palette is a list of
- * twenty rows read in half a second, and converting each one through the FX
- * table would put a round trip inside the 100ms budget for no gain. Everything
- * here is the base currency and says so by carrying its symbol.
+ * This used to print sterling unconditionally, on the reasoning that fetching
+ * the FX table would put a round trip inside the palette's 100ms budget. That
+ * held while sterling was also what the screens showed. It stopped holding the
+ * moment they defaulted to dollars: a palette quoting £12,000 for the watch
+ * whose own page says $15,960 is not a saving, it is two different answers to
+ * the same question.
+ *
+ * The table is four rows and is passed in by the caller, so the round trip is
+ * one indexed read alongside the session lookup that was happening anyway. The
+ * budget is asserted by a journey, which is what decides whether this was
+ * affordable rather than anybody's estimate.
  */
-function gbp(minor: number): string {
-  return `£${Math.round(minor / 100).toLocaleString('en-GB')}`
-}
+const shortMoney = (display: DisplayMoney) => (minor: number): string =>
+  formatBase(minor, display.currency, display.rates, { decimals: false })
 
 // ---------------------------------------------------------------------------
 // Peek
@@ -321,14 +334,19 @@ export interface PeekRecord {
  * dismiss than the record is to load, and a peek that shows everything is just
  * a slower navigation.
  */
-export async function peek(kind: SearchKind, id: string): Promise<PeekRecord | null> {
-  if (kind === 'watch') return peekWatch(id)
-  if (kind === 'contact') return peekContact(id)
-  if (kind === 'deal') return peekDeal(id)
+export async function peek(
+  kind: SearchKind,
+  id: string,
+  display: DisplayMoney,
+): Promise<PeekRecord | null> {
+  if (kind === 'watch') return peekWatch(id, display)
+  if (kind === 'contact') return peekContact(id, display)
+  if (kind === 'deal') return peekDeal(id, display)
   return null
 }
 
-async function peekWatch(id: string): Promise<PeekRecord | null> {
+async function peekWatch(id: string, display: DisplayMoney): Promise<PeekRecord | null> {
+  const gbp = shortMoney(display)
   const rows = await db.execute(sql`
     SELECT w.id, w.stock_no, w.model, w.serial, w.status, w.condition,
            w.purchase_price_gbp, w.est_sale_gbp, w.purchase_date,
@@ -371,7 +389,8 @@ async function peekWatch(id: string): Promise<PeekRecord | null> {
   }
 }
 
-async function peekContact(id: string): Promise<PeekRecord | null> {
+async function peekContact(id: string, display: DisplayMoney): Promise<PeekRecord | null> {
+  const gbp = shortMoney(display)
   const rows = await db.execute(sql`
     SELECT c.id, c.reference, c.first_name, c.last_name, c.company, c.email, c.phone,
            c.customer_type, c.tier, c.status, c.last_contacted_at,
@@ -413,7 +432,8 @@ async function peekContact(id: string): Promise<PeekRecord | null> {
   }
 }
 
-async function peekDeal(id: string): Promise<PeekRecord | null> {
+async function peekDeal(id: string, display: DisplayMoney): Promise<PeekRecord | null> {
+  const gbp = shortMoney(display)
   const rows = await db.execute(sql`
     SELECT d.id, d.reference, d.title, d.stage, d.value_gbp, d.probability,
            d.expected_close, d.stage_changed_at,

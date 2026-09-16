@@ -18,7 +18,7 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatDate, formatDateTime, daysHeld } from '@/lib/dates'
 import {
-  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
   PRODUCT_TYPE_LABELS, referenceLabel,
   type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
@@ -78,7 +78,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
     registerCheckedAt: watch.registerCheckedAt,
   })
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
   const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
 

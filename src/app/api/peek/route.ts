@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getSessionUser } from '@/server/auth/session'
 import { peek, type SearchKind } from '@/server/repositories/search-repository'
+import { displayMoneyFor } from '@/server/services/display-currency'
 import { can, type Capability } from '@/lib/permissions'
 import { logger } from '@/lib/logger'
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
   if (!can(user.role, capability)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   try {
-    const record = await peek(kind, id)
+    const record = await peek(kind, id, await displayMoneyFor(user.id))
     if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ record })
   } catch (error) {

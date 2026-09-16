@@ -30,7 +30,14 @@ export function TaskList({ tasks, canComplete, canCreate = false, assignees = []
   endOfToday.setHours(23, 59, 59, 999)
 
   const open = tasks.filter((task) => task.status === 'OPEN')
-  const done = tasks.filter((task) => task.status === 'DONE')
+  // Ordered by when they were finished, not by when they were due. The query
+  // sorts everything by due date, which is right for the open list and wrong
+  // for this one: a section headed "Done recently" that is showing the ten
+  // oldest due dates hides the thing you just ticked off, which is the one
+  // you are most likely looking for.
+  const done = tasks
+    .filter((task) => task.status === 'DONE')
+    .sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0))
 
   const groups = [
     { key: 'overdue', title: 'Overdue', tone: 'danger' as const, items: open.filter((t) => t.dueAt && t.dueAt.getTime() < now && t.dueAt.getTime() < endOfToday.getTime() && t.dueAt.getTime() < new Date().setHours(0, 0, 0, 0)) },

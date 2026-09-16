@@ -13,7 +13,7 @@ import { Card, CardBody } from '@/components/ui'
 import { Agenda } from '@/components/today/Agenda'
 import { WorthKnowing } from '@/components/today/WorthKnowing'
 import { formatBase, isCurrency } from '@/lib/currency'
-import { BASE_CURRENCY, DEAL_STAGE_LABELS, type DealStage } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, DEAL_STAGE_LABELS, type DealStage } from '@/lib/enums'
 import { can, canSeeCost } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Today' }
@@ -55,7 +55,7 @@ export default async function TodayPage() {
       getPreferencesFor(user.id),
     ])
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const hour = new Date().getHours()
@@ -118,7 +118,16 @@ export default async function TodayPage() {
         </div>
 
         <div className="lg:col-span-2">
-          <WorthKnowing notices={notices} />
+          {/* The amount is converted here rather than in the service, which
+              has no idea what the reader wants to see figures in. */}
+          <WorthKnowing
+            notices={notices.map((notice) => ({
+              ...notice,
+              headline: notice.amountGbp !== null && notice.amountGbp !== undefined
+                ? `${money(notice.amountGbp)} ${notice.headline}`
+                : notice.headline,
+            }))}
+          />
         </div>
       </div>
     </>

@@ -23,7 +23,7 @@ import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { BASE_CURRENCY } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { CAPABILITIES, can, canSeeCost, type Capability } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
 
@@ -120,7 +120,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     listViews('watch', user.id),
   ])
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   // Money the reader may not see is removed here, before render — not hidden

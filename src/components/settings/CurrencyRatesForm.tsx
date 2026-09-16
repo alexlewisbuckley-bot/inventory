@@ -11,7 +11,9 @@ import { updateRatesAction } from '@/app/actions/admin'
 import type { ActionState } from '@/app/actions/auth'
 import { formatDateTime } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
-import { BASE_CURRENCY, CURRENCY_LABELS, type CurrencyCode } from '@/lib/enums'
+import {
+  BASE_CURRENCY, CURRENCY_LABELS, DEFAULT_DISPLAY_CURRENCY, type CurrencyCode,
+} from '@/lib/enums'
 
 export interface RateView {
   code: CurrencyCode
@@ -54,7 +56,7 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
       <Card>
         <CardHeader
           title="Exchange rates"
-          description={`All amounts are stored in ${BASE_CURRENCY} and converted for display. Rates are entered manually — nothing changes them behind your back.`}
+          description={`Amounts are stored in ${BASE_CURRENCY} — what the invoices are written in — and shown in ${DEFAULT_DISPLAY_CURRENCY} unless somebody sets otherwise in their profile. Rates are entered manually; nothing changes them behind your back.`}
         />
 
         <CardBody className="flex flex-col gap-5">
@@ -162,7 +164,10 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
           <p className="text-caption text-content-secondary">
             Enter how many units of each currency one {BASE_CURRENCY} buys. For example, if
             £1 = 4.88&nbsp;AED, enter 4.88. Changing a rate re-values how existing stock is
-            displayed; it never alters what was recorded.
+            displayed; it never alters what was recorded. The{' '}
+            <span className="font-bold text-content-primary">{DEFAULT_DISPLAY_CURRENCY}</span> rate
+            is the one nearly every figure in the app passes through, since that is what screens
+            default to — it is worth keeping current.
           </p>
         </CardBody>
 

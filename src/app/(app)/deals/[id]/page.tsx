@@ -22,7 +22,7 @@ import { TaskComposer } from '@/components/crm/TaskComposer'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
-  BASE_CURRENCY, DEAL_STAGE_LABELS, OFFER_STATUS_LABELS, TASK_KIND_LABELS,
+  BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, DEAL_STAGE_LABELS, OFFER_STATUS_LABELS, TASK_KIND_LABELS,
   type DealStage, type OfferStatus, type TaskKind,
 } from '@/lib/enums'
 import { can } from '@/lib/permissions'
@@ -65,7 +65,7 @@ export default async function DealPage({ params }: { params: { id: string } }) {
     getRateTable(),
     getPreferencesFor(user.id),
   ])
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const canEdit = can(user.role, 'deal:update')
@@ -231,7 +231,12 @@ export default async function DealPage({ params }: { params: { id: string } }) {
                     </div>
                     <p className="mt-0.5 text-caption text-content-secondary">
                       <RelativeTime value={offer.createdAt.toISOString()} />
-                      {offer.currency !== BASE_CURRENCY && ` · offered in ${offer.currency}`}
+                      {/* Compared against what you are reading in, not against
+                          what it is stored in. The note exists to say "this
+                          figure has been converted from the sum actually put
+                          to the customer", and that is only true when the two
+                          differ from the reader's point of view. */}
+                      {offer.currency !== currency && ` · offered in ${offer.currency}`}
                       {offer.validUntil && ` · good until ${formatDate(new Date(offer.validUntil))}`}
                       {offer.createdByName && ` · ${offer.createdByName}`}
                     </p>

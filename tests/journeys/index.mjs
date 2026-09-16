@@ -143,6 +143,31 @@ const sellFirstInStock = async (page, prefix) => {
   return { stockNo, invoice }
 }
 
+/**
+ * What the application will show for a sterling amount.
+ *
+ * Screens default to dollars over sterling-stored figures, so a journey that
+ * types 31250 and then looks for "31,250" is asserting the old default rather
+ * than the behaviour. The rate is read from the app's own settings instead of
+ * hard-coded, so this keeps telling the truth when somebody updates it.
+ */
+let displayRate = null
+const asShown = async (page, gbpMajor) => {
+  if (displayRate === null) {
+    const here = page.url()
+    await go(page, '/settings/currencies')
+    displayRate = Number(await page.locator('input[aria-label="GBP to USD rate"]').inputValue())
+    if (!Number.isFinite(displayRate) || displayRate <= 0) {
+      throw new Error(`could not read the USD rate (got ${displayRate})`)
+    }
+    if (here && !here.endsWith('about:blank')) await page.goto(here, { waitUntil: 'domcontentloaded' })
+  }
+  return Math.round(gbpMajor * displayRate).toLocaleString('en-US')
+}
+
+/** Any currency's figure, so an assertion is about money rather than about pounds. */
+const MONEY = /(?:[£$]\s?[\d,]+|(?:AED|HKD)\s[\d,]+)/g
+
 /** The status chip for a given stock number. */
 const statusButton = (page, stockNo) =>
   page.locator(`tr:has(td:text-is("${stockNo}")) button[aria-label^="Status:"]`)
@@ -639,7 +664,7 @@ await journey('an offer recorded on a customer shows against them', async (page)
   await page.waitForTimeout(1200)
   const record = new URL(page.url()).pathname
 
-  const before = (await page.locator('main').innerText()).match(/£[\d,]+/g)?.length ?? 0
+  const before = (await page.locator('main').innerText()).match(MONEY)?.length ?? 0
   await openComposer(page, 'Record an offer')
   await page.fill('input[name="amount"]', '43750')
   await page.click('button:has-text("Record it")')
@@ -647,8 +672,10 @@ await journey('an offer recorded on a customer shows against them', async (page)
 
   await go(page, record)
   const body = await page.locator('main').innerText()
-  if (!/43,750/.test(body)) {
-    throw new Error(`the offer did not appear on the record (${before} figures before)`)
+  const shown = await asShown(page, 43750)
+  await go(page, record)
+  if (!new RegExp(shown.replace(/,/g, ',')).test(await page.locator('main').innerText())) {
+    throw new Error(`the offer did not appear on the record as ${shown} (${before} figures before, body had ${(body.match(MONEY) ?? []).join(' ')})`)
   }
   if (!/Offers/.test(body)) throw new Error('the offers panel is missing entirely')
 })
@@ -749,9 +776,10 @@ await journey('a deal record opens from the board and records what happens on it
   await page.click('button:has-text("Record it")')
   await page.waitForTimeout(2400)
 
+  const offerShown = await asShown(page, 31250)
   await go(page, record)
-  if (!/31,250/.test(await page.locator('main').innerText())) {
-    throw new Error('the offer did not appear in the deal offers panel')
+  if (!new RegExp(offerShown).test(await page.locator('main').innerText())) {
+    throw new Error(`the offer did not appear in the deal offers panel as ${offerShown}`)
   }
 })
 
@@ -953,8 +981,16 @@ await journey('a task can be ticked off the agenda without leaving it', async (p
     throw new Error('the task is still on the agenda after being ticked off')
   }
 
-  // And it is actually done, not merely hidden.
+  // And it is actually done, not merely hidden. Searched for rather than read
+  // off the page: every suite run leaves another handful of tasks behind, and
+  // a freshly completed one eventually falls below the fold of an unfiltered
+  // list — which fails for a reason that has nothing to do with ticking it off.
   await go(page, '/tasks')
+  const search = page.locator('input[type="search"]').first()
+  if (await search.count() > 0) {
+    await search.fill(title)
+    await page.waitForTimeout(800)
+  }
   const tasks = await page.locator('main').innerText()
   if (!tasks.includes(title)) throw new Error('the completed task vanished from the task list entirely')
   const struck = await page.locator(`.line-through:has-text("${title}")`).count()
@@ -1802,7 +1838,7 @@ await journey('money reads the same on every screen', async (page) => {
   const row = page.locator('tbody tr').first()
   if (await row.count() === 0) throw new Error('no stock to compare')
   const rowText = await row.innerText()
-  const figures = [...rowText.matchAll(/£[\d,]+/g)].map((match) => match[0])
+  const figures = [...rowText.matchAll(MONEY)].map((match) => match[0])
   if (figures.length === 0) throw new Error('the row shows no money at all')
 
   const href = await row.locator('a[aria-label^="Open full record"]').getAttribute('href')

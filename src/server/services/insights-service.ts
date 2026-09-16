@@ -123,6 +123,16 @@ export interface Notice {
   tone: NoticeTone
   /** The fact. One sentence, no preamble. */
   headline: string
+  /**
+   * A sterling-base amount to read out in front of the headline.
+   *
+   * Carried as a number rather than baked into the sentence so the component
+   * can render it in whatever the viewer reads in. It used to be formatted
+   * here with a hard-coded pound sign, which put one sterling figure among a
+   * page of converted ones — the kind of inconsistency that makes somebody
+   * distrust both numbers rather than just the wrong one.
+   */
+  amountGbp?: number | null
   /** Why it matters, if that is not obvious from the headline. */
   detail: string | null
   /** What to do about it. Every notice has one. */
@@ -211,7 +221,8 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     notices.push({
       id: `offer-${row.id}`,
       tone: 'attention',
-      headline: `£${Math.round(row.amountGbp / 100).toLocaleString('en-GB')} offered to ${row.firstName ?? 'a customer'} ${row.lastName ?? ''}`.trim(),
+      amountGbp: row.amountGbp,
+      headline: `offered to ${row.firstName ?? 'a customer'} ${row.lastName ?? ''}`.trim(),
       detail: `Sent ${days} days ago with no reply.`,
       action: {
         label: 'Chase it',

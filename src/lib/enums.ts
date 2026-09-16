@@ -156,8 +156,27 @@ export type Density = (typeof DENSITIES)[number]
 export const CURRENCIES = ['GBP', 'USD', 'AED', 'HKD'] as const
 export type CurrencyCode = (typeof CURRENCIES)[number]
 
-/** The currency every amount is stored in. Everything else is converted. */
+/**
+ * The currency every amount is stored in. Everything else is converted.
+ *
+ * A storage unit, not a preference. Stock is bought on UK invoices in sterling
+ * and that is the figure the contract, the VAT and the margin scheme are all
+ * expressed in, so it is what the integers in the database mean. Changing this
+ * constant does not re-denominate anything — it would only stop the conversion
+ * happening, which is how every price on every screen quietly becomes wrong by
+ * the exchange rate.
+ */
 export const BASE_CURRENCY: CurrencyCode = 'GBP'
+
+/**
+ * The currency the business reads its own numbers in.
+ *
+ * Deliberately separate from the one above. This is the default for anybody
+ * who has not chosen otherwise, applied at render time over the stored
+ * sterling figures; each person can still switch it from the header, and
+ * switching rewrites nothing.
+ */
+export const DEFAULT_DISPLAY_CURRENCY: CurrencyCode = 'USD'
 
 export const CURRENCY_LABELS: Record<CurrencyCode, string> = {
   GBP: 'British pound',

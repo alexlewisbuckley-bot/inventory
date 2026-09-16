@@ -512,6 +512,8 @@ export interface TaskRow {
   priority: string
   status: string
   dueAt: Date | null
+  /** When it was ticked off, so "done recently" can be ordered by recency. */
+  completedAt: Date | null
   assigneeId: string | null
   assigneeName: string | null
   customerId: string | null
@@ -539,6 +541,8 @@ export async function findTasks(query: TaskQuery): Promise<TaskRow[]> {
     priority: tasks.priority,
     status: tasks.status,
     dueAt: tasks.dueAt,
+    /** When it was ticked off, so "done recently" can mean recently. */
+    completedAt: tasks.completedAt,
     assigneeId: tasks.assigneeId,
     assigneeName: users.name,
     customerId: tasks.customerId,

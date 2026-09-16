@@ -20,7 +20,7 @@ import { can } from '@/lib/permissions'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
-  BASE_CURRENCY, PRIORITY_LABELS, REQUEST_ENQUIRY_STATUS_LABELS,
+  BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, PRIORITY_LABELS, REQUEST_ENQUIRY_STATUS_LABELS,
   type Priority, type RequestEnquiryStatus, type RequestStatus,
 } from '@/lib/enums'
 
@@ -61,7 +61,7 @@ export default async function RequestsPage() {
   const canTask = can(user.role, 'task:create')
   const canBookIn = can(user.role, 'watch:create')
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const [matches, enquiryLists] = await Promise.all([

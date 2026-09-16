@@ -27,7 +27,7 @@ import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { BASE_CURRENCY } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { formatDate, relativeTime, daysHeld } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import { locationTypeCaption, AUDIT_ACTION_LABELS, type LocationType, type AuditAction } from '@/lib/enums'
@@ -82,7 +82,7 @@ export default async function InsightsPage() {
     lostReasons(),
   ])
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
   const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
 

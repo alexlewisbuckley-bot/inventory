@@ -25,7 +25,7 @@ import { RelativeTime } from '@/components/ui/RelativeTime'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatDate } from '@/lib/dates'
 import {
-  BASE_CURRENCY, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUS_LABELS, CUSTOMER_TIER_LABELS,
+  BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUS_LABELS, CUSTOMER_TIER_LABELS,
   CUSTOMER_TYPE_LABELS, PAYMENT_TERMS_LABELS, type CustomerType, type PaymentTerms,
   DEAL_STAGE_LABELS, LEAD_SOURCE_LABELS, OFFER_STATUS_LABELS, REQUEST_STATUS_LABELS, type ContactChannel,
   type CustomerStatus, type CustomerTier, type DealStage, type LeadSource, type OfferStatus,
@@ -71,7 +71,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
     sellableStockOptions(),
   ])
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const lifetime = context.purchases.reduce((sum, purchase) => sum + purchase.amountGbp, 0)

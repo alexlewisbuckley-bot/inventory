@@ -13,7 +13,7 @@ import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { BASE_CURRENCY, locationTypeCaption, type LocationType } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, locationTypeCaption, type LocationType } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Reports' }
 export const dynamic = 'force-dynamic'
@@ -44,7 +44,7 @@ export default async function ReportsPage() {
   segments.sort((a, b) => order.indexOf(a.segment) - order.indexOf(b.segment))
   const totalRevenue = segments.reduce((sum, segment) => sum + segment.revenueGbp, 0)
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
   const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
 

@@ -13,7 +13,7 @@ import { DealFormPanel } from '@/components/crm/DealFormPanel'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatBase, isCurrency } from '@/lib/currency'
-import { BASE_CURRENCY } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { can } from '@/lib/permissions'
 import { sql } from 'drizzle-orm'
 
@@ -42,7 +42,7 @@ export default async function PipelinePage({ searchParams }: {
     getPreferencesFor(user.id),
   ])
 
-  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : BASE_CURRENCY
+  const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
 
   const open = deals.filter((deal) => deal.stage !== 'WON' && deal.stage !== 'LOST')

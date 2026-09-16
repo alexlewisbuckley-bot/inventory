@@ -15,7 +15,7 @@ import { CurrencyProvider } from '@/components/ui/CurrencyProvider'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { isCurrency } from '@/lib/currency'
-import { BASE_CURRENCY, type Role } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, type Role } from '@/lib/enums'
 import { can } from '@/lib/permissions'
 
 /**
@@ -60,7 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const displayCurrency = isCurrency(preferences?.displayCurrency)
     ? preferences.displayCurrency
-    : BASE_CURRENCY
+    : DEFAULT_DISPLAY_CURRENCY
 
   const counts = {
     inStock: stock.inStockCount,

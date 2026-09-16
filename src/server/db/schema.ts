@@ -115,7 +115,11 @@ export const userPreferences = pgTable('user_preferences', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   theme: text('theme', { enum: THEMES }).notNull().default('SYSTEM'),
   density: text('density', { enum: DENSITIES }).notNull().default('COMFORTABLE'),
-  displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('GBP'),
+  /**
+   * What this person reads figures in, not what they are stored in — see
+   * BASE_CURRENCY. Converted at render time, so changing it rewrites nothing.
+   */
+  displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('USD'),
   defaultLocationId: text('default_location_id').references(() => locations.id, { onDelete: 'set null' }),
   emailNotifications: boolean('email_notifications').notNull().default(true),
   inAppNotifications: boolean('in_app_notifications').notNull().default(true),

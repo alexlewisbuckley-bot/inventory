@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getSessionUser } from '@/server/auth/session'
 import { search } from '@/server/repositories/search-repository'
+import { displayMoneyFor } from '@/server/services/display-currency'
 import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
   if (query.length < 2) return NextResponse.json({ hits: [], tookMs: 0 })
 
   try {
-    const results = await search(query, user.role)
+    const results = await search(query, user.role, await displayMoneyFor(user.id))
     if (results.tookMs > 100) {
       // Logged rather than thrown. A slow search is still a useful search; a
       // slow search nobody knows about is how it becomes a slow product.
