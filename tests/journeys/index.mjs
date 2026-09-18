@@ -1735,6 +1735,64 @@ await journey('a director is identified, and the ID falls due in six months', as
   }
 })
 
+await journey('stock can be looked at as photographs, and the choice sticks', async (page) => {
+  // Two renderings of one list. The parts worth proving are the ones that are
+  // easy to get wrong when a view is bolted on: that the cards are the same
+  // rows under the same filter, that they reach the same drawer, and that
+  // selection still belongs to the list rather than to the table.
+  await go(page, '/inventory')
+  const rows = await page.locator('table tbody tr').count()
+  if (rows === 0) throw new Error('no stock to show')
+
+  await page.click('button[aria-label="Gallery view"]')
+  await page.waitForTimeout(2200)
+
+  if (!new URL(page.url()).searchParams.get('display')) {
+    throw new Error('the gallery is not in the URL, so it cannot be linked or saved')
+  }
+  const cards = await page.locator('main ul li a[href*="watch="]').count()
+  if (cards !== rows) {
+    throw new Error(`the gallery shows ${cards} cards for ${rows} rows — it is not the same list`)
+  }
+  // Every card carries a photograph or says why it does not. A broken frame
+  // is the failure this replaces.
+  const shown = await page.locator('main img[src^="/api/images/"]').count()
+  const missing = await page.locator('main :text("No photograph")').count()
+  if (shown + missing < cards) {
+    throw new Error(`${cards} cards but only ${shown + missing} picture slots accounted for`)
+  }
+
+  // Selection is the list's, not the table's.
+  await page.locator('main ul li input[type="checkbox"]').first().check()
+  await page.waitForTimeout(900)
+  if (!/selected/i.test(await page.locator('body').innerText())) {
+    throw new Error('selecting a card did not raise the bulk bar')
+  }
+  await page.locator('main ul li input[type="checkbox"]').first().uncheck()
+  await page.waitForTimeout(500)
+
+  // A card opens the same record a row does.
+  await page.locator('main ul li a[href*="watch="]').first().click()
+  await page.waitForTimeout(1800)
+  if (await page.locator('[role="dialog"]').count() === 0) {
+    throw new Error('a card did not open the record drawer')
+  }
+
+  // Chosen once, remembered — including on a URL that says nothing about it.
+  await go(page, '/today')
+  await go(page, '/inventory')
+  if (await page.locator('main ul li a[href*="watch="]').count() === 0) {
+    throw new Error('the gallery was not remembered on the next visit')
+  }
+
+  // And back, so the suite leaves the list as it found it.
+  await page.click('button[aria-label="Table view"]')
+  await page.waitForTimeout(2000)
+  if (await page.locator('main table tbody tr').count() === 0) {
+    throw new Error('switching back to the table showed nothing')
+  }
+})
+
 await journey('every route renders', async (page) => {
   const broken = []
   for (const route of ROUTES) {
@@ -1756,6 +1814,7 @@ await journey('every route renders for a viewer', async () => {
   const page = await ctx.newPage()
   try {
 
+    const BROKEN = /application error|unhandled|digest:/i
     const broken = []
     for (const route of ROUTES) {
       const response = await page.goto(BASE + route, { waitUntil: 'domcontentloaded' })
@@ -1763,8 +1822,17 @@ await journey('every route renders for a viewer', async () => {
       const status = response?.status() ?? 0
       // 403 is a correct answer for a viewer; a 500 is not.
       if (status >= 500) broken.push(`${route} → HTTP ${status}`)
-      const body = await page.locator('body').innerText()
-      if (/application error|unhandled|digest:/i.test(body)) broken.push(`${route} → error boundary`)
+
+      // Looked at twice before being believed. "/" is a redirect, and reading
+      // the body 300ms after domcontentloaded can catch the hop rather than
+      // the destination — which reported a broken page that was not broken,
+      // and would eventually have been ignored as noise on a run that meant it.
+      let body = await page.locator('body').innerText()
+      if (BROKEN.test(body)) {
+        await page.waitForTimeout(1500)
+        body = await page.locator('body').innerText()
+        if (BROKEN.test(body)) broken.push(`${route} → error boundary`)
+      }
     }
     if (broken.length) throw new Error(broken.join(' · '))
   } finally {

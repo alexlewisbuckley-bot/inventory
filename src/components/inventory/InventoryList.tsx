@@ -2,13 +2,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { MoreHorizontal, PackageSearch, Receipt, SearchX } from 'lucide-react'
+import { LayoutGrid, MoreHorizontal, PackageSearch, Receipt, Rows3, SearchX } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useListQuery } from '@/hooks/useListQuery'
 import { useSelection } from '@/hooks/useSelection'
 import { SelectAllBanner } from '@/components/ui/DataList'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
+import { useDisplayMode, type DisplayMode } from '@/hooks/useDisplayMode'
 import {
   Table, THead, TBody, TR, TD, TH, Pagination,
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
@@ -21,6 +22,7 @@ import {
 } from './QuickSellModal'
 import { InlinePriceCell } from './InlinePriceCell'
 import { StatusCell } from './StatusCell'
+import { InventoryGallery } from './InventoryGallery'
 import { CheckDot } from '@/components/compliance/CheckLight'
 import { CHECK_TONE_LABELS, watchChecks } from '@/lib/checks'
 import { VoidSaleModal, type VoidTarget } from './VoidSaleModal'
@@ -53,7 +55,7 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
 const DEFAULT_HIDDEN = ['serial', 'supplier'] as const
 const STORAGE_KEY = 'bluecroft.inventory.columns'
 
-export interface InventoryTableProps {
+export interface InventoryListProps {
   result: WatchListResult
   locations: Array<{ id: string; name: string }>
   capabilities: Record<Capability, boolean>
@@ -66,14 +68,20 @@ export interface InventoryTableProps {
 /**
  * Inventory list.
  *
- * Selection is component state because it is ephemeral; sort, page and filters
- * live in the URL so a view can be shared. Clicking a row opens the detail
- * drawer via `?watch=` rather than navigating, so scroll position and
- * selection survive.
+ * Renders the same rows as a table or as a gallery of photographs — one
+ * component rather than two routes, because selection, filters, paging, the
+ * sell and void dialogs and the drawer are identical either way and only the
+ * drawing differs. Splitting them would mean keeping two copies of all of it
+ * in step.
+ *
+ * Selection is component state because it is ephemeral; sort, page, filters
+ * and the chosen display live in the URL so a view can be shared. Clicking a
+ * row or a card opens the detail drawer via `?watch=` rather than navigating,
+ * so scroll position and selection survive.
  */
-export function InventoryTable({
+export function InventoryList({
   result, locations, capabilities, customers = [], dealsByWatch = {},
-}: InventoryTableProps) {
+}: InventoryListProps) {
   const query = useListQuery()
   const router = useRouter()
   // Selection knows the difference between "these rows" and "everything that
@@ -95,6 +103,11 @@ export function InventoryTable({
   const columnKeys = useMemo(() => visibleColumns.map((c) => c.key), [visibleColumns])
   const columns = useColumnPreferences(STORAGE_KEY, columnKeys, DEFAULT_HIDDEN)
   const show = (key: string) => !columns.isHidden(key) && columnKeys.includes(key)
+  const { mode, setMode } = useDisplayMode()
+  // The gallery cards link to the drawer the same way the table rows do, so
+  // the URL is built once here rather than twice in two components.
+  const listPath = usePathname()
+  const listParams = useSearchParams()
 
   const sort = useMemo(
     () => ({ field: query.get('sort') ?? 'stockNo', dir: (query.get('dir') ?? 'desc') as 'asc' | 'desc' }),
@@ -150,25 +163,43 @@ export function InventoryTable({
       <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-6 py-3">
         <p className="text-small text-content-secondary">
           {result.total} {result.total === 1 ? 'watch' : 'watches'}
-          {capabilities['watch:price'] && (
+          {capabilities['watch:price'] && mode === 'table' && (
             <span className="ml-2 hidden text-caption text-content-secondary sm:inline">
               · click a price to edit it
             </span>
           )}
         </p>
-        {/* The picker chooses table columns, and below sm there is no table. */}
-        <div className="hidden sm:block">
-        <ColumnPicker
-          columns={visibleColumns}
-          isHidden={columns.isHidden}
-          onToggle={columns.toggle}
-          onReset={columns.showAll}
-          hiddenCount={columns.hiddenCount}
-        />
+        <div className="flex items-center gap-2">
+          <DisplaySwitch mode={mode} onChange={setMode} />
+          {/* The picker chooses table columns: nothing for it to do in the
+              gallery, and below sm there is no table either. */}
+          {mode === 'table' && (
+            <div className="hidden sm:block">
+              <ColumnPicker
+                columns={visibleColumns}
+                isHidden={columns.isHidden}
+                onToggle={columns.toggle}
+                onReset={columns.showAll}
+                hiddenCount={columns.hiddenCount}
+              />
+            </div>
+          )}
         </div>
       </div>
 
       <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
+        {mode === 'gallery' ? (
+          <InventoryGallery
+            items={result.items}
+            selectable={selectable}
+            isSelected={selection.isSelected}
+            onToggle={toggleOne}
+            canSeeCost={capabilities['cost:read']}
+            canSeeRevenue={capabilities['revenue:read']}
+            href={(id) => `${listPath}?${withParam(listParams, 'watch', id)}`}
+          />
+        ) : (
+        <>
         {/* Below sm the table would need to be scrolled sideways to reach any
             figure, so the same rows are rendered as cards instead: the two
             numbers that matter and the status, in one tap-sized target. */}
@@ -257,6 +288,8 @@ export function InventoryTable({
           </TBody>
         </Table>
         </div>
+        </>
+        )}
 
         {selectable && allOnPageSelected && (
           <SelectAllBanner
@@ -391,6 +424,48 @@ function withParam(params: URLSearchParams, key: string, value: string): string 
   const next = new URLSearchParams(params.toString())
   next.set(key, value)
   return next.toString()
+}
+
+/**
+ * Table or gallery.
+ *
+ * Two icon buttons rather than a dropdown: there are two options, both are
+ * one glance to understand, and a menu would hide the choice behind a click.
+ * Labelled for anybody who cannot see the icons, and pressed-state carried on
+ * the button so it is announced as a toggle rather than as a link.
+ */
+function DisplaySwitch({ mode, onChange }: { mode: DisplayMode; onChange: (mode: DisplayMode) => void }) {
+  const options = [
+    { value: 'table' as const, label: 'Table', icon: Rows3 },
+    { value: 'gallery' as const, label: 'Gallery', icon: LayoutGrid },
+  ]
+  return (
+    <div className="inline-flex rounded-md border border-line-subtle bg-surface-subtle p-0.5" role="group" aria-label="How to show the stock">
+      {options.map((option) => {
+        const Icon = option.icon
+        const active = mode === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={active}
+            aria-label={`${option.label} view`}
+            title={`${option.label} view`}
+            className={cn(
+              'flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-caption font-semibold transition-colors',
+              active
+                ? 'bg-surface-raised text-content-primary shadow-sm'
+                : 'text-content-secondary hover:text-content-primary',
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden sm:inline">{option.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 function Row({

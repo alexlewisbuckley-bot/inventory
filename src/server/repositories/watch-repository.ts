@@ -1,7 +1,9 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
-import { brands, locations, purchaseInvoices, sales, suppliers, users, watches } from '../db/schema'
+import {
+  brands, locations, purchaseInvoices, sales, suppliers, users, watchImages, watches,
+} from '../db/schema'
 import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
@@ -68,6 +70,8 @@ export interface WatchListItem {
   supplierIdCheckStatus: IdCheckStatus
   supplierIdCheckedAt: Date | null
   supplierIdDocumentExpiresOn: string | null
+  /** The photograph the gallery leads with, where the watch has one. */
+  primaryImageId: string | null
 }
 
 export interface WatchListResult {
@@ -112,6 +116,21 @@ const listSelection = {
   supplierIdCheckStatus: suppliers.idCheckStatus,
   supplierIdCheckedAt: suppliers.idCheckedAt,
   supplierIdDocumentExpiresOn: suppliers.idDocumentExpiresOn,
+  /**
+   * The photograph to lead with, as a correlated scalar rather than a join.
+   *
+   * A join would multiply the row out per image and need collapsing again; the
+   * gallery only ever wants one. Ordered so a picture of the watch beats a
+   * scan of its warranty card — kind cannot be sorted alphabetically for this,
+   * because CARD and DOCUMENT both sort before WATCH — then by the order
+   * somebody arranged them in. Covered by watch_images_watch_idx.
+   */
+  primaryImageId: sql<string | null>`(
+    SELECT wi.id FROM ${watchImages} wi
+    WHERE wi.watch_id = ${watches.id}
+    ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
+    LIMIT 1
+  )`,
 } as const
 
 function buildFilters(query: WatchQuery): SQL | undefined {

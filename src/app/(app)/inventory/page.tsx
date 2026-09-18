@@ -15,7 +15,7 @@ import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
 import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
 import { listViews } from '@/server/services/views-service'
-import { InventoryTable } from '@/components/inventory/InventoryTable'
+import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
 import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
@@ -222,7 +222,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>
-          <InventoryTable
+          <InventoryList
             result={{ ...result, items: rows }}
             locations={locationOptions}
             capabilities={capabilities}
