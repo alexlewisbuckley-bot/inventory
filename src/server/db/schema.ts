@@ -10,7 +10,8 @@ import {
   IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
-  REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS, TASK_KINDS, TASK_STATUSES, THEMES,
+  REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
+  STOCK_CHECK_LINE_STATUSES, STOCK_CHECK_STATUSES, TASK_KINDS, TASK_STATUSES, THEMES,
   VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
 } from '@/lib/enums'
 
@@ -457,6 +458,74 @@ export const watchImages = pgTable(
     createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => ({ watchIdx: index('watch_images_watch_idx').on(t.watchId, t.kind, t.sortOrder) }),
+)
+
+// ---------------------------------------------------------------------------
+// Stock checks
+// ---------------------------------------------------------------------------
+
+/**
+ * A counting session.
+ *
+ * Its lines are a snapshot taken when it opened rather than a live view of
+ * stock, which is what makes the arithmetic hold: a watch sold halfway through
+ * the count must not leave the list it is being counted against.
+ */
+export const stockChecks = pgTable(
+  'stock_checks',
+  {
+    id: text('id').primaryKey(),
+    /** Generated, e.g. "Vault — 19 September". */
+    reference: text('reference').notNull(),
+    /** Null means everywhere. Usually one safe or shop, because that is how counting is done. */
+    locationId: text('location_id').references(() => locations.id),
+    status: text('status', { enum: STOCK_CHECK_STATUSES }).notNull().default('OPEN'),
+
+    /** How many lines were snapshotted, so progress needs no recount. */
+    expectedCount: integer('expected_count').notNull().default(0),
+    /** Written on completion, not maintained live — a running tally would be a second truth. */
+    foundCount: integer('found_count'),
+    missingCount: integer('missing_count'),
+    elsewhereCount: integer('elsewhere_count'),
+
+    notes: text('notes'),
+    startedById: text('started_by_id').notNull().references(() => users.id),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    completedById: text('completed_by_id').references(() => users.id),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    statusIdx: index('stock_checks_status_idx').on(t.status),
+    startedIdx: index('stock_checks_started_idx').on(t.startedAt),
+  }),
+)
+
+export const stockCheckLines = pgTable(
+  'stock_check_lines',
+  {
+    id: text('id').primaryKey(),
+    checkId: text('check_id').notNull().references(() => stockChecks.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').notNull().references(() => watches.id),
+    /**
+     * Where the record said it would be, copied at snapshot time — so a later
+     * move cannot rewrite what the count was actually looking for.
+     */
+    expectedLocationId: text('expected_location_id').references(() => locations.id),
+    status: text('status', { enum: STOCK_CHECK_LINE_STATUSES }).notNull().default('PENDING'),
+    /** Where it turned out to be, when that is not where it was expected. */
+    foundLocationId: text('found_location_id').references(() => locations.id),
+    notes: text('notes'),
+    checkedById: text('checked_by_id').references(() => users.id),
+    checkedAt: timestamp('checked_at', { withTimezone: true }),
+  },
+  (t) => ({
+    /** Counting one watch twice in a session is a mistake, not a second reading. */
+    uniqueIdx: uniqueIndex('stock_check_lines_unique_idx').on(t.checkId, t.watchId),
+    statusIdx: index('stock_check_lines_status_idx').on(t.checkId, t.status),
+  }),
 )
 
 export const sales = pgTable(

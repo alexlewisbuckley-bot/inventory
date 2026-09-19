@@ -711,3 +711,55 @@ export const ID_CHECK_STATUS_LABELS: Record<IdCheckStatus, string> = {
   VERIFIED: 'Verified',
   REJECTED: 'Rejected',
 }
+
+/**
+ * Counting the stock you are supposed to have.
+ *
+ * A stock check is a session with a beginning and an end, not a running
+ * tally, because the only count anybody can act on is one taken against a
+ * fixed list at a fixed moment. Its lines are a snapshot of what was expected
+ * when it opened: a watch sold halfway through the afternoon must not quietly
+ * leave the list it is being counted against, or the numbers will never
+ * reconcile and nobody will trust the exercise again.
+ */
+export const STOCK_CHECK_STATUSES = ['OPEN', 'COMPLETED', 'ABANDONED'] as const
+export type StockCheckStatus = (typeof STOCK_CHECK_STATUSES)[number]
+
+export const STOCK_CHECK_STATUS_LABELS: Record<StockCheckStatus, string> = {
+  OPEN: 'In progress',
+  COMPLETED: 'Completed',
+  ABANDONED: 'Abandoned',
+}
+
+export const STOCK_CHECK_STATUS_TONE: Record<StockCheckStatus, 'accent' | 'good' | 'neutral'> = {
+  OPEN: 'accent',
+  COMPLETED: 'good',
+  ABANDONED: 'neutral',
+}
+
+/** What happened when somebody went looking for one particular watch. */
+export const STOCK_CHECK_LINE_STATUSES = [
+  /** Not looked for yet. */
+  'PENDING',
+  /** Seen, where it was supposed to be. */
+  'FOUND',
+  /** Looked for and not found. */
+  'MISSING',
+  /** Seen, but somewhere else. */
+  'FOUND_ELSEWHERE',
+] as const
+export type StockCheckLineStatus = (typeof STOCK_CHECK_LINE_STATUSES)[number]
+
+export const STOCK_CHECK_LINE_STATUS_LABELS: Record<StockCheckLineStatus, string> = {
+  PENDING: 'Not counted',
+  FOUND: 'Found',
+  MISSING: 'Missing',
+  FOUND_ELSEWHERE: 'Found elsewhere',
+}
+
+export const STOCK_CHECK_LINE_TONE: Record<StockCheckLineStatus, 'neutral' | 'good' | 'critical' | 'warning'> = {
+  PENDING: 'neutral',
+  FOUND: 'good',
+  MISSING: 'critical',
+  FOUND_ELSEWHERE: 'warning',
+}

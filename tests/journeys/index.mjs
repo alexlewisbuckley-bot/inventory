@@ -1793,6 +1793,99 @@ await journey('stock can be looked at as photographs, and the choice sticks', as
   }
 })
 
+await journey('the stock is counted, and counting it changes nothing', async (page) => {
+  // A stock take is only worth taking if it is safe to run. The assertion that
+  // matters most here is the negative one at the end: after recording a watch
+  // as missing, the inventory is exactly as it was. A count that quietly wrote
+  // stock off would be a tool nobody dared use twice.
+  const stockBefore = async () => {
+    await go(page, '/inventory')
+    const text = await page.locator('main').innerText()
+    return text.match(/In view\s*\n?\s*(\d+)/)?.[1] ?? null
+  }
+  const before = await stockBefore()
+  if (!before) throw new Error('could not read the stock count to compare against')
+
+  // Clear anything a previous run left open — a check still running blocks a
+  // new one over the same ground, by design.
+  await go(page, '/stock-checks')
+  for (let guard = 0; guard < 4; guard += 1) {
+    const running = page.locator('tbody tr:has-text("In progress") a').first()
+    if (await running.count() === 0) break
+    await running.click()
+    await page.waitForTimeout(2000)
+    await page.click('button:has-text("Abandon")')
+    await page.waitForTimeout(700)
+    await page.locator('[role="dialog"] button:has-text("Abandon it")').click()
+    await page.waitForTimeout(2500)
+    await go(page, '/stock-checks')
+  }
+
+  await page.click('button:has-text("Start a stock check")')
+  await page.waitForTimeout(700)
+  await page.click('[role="dialog"] button:has-text("Start counting")')
+  await page.waitForTimeout(3500)
+
+  if (!/\/stock-checks\/stc_/.test(page.url())) {
+    throw new Error(`starting a check did not open it: ${page.url()}`)
+  }
+  const expected = Number((await page.locator('main').innerText()).match(/(\d+) expected/)?.[1] ?? 0)
+  if (expected === 0) throw new Error('the check expects nothing, so there is nothing to count')
+
+  const scan = async (value) => {
+    await page.fill('input[aria-label="Serial or stock number"]', value)
+    await page.click('button:has-text("Count it")')
+    await page.waitForTimeout(2200)
+    return (await page.locator('main [aria-live="polite"] li').first().innerText()).trim()
+  }
+
+  // Counting by what is written on the watch is the whole interaction.
+  const serial = (await page.locator('main ul li p').first().innerText()).match(/Serial (\S+)/)?.[1]
+  if (!serial) throw new Error('no serial on the first line to scan')
+
+  const first = await scan(serial)
+  if (!/counted/i.test(first)) throw new Error(`scanning a serial did not count it: ${first}`)
+
+  // Counting the same watch twice is a mistake, and has to say so rather than
+  // silently succeeding — that is how a miscount becomes invisible.
+  const again = await scan(serial)
+  if (!/already been counted/i.test(again)) {
+    throw new Error(`scanning the same serial twice was not refused: ${again}`)
+  }
+  const nonsense = await scan('NOT-A-REAL-SERIAL-0000')
+  if (!/nothing in stock matches/i.test(nonsense)) {
+    throw new Error(`an unknown serial was not reported: ${nonsense}`)
+  }
+
+  // And one recorded missing by hand.
+  await page.locator('main ul li button:has-text("Missing")').first().click()
+  await page.waitForTimeout(2500)
+  const tally = await page.locator('main').innerText()
+  if (!/1 missing/.test(tally)) throw new Error(`the missing tally did not move: ${tally.slice(0, 200)}`)
+
+  // Completing says how many were never looked for before it decides for you.
+  await page.click('button:has-text("Complete the check")')
+  await page.waitForTimeout(900)
+  const dialog = await page.locator('[role="dialog"]').innerText()
+  if (!/have not been counted/.test(dialog)) {
+    throw new Error(`completing did not say what happens to the uncounted: ${dialog.replace(/\n/g, ' | ')}`)
+  }
+  await page.locator('[role="dialog"] button:has-text("Complete the check")').click()
+  await page.waitForTimeout(3000)
+
+  const finished = await page.locator('main').innerText()
+  if (!/Completed/.test(finished)) throw new Error('the check did not close')
+  if (await page.locator('input[aria-label="Serial or stock number"]').count() > 0) {
+    throw new Error('a closed check still offers to count things')
+  }
+
+  // The point of the whole exercise: nothing was written off.
+  const after = await stockBefore()
+  if (after !== before) {
+    throw new Error(`the stock take changed the inventory: ${before} before, ${after} after`)
+  }
+})
+
 await journey('every route renders', async (page) => {
   const broken = []
   for (const route of ROUTES) {
