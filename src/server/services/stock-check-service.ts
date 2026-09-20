@@ -1,7 +1,9 @@
 import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db, withTransaction } from '../db/client'
-import { brands, locations, stockCheckLines, stockChecks, users, watches } from '../db/schema'
+import {
+  brands, locations, stockCheckLines, stockChecks, users, watchImages, watches,
+} from '../db/schema'
 import { recordAudit } from './audit'
 import { moveWatches } from './watch-service'
 import { newId } from '@/lib/ids'
@@ -40,6 +42,21 @@ export interface StockCheckScope {
   locationId?: string | null
   notes?: string | null
 }
+
+/**
+ * The photograph to identify a watch by, as a correlated scalar.
+ *
+ * Counting is done by eye before it is done by serial: a picture of the watch
+ * in your hand settles "is this the right one" faster than reading eight
+ * engraved characters under a safe light. Ordered the same way the gallery
+ * orders it, so the picture here is the picture there.
+ */
+const primaryImage = sql<string | null>`(
+  SELECT wi.id FROM ${watchImages} wi
+  WHERE wi.watch_id = ${watches.id}
+  ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
+  LIMIT 1
+)`
 
 const monthDay = (date: Date) =>
   date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })
@@ -157,6 +174,8 @@ export interface RecordLineResult {
   status: StockCheckLineStatus
   stockNo: number
   label: string
+  /** The photograph, so a confirmation can be looked at rather than read. */
+  primaryImageId: string | null
   /** Set when the watch was moved to where it was found. */
   movedTo: string | null
 }
@@ -182,6 +201,7 @@ export async function recordLine(
     stockNo: watches.stockNo,
     model: watches.model,
     brandName: brands.name,
+    primaryImageId: primaryImage,
   })
     .from(stockCheckLines)
     .innerJoin(watches, eq(watches.id, stockCheckLines.watchId))
@@ -199,12 +219,17 @@ export async function recordLine(
     && input.foundLocationId !== row.line.expectedLocationId
   const status: StockCheckLineStatus = elsewhere ? 'FOUND_ELSEWHERE' : input.status
 
+  // Putting a line back to not-counted clears who counted it, because after an
+  // undo nobody has. Leaving a name against it would be a record of a count
+  // that no longer exists.
+  const undone = status === 'PENDING'
+
   await db.update(stockCheckLines).set({
     status,
     foundLocationId: status === 'FOUND_ELSEWHERE' ? input.foundLocationId ?? null : null,
-    notes: input.notes?.trim() || null,
-    checkedById: actor.id,
-    checkedAt: new Date(),
+    notes: undone ? null : input.notes?.trim() || null,
+    checkedById: undone ? null : actor.id,
+    checkedAt: undone ? null : new Date(),
   }).where(eq(stockCheckLines.id, row.line.id))
 
   let movedTo: string | null = null
@@ -220,6 +245,7 @@ export async function recordLine(
     status,
     stockNo: row.stockNo,
     label: `${row.brandName} ${row.model}`,
+    primaryImageId: row.primaryImageId,
     movedTo,
   }
 }
@@ -261,9 +287,12 @@ export async function scanForCheck(
     brandName: brands.name,
     lineId: stockCheckLines.id,
     lineStatus: stockCheckLines.status,
+    homeLocation: locations.name,
+    primaryImageId: primaryImage,
   })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .leftJoin(locations, eq(locations.id, watches.locationId))
     .leftJoin(stockCheckLines, and(
       eq(stockCheckLines.watchId, watches.id),
       eq(stockCheckLines.checkId, checkId),
@@ -285,22 +314,35 @@ export async function scanForCheck(
 
   const match = matches[0]!
   if (!match.lineId) {
+    // Naming where it does live turns a dead end into an answer: the usual
+    // cause is a watch that has wandered between sites, and the next question
+    // is always "so where is it supposed to be?".
     return {
       ok: false,
-      message: `Stock ${match.stockNo} (${match.brandName} ${match.model}) is not on ${check.reference}.`,
+      message: `Stock ${match.stockNo} (${match.brandName} ${match.model}) is not on ${check.reference}`
+        + `${match.homeLocation ? ` — it belongs at ${match.homeLocation}` : ''}.`,
     }
   }
-  if (match.lineStatus !== 'PENDING') {
+
+  // Already found is a duplicate and worth refusing. Already *missing* is not:
+  // marking something missing and then turning it up in the wrong drawer ten
+  // minutes later is the most ordinary thing that happens on a stock take, and
+  // v1 refused the quickest way to correct it — which left the fix buried in a
+  // list of four hundred rows.
+  if (match.lineStatus === 'FOUND' || match.lineStatus === 'FOUND_ELSEWHERE') {
     return {
       ok: false,
       message: `Stock ${match.stockNo} has already been counted on this check.`,
     }
   }
+  const recovering = match.lineStatus === 'MISSING'
 
   const line = await recordLine(checkId, match.watchId, { status: 'FOUND' }, actor)
   return {
     ok: true,
-    message: `Stock ${line.stockNo} · ${line.label} counted.`,
+    message: recovering
+      ? `Stock ${line.stockNo} · ${line.label} found — no longer missing.`
+      : `Stock ${line.stockNo} · ${line.label} counted.`,
     line,
   }
 }
@@ -478,6 +520,7 @@ export async function getStockCheckLines(checkId: string) {
     brandName: brands.name,
     purchasePriceGbp: watches.purchasePriceGbp,
     watchStatus: watches.status,
+    primaryImageId: primaryImage,
   })
     .from(stockCheckLines)
     .innerJoin(watches, eq(watches.id, stockCheckLines.watchId))

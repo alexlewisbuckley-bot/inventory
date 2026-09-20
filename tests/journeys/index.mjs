@@ -1857,11 +1857,57 @@ await journey('the stock is counted, and counting it changes nothing', async (pa
     throw new Error(`an unknown serial was not reported: ${nonsense}`)
   }
 
-  // And one recorded missing by hand.
+  // Identified by eye, not only by serial: a line carries its photograph.
+  if (await page.locator('main ul li img[src^="/api/images/"]').count() === 0) {
+    throw new Error('no photographs on the count list — nothing to identify by sight')
+  }
+
+  // And one recorded missing by hand, on a line whose serial we keep.
+  const secondSerial = (await page.locator('main ul li p').first().innerText()).match(/Serial (\S+)/)?.[1]
   await page.locator('main ul li button:has-text("Missing")').first().click()
   await page.waitForTimeout(2500)
   const tally = await page.locator('main').innerText()
   if (!/1 missing/.test(tally)) throw new Error(`the missing tally did not move: ${tally.slice(0, 200)}`)
+
+  // Marked missing, then turned up in the wrong drawer — the most ordinary
+  // thing that happens on a stock take, and the one v1 refused to let you fix
+  // by the quickest route.
+  if (secondSerial) {
+    const recovered = await scan(secondSerial)
+    if (!/no longer missing/i.test(recovered)) {
+      throw new Error(`a watch marked missing could not be recovered by scanning it: ${recovered}`)
+    }
+  }
+
+  // Undo puts a line back to not counted, for the row tapped in error.
+  const selects = page.locator('main select')
+  await selects.nth(0).selectOption('counted')
+  await page.waitForTimeout(1200)
+  const countedBefore = Number((await page.locator('main').innerText()).match(/(\d+) of \d+ counted/)?.[1] ?? 0)
+  const undo = page.locator('main ul li button:has-text("Undo")').first()
+  if (await undo.count() === 0) throw new Error('a counted line offers no way back')
+  await undo.click()
+  await page.waitForTimeout(2600)
+  const countedAfter = Number((await page.locator('main').innerText()).match(/(\d+) of \d+ counted/)?.[1] ?? 0)
+  if (countedAfter !== countedBefore - 1) {
+    throw new Error(`undo did not uncount anything: ${countedBefore} then ${countedAfter}`)
+  }
+
+  // Picking the watch out of a grid of photographs counts it outright.
+  await selects.nth(1).selectOption('photos')
+  await page.waitForTimeout(1000)
+  await selects.nth(0).selectOption('outstanding')
+  await page.waitForTimeout(1400)
+  const card = page.locator('main ul li button[aria-label^="Count stock"]').first()
+  if (await card.count() === 0) throw new Error('the photographs layout offers nothing to count')
+  await card.click()
+  await page.waitForTimeout(2600)
+  const afterTap = Number((await page.locator('main').innerText()).match(/(\d+) of \d+ counted/)?.[1] ?? 0)
+  if (afterTap !== countedAfter + 1) {
+    throw new Error(`tapping a photograph did not count it: ${countedAfter} then ${afterTap}`)
+  }
+  await selects.nth(1).selectOption('rows')
+  await page.waitForTimeout(900)
 
   // Completing says how many were never looked for before it decides for you.
   await page.click('button:has-text("Complete the check")')

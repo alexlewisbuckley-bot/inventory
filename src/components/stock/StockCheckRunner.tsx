@@ -2,10 +2,10 @@
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { CheckCircle2, CircleSlash, MapPin, ScanLine, XCircle } from 'lucide-react'
+import { CheckCircle2, CircleSlash, ImageOff, MapPin, ScanLine, Undo2, XCircle } from 'lucide-react'
 import {
   Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, Modal, SelectField,
-  TextareaField, ToolbarRow, ToolbarSearch, ToolbarSelect, useToast,
+  TextareaField, ToolbarRow, ToolbarSearch, ToolbarSelect, useCurrency, useToast,
 } from '@/components/ui'
 import {
   abandonStockCheckAction, completeStockCheckAction, recordLineAction, scanForCheckAction,
@@ -28,6 +28,9 @@ export interface StockCheckLineRow {
   model: string
   serial: string | null
   brandName: string
+  /** Identified by eye before by serial — see WatchThumb. */
+  primaryImageId: string | null
+  purchasePriceGbp: number
 }
 
 export interface StockCheckRunnerProps {
@@ -37,6 +40,8 @@ export interface StockCheckRunnerProps {
   lines: StockCheckLineRow[]
   locations: Array<{ id: string; name: string }>
   canCount: boolean
+  /** Whether this role may be told what the unaccounted-for stock cost. */
+  canSeeCost: boolean
 }
 
 type Filter = 'outstanding' | 'counted' | 'problems' | 'all'
@@ -52,10 +57,11 @@ type Filter = 'outstanding' | 'counted' | 'problems' | 'all'
  * list is the right shape.
  */
 export function StockCheckRunner({
-  checkId, reference, open, lines, locations, canCount,
+  checkId, reference, open, lines, locations, canCount, canSeeCost,
 }: StockCheckRunnerProps) {
   const router = useRouter()
   const toast = useToast()
+  const { money } = useCurrency()
   const scanBox = useRef<HTMLInputElement>(null)
 
   const [term, setTerm] = useState('')
@@ -67,6 +73,16 @@ export function StockCheckRunner({
   const [abandoning, setAbandoning] = useState(false)
   /** The last few scans, newest first — the feedback that makes speed safe. */
   const [recent, setRecent] = useState<Array<{ ok: boolean; message: string }>>([])
+  /**
+   * The watch just counted, kept so its photograph can be shown back.
+   *
+   * Reading "Stock 1143 counted" confirms the software did something. Seeing
+   * the watch confirms it was the right one, which is the mistake that
+   * actually happens: two references a digit apart, one tray, one hurry.
+   */
+  const [lastCounted, setLastCounted] = useState<{ imageId: string | null; label: string; stockNo: number } | null>(null)
+  /** Rows to work down, or photographs to pick out. */
+  const [layout, setLayout] = useState<'rows' | 'photos'>('rows')
 
   const tally = useMemo(() => ({
     pending: lines.filter((l) => l.status === 'PENDING').length,
@@ -77,6 +93,25 @@ export function StockCheckRunner({
 
   const counted = lines.length - tally.pending
   const progress = lines.length > 0 ? Math.round((counted / lines.length) * 100) : 0
+
+  // What the gap is worth. "Three missing" is a fact; "three missing,
+  // $47,000" is the sentence that decides whether somebody stops what they
+  // are doing, and it is the first thing an owner asks.
+  // How much of this check can actually be done by eye. Picking a watch out of
+  // a grid only works where there is something to look at, and a wall of
+  // identical placeholders is worse than a list of references — so the screen
+  // says which it is rather than letting somebody conclude it is broken.
+  const photographed = useMemo(
+    () => lines.filter((line) => line.primaryImageId).length,
+    [lines],
+  )
+
+  const unaccountedValue = useMemo(
+    () => lines
+      .filter((line) => line.status === 'MISSING')
+      .reduce((total, line) => total + line.purchasePriceGbp, 0),
+    [lines],
+  )
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase()
@@ -100,6 +135,13 @@ export function StockCheckRunner({
     setBusy(false)
 
     setRecent((previous) => [{ ok: result.ok, message: result.message }, ...previous].slice(0, 5))
+    if (result.ok && result.line) {
+      setLastCounted({
+        imageId: result.line.primaryImageId,
+        label: result.line.label,
+        stockNo: result.line.stockNo,
+      })
+    }
     // Cleared and refocused either way: the next watch is already in hand, and
     // making somebody dismiss an error before scanning again is what turns a
     // fast job into a slow one.
@@ -175,6 +217,9 @@ export function StockCheckRunner({
             <Chip tone="good" dot>{tally.found} found</Chip>
             {tally.elsewhere > 0 && <Chip tone="warning" dot>{tally.elsewhere} elsewhere</Chip>}
             {tally.missing > 0 && <Chip tone="critical" dot>{tally.missing} missing</Chip>}
+            {canSeeCost && unaccountedValue > 0 && (
+              <Chip tone="critical">{money(unaccountedValue)} unaccounted for</Chip>
+            )}
             <Chip tone="neutral">{tally.pending} to go</Chip>
           </div>
         </CardBody>
@@ -210,6 +255,25 @@ export function StockCheckRunner({
               </div>
               <Button type="submit" loading={busy}>Count it</Button>
             </form>
+
+            {lastCounted && (
+              <div className="mt-4 flex items-center gap-3 rounded-md border border-state-good/40 bg-state-good/8 p-3">
+                <WatchThumb
+                  imageId={lastCounted.imageId}
+                  alt={lastCounted.label}
+                  className="h-16 w-16 shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="text-caption font-semibold text-state-good">Just counted</p>
+                  <p className="truncate text-small font-bold text-content-primary">
+                    {lastCounted.stockNo} · {lastCounted.label}
+                  </p>
+                  <p className="text-caption text-content-secondary">
+                    Not the one in your hand? Find it in the list below and undo it.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {recent.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1" aria-live="polite">
@@ -254,7 +318,24 @@ export function StockCheckRunner({
                 { value: 'all', label: `Everything (${lines.length})` },
               ]}
             />
+            <ToolbarSelect
+              label="As"
+              value={layout}
+              onChange={(value) => setLayout(value as 'rows' | 'photos')}
+              options={[
+                { value: 'rows', label: 'Rows' },
+                { value: 'photos', label: 'Photographs' },
+              ]}
+            />
           </ToolbarRow>
+
+          {layout === 'photos' && photographed < lines.length && (
+            <p className="mt-2 text-caption text-content-secondary">
+              {photographed === 0
+                ? 'None of this stock has been photographed yet, so there is nothing to pick out by eye. Rows will be quicker until photographs are added.'
+                : `${photographed} of ${lines.length} have a photograph. The rest show their stock number instead.`}
+            </p>
+          )}
         </div>
 
         {visible.length === 0 ? (
@@ -263,10 +344,65 @@ export function StockCheckRunner({
               ? 'Everything on this check has been counted.'
               : 'Nothing here matches that.'}
           </p>
+        ) : layout === 'photos' ? (
+          /*
+           * Pick the one in your hand.
+           *
+           * For a tray of watches this beats reading serials: recognising a
+           * green bezel is instant, and finding "0SQ84951" among four hundred
+           * is not. Tapping counts it outright — the confirmation is the card
+           * turning green under your thumb, which is the whole point of doing
+           * it by eye.
+           */
+          <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {visible.map((line) => (
+              <li key={line.id}>
+                <button
+                  type="button"
+                  onClick={() => (open && canCount && line.status === 'PENDING'
+                    ? mark(line, 'FOUND')
+                    : undefined)}
+                  disabled={busy || !open || !canCount || line.status !== 'PENDING'}
+                  aria-label={line.status === 'PENDING'
+                    ? `Count stock ${line.stockNo}, ${line.brandName} ${line.model}`
+                    : `Stock ${line.stockNo} — ${STOCK_CHECK_LINE_STATUS_LABELS[line.status]}`}
+                  className={cn(
+                    'flex h-full w-full flex-col overflow-hidden rounded-md border text-left transition-colors',
+                    line.status === 'PENDING'
+                      ? 'border-line-subtle hover:border-teal-500 hover:bg-teal-100/40'
+                      : 'border-line-subtle opacity-70',
+                  )}
+                >
+                  <WatchThumb
+                    imageId={line.primaryImageId}
+                    alt={`${line.brandName} ${line.model}`}
+                    className="aspect-square w-full"
+                  />
+                  <span className="flex flex-1 flex-col gap-0.5 p-2.5">
+                    <span className="text-caption font-bold text-navy-700">{line.stockNo}</span>
+                    <span className="truncate text-caption text-content-primary">{line.brandName}</span>
+                    <span className="truncate text-micro text-content-secondary">{line.model}</span>
+                    {line.status !== 'PENDING' && (
+                      <span className="mt-1">
+                        <Chip tone={STOCK_CHECK_LINE_TONE[line.status]} dot>
+                          {STOCK_CHECK_LINE_STATUS_LABELS[line.status]}
+                        </Chip>
+                      </span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         ) : (
           <ul className="divide-y divide-line-subtle">
             {visible.map((line) => (
               <li key={line.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-6 py-3">
+                <WatchThumb
+                  imageId={line.primaryImageId}
+                  alt={`${line.brandName} ${line.model}`}
+                  className="h-12 w-12 shrink-0"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <Link
@@ -312,6 +448,17 @@ export function StockCheckRunner({
                       disabled={busy}
                       tone="critical"
                     />
+                    {/* The wrong row is the easiest mistake to make at speed,
+                        and v1 had no way back to "not counted" — only a way to
+                        overwrite one wrong answer with another. */}
+                    {line.status !== 'PENDING' && (
+                      <LineButton
+                        label="Undo"
+                        icon={<Undo2 className="h-3.5 w-3.5" />}
+                        onClick={() => mark(line, 'PENDING')}
+                        disabled={busy}
+                      />
+                    )}
                   </div>
                 )}
               </li>
@@ -352,6 +499,43 @@ export function StockCheckRunner({
         confirmLabel="Abandon it"
       />
     </div>
+  )
+}
+
+/**
+ * A watch, small.
+ *
+ * Lazy, because a check can carry four hundred of these and only the ones on
+ * screen are worth fetching. The empty state is a plain frame rather than a
+ * broken image: most stock has no photograph yet, and a wall of broken icons
+ * would make the feature look broken instead of the data look incomplete.
+ */
+function WatchThumb({ imageId, alt, className }: {
+  imageId: string | null
+  alt: string
+  className?: string
+}) {
+  if (!imageId) {
+    return (
+      <span
+        className={cn(
+          'flex items-center justify-center rounded-sm bg-surface-subtle text-content-muted',
+          className,
+        )}
+        aria-hidden
+      >
+        <ImageOff className="h-4 w-4" />
+      </span>
+    )
+  }
+  return (
+    <img
+      src={`/api/images/${imageId}`}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className={cn('rounded-sm bg-surface-subtle object-cover', className)}
+    />
   )
 }
 

@@ -79,9 +79,12 @@ export default async function StockCheckPage({ params }: { params: { id: string 
           model: line.model,
           serial: line.serial,
           brandName: line.brandName,
+          primaryImageId: line.primaryImageId,
+          purchasePriceGbp: line.purchasePriceGbp,
         }))}
         locations={locationOptions}
         canCount={can(user.role, 'watch:move')}
+        canSeeCost={can(user.role, 'cost:read')}
       />
     </>
   )
