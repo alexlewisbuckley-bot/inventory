@@ -6,6 +6,7 @@ import { locations } from '@/server/db/schema'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { listSessions } from '@/server/services/user-service'
 import { ProfilePanel } from '@/components/settings/ProfilePanel'
+import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 
 export const metadata: Metadata = { title: 'Your profile' }
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,10 @@ export default async function ProfilePage() {
       preferences={{
         theme: preferences?.theme ?? 'SYSTEM',
         density: preferences?.density ?? 'COMFORTABLE',
-        displayCurrency: preferences?.displayCurrency ?? 'GBP',
+        // The application's default, not sterling. The profile was the one
+        // screen still reporting GBP as the choice while every figure on every
+        // other page was already being shown in dollars.
+        displayCurrency: preferences?.displayCurrency ?? DEFAULT_DISPLAY_CURRENCY,
         defaultLocationId: preferences?.defaultLocationId ?? '',
         emailNotifications: preferences?.emailNotifications ?? true,
         inAppNotifications: preferences?.inAppNotifications ?? true,

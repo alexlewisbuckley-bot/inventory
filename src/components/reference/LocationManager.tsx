@@ -9,7 +9,7 @@ import {
 } from '@/components/ui'
 import { saveLocationAction, deleteLocationAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
-import { formatMoney } from '@/lib/money'
+import { useCurrency } from '@/components/ui'
 import { LOCATION_TYPES, LOCATION_TYPE_LABELS, locationTypeCaption, type LocationType } from '@/lib/enums'
 
 export interface LocationRow {
@@ -35,6 +35,10 @@ const INITIAL: ActionState = { ok: false }
  */
 export function LocationManager({ locations, canManage }: { locations: LocationRow[]; canManage: boolean }) {
   const toast = useToast()
+  // Through the display currency like every other figure. This was formatting
+  // the base directly with a hard-coded pound sign, so the capital held at each
+  // location stayed sterling on a page where nothing else was.
+  const { money } = useCurrency()
   const [editing, setEditing] = useState<LocationRow | null>(null)
   // Opening state lives in the URL so the header button, the empty state
   // and a deep link all reach the same form.
@@ -100,7 +104,7 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                   <div>
                     <p className="text-caption font-semibold text-content-secondary">Capital held</p>
                     <p className="mt-1 text-h3 font-extrabold tabular-nums text-content-primary">
-                      {formatMoney(location.valueGbp, 'GBP')}
+                      {money(location.valueGbp)}
                     </p>
                   </div>
                 </div>

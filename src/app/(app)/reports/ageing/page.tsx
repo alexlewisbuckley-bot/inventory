@@ -8,7 +8,10 @@ import { appSettings } from '@/server/db/schema'
 import { eq } from 'drizzle-orm'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, Table, THead, TBody, TR, TD, TH, StatCard, EmptyState, Chip } from '@/components/ui'
-import { formatMoney } from '@/lib/money'
+import { formatBase, isCurrency } from '@/lib/currency'
+import { getRateTable } from '@/server/services/fx-service'
+import { getPreferencesFor } from '@/server/services/settings-service'
+import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { formatDate, daysHeld } from '@/lib/dates'
 
 export const metadata: Metadata = { title: 'Ageing stock' }
@@ -23,11 +26,20 @@ function band(days: number): { label: string; tone: 'neutral' | 'gold' | 'danger
 }
 
 export default async function AgeingReportPage() {
-  await requireCapability('report:read')
+  const user = await requireCapability('report:read')
 
   const setting = await db.select().from(appSettings)
     .where(eq(appSettings.key, 'inventory.ageingWarningDays')).limit(1)
   const threshold = Number(setting[0]?.value) || 90
+
+  // Read in the viewer's currency like every other report. This page was
+  // formatting the base directly with a hard-coded pound sign, so the capital
+  // it reported disagreed with the same figure everywhere else.
+  const [rates, preferences] = await Promise.all([getRateTable(), getPreferencesFor(user.id)])
+  const currency = isCurrency(preferences?.displayCurrency)
+    ? preferences.displayCurrency
+    : DEFAULT_DISPLAY_CURRENCY
+  const money = (base: number | null) => formatBase(base, currency, rates)
 
   const rows = await findAgeingStock(threshold, 200)
   const capital = rows.reduce((sum, row) => sum + row.purchasePriceGbp, 0)
@@ -43,7 +55,7 @@ export default async function AgeingReportPage() {
 
       <section aria-label="Ageing summary" className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6">
         <StatCard label="Ageing watches" value={rows.length} caption={`over ${threshold} days held`} />
-        <StatCard label="Capital tied up" value={formatMoney(capital, 'GBP')} caption="in ageing stock" />
+        <StatCard label="Capital tied up" value={money(capital)} caption="in ageing stock" />
         <StatCard label="Oldest holding" value={oldest !== null ? `${oldest} days` : '—'} tone={oldest && oldest > 180 ? 'danger' : 'default'} />
       </section>
 
@@ -89,7 +101,7 @@ export default async function AgeingReportPage() {
                     <TD className="text-content-secondary">
                       <span className="block truncate" title={row.locationName}>{row.locationName}</span>
                     </TD>
-                    <TD align="right" className="font-bold">{formatMoney(row.purchasePriceGbp, 'GBP')}</TD>
+                    <TD align="right" className="font-bold">{money(row.purchasePriceGbp)}</TD>
                   </TR>
                 )
               })}
