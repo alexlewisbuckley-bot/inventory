@@ -2041,9 +2041,14 @@ await journey('money reads the same on every screen', async (page) => {
   // customer's lifetime value diverging from the ledger. Column positions move
   // during a redesign, so this reads the figures out of the row rather than out
   // of a fixed cell.
-  await go(page, '/inventory')
+  // The table explicitly, not whatever the last journey left behind. Choosing
+  // the gallery persists, so by the time this ran there was no table on the
+  // page and it reported "no stock" about a list that was full of it.
+  await go(page, '/inventory?display=table')
   const row = page.locator('tbody tr').first()
-  if (await row.count() === 0) throw new Error('no stock to compare')
+  if (await row.count() === 0) {
+    throw new Error(`no stock to compare — ${(await page.locator('body').innerText()).slice(0, 120).replace(/\n/g, ' | ')}`)
+  }
   const rowText = await row.innerText()
   const figures = [...rowText.matchAll(MONEY)].map((match) => match[0])
   if (figures.length === 0) throw new Error('the row shows no money at all')
