@@ -4,7 +4,7 @@ import { diffAgainstStock, estimateFromSheet, parseAmount, parseProductType } fr
 import { CURRENCIES, PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import {
   IMPORT_COLUMNS, REQUIRED_HEADERS, REQUIRED_KEYS, WRITABLE_COLUMNS,
-  headerFor, headersFor, normaliseHeader, parseHeader, templateCsv,
+  headerFor, headersFor, normaliseHeader, parseHeader,
 } from '@/lib/import-columns'
 
 describe('CSV parsing', () => {
@@ -156,8 +156,8 @@ describe('import headers', () => {
   it('keeps the template and the parser in step', () => {
     // The template, the parser and the on-screen guide all read one list. This
     // fails if a column is added to the template without the parser noticing.
-    const headers = templateCsv('USD').split('\n')[0].split(',')
-    expect(headers).toEqual(headersFor('USD'))
+    const headers = headersFor('USD')
+    expect(headers).toEqual(IMPORT_COLUMNS.map((c) => headerFor(c, 'USD')))
     for (const required of REQUIRED_HEADERS) {
       expect(headers.some((h) => h.startsWith(required))).toBe(true)
     }
@@ -171,11 +171,12 @@ describe('import headers', () => {
    * They now come from one list; this is the test that keeps them there, and it
    * checks every currency because the money headers carry the unit.
    */
-  it('exports exactly the columns the template offers, in every currency', () => {
+  it('names its money columns after the reader\'s currency, whichever it is', () => {
     for (const currency of CURRENCIES) {
-      const exported = headersFor(currency)
-      const template = templateCsv(currency).split('\n')[0].split(',')
-      expect(template, currency).toEqual(exported)
+      const headers = headersFor(currency)
+      for (const column of IMPORT_COLUMNS.filter((c) => c.money)) {
+        expect(headers, currency).toContain(`${column.label} (${currency})`)
+      }
     }
   })
 

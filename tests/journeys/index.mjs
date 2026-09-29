@@ -18,6 +18,7 @@
  * Signs in through the login form rather than minting a token, so the session
  * path is covered too.
  */
+import ExcelJS from 'exceljs'
 import { BASE, ROUTES, launch, signIn } from '../harness/browser.mjs'
 
 const only = process.argv[2]
@@ -1535,20 +1536,54 @@ await journey('the stock list holds stock, and sold has its own sheet', async (p
 
     // And the export follows the view rather than always handing back the
     // whole book. The route only ever understood the older named parameters,
-    // so a CSV taken from a view written in the filter grammar was silently
-    // everything — which looks exactly like a correct export.
-    const csv = async (query) => {
+    // so an export taken from a view written in the filter grammar was
+    // silently everything — which looks exactly like a correct export.
+    //
+    // Read as a real workbook, because that is what the export now is: the
+    // stock numbers are numeric cells, not text in the first column.
+    const exportedStockNos = async (query) => {
       const response = await page.request.get(`${BASE}/api/export/watches?${query}`)
       if (!response.ok()) throw new Error(`export ${query} returned ${response.status()}`)
-      return response.text()
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.load(await response.body())
+      const sheet = workbook.worksheets[0]
+      const found = []
+      sheet.eachRow({ includeEmpty: false }, (row, number) => {
+        if (number === 1) return
+        found.push(String(row.getCell(1).value ?? '').trim())
+      })
+      return found
     }
-    const held = await csv('f=status%3AisNot%3ASOLD')
-    if (new RegExp(`^${stockNo},`, 'm').test(held)) {
+    const held = await exportedStockNos('f=status%3AisNot%3ASOLD')
+    if (held.includes(String(stockNo))) {
       throw new Error(`the stock export still contains sold stock ${stockNo}`)
     }
-    const soldCsv = await csv('f=status%3Ais%3ASOLD')
-    if (!new RegExp(`^${stockNo},`, 'm').test(soldCsv)) {
+    const sold = await exportedStockNos('f=status%3Ais%3ASOLD')
+    if (!sold.includes(String(stockNo))) {
       throw new Error(`the sold export is missing ${stockNo}`)
+    }
+
+    // The point of the spreadsheet: money is a number carrying a currency
+    // format, not text that merely looks like money. A format on the column is
+    // what makes a figure somebody types match the ones already there.
+    const response = await page.request.get(`${BASE}/api/export/watches?f=status%3Ais%3ASOLD`)
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(await response.body())
+    const sheet = workbook.worksheets[0]
+    // Found by header: a saved workbook does not carry the column keys the
+    // writer used, so asking for one by key reads the name as a cell reference.
+    let priceIndex = 0
+    sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, number) => {
+      if (/^Purchase Price/.test(String(cell.value ?? ''))) priceIndex = number
+    })
+    if (priceIndex === 0) throw new Error('the export has no purchase price column')
+    const priceColumn = sheet.getColumn(priceIndex)
+    if (!/#,##0\.00/.test(priceColumn.numFmt ?? '')) {
+      throw new Error(`the price column carries no currency format: ${priceColumn.numFmt}`)
+    }
+    const firstPrice = sheet.getRow(2).getCell(priceIndex).value
+    if (typeof firstPrice !== 'number') {
+      throw new Error(`the exported price is ${typeof firstPrice}, not a number Excel can format`)
     }
   } finally {
     // Restored whatever happened above, so the suite survives a second run.

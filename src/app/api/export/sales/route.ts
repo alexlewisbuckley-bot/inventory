@@ -4,27 +4,18 @@ import { can } from '@/lib/permissions'
 import { findSales } from '@/server/repositories/sale-repository'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { toCsv } from '@/lib/csv'
-import { formatBase } from '@/lib/currency'
 import { displayMoneyFor } from '@/server/services/display-currency'
-import type { CurrencyCode } from '@/lib/enums'
+import { buildSalesWorkbook } from '@/server/services/stock-export'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Named after the currency the reader works in, and written as currency.
+ * The sales ledger as a spreadsheet, honouring the current filters.
  *
- * The money columns were headed "(GBP)" and filled with bare decimals, which
- * is two problems at once: the figures are shown in dollars everywhere else in
- * the product, and a column of unlabelled numbers is the kind of thing
- * somebody reconciles against and gets wrong.
+ * Money columns are named after the currency the reader works in and carry a
+ * currency format, and the margin is a real number rather than the string
+ * "12.34%" — a ledger gets sorted and totalled, and text does neither.
  */
-const columnsFor = (currency: CurrencyCode) => [
-  'Invoice', 'Sale Date', 'Stock No', 'Brand', 'Reference', 'Supplier', 'Customer', 'Channel',
-  `Cost (${currency})`, `Sale (${currency})`, `Profit (${currency})`, 'Margin %',
-] as const
-
-/** CSV export of the sales ledger, honouring the current filters. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorised', { status: 401 })
@@ -55,28 +46,20 @@ export async function GET(request: NextRequest) {
   // Converted for whoever is downloading it, the same way the screens convert
   // for whoever is reading them.
   const display = await displayMoneyFor(user.id)
-  const money = (base: number | null) =>
-    base === null ? '' : formatBase(base, display.currency, display.rates, { decimals: true })
 
-  const csv = toCsv(columnsFor(display.currency), items.map((s) => [
-    s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,
-    s.supplierName, s.customerName, s.channel,
-    money(s.costGbp),
-    money(s.amountGbp),
-    money(s.profitGbp),
-    `${(s.marginBps / 100).toFixed(2)}%`,
-  ]))
+  const stamp = new Date().toISOString().slice(0, 10)
+  const workbook = await buildSalesWorkbook(items, display.currency, display.rates)
 
   await recordAudit({
     entityType: 'Sale', entityId: 'bulk', action: 'EXPORT', actorId: user.id,
-    summary: `${items.length} sales exported to CSV`,
+    summary: `${items.length} sales exported`,
   })
 
-  const stamp = new Date().toISOString().slice(0, 10)
-  return new Response(csv, {
+  return new Response(new Uint8Array(workbook), {
     headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="bluecroft-sales-${stamp}.csv"`,
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="bluecroft-sales-${stamp}.xlsx"`,
+      'Content-Length': String(workbook.byteLength),
       'Cache-Control': 'no-store',
     },
   })

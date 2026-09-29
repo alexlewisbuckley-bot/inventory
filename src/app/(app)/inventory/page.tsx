@@ -99,6 +99,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     return qs ? `/api/export/watches?${qs}` : '/api/export/watches'
   })()
 
+
   const [
     result, summary, locationOptions, ownerOptions, supplierOptions, brandOptions, rates, preferences,
     unpricedCount, customers, dealsByWatch, savedViews,
@@ -168,7 +169,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
               )}
               {capabilities['report:export'] && (
                 <LinkButton href={exportHref} variant="secondary" icon={<Download className="h-4 w-4" />}>
-                  Export CSV
+                  Export
                 </LinkButton>
               )}
             </span>
@@ -179,9 +180,6 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                     { id: 'invoice', label: 'Book in from an invoice', href: '/inventory/invoice', icon: <FileText className="h-3.5 w-3.5" /> },
                     { id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> },
                   ]
-                  : []),
-                ...(capabilities['report:export']
-                  ? [{ id: 'export', label: 'Export as CSV', href: exportHref, icon: <Download className="h-3.5 w-3.5" /> }]
                   : []),
               ]}
               primary={capabilities['watch:create']

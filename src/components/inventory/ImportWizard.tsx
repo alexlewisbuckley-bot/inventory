@@ -82,15 +82,8 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
         <CardBody className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-4">
             <LinkButton href="/api/import/template" variant="secondary" icon={<FileSpreadsheet className="h-4 w-4" />}>
-              Download the Excel template
+              Download the template
             </LinkButton>
-            <a
-              href="/api/import/template?format=csv"
-              className="inline-flex items-center gap-1.5 text-small font-bold text-content-accent hover:underline"
-            >
-              <Download className="h-3.5 w-3.5" aria-hidden />
-              Or a plain CSV
-            </a>
           </div>
 
           <details className="rounded-md border border-line-subtle">

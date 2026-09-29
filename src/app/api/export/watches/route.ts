@@ -7,12 +7,9 @@ import { watchQuerySchema } from '@/lib/validation'
 import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { toCsv } from '@/lib/csv'
-import { headersFor } from '@/lib/import-columns'
-import { formatBase } from '@/lib/currency'
 import { displayMoneyFor } from '@/server/services/display-currency'
-import type { CurrencyCode } from '@/lib/enums'
 import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
+import { buildStockWorkbook } from '@/server/services/stock-export'
 import { db } from '@/server/db/client'
 import { watches } from '@/server/db/schema'
 
@@ -28,17 +25,15 @@ export const dynamic = 'force-dynamic'
  * full of numbers that are neither pounds nor recognisable as money is the
  * kind of export somebody reconciles against and gets wrong.
  */
-// Taken from the import definition rather than written out again. These two
-// lists were separate and drifted by two columns, which is how the application
-// came to produce a file it could not read back. One list, one shape: what the
-// export writes is what the template offers and the import accepts.
-const columnsFor = (currency: CurrencyCode) => headersFor(currency)
-
 /**
- * CSV export of the current view.
+ * Export of the current view, as a spreadsheet by default.
  *
  * Accepts the same query parameters as the inventory list, so "export what I
  * am looking at" is exact, plus repeated `id` params for an explicit selection.
+ *
+ * A spreadsheet rather than a CSV, because the file is opened, edited and sent
+ * straight back by a person: only a real sheet can carry the currency format
+ * that makes a figure they type look like the ones already in the column.
  */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser()
@@ -87,32 +82,22 @@ export async function GET(request: NextRequest) {
   }
 
   // Converted for the person downloading it, exactly as the screens convert
-  // for the person reading them, so a CSV and the page it came from cannot
+  // for the person reading them, so the file and the page it came from cannot
   // disagree about what a watch cost.
   const display = await displayMoneyFor(user.id)
-  const money = (base: number | null) =>
-    base === null ? '' : formatBase(base, display.currency, display.rates, { decimals: true })
-
-  const csv = toCsv(columnsFor(display.currency), rows.map((w) => [
-    w.stockNo, PRODUCT_TYPE_LABELS[w.productType], w.brandName, w.model, w.serial,
-    w.supplierName, w.locationName, w.ownerName ?? '',
-    w.purchaseDate.toISOString().slice(0, 10),
-    money(w.purchasePriceGbp),
-    money(w.estSaleGbp),
-    money(w.estSaleGbp !== null ? w.estSaleGbp - w.purchasePriceGbp : null),
-    w.status,
-  ]))
+  const stamp = new Date().toISOString().slice(0, 10)
+  const workbook = await buildStockWorkbook(rows, display.currency, display.rates, PRODUCT_TYPE_LABELS)
 
   await recordAudit({
     entityType: 'Watch', entityId: 'bulk', action: 'EXPORT', actorId: user.id,
-    summary: `${rows.length} watches exported to CSV`,
+    summary: `${rows.length} watches exported`,
   })
 
-  const stamp = new Date().toISOString().slice(0, 10)
-  return new Response(csv, {
+  return new Response(new Uint8Array(workbook), {
     headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="bluecroft-stock-${stamp}.csv"`,
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="bluecroft-stock-${stamp}.xlsx"`,
+      'Content-Length': String(workbook.byteLength),
       'Cache-Control': 'no-store',
     },
   })

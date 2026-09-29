@@ -58,6 +58,27 @@ const LOCALES: Record<CurrencyCode, string> = {
 }
 
 /**
+ * The same money, as a spreadsheet cell format.
+ *
+ * An exported sheet holds real numbers carrying a currency format, not text
+ * that merely looks like money. The difference is what happens when somebody
+ * edits it: type 500 into a formatted column and it becomes $500.00 like the
+ * cells around it, where a column of pre-formatted text leaves the new figure
+ * sitting there as a bare 500 — visibly not the same kind of thing as every
+ * other number in the column, and the point at which people stop trusting the
+ * file.
+ *
+ * Symbols match `formatCurrency`, so a figure reads the same on screen and in
+ * the sheet.
+ */
+export const EXCEL_MONEY_FORMATS: Record<CurrencyCode, string> = {
+  GBP: '"£"#,##0.00',
+  USD: '"$"#,##0.00',
+  AED: '"AED "#,##0.00',
+  HKD: '"HK$"#,##0.00',
+}
+
+/**
  * Format minor units already expressed in `currency`.
  *
  * AED and HKD have no widely recognised single-character symbol, so they are

@@ -15,7 +15,7 @@ const TASKS = [
   { title: 'Mark a watch as sold', body: 'Click the status chip on any row and choose “Mark as sold”, or open the watch first. Profit and margin are worked out as you type.', href: '/inventory' },
   { title: 'Undo a sale recorded by mistake', body: 'Click the status chip on the sold row and choose “Void the sale”. The watch returns to stock and the invoice is kept, marked void.', href: '/inventory?status=SOLD' },
   { title: 'Find slow-moving stock', body: 'Reports → Ageing stock lists everything held longer than the warning threshold, oldest first.', href: '/reports/ageing' },
-  { title: 'Export for the accountant', body: 'Export CSV on the inventory or sales page. The export honours whatever filters you have applied.', href: '/sales' },
+  { title: 'Export for the accountant', body: 'Export on the inventory or sales page. You get a spreadsheet, honouring whatever filters you have applied.', href: '/sales' },
 ]
 
 export default function HelpPage() {

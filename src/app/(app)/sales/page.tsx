@@ -79,7 +79,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
           ? `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'} in this view · ${money(summary.revenueGbp)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
         actions={exportable && !isFirstRun
-          ? <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export CSV</LinkButton>
+          ? <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export</LinkButton>
           : undefined}
       />
 

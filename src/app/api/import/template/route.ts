@@ -5,7 +5,6 @@ import { can } from '@/lib/permissions'
 import { db } from '@/server/db/client'
 import { locations } from '@/server/db/schema'
 import { buildImportTemplate } from '@/server/services/import-template'
-import { templateCsv } from '@/lib/import-columns'
 import { displayMoneyFor } from '@/server/services/display-currency'
 import type { Role } from '@/lib/enums'
 
@@ -31,15 +30,6 @@ export async function GET(request: NextRequest) {
   // The same currency the export uses for this person, so the template they
   // download and the file they export have identical headers.
   const { currency } = await displayMoneyFor(user.id)
-
-  if (request.nextUrl.searchParams.get('format') === 'csv') {
-    return new Response(templateCsv(currency), {
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': 'attachment; filename="bluecroft-stock-template.csv"',
-      },
-    })
-  }
 
   const workbook = await buildImportTemplate(names, currency)
   return new Response(new Uint8Array(workbook), {

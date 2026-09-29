@@ -134,11 +134,3 @@ export function normaliseHeader(raw: string): string {
 export const REQUIRED_KEYS = IMPORT_COLUMNS.filter((c) => c.required).map((c) => c.key)
 export const REQUIRED_HEADERS = IMPORT_COLUMNS.filter((c) => c.required).map((c) => c.label)
 export const OPTIONAL_HEADERS = IMPORT_COLUMNS.filter((c) => !c.required).map((c) => c.label)
-
-/** The template as CSV, for anyone who would rather not open a spreadsheet. */
-export function templateCsv(currency: CurrencyCode): string {
-  return [
-    headersFor(currency).join(','),
-    IMPORT_COLUMNS.map((c) => c.example).join(','),
-  ].join('\n')
-}
