@@ -426,14 +426,29 @@ function ShopCard({ item, token, currency, onOpen }: {
             </div>
           )}
 
-          {/* A piece with no model name is headed by its reference, so it is
+          {/* One per line, and unlabelled. A reference and a year are two
+              different questions and a middle dot made them look like one
+              field; "Ref." in front of a Rolex reference is a caption on a
+              thing that captions itself. 4px between them because they are
+              still a pair — the 8px above sets them apart from what came
+              with the watch, and that difference is what makes them read as
+              a group rather than as a list.
+
+              A piece with no model name is headed by its reference, so it is
               not repeated here. */}
           {(item.nickname || item.year) && (
-            <p className="shop-num mt-2 truncate text-[11.5px] text-[color:var(--ink-mute)]">
-              {[item.nickname ? `Ref. ${item.model}` : null, item.year ? String(item.year) : null]
-                .filter(Boolean)
-                .join('  ·  ')}
-            </p>
+            <div className="mt-2 flex flex-col gap-1 text-[11.5px] leading-[1.3] text-[color:var(--ink-mute)]">
+              {item.nickname && (
+                <p className="shop-num truncate">
+                  <span className="sr-only">Reference </span>{item.model}
+                </p>
+              )}
+              {item.year && (
+                <p className="shop-num">
+                  <span className="sr-only">Year </span>{item.year}
+                </p>
+              )}
+            </div>
           )}
 
           <span className="mt-auto pt-6">
