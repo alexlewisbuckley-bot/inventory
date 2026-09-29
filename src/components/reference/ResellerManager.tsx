@@ -239,6 +239,7 @@ function LogoButton({ reseller, onDone, onFail }: {
       </label>
       {reseller.hasLogo && (
         <Button
+          type="button"
           variant="ghost"
           onClick={async () => {
             const result = await removeResellerLogoAction(reseller.id)

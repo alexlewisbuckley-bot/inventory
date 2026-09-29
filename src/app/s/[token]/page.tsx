@@ -2,11 +2,8 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getShopWindow } from '@/server/services/reseller-service'
 import { getRateTable } from '@/server/services/fx-service'
-import { formatCurrency } from '@/lib/currency'
-import {
-  BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_NOUNS,
-  type BoxPapers, type Condition, type CurrencyCode, type ProductType,
-} from '@/lib/enums'
+import { ShopWindow } from '@/components/shop/ShopWindow'
+import type { CurrencyCode } from '@/lib/enums'
 
 /**
  * Live: read on every request, never cached.
@@ -42,126 +39,94 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
 
   return (
     <main
-      className="min-h-screen bg-white text-[#111827]"
+      className="min-h-screen bg-white text-[#111827] antialiased"
       style={{
-        // The reseller's colours, as custom properties so the whole page can
-        // read from them without generating a stylesheet per reseller.
+        // The reseller's colours, as custom properties so the whole page reads
+        // from them without generating a stylesheet per reseller.
         ['--brand' as string]: reseller.brandColor,
         ['--accent' as string]: reseller.accentColor,
       }}
     >
-      <header className="px-6 py-10 text-white sm:px-10 sm:py-14" style={{ backgroundColor: 'var(--brand)' }}>
-        <div className="mx-auto flex max-w-6xl flex-col gap-5">
-          {reseller.hasLogo && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={`/s/${params.token}/logo`}
-              alt={reseller.name}
-              className="h-14 w-auto max-w-[260px] object-contain object-left"
-            />
+      <header className="relative overflow-hidden text-white" style={{ backgroundColor: 'var(--brand)' }}>
+        {/* Depth without a second colour choice to get wrong: the reseller
+            picks one brand colour and the banner shades itself from it. */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-90"
+          style={{ background: 'radial-gradient(120% 140% at 15% -20%, rgba(255,255,255,0.22), transparent 60%)' }}
+          aria-hidden
+        />
+        <div className="relative mx-auto max-w-7xl px-6 py-12 sm:px-10 sm:py-16">
+          {reseller.hasLogo ? (
+            /* On a white plate, because a logo is drawn for a light background
+               far more often than a dark one, and a dark-on-dark wordmark is
+               the commonest way a page like this looks broken. */
+            <span className="mb-7 inline-flex items-center justify-center rounded-xl bg-white px-5 py-3.5 shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/s/${params.token}/logo`}
+                alt={reseller.name}
+                className="h-11 w-auto max-w-[240px] object-contain"
+              />
+            </span>
+          ) : (
+            <p className="mb-5 text-sm font-bold uppercase tracking-[0.22em] text-white/70">
+              {reseller.name}
+            </p>
           )}
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-              {reseller.headline || reseller.name}
-            </h1>
-            {reseller.intro && (
-              <p className="mt-3 max-w-2xl text-base leading-relaxed text-white/80">{reseller.intro}</p>
+
+          <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">
+            {reseller.headline || 'Available now'}
+          </h1>
+          {reseller.intro && (
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
+              {reseller.intro}
+            </p>
+          )}
+
+          <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm">
+            <span className="inline-flex items-baseline gap-2">
+              <span className="text-2xl font-extrabold tabular-nums">{items.length}</span>
+              <span className="text-white/70">{items.length === 1 ? 'piece available' : 'pieces available'}</span>
+            </span>
+            {priced > 0 && (
+              <span className="inline-flex items-baseline gap-2">
+                <span className="text-2xl font-extrabold tabular-nums">{priced}</span>
+                <span className="text-white/70">priced in {currency}</span>
+              </span>
             )}
           </div>
-          <p className="text-sm font-semibold text-white/70">
-            {items.length === 0
-              ? 'No pieces available at the moment'
-              : `${items.length} ${items.length === 1 ? 'piece' : 'pieces'} available now`}
-            {priced < items.length && ` · ${items.length - priced} price on request`}
-          </p>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10">
-        {items.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-[#D1D5DB] px-6 py-16 text-center text-[#6B7280]">
-            Everything is currently reserved or sold. Please check back shortly.
+      <ShopWindow
+        items={items}
+        token={params.token}
+        currency={currency}
+        contactEmail={reseller.contactEmail}
+      />
+
+      <footer className="border-t border-black/5 bg-[#FAFAFA]">
+        <div className="mx-auto max-w-7xl px-6 py-10 sm:px-10">
+          {(reseller.contactEmail || reseller.contactPhone || reseller.website) && (
+            <>
+              <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[#6B7280]">Enquiries</h2>
+              <p className="mt-2 text-lg font-bold text-[#111827]">
+                {reseller.contactName ? `${reseller.contactName} · ` : ''}{reseller.name}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
+                {reseller.contactEmail && <a href={`mailto:${reseller.contactEmail}`}>{reseller.contactEmail}</a>}
+                {reseller.contactPhone && (
+                  <a href={`tel:${reseller.contactPhone.replace(/\s+/g, '')}`}>{reseller.contactPhone}</a>
+                )}
+                {reseller.website && <a href={reseller.website} target="_blank" rel="noreferrer noopener">Website</a>}
+              </div>
+            </>
+          )}
+          <p className="mt-8 text-xs text-[#9CA3AF]">
+            Availability and prices are live and can change without notice. Shown in {currency}.
           </p>
-        ) : (
-          <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm"
-              >
-                <div className="flex aspect-square items-center justify-center bg-[#F3F4F6]">
-                  {item.imageId ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={`/s/${params.token}/image/${item.imageId}`}
-                      alt={`${item.brandName} ${item.model}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span className="text-sm text-[#9CA3AF]">
-                      No photograph of this {PRODUCT_TYPE_NOUNS[item.productType as ProductType] ?? 'piece'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-1 flex-col gap-1 p-5">
-                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>
-                    {item.brandName}
-                  </p>
-                  <h2 className="text-lg font-bold leading-snug">{item.model}</h2>
-                  {item.nickname && <p className="text-sm text-[#6B7280]">{item.nickname}</p>}
-
-                  <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#6B7280]">
-                    {item.year && (
-                      <div className="flex gap-1"><dt>Year</dt><dd className="font-semibold text-[#374151]">{item.year}</dd></div>
-                    )}
-                    <div className="flex gap-1">
-                      <dt>Condition</dt>
-                      <dd className="font-semibold text-[#374151]">
-                        {CONDITION_LABELS[item.condition as Condition] ?? item.condition}
-                      </dd>
-                    </div>
-                    <div className="flex gap-1">
-                      <dt>Set</dt>
-                      <dd className="font-semibold text-[#374151]">
-                        {BOX_PAPERS_LABELS[item.boxPapers as BoxPapers] ?? item.boxPapers}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <p className="mt-auto pt-4 text-xl font-extrabold tabular-nums">
-                    {item.price === null
-                      ? <span className="text-base font-semibold text-[#6B7280]">Price on request</span>
-                      : formatCurrency(item.price, currency, { decimals: false })}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {(reseller.contactEmail || reseller.contactPhone || reseller.website) && (
-          <section className="mt-12 rounded-xl border border-[#E5E7EB] px-6 py-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-[#6B7280]">Enquiries</h2>
-            <p className="mt-2 text-[#374151]">
-              {reseller.contactName ? `${reseller.contactName} · ` : ''}
-              {reseller.name}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-              {reseller.contactEmail && <a href={`mailto:${reseller.contactEmail}`}>{reseller.contactEmail}</a>}
-              {reseller.contactPhone && <a href={`tel:${reseller.contactPhone.replace(/\s+/g, '')}`}>{reseller.contactPhone}</a>}
-              {reseller.website && (
-                <a href={reseller.website} target="_blank" rel="noreferrer noopener">Website</a>
-              )}
-            </div>
-          </section>
-        )}
-
-        <p className="mt-10 text-xs text-[#9CA3AF]">
-          Availability and prices are live and can change without notice. Shown in {currency}.
-        </p>
-      </div>
+        </div>
+      </footer>
     </main>
   )
 }
