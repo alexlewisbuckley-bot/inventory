@@ -27,27 +27,27 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
   const hasNav = links.length > 0 || Boolean(website)
 
   return (
-    <header className="sticky top-0 z-30 border-b border-black/[0.07] bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex h-[72px] max-w-7xl items-center gap-6 px-6 sm:px-10">
+    <header className="sticky top-0 z-30 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur-md">
+      <div className="mx-auto flex h-[72px] max-w-[1400px] items-center gap-6 px-6 sm:px-10">
         <a href={website ?? undefined} className="flex min-w-0 items-center gap-3" target={website ? '_blank' : undefined} rel="noreferrer noopener">
           {hasLogo ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={`/s/${token}/logo`} alt={name} className="h-9 w-auto max-w-[190px] object-contain" />
+            <img src={`/s/${token}/logo`} alt={name} className="h-10 w-auto max-w-[200px] object-contain" />
           ) : (
-            <span className="truncate text-lg font-extrabold tracking-tight text-[#111827]">{name}</span>
+            <span className="shop-serif truncate text-[26px] font-medium leading-none">{name}</span>
           )}
         </a>
 
         {hasNav && (
           <>
-            <nav className="ml-auto hidden items-center gap-7 md:flex" aria-label="Shop">
+            <nav className="ml-auto hidden items-center gap-9 md:flex" aria-label="Shop">
               {links.map((link) => (
                 <a
                   key={`${link.label}-${link.href}`}
                   href={link.href}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-sm font-semibold text-[#374151] transition hover:text-[color:var(--accent)]"
+                  className="shop-eyebrow text-[color:var(--ink-soft)] transition hover:text-[color:var(--ink)]"
                 >
                   {link.label}
                 </a>
@@ -57,7 +57,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
                   href={website}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="rounded-full px-4 py-2 text-sm font-bold text-white transition hover:brightness-110"
+                  className="shop-eyebrow px-5 py-2.5 text-white transition hover:brightness-110"
                   style={{ backgroundColor: 'var(--brand)' }}
                 >
                   Visit our site
@@ -70,7 +70,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
               onClick={() => setOpen((on) => !on)}
               aria-expanded={open}
               aria-label={open ? 'Close the menu' : 'Open the menu'}
-              className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#E5E7EB] text-[#374151] md:hidden"
+              className="ml-auto inline-flex h-10 w-10 items-center justify-center border border-[color:var(--hair)] text-[color:var(--ink-soft)] md:hidden"
             >
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -79,7 +79,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
       </div>
 
       {hasNav && open && (
-        <nav className="border-t border-black/[0.07] bg-white px-6 py-3 md:hidden" aria-label="Shop">
+        <nav className="border-t border-[color:var(--hair)] bg-white px-6 py-3 md:hidden" aria-label="Shop">
           <ul className="flex flex-col">
             {links.map((link) => (
               <li key={`${link.label}-${link.href}`}>
@@ -87,7 +87,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
                   href={link.href}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="block py-2.5 text-base font-semibold text-[#374151]"
+                  className="block py-3 text-[15px] text-[color:var(--ink-soft)]"
                 >
                   {link.label}
                 </a>
@@ -99,7 +99,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
                   href={website}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="mt-2 block rounded-full py-2.5 text-center text-base font-bold text-white"
+                  className="shop-eyebrow mt-3 block py-3 text-center text-white"
                   style={{ backgroundColor: 'var(--brand)' }}
                 >
                   Visit our site

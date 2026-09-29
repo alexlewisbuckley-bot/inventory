@@ -298,3 +298,67 @@
     contain: paint;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * The reseller shop window.
+ *
+ * Its own small type system, kept out of the application's. The app is a tool
+ * and is set in one grot at tight sizes; a shop is read, not operated, and the
+ * pieces in it want a serif and some air. Scoped to `.shop-root` so none of it
+ * reaches the inventory screens.
+ * ------------------------------------------------------------------------- */
+.shop-root {
+  --shop-serif: 'Cormorant Garamond Variable', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --ink: #14161a;
+  --ink-soft: #5b6068;
+  --ink-mute: #9aa0a8;
+  --hair: #e6e5e2;
+  --plinth: #f7f7f5;
+}
+
+.shop-serif {
+  font-family: var(--shop-serif);
+  /* Optical: a garalde at display size wants its tracking pulled in, or the
+     counters read as gaps. */
+  letter-spacing: -0.01em;
+  font-synthesis-weight: none;
+}
+
+/* Small caps for the brand line. Real letterspacing, not a transform, so the
+   final letter keeps its sidebearing instead of pushing the word off centre. */
+/*
+ * Lining figures.
+ *
+ * A garalde defaults to old-style numerals, where the 3 and the 7 drop below
+ * the baseline. Lovely in a sentence, wrong in a price: "$9,731" comes out
+ * looking like the digits are falling over. Lining and tabular, so prices also
+ * align down a column.
+ */
+.shop-num {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
+}
+
+.shop-eyebrow {
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* The rule under a piece name on hover: drawn from the left rather than faded
+   in, so the movement reads as deliberate. */
+.shop-underline {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: background-size 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.group:hover .shop-underline { background-size: 100% 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shop-underline { transition: none; }
+  .shop-root * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

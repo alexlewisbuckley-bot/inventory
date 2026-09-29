@@ -37,10 +37,11 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
   const { reseller, items } = shop
   const currency = reseller.displayCurrency as CurrencyCode
   const priced = items.filter((item) => item.price !== null).length
+  const houses = [...new Set(items.map((item) => item.brandName))]
 
   return (
     <main
-      className="min-h-screen bg-white text-[#111827] antialiased"
+      className="min-h-screen bg-white text-[color:var(--ink)] antialiased"
       style={{
         // The reseller's colours, as custom properties so the whole page reads
         // from them without generating a stylesheet per reseller.
@@ -56,38 +57,55 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
         website={reseller.website}
       />
 
-      {/* A band, not a hero. It says what this page is and how much is on it,
-          then gets out of the way — the stock is what somebody came for, and
-          the previous version pushed all of it below the fold. */}
-      <section className="relative overflow-hidden text-white" style={{ backgroundColor: 'var(--brand)' }}>
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: 'radial-gradient(90% 160% at 12% -40%, rgba(255,255,255,0.20), transparent 62%)' }}
-          aria-hidden
-        />
-        <div className="relative mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-x-10 gap-y-4 px-6 py-8 sm:px-10 sm:py-10">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-extrabold leading-tight tracking-tight sm:text-[32px]">
-              {reseller.headline || 'Available now'}
-            </h1>
-            {reseller.intro && (
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
-                {reseller.intro}
-              </p>
+      {/*
+        A masthead, not a colour slab.
+
+        The banner was a block of brand colour with a title on it, which is what
+        a template does when it has nothing to say. A shop says what is in it:
+        the houses it carries, how many pieces, what they are quoted in — set
+        like the opening of a catalogue. The brand colour earns its place as a
+        rule and an accent rather than by filling the top of the screen.
+      */}
+      <section className="border-b border-[color:var(--hair)]">
+        <div className="mx-auto max-w-[1400px] px-6 pb-12 pt-14 sm:px-10 sm:pb-14 sm:pt-20">
+          <span className="block h-px w-16" style={{ backgroundColor: 'var(--accent)' }} aria-hidden />
+          <h1 className="shop-serif mt-7 max-w-4xl text-[38px] font-medium leading-[1.06] sm:text-[62px]">
+            {reseller.headline || 'The current collection'}
+          </h1>
+          {reseller.intro && (
+            <p className="mt-5 max-w-xl text-[15px] leading-[1.7] text-[color:var(--ink-soft)]">
+              {reseller.intro}
+            </p>
+          )}
+
+          <dl className="mt-10 flex flex-wrap gap-x-14 gap-y-6 border-t border-[color:var(--hair)] pt-7">
+            <div>
+              <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Available</dt>
+              <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
+                {items.length}
+              </dd>
+            </div>
+            {houses.length > 0 && (
+              <div>
+                <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Houses</dt>
+                <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
+                  {houses.length}
+                </dd>
+              </div>
             )}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
-            <span className="inline-flex items-baseline gap-2">
-              <span className="text-xl font-extrabold tabular-nums">{items.length}</span>
-              <span className="text-white/70">{items.length === 1 ? 'piece' : 'pieces'}</span>
-            </span>
-            {priced > 0 && (
-              <span className="inline-flex items-baseline gap-2">
-                <span className="text-xl font-extrabold tabular-nums">{priced}</span>
-                <span className="text-white/70">priced in {currency}</span>
-              </span>
+            <div>
+              <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Quoted in</dt>
+              <dd className="shop-serif mt-1.5 text-[30px] font-medium leading-none">{currency}</dd>
+            </div>
+            {priced > 0 && priced < items.length && (
+              <div>
+                <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Priced</dt>
+                <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
+                  {priced}
+                </dd>
+              </div>
             )}
-          </div>
+          </dl>
         </div>
       </section>
 
@@ -98,40 +116,55 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
         contactEmail={reseller.contactEmail}
       />
 
-      <footer className="border-t border-black/5 bg-[#FAFAFA]">
-        <div className="mx-auto max-w-7xl px-6 py-10 sm:px-10">
-          {(reseller.contactEmail || reseller.contactPhone || reseller.website) && (
-            <>
-              <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-[#6B7280]">Enquiries</h2>
-              <p className="mt-2 text-lg font-bold text-[#111827]">
-                {reseller.contactName ? `${reseller.contactName} · ` : ''}{reseller.name}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-x-7 gap-y-2 text-sm font-semibold" style={{ color: 'var(--accent)' }}>
-                {reseller.contactEmail && <a href={`mailto:${reseller.contactEmail}`}>{reseller.contactEmail}</a>}
-                {reseller.contactPhone && (
-                  <a href={`tel:${reseller.contactPhone.replace(/\s+/g, '')}`}>{reseller.contactPhone}</a>
-                )}
-                {reseller.website && <a href={reseller.website} target="_blank" rel="noreferrer noopener">Website</a>}
-              </div>
-            </>
-          )}
-          {reseller.navLinks.length > 0 && (
-            <nav className="mt-6 flex flex-wrap gap-x-7 gap-y-2" aria-label="More from this shop">
-              {reseller.navLinks.map((link) => (
-                <a
-                  key={`${link.label}-${link.href}`}
-                  href={link.href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="text-sm font-semibold text-[#374151] hover:underline"
-                >
-                  {link.label}
-                </a>
-              ))}
-            </nav>
-          )}
-          <p className="mt-8 text-xs text-[#9CA3AF]">
-            Availability and prices are live and can change without notice. Shown in {currency}.
+      <footer className="border-t border-[color:var(--hair)]">
+        <div className="mx-auto max-w-[1400px] px-6 py-14 sm:px-10">
+          <div className="flex flex-wrap justify-between gap-10">
+            <div className="max-w-sm">
+              <span className="block h-px w-10" style={{ backgroundColor: 'var(--accent)' }} aria-hidden />
+              <p className="shop-serif mt-5 text-[26px] font-medium leading-tight">{reseller.name}</p>
+              {(reseller.contactEmail || reseller.contactPhone) && (
+                <p className="mt-3 text-sm leading-relaxed text-[color:var(--ink-soft)]">
+                  {reseller.contactName && <span className="block">{reseller.contactName}</span>}
+                  {reseller.contactEmail && (
+                    <a href={`mailto:${reseller.contactEmail}`} className="block hover:text-[color:var(--ink)]">
+                      {reseller.contactEmail}
+                    </a>
+                  )}
+                  {reseller.contactPhone && (
+                    <a
+                      href={`tel:${reseller.contactPhone.replace(/\s+/g, '')}`}
+                      className="block hover:text-[color:var(--ink)]"
+                    >
+                      {reseller.contactPhone}
+                    </a>
+                  )}
+                </p>
+              )}
+            </div>
+
+            {reseller.navLinks.length > 0 && (
+              <nav aria-label="More from this shop">
+                <p className="shop-eyebrow text-[color:var(--ink-mute)]">Elsewhere</p>
+                <ul className="mt-4 flex flex-col gap-2.5">
+                  {reseller.navLinks.map((link) => (
+                    <li key={`${link.label}-${link.href}`}>
+                      <a
+                        href={link.href}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="text-sm text-[color:var(--ink-soft)] transition hover:text-[color:var(--ink)]"
+                      >
+                        {link.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            )}
+          </div>
+
+          <p className="mt-14 border-t border-[color:var(--hair)] pt-6 text-xs text-[color:var(--ink-mute)]">
+            Availability and prices are live and may change without notice. All figures shown in {currency}.
           </p>
         </div>
       </footer>
