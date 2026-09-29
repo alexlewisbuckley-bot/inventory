@@ -286,32 +286,24 @@ function provenanceOf(item: ShopItem): { box: boolean; papers: boolean } | null 
 function Provenance({ label, has }: { label: string; has: boolean }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 border px-2 py-[3px] text-[10px] uppercase tracking-[0.14em]"
-      style={{
-        borderColor: has ? 'var(--accent)' : 'var(--hair)',
-        color: has ? 'var(--ink)' : 'var(--ink-mute)',
-      }}
+      className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.13em]"
+      style={{ color: has ? 'var(--ink-soft)' : 'var(--ink-mute)' }}
     >
-      <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 shrink-0 fill-none stroke-current stroke-[1.6]" aria-hidden>
+      <svg
+        viewBox="0 0 12 12"
+        className="h-[11px] w-[11px] shrink-0 fill-none stroke-[1.4]"
+        style={{ stroke: has ? 'var(--accent)' : 'currentColor' }}
+        aria-hidden
+      >
         {has ? (
-          <path d="M1 5l2.6 2.6L9 1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M1.5 6.2l3 3L10.5 2.8" strokeLinecap="round" strokeLinejoin="round" />
         ) : (
-          <path d="M2 2l6 6M8 2l-6 6" strokeLinecap="round" />
+          <path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8" strokeLinecap="round" />
         )}
       </svg>
       {label}
       <span className="sr-only">{has ? ' included' : ' not included'}</span>
     </span>
-  )
-}
-
-/** One fact, termed. Aligned so the values line up down a column of cards. */
-function Fact({ term, value }: { term: string; value: string }) {
-  return (
-    <div className="flex gap-3">
-      <dt className="w-[74px] shrink-0 text-[color:var(--ink-mute)]">{term}</dt>
-      <dd className="shop-num truncate text-[color:var(--ink-soft)]">{value}</dd>
-    </div>
   )
 }
 
@@ -365,40 +357,48 @@ function ShopCard({ item, token, currency, onOpen }: {
           for, and pinning it to the top keeps it in the same place on every
           card whether or not the specification beneath runs long.
         */}
+        {/*
+          The piece and its price carry the card; everything else is there to
+          confirm a decision those two have already prompted. So the name and
+          the figure sit together at the top of the block at the sizes that
+          say so, what came with it reads as a quiet pair of marks rather than
+          two boxes competing with the name, and the reference and year — the
+          things somebody checks last — close the block on one small line.
+        */}
         <div className="flex flex-1 flex-col pt-5">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
-            {item.price === null ? (
-              <span className="shop-serif shrink-0 text-[15px] italic leading-none text-[color:var(--ink-soft)]">
-                On request
-              </span>
-            ) : (
-              <span className="shop-serif shop-num shrink-0 text-[18px] font-medium leading-none">
-                {formatCurrency(item.price, currency, { decimals: false })}
-              </span>
-            )}
-          </div>
+          <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
 
-          <h2 className="shop-serif shop-num mt-2 text-[21px] font-medium leading-[1.2] sm:text-[23px]">
+          <h2 className="shop-serif shop-num mt-2 text-[24px] font-medium leading-[1.15] sm:text-[26px]">
             <span className="shop-underline">{item.nickname || item.model}</span>
           </h2>
 
+          {item.price === null ? (
+            <p className="shop-serif mt-1.5 text-[18px] italic leading-none text-[color:var(--ink-soft)]">
+              Price on request
+            </p>
+          ) : (
+            <p className="shop-serif shop-num mt-1.5 text-[20px] font-medium leading-none">
+              {formatCurrency(item.price, currency, { decimals: false })}
+            </p>
+          )}
+
           {provenance && (
-            <div className="mt-3.5 flex flex-wrap items-center gap-2">
+            <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <Provenance label="Box" has={provenance.box} />
               <Provenance label="Papers" has={provenance.papers} />
             </div>
           )}
 
-          {/* A piece with no model name is headed by its reference, and
-              printing it again under "Reference" is the same string twice. */}
-          <dl className="mt-4 flex flex-col gap-1.5 text-[12.5px] leading-[1.5]">
-            {item.nickname && <Fact term="Reference" value={item.model} />}
-            {item.year && <Fact term="Year" value={String(item.year)} />}
-          </dl>
+          {/* A piece with no model name is headed by its reference, so it is
+              not repeated here. */}
+          {(item.nickname || item.year) && (
+            <p className="shop-num mt-2.5 truncate text-[11.5px] text-[color:var(--ink-mute)]">
+              {[item.nickname ? `Ref. ${item.model}` : null, item.year ? String(item.year) : null]
+                .filter(Boolean)
+                .join('  ·  ')}
+            </p>
+          )}
 
-          {/* Pinned to the foot so the rule and the action sit at the same
-              height across a row, however much specification each card has. */}
           <span className="mt-auto pt-5">
             <span className="shop-cta flex h-10 w-full items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]">
               Find out more
@@ -560,25 +560,39 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
               )}
             </p>
 
-            {item.description && (
+            {/*
+              The specification stands down while somebody is writing.
+              Ten rows of it between the button they pressed and the fields
+              they pressed it to reach means scrolling past the answer to a
+              question they have already stopped asking. The heading and the
+              price stay, so it is still clear which watch this is about.
+            */}
+            {!enquiring && item.description && (
               <p className="mt-5 text-[14px] leading-[1.7] text-[color:var(--ink-soft)]">{item.description}</p>
             )}
 
-            {spec.length > 0 && (
-              <dl className="mt-6 border-t border-[color:var(--hair)]">
+            {/*
+              Two up. A single column of nine rows made the panel taller than
+              most screens, and a specification is a reference table rather
+              than prose — nothing is lost by reading it in two passes down
+              instead of one long one. It falls back to one column on a phone,
+              where two would leave no room for the values.
+            */}
+            {!enquiring && spec.length > 0 && (
+              <dl className="mt-6 grid border-t border-[color:var(--hair)] sm:grid-cols-2 sm:gap-x-9">
                 {spec.map(([label, value]) => (
                   <div
                     key={label}
-                    className="flex items-baseline justify-between gap-6 border-b border-[color:var(--hair)] py-2.5"
+                    className="flex items-baseline justify-between gap-4 border-b border-[color:var(--hair)] py-2.5"
                   >
-                    <dt className="text-[12.5px] text-[color:var(--ink-mute)]">{label}</dt>
-                    <dd className="text-[13.5px] font-medium text-[color:var(--ink)]">{value}</dd>
+                    <dt className="shrink-0 text-[12.5px] text-[color:var(--ink-mute)]">{label}</dt>
+                    <dd className="text-right text-[13.5px] font-medium text-[color:var(--ink)]">{value}</dd>
                   </div>
                 ))}
               </dl>
             )}
 
-            <div className="mt-auto pt-8">
+            <div className={enquiring ? 'pt-7' : 'mt-auto pt-8'}>
               {/*
                 A form, not a mailto. A mail link needs a client configured on
                 the customer's machine, leaves nothing behind here when it is
@@ -660,11 +674,18 @@ function EnquiryForm({ token, watchId, onCancel }: {
       <input type="hidden" name="token" value={token} />
       <input type="hidden" name="watchId" value={watchId} />
 
+      {/* The specification steps aside for this, so the form says what it is
+          rather than appearing where a table used to be. */}
+      <p className="shop-eyebrow text-[color:var(--ink-mute)]">Enquire about this piece</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-[color:var(--ink-soft)]">
+        Leave your details and we will come back to you.
+      </p>
+
       {state.message && (
-        <p role="alert" className="mb-4 text-[12.5px] text-[#9b2c2c]">{state.message}</p>
+        <p role="alert" className="mt-4 text-[12.5px] text-[#9b2c2c]">{state.message}</p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <Field name="name" label="Your name" required error={state.errors?.name} />
         <Field name="email" label="Email" type="email" required error={state.errors?.email} />
       </div>
