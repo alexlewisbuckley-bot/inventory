@@ -31,7 +31,7 @@ export interface ShopItem {
 type Sort = 'brand' | 'price-desc' | 'price-asc' | 'year-desc'
 
 const SORTS: Array<{ value: Sort; label: string }> = [
-  { value: 'brand', label: 'House, A–Z' },
+  { value: 'brand', label: 'Brand, A–Z' },
   { value: 'price-desc', label: 'Price, high to low' },
   { value: 'price-asc', label: 'Price, low to high' },
   { value: 'year-desc', label: 'Year, newest' },
@@ -67,11 +67,13 @@ function specOf(item: ShopItem): Array<[string, string]> {
  * narrowing to one house should not wait for a round trip, and this page has no
  * session to hang a server-side query state off.
  */
-export function ShopWindow({ items, token, currency, contactEmail }: {
+export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shopName }: {
   items: ShopItem[]
   token: string
   currency: CurrencyCode
   contactEmail: string | null
+  hasLogo: boolean
+  shopName: string
 }) {
   const [query, setQuery] = useState('')
   const [brand, setBrand] = useState('')
@@ -124,7 +126,7 @@ export function ShopWindow({ items, token, currency, contactEmail }: {
         with a hairline under them, and only assert themselves when in use.
       */}
       <div className="sticky top-[72px] z-20 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-8 gap-y-3 px-6 py-4 sm:px-10">
+        <div className="mx-auto flex max-w-[1760px] flex-wrap items-center gap-x-8 gap-y-3 px-6 py-4 sm:px-10">
           <label className="relative min-w-0 flex-1 sm:max-w-[280px]">
             <span className="sr-only">Search the collection</span>
             <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--ink-mute)]" aria-hidden />
@@ -138,8 +140,8 @@ export function ShopWindow({ items, token, currency, contactEmail }: {
           </label>
 
           <Choice
-            label="House" value={brand} onChange={setBrand}
-            options={[{ value: '', label: 'All houses' }, ...brands.map((b) => ({ value: b, label: b }))]}
+            label="Brand" value={brand} onChange={setBrand}
+            options={[{ value: '', label: 'All brands' }, ...brands.map((b) => ({ value: b, label: b }))]}
           />
           <Choice
             label="Order" value={sort} onChange={(v) => setSort(v as Sort)}
@@ -175,7 +177,7 @@ export function ShopWindow({ items, token, currency, contactEmail }: {
 
           <p className="ml-auto text-sm text-[color:var(--ink-mute)]">
             <span className="tabular-nums text-[color:var(--ink)]">{shown.length}</span>
-            {shown.length === 1 ? ' piece' : ' pieces'}
+            {shown.length === 1 ? ' piece available' : ' pieces available'}
             {filtering && (
               <button
                 type="button"
@@ -189,15 +191,29 @@ export function ShopWindow({ items, token, currency, contactEmail }: {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1400px] px-6 py-14 sm:px-10">
+      <div className="mx-auto max-w-[1760px] px-6 py-12 sm:px-10">
         {shown.length === 0 ? (
-          <p className="shop-serif py-28 text-center text-[26px] text-[color:var(--ink-mute)]">
-            {filtering
-              ? 'Nothing here matches that.'
-              : 'Every piece is currently reserved or sold.'}
-          </p>
+          <div className="py-28 text-center">
+            <p className="shop-serif text-[28px] text-[color:var(--ink-soft)]">
+              {filtering
+                ? 'Nothing here matches that.'
+                : 'Every piece is currently reserved or sold.'}
+            </p>
+            {filtering ? (
+              <button
+                type="button"
+                onClick={() => { setQuery(''); setBrand(''); setPricedOnly(false) }}
+                className="shop-eyebrow mt-6 border-b pb-1 text-[color:var(--ink)]"
+                style={{ borderColor: 'var(--accent)' }}
+              >
+                Show everything
+              </button>
+            ) : (
+              <p className="mt-3 text-sm text-[color:var(--ink-mute)]">Please check back shortly.</p>
+            )}
+          </div>
         ) : (
-          <ul className="grid grid-cols-1 gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-2 gap-x-6 gap-y-12 sm:gap-x-8 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {shown.map((item) => (
               <ShopCard key={item.id} item={item} token={token} currency={currency} onOpen={() => setViewing(item)} />
             ))}
@@ -211,6 +227,8 @@ export function ShopWindow({ items, token, currency, contactEmail }: {
           token={token}
           currency={currency}
           contactEmail={contactEmail}
+          hasLogo={hasLogo}
+          shopName={shopName}
           onClose={() => setViewing(null)}
         />
       )}
@@ -261,11 +279,11 @@ function ShopCard({ item, token, currency, onOpen }: {
   const condition = conditionOf(item)
 
   return (
-    <li>
+    <li className="flex">
       <button
         type="button"
         onClick={onOpen}
-        className="group flex w-full flex-col text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-4"
+        className="group flex h-full w-full flex-col text-left outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-8"
       >
         <div className="relative aspect-[4/5] w-full overflow-hidden bg-[color:var(--plinth)]">
           {item.imageId ? (
@@ -274,7 +292,7 @@ function ShopCard({ item, token, currency, onOpen }: {
               src={`/s/${token}/image/${item.imageId}`}
               alt={`${item.brandName} ${item.model}`}
               loading="lazy"
-              className="h-full w-full object-contain p-10 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06]"
+              className="h-full w-full object-contain p-6 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06] sm:p-8"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
@@ -298,22 +316,22 @@ function ShopCard({ item, token, currency, onOpen }: {
 
         <p className="shop-eyebrow mt-5 text-[color:var(--ink-mute)]">{item.brandName}</p>
 
-        <h2 className="shop-serif shop-num mt-2 text-[26px] font-medium leading-[1.15]">
+        <h2 className="shop-serif shop-num mt-2 text-[21px] font-medium leading-[1.18] sm:text-[23px]">
           <span className="shop-underline">{item.nickname || item.model}</span>
         </h2>
         {item.nickname && (
-          <p className="mt-1 text-[13px] text-[color:var(--ink-mute)]">Reference {item.model}</p>
+          <p className="mt-1 text-[12.5px] text-[color:var(--ink-mute)]">Ref. {item.model}</p>
         )}
 
         {facts.length > 0 && (
-          <p className="mt-3 text-[13px] text-[color:var(--ink-soft)]">{facts.join(' · ')}</p>
+          <p className="mb-4 mt-2.5 text-[12.5px] leading-[1.5] text-[color:var(--ink-soft)]">{facts.join(' · ')}</p>
         )}
 
-        <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-[color:var(--hair)] pt-4">
+        <div className="mt-auto flex items-baseline justify-between gap-4 border-t border-[color:var(--hair)] pt-4">
           {item.price === null ? (
-            <span className="shop-serif text-[19px] italic text-[color:var(--ink-soft)]">Price on request</span>
+            <span className="shop-serif text-[17px] italic text-[color:var(--ink-soft)]">Price on request</span>
           ) : (
-            <span className="shop-serif shop-num text-[23px] font-medium">
+            <span className="shop-serif shop-num text-[20px] font-medium">
               {formatCurrency(item.price, currency, { decimals: false })}
             </span>
           )}
@@ -333,11 +351,13 @@ function ShopCard({ item, token, currency, onOpen }: {
  * somewhere else means a back button and a lost scroll position for every watch
  * they are curious about.
  */
-function ProductView({ item, token, currency, contactEmail, onClose }: {
+function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, onClose }: {
   item: ShopItem
   token: string
   currency: CurrencyCode
   contactEmail: string | null
+  hasLogo: boolean
+  shopName: string
   onClose: () => void
 }) {
   const images = item.imageIds.length > 0 ? item.imageIds : item.imageId ? [item.imageId] : []
@@ -442,6 +462,14 @@ function ProductView({ item, token, currency, contactEmail, onClose }: {
           </div>
 
           <div className="flex flex-col p-8 sm:p-12">
+            {hasLogo && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={`/s/${token}/logo`}
+                alt={shopName}
+                className="mb-7 h-8 w-auto max-w-[150px] object-contain"
+              />
+            )}
             <p className="shop-eyebrow text-[color:var(--ink-mute)]">{item.brandName}</p>
             {/* Lining figures on the heading too: plenty of these names are a
                 reference number, and old-style digits make one look mistyped. */}

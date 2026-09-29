@@ -2134,8 +2134,12 @@ await journey('a reseller gets a live shop window that leaks nothing', async (pa
     for (const secret of ['7,835', '783500', 'GB Luxury Limited', 'One Street Watches', 'purchasePriceGbp']) {
       if (payload.includes(secret)) throw new Error(`the shop window payload contains "${secret}"`)
     }
+    // The headline names the tab rather than heading a masthead, so the page
+    // is checked by what it is for: the stock, and whose shop it is.
+    const title = await shop.title()
+    if (!/available now/i.test(title)) throw new Error(`the shop window is titled "${title}"`)
     const shown = await shop.locator('body').innerText()
-    if (!/available now/i.test(shown)) throw new Error('the shop window rendered without its headline')
+    if (!/piece/i.test(shown)) throw new Error('the shop window rendered without its stock')
 
     // Switching the reseller off takes the page down.
     await go(page, '/resellers')

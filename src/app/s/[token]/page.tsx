@@ -17,13 +17,29 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 /**
- * Not indexable.
+ * The tab, and what a shared link previews as.
  *
- * The link is a secret handed to one reseller. A search engine that finds it
- * and publishes it has revoked the access control on everybody's behalf.
+ * The headline used to sit in a masthead above the stock. Removing that section
+ * left it with nowhere to go, and a field that renders nowhere is a field
+ * somebody fills in for nothing — so it names the page instead, which is where
+ * a shop's line about itself is most use: in the tab, in a bookmark, and in the
+ * preview when the link is forwarded.
+ *
+ * Still not indexable. The link is a secret handed to one reseller, and a
+ * search engine that finds it has revoked the access control on everybody's
+ * behalf.
  */
-export const metadata: Metadata = {
-  robots: { index: false, follow: false, nocache: true },
+export async function generateMetadata(
+  { params }: { params: { token: string } },
+): Promise<Metadata> {
+  const shop = await getShopWindow(params.token, await getRateTable())
+  if (!shop) return { robots: { index: false, follow: false, nocache: true } }
+  const { reseller } = shop
+  return {
+    title: reseller.headline ? `${reseller.headline} · ${reseller.name}` : reseller.name,
+    description: reseller.intro ?? undefined,
+    robots: { index: false, follow: false, nocache: true },
+  }
 }
 
 export default async function ShopWindowPage({ params }: { params: { token: string } }) {
@@ -36,8 +52,6 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
 
   const { reseller, items } = shop
   const currency = reseller.displayCurrency as CurrencyCode
-  const priced = items.filter((item) => item.price !== null).length
-  const houses = [...new Set(items.map((item) => item.brandName))]
 
   return (
     <main
@@ -57,63 +71,13 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
         website={reseller.website}
       />
 
-      {/*
-        A masthead, not a colour slab.
-
-        The banner was a block of brand colour with a title on it, which is what
-        a template does when it has nothing to say. A shop says what is in it:
-        the houses it carries, how many pieces, what they are quoted in — set
-        like the opening of a catalogue. The brand colour earns its place as a
-        rule and an accent rather than by filling the top of the screen.
-      */}
-      <section className="border-b border-[color:var(--hair)]">
-        <div className="mx-auto max-w-[1400px] px-6 pb-12 pt-14 sm:px-10 sm:pb-14 sm:pt-20">
-          <span className="block h-px w-16" style={{ backgroundColor: 'var(--accent)' }} aria-hidden />
-          <h1 className="shop-serif mt-7 max-w-4xl text-[38px] font-medium leading-[1.06] sm:text-[62px]">
-            {reseller.headline || 'The current collection'}
-          </h1>
-          {reseller.intro && (
-            <p className="mt-5 max-w-xl text-[15px] leading-[1.7] text-[color:var(--ink-soft)]">
-              {reseller.intro}
-            </p>
-          )}
-
-          <dl className="mt-10 flex flex-wrap gap-x-14 gap-y-6 border-t border-[color:var(--hair)] pt-7">
-            <div>
-              <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Available</dt>
-              <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
-                {items.length}
-              </dd>
-            </div>
-            {houses.length > 0 && (
-              <div>
-                <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Houses</dt>
-                <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
-                  {houses.length}
-                </dd>
-              </div>
-            )}
-            <div>
-              <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Quoted in</dt>
-              <dd className="shop-serif mt-1.5 text-[30px] font-medium leading-none">{currency}</dd>
-            </div>
-            {priced > 0 && priced < items.length && (
-              <div>
-                <dt className="shop-eyebrow text-[color:var(--ink-mute)]">Priced</dt>
-                <dd className="shop-serif shop-num mt-1.5 text-[30px] font-medium leading-none">
-                  {priced}
-                </dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      </section>
-
       <ShopWindow
         items={items}
         token={params.token}
         currency={currency}
         contactEmail={reseller.contactEmail}
+        hasLogo={reseller.hasLogo}
+        shopName={reseller.name}
       />
 
       <footer className="border-t border-[color:var(--hair)]">
@@ -121,7 +85,20 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
           <div className="flex flex-wrap justify-between gap-10">
             <div className="max-w-sm">
               <span className="block h-px w-10" style={{ backgroundColor: 'var(--accent)' }} aria-hidden />
-              <p className="shop-serif mt-5 text-[26px] font-medium leading-tight">{reseller.name}</p>
+              {/* The mark again on the way out, as a shop signs off. */}
+              {reseller.hasLogo ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={`/s/${params.token}/logo`}
+                  alt={reseller.name}
+                  className="mt-5 h-10 w-auto max-w-[190px] object-contain"
+                />
+              ) : (
+                <p className="shop-serif mt-5 text-[26px] font-medium leading-tight">{reseller.name}</p>
+              )}
+              {reseller.intro && (
+                <p className="mt-4 text-sm leading-[1.75] text-[color:var(--ink-soft)]">{reseller.intro}</p>
+              )}
               {(reseller.contactEmail || reseller.contactPhone) && (
                 <p className="mt-3 text-sm leading-relaxed text-[color:var(--ink-soft)]">
                   {reseller.contactName && <span className="block">{reseller.contactName}</span>}
