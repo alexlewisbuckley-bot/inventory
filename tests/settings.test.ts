@@ -4,18 +4,15 @@ import { SETTING_SPECS } from '@/lib/settings-specs'
 const validatorFor = (key: string) => SETTING_SPECS.find((s) => s.key === key)!.validate!
 
 describe('settings validation', () => {
-  const fx = validatorFor('finance.fxGbpUsd')
-
-  it('rejects an FX rate that would corrupt every USD figure', () => {
-    expect(fx('0')).toBeTruthy()
-    expect(fx('-1')).toBeTruthy()
-    expect(fx('abc')).toBeTruthy()
-    expect(fx('100')).toBeTruthy()
-  })
-
-  it('accepts a plausible rate', () => {
-    expect(fx('1.33')).toBeNull()
-    expect(fx('0.75')).toBeNull()
+  /**
+   * Exchange rates are managed in Settings → Currencies, against the base.
+   * A second rate field here was inert once the base moved to dollars — it
+   * read as the knob that converts purchases while converting nothing, which
+   * is worse than not offering it at all.
+   */
+  it('offers no second place to set an exchange rate', () => {
+    expect(SETTING_SPECS.find((s) => s.key === 'finance.fxGbpUsd')).toBeUndefined()
+    expect(SETTING_SPECS.filter((s) => /rate/i.test(s.label))).toEqual([])
   })
 
   it('bounds the target margin to a percentage', () => {

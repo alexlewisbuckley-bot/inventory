@@ -204,7 +204,12 @@ function buildOrder(query: WatchQuery): SQL {
     case 'model': return direction(watches.model)
     case 'purchaseDate': return direction(watches.purchaseDate)
     case 'purchasePriceGbp': return direction(watches.purchasePriceGbp)
-    case 'estSaleUsd': return direction(watches.estSaleUsd)
+    // Sorts by the base column, which is the figure the column displays. The
+    // key keeps its old name because it appears in saved-view URLs, but the
+    // retained USD column it was named after holds the dollar figure as at the
+    // purchase date, so ordering by it put the rows in an order that did not
+    // match the numbers on screen.
+    case 'estSaleUsd': return direction(watches.estSaleGbp)
     case 'status': return direction(watches.status)
     case 'location': return direction(locations.name)
     // Sorting by margin needs the derived expression, not a stored column.
@@ -242,8 +247,10 @@ export async function findWatches(query: WatchQuery): Promise<WatchListResult> {
       ...row,
       status: row.status as WatchStatus,
       productType: row.productType as ProductType,
-      estProfitUsd: row.estSaleUsd !== null && row.purchasePriceUsd !== null
-        ? row.estSaleUsd - row.purchasePriceUsd
+      // Kept for callers that still read it, derived from the base so it
+      // cannot disagree with the profit shown beside it.
+      estProfitUsd: row.estSaleGbp !== null
+        ? row.estSaleGbp - row.purchasePriceGbp
         : null,
       estProfitGbp: row.estSaleGbp !== null
         ? row.estSaleGbp - row.purchasePriceGbp
@@ -277,16 +284,16 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
     .select({
       total: count(),
       cost: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
-      costUsd: sql<number>`coalesce(sum(${watches.purchasePriceUsd}), 0)`,
-      sale: sql<number>`coalesce(sum(${watches.estSaleUsd}), 0)`,
+      costUsd: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
+      sale: sql<number>`coalesce(sum(${watches.estSaleGbp}), 0)`,
       saleGbp: sql<number>`coalesce(sum(${watches.estSaleGbp}), 0)`,
       profitGbp: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null
         then ${watches.estSaleGbp} - ${watches.purchasePriceGbp} else 0 end), 0)`,
       priced: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null then 1 else 0 end), 0)`,
       // Only priced rows may contribute to estimated profit, otherwise the
       // figure silently understates by counting unpriced stock as zero revenue.
-      profit: sql<number>`coalesce(sum(case when ${watches.estSaleUsd} is not null
-        then ${watches.estSaleUsd} - coalesce(${watches.purchasePriceUsd}, 0) else 0 end), 0)`,
+      profit: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null
+        then ${watches.estSaleGbp} - coalesce(${watches.purchasePriceGbp}, 0) else 0 end), 0)`,
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))

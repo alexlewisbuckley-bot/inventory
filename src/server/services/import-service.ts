@@ -7,8 +7,10 @@ import { toMinor } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
 import { REQUIRED_HEADERS, normaliseHeader } from '@/lib/import-columns'
+import { RATE_SCALE } from '@/lib/currency'
+import { getRateTable } from './fx-service'
 import {
-  DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType,
+  BASE_CURRENCY, DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType,
 } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
@@ -112,10 +114,28 @@ function cellToText(value: unknown): string {
   return String(value)
 }
 
+/**
+ * How many base units one pound is worth, as a plain multiplier.
+ *
+ * Sheets written before the base moved quote sterling, and the figure has to
+ * reach the base the same way a typed-in purchase would. Falls back to the
+ * environment default only if sterling has no managed rate, which would
+ * otherwise leave an old sheet silently importing pounds as dollars.
+ */
+async function gbpToBase(): Promise<number> {
+  const rates = await getRateTable()
+  const gbp = rates.GBP
+  if (gbp && gbp > 0) return RATE_SCALE / gbp
+  return Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
+}
+
 export async function parseImport(input: string | { name: string; buffer: ArrayBuffer }): Promise<ImportPreview> {
   const table = typeof input === 'string' ? parseCsv(input) : await readTable(input)
-  // Only needed for sheets still quoting the estimate in dollars.
-  const usdRate = Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
+  // Only needed for sheets still quoting figures in sterling. Taken from the
+  // managed rate table so an import converts at the same rate the rest of the
+  // application does, rather than at whatever an environment variable was set
+  // to when the container booted.
+  const usdRate = await gbpToBase()
   const issues: ImportIssue[] = []
   const rows: ImportRow[] = []
 
@@ -271,7 +291,6 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
 /** Write a previously validated import. All-or-nothing. */
 export async function commitImport(rows: ImportRow[], actor: SessionUser): Promise<number> {
   if (rows.length === 0) return 0
-  const fx = Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
 
   return withTransaction(async () => {
     const brandIds = new Map<string, string>()
@@ -315,7 +334,7 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
     for (const row of rows) {
       const id = newId('wch')
       const priceMinor = toMinor(row.purchasePriceGbp!)
-      const { gbp: estGbp, usd: estUsd } = estimateFromSheet(row.estSaleGbp, fx)
+      const { gbp: estGbp, usd: estUsd } = estimateFromSheet(row.estSaleGbp)
       const locationId = locationIds.get(row.location.toLowerCase())!
       await db.insert(watches).values({
         id,
@@ -327,17 +346,20 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         supplierId: supplierIds.get(row.supplier.toLowerCase())!,
         purchaseDate: new Date(row.purchaseDate),
         purchasePriceGbp: priceMinor,
-        purchasePriceUsd: Math.round(priceMinor * fx),
-        purchaseFxRate: Math.round(fx * 10_000),
+        // The parse stage has already converted the sheet into the base, so the
+        // figure is dollars by the time it reaches here. Applying the rate a
+        // second time was booking every imported watch a third high.
+        purchasePriceUsd: priceMinor,
+        purchaseFxRate: RATE_SCALE,
         purchaseAmount: priceMinor,
-        purchaseCurrency: 'GBP',
+        purchaseCurrency: BASE_CURRENCY,
         estSaleUsd: estUsd,
         // The spreadsheet quotes estimates in dollars, but every report
         // aggregates the GBP base. Omitting it made an imported watch count as
         // unpriced no matter what the sheet said.
         estSaleGbp: estGbp,
         estSaleAmount: estGbp,
-        estSaleCurrency: 'GBP',
+        estSaleCurrency: BASE_CURRENCY,
         locationId,
         createdById: actor.id,
       })
@@ -404,10 +426,12 @@ function parseAmount(raw: string): number | null {
  * loss instead of appearing on the "needs a price" worklist.
  */
 export function estimateFromSheet(
-  estSaleGbpMajor: number | null,
-  fx: number,
+  estimateMajor: number | null,
 ): { gbp: number | null; usd: number | null } {
-  if (estSaleGbpMajor === null) return { gbp: null, usd: null }
-  const gbp = toMinor(estSaleGbpMajor)
-  return { gbp, usd: Math.round(gbp * fx) }
+  if (estimateMajor === null) return { gbp: null, usd: null }
+  const base = toMinor(estimateMajor)
+  // One figure in two columns. The estimate arrives already converted into the
+  // base, and the base is dollars, so the retained USD column holds the same
+  // number; converting it again would put a third onto every forecast.
+  return { gbp: base, usd: base }
 }

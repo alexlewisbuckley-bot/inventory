@@ -17,7 +17,8 @@ import {
 } from '../schema'
 import { hashPassword } from '../../auth/password'
 import { newId, initialsOf, slugify } from '@/lib/ids'
-import type { Role } from '@/lib/enums'
+import { RATE_SCALE } from '@/lib/currency'
+import { BASE_CURRENCY, type Role } from '@/lib/enums'
 import { loadEnv } from '@/lib/load-env'
 
 // Imports are hoisted, so this runs before the first query rather than before
@@ -52,7 +53,7 @@ const SEED_LOCATIONS = [
 const SETTINGS: Record<string, string> = {
   'company.name': 'Bluecroft Finance',
   'company.tradingName': 'Bluecroft Stock',
-  'finance.baseCurrency': 'GBP',
+  'finance.baseCurrency': BASE_CURRENCY,
   'finance.fxGbpUsd': String(DEFAULT_FX),
   'finance.targetMarginPct': '8',
   'inventory.ageingWarningDays': '90',
@@ -127,9 +128,11 @@ export async function seed(): Promise<void> {
       const existing = await db.select({ id: watches.id }).from(watches).where(eq(watches.stockNo, w.stockNo))
       if (existing[0]) continue
 
-      const fx = w.purchasePriceUsd && w.purchasePriceGbp
-        ? Math.round((w.purchasePriceUsd / w.purchasePriceGbp) * 10_000)
-        : Math.round(DEFAULT_FX * 10_000)
+      // The source rows carry a sterling price and, for most, the dollar
+      // figure that was actually paid. Dollars are the base, so that is the
+      // figure to store; the sterling one is only a fallback for the rows that
+      // never had a dollar price recorded.
+      const costBase = w.purchasePriceUsd ?? Math.round(w.purchasePriceGbp * DEFAULT_FX)
 
       const id = newId('wch')
       const locationName = spread[index % spread.length]!
@@ -142,18 +145,19 @@ export async function seed(): Promise<void> {
         serial: w.serial,
         supplierId: supplierIds.get(w.supplier)!,
         purchaseDate: new Date(`${w.purchaseDate}T00:00:00.000Z`),
-        purchasePriceGbp: w.purchasePriceGbp,
-        purchasePriceUsd: w.purchasePriceUsd ?? Math.round(w.purchasePriceGbp * DEFAULT_FX),
-        purchaseFxRate: fx,
-        purchaseAmount: w.purchasePriceGbp,
-        purchaseCurrency: 'GBP',
+        purchasePriceGbp: costBase,
+        purchasePriceUsd: costBase,
+        purchaseFxRate: RATE_SCALE,
+        purchaseAmount: costBase,
+        purchaseCurrency: BASE_CURRENCY,
+        // The base is what every report aggregates. Seeding only the dollar
+        // column left demo stock counting as unpriced, which is exactly the bug
+        // the importer had. The estimates are already dollars, so they are the
+        // base as they stand rather than something to convert.
         estSaleUsd: w.estSaleUsd,
-        // The GBP base is what every report aggregates. Seeding only the dollar
-        // figure left demo stock counting as unpriced, which is exactly the bug
-        // the importer had.
-        estSaleGbp: w.estSaleUsd === null ? null : Math.round(w.estSaleUsd / DEFAULT_FX),
-        estSaleAmount: w.estSaleUsd === null ? null : Math.round(w.estSaleUsd / DEFAULT_FX),
-        estSaleCurrency: 'GBP',
+        estSaleGbp: w.estSaleUsd,
+        estSaleAmount: w.estSaleUsd,
+        estSaleCurrency: BASE_CURRENCY,
         locationId: locationIds.get(locationName)!,
         status: 'IN_STOCK',
         condition: 'EXCELLENT',

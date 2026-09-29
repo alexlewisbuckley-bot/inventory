@@ -2,27 +2,38 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
-  appSettings, customers, locations, notifications, sales, stockMovements, users, watches,
+  customers, locations, notifications, sales, stockMovements, users, watches,
 } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
 import { newId } from '@/lib/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
-import { convert, marginPct } from '@/lib/money'
-import { toBase } from '@/lib/currency'
+import { marginPct } from '@/lib/money'
+import { RATE_SCALE, toBase, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
-import { PRODUCT_TYPE_NOUNS, WATCH_STATUS_LABELS, type WatchStatus } from '@/lib/enums'
+import {
+  BASE_CURRENCY, PRODUCT_TYPE_NOUNS, WATCH_STATUS_LABELS,
+  type CurrencyCode, type WatchStatus,
+} from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 import type { WatchCreateInput, WatchUpdateInput, SaleCreateInput } from '@/lib/validation'
 
-/** GBP→USD rate from settings, falling back to the environment default. */
-async function fxRate(): Promise<number> {
-  const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'finance.fxGbpUsd')).limit(1)
-  const parsed = Number(rows[0]?.value)
-  if (Number.isFinite(parsed) && parsed > 0) return parsed
-  return Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
+/**
+ * The rate the entered amount was converted at to reach the stored base,
+ * scaled by RATE_SCALE. Kept against the row as provenance, so a later rate
+ * correction can be told apart from somebody re-keying the price.
+ *
+ * This column used to hold the GBP→USD rate. That stopped meaning anything
+ * when dollars became the base: the figure it used to convert *to* is now the
+ * figure that is stored. Nothing reads the column, so it is redefined here
+ * rather than kept alive as a rate between two currencies the system no longer
+ * treats as special.
+ */
+function appliedRate(currency: CurrencyCode, rates: RateTable): number {
+  if (currency === BASE_CURRENCY) return RATE_SCALE
+  return rates[currency] ?? RATE_SCALE
 }
 
 /**
@@ -32,7 +43,7 @@ async function fxRate(): Promise<number> {
  * concurrent submissions cannot claim the same one.
  */
 export async function createWatch(input: WatchCreateInput, actor: SessionUser): Promise<string> {
-  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
+  const rates = await getRateTable()
 
   // What was agreed is stored verbatim; the GBP base is derived from it. Doing
   // it this way round means a later rate correction never rewrites the deal.
@@ -74,15 +85,19 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       supplierId: input.supplierId,
       purchaseDate: input.purchaseDate,
       purchasePriceGbp: priceGbp,
-      purchasePriceUsd: convert(priceGbp, rate),
-      purchaseFxRate: Math.round(rate * 10_000),
+      // The same figure, not a conversion of it: both columns hold base minor
+      // units, and the base is dollars. Multiplying here is how a purchase
+      // gets booked a third above what was paid.
+      purchasePriceUsd: priceGbp,
+      purchaseFxRate: appliedRate(input.purchaseCurrency, rates),
       purchaseAmount: purchaseMinor,
       purchaseCurrency: input.purchaseCurrency,
       estSaleGbp: estGbp,
       estSaleAmount: estMinor,
       estSaleCurrency: input.estSaleCurrency,
-      // Retained so historic USD exports still reconcile.
-      estSaleUsd: estGbp === null ? null : convert(estGbp, rate),
+      // Retained so historic USD exports still reconcile. Same unit as the
+      // base column now, so it is copied rather than converted.
+      estSaleUsd: estGbp,
       locationId: input.locationId,
       status: 'IN_STOCK',
       notes: input.notes ?? null,
@@ -120,7 +135,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
  * write is rejected rather than silently overwriting their change.
  */
 export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): Promise<void> {
-  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
+  const rates = await getRateTable()
 
   await withTransaction(async () => {
     const rows = await db.select().from(watches).where(eq(watches.id, input.id)).limit(1)
@@ -155,18 +170,18 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.purchaseAmount !== undefined) {
       const minor = Math.round(input.purchaseAmount * 100)
       patch.purchaseAmount = minor
-      patch.purchaseCurrency = input.purchaseCurrency ?? 'GBP'
+      patch.purchaseCurrency = input.purchaseCurrency ?? BASE_CURRENCY
       patch.purchasePriceGbp = toBase(minor, patch.purchaseCurrency, rates)
-      patch.purchasePriceUsd = convert(patch.purchasePriceGbp, rate)
-      patch.purchaseFxRate = Math.round(rate * 10_000)
+      patch.purchasePriceUsd = patch.purchasePriceGbp
+      patch.purchaseFxRate = appliedRate(patch.purchaseCurrency, rates)
     }
     if (input.estSaleAmount !== undefined) {
       const minor = input.estSaleAmount === null ? null : Math.round(Number(input.estSaleAmount) * 100)
       patch.estSaleAmount = minor
-      patch.estSaleCurrency = input.estSaleCurrency ?? 'GBP'
-      // Keep the GBP base in step, or every report silently ignores the change.
+      patch.estSaleCurrency = input.estSaleCurrency ?? BASE_CURRENCY
+      // Keep the base in step, or every report silently ignores the change.
       patch.estSaleGbp = minor === null ? null : toBase(minor, patch.estSaleCurrency, rates)
-      patch.estSaleUsd = patch.estSaleGbp === null ? null : convert(patch.estSaleGbp, rate)
+      patch.estSaleUsd = patch.estSaleGbp
     }
 
     // A location change is a stock movement in its own right, not just a field edit.
@@ -239,7 +254,7 @@ export async function moveWatches(
  * transaction — a half-applied sale would corrupt every profit report.
  */
 export async function recordSale(input: SaleCreateInput, actor: SessionUser): Promise<string> {
-  const [rate, rates] = await Promise.all([fxRate(), getRateTable()])
+  const rates = await getRateTable()
 
   return withTransaction(async () => {
     const rows = await db.select().from(watches).where(eq(watches.id, input.watchId)).limit(1)
@@ -264,16 +279,21 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     }
 
     // The sale is agreed in one currency and reported in another. The agreed
-    // figure is preserved exactly as entered; GBP is derived from it through
-    // the managed rate table and is what every report aggregates. USD is kept
-    // only so historic exports still reconcile.
+    // figure is preserved exactly as entered; the base is derived from it
+    // through the managed rate table and is what every report aggregates. The
+    // USD columns are kept only so historic exports still reconcile, and since
+    // the base is dollars they now hold the same figure rather than a
+    // conversion of it.
     const saleMinor = Math.round(input.saleAmount * 100)
     const saleGbp = toBase(saleMinor, input.saleCurrency, rates)
-    const saleUsd = convert(saleGbp, rate)
-    const costUsd = watch.purchasePriceUsd ?? convert(watch.purchasePriceGbp, rate)
+    const saleUsd = saleGbp
+    // Taken from the base column rather than the retained USD one, so cost and
+    // sale are certainly on the same scale and the profit below cannot be a
+    // subtraction across two different currencies.
+    const costUsd = watch.purchasePriceGbp
     const profitUsd = saleUsd - costUsd
     const profitGbp = saleGbp - watch.purchasePriceGbp
-    // Margin is taken in GBP so it agrees with the profit figure beside it.
+    // Margin is taken in the base so it agrees with the profit figure beside it.
     const margin = marginPct(watch.purchasePriceGbp, saleGbp) ?? 0
 
     const id = newId('sal')
@@ -284,7 +304,7 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
       saleDate: input.saleDate,
       saleAmountUsd: saleUsd,
       saleAmountGbp: saleGbp,
-      saleFxRate: Math.round(rate * 10_000),
+      saleFxRate: appliedRate(input.saleCurrency, rates),
       saleAmount: saleMinor,
       saleCurrency: input.saleCurrency,
       customerName: input.customerName ?? null,

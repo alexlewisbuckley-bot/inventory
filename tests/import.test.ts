@@ -62,18 +62,24 @@ describe('CSV writing', () => {
  * the user to go and price watches the spreadsheet had already priced.
  */
 describe('imported estimates reach the reporting base', () => {
-  it('stores the sheet value as the base and derives the legacy dollar figure', () => {
-    expect(estimateFromSheet(14_980, 1.33)).toEqual({ gbp: 1_498_000, usd: 1_992_340 })
+  /**
+   * Both columns hold the same figure. The estimate is already in the base by
+   * the time it gets here and the base is dollars, so a second multiplication
+   * put a third onto every imported forecast — which is what this asserted
+   * before the base moved.
+   */
+  it('stores the sheet value in the base and the retained dollar column alike', () => {
+    expect(estimateFromSheet(14_980)).toEqual({ gbp: 1_498_000, usd: 1_498_000 })
   })
 
   it('keeps a missing estimate null rather than turning it into zero', () => {
     // Zero would report the watch as a total loss instead of unpriced.
-    expect(estimateFromSheet(null, 1.33)).toEqual({ gbp: null, usd: null })
+    expect(estimateFromSheet(null)).toEqual({ gbp: null, usd: null })
   })
 
   it('never returns a base without a dollar figure, or the reverse', () => {
     for (const value of [0, 1, 18_900]) {
-      const result = estimateFromSheet(value, 1.33)
+      const result = estimateFromSheet(value)
       expect(result.gbp === null).toBe(result.usd === null)
     }
   })

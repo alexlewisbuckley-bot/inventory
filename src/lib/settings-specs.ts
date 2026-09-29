@@ -21,16 +21,6 @@ export const SETTING_SPECS: SettingSpec[] = [
   { key: 'company.tradingName', label: 'System name', group: 'Company', type: 'text',
     description: 'The name shown in the application header.' },
   {
-    key: 'finance.fxGbpUsd', label: 'GBP → USD rate', group: 'Finance', type: 'number',
-    description: 'Applied when converting new purchases and sales. Historic records keep the rate captured at the time.',
-    validate: (value) => {
-      const rate = Number(value)
-      if (!Number.isFinite(rate) || rate <= 0) return 'Enter a rate greater than zero.'
-      if (rate > 10) return 'That rate looks wrong — please check.'
-      return null
-    },
-  },
-  {
     key: 'finance.targetMarginPct', label: 'Target margin (%)', group: 'Finance', type: 'number',
     description: 'Used to flag stock priced below your expected return.',
     validate: (value) => {

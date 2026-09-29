@@ -8,7 +8,7 @@ import { extractWithClaude, aiConfigured } from './invoice-ai'
 import { getRateTable } from './fx-service'
 import { nextStockNo } from '../repositories/watch-repository'
 import { newId, slugify } from '@/lib/ids'
-import { toBase } from '@/lib/currency'
+import { RATE_SCALE, toBase, type RateTable } from '@/lib/currency'
 import { convert } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { ConflictError, ValidationError } from '@/lib/errors'
@@ -19,7 +19,7 @@ import {
 import { resolveSupplier, type MatchKind, type SupplierCandidate } from '@/lib/supplier-match'
 import { checkVatNumber, hmrcConfigured } from './vat-check-service'
 import { runVatCheck } from './compliance-service'
-import type { ExtractionMethod } from '@/lib/enums'
+import { BASE_CURRENCY, type CurrencyCode, type ExtractionMethod } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
 /**
@@ -184,7 +184,7 @@ export async function bookInInvoice(
     ? { ...invoice, supplier: { ...invoice.supplier, vatNo: null } }
     : { ...invoice, supplier: { ...invoice.supplier, vatNo: vatCheck.vatNumber } }
 
-  const [rates, rate, defaultLocationId] = await Promise.all([getRateTable(), usdRate(), pickLocation(actor)])
+  const [rates, defaultLocationId] = await Promise.all([getRateTable(), pickLocation(actor)])
   if (!defaultLocationId) {
     throw new ValidationError('Create a location first — stock has to be booked in somewhere.')
   }
@@ -286,8 +286,10 @@ export async function bookInInvoice(
           supplierId,
           purchaseDate,
           purchasePriceGbp: priceGbp,
-          purchasePriceUsd: convert(priceGbp, rate),
-          purchaseFxRate: Math.round(rate * 10_000),
+          // Both columns are base minor units and the base is dollars, so this
+          // is the same figure rather than a conversion of it.
+          purchasePriceUsd: priceGbp,
+          purchaseFxRate: appliedRate(checked.currency, rates),
           purchaseAmount: unitMinor,
           purchaseCurrency: checked.currency,
           // Deliberately unpriced. The invoice says what it cost, never what it
@@ -587,15 +589,13 @@ async function pickLocation(actor: SessionUser): Promise<string | null> {
 }
 
 /**
- * GBP→USD from settings, as the intake form reads it.
+ * The rate an entered amount was converted at to reach the stored base, scaled
+ * by RATE_SCALE, held against the row as provenance.
  *
- * The rate table is scaled by RATE_SCALE and is the wrong shape for the legacy
- * USD columns, which want a plain multiplier — reading it as one is how a
- * purchase gets recorded ten thousand times over.
+ * Booking in from an invoice writes the same provenance as the intake form, so
+ * the two routes into stock cannot be told apart by their figures.
  */
-async function usdRate(): Promise<number> {
-  const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'finance.fxGbpUsd')).limit(1)
-  const parsed = Number(rows[0]?.value)
-  if (Number.isFinite(parsed) && parsed > 0) return parsed
-  return Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
+function appliedRate(currency: CurrencyCode, rates: RateTable): number {
+  if (currency === BASE_CURRENCY) return RATE_SCALE
+  return rates[currency] ?? RATE_SCALE
 }

@@ -5,7 +5,7 @@ import {
   offers, sales, tasks, users, watches, watchRequests,
 } from '../schema'
 import { newId } from '@/lib/ids'
-import { DEAL_STAGE_PROBABILITY, type DealStage } from '@/lib/enums'
+import { BASE_CURRENCY, DEAL_STAGE_PROBABILITY, type DealStage } from '@/lib/enums'
 
 /**
  * A believable customer book.
@@ -114,7 +114,7 @@ const DEALS: Array<{
   lostReason?: string
 }> = [
   { customer: 'Faisal', title: 'Daytona 126500LN — white dial', stage: 'NEGOTIATION', valueGbp: 3_450_000, daysAgo: 9, closeInDays: 6, notes: 'Wants the sticker still on. Happy at 34.5k if we ship to Dubai.' },
-  { customer: 'Henry', title: 'Submariner 126610LV for the collection', stage: 'DEPOSIT_TAKEN', valueGbp: 1_480_000, daysAgo: 14, closeInDays: 3, notes: 'Deposit of £5,000 taken. Balance on collection.' },
+  { customer: 'Henry', title: 'Submariner 126610LV for the collection', stage: 'DEPOSIT_TAKEN', valueGbp: 1_480_000, daysAgo: 14, closeInDays: 3, notes: 'Deposit of $5,000 taken. Balance on collection.' },
   { customer: 'Charlotte', title: 'First Rolex — Datejust 41', stage: 'OFFER_SENT', valueGbp: 1_120_000, daysAgo: 5, closeInDays: 12, notes: 'Sent two options, jubilee and oyster.' },
   { customer: 'Marcus', title: 'Trade lot — three sports models', stage: 'QUALIFIED', valueGbp: 4_200_000, daysAgo: 3, closeInDays: 21, notes: 'Wants trade pricing across the lot.' },
   { customer: 'Priya', title: 'Anniversary Datejust', stage: 'ENQUIRY', valueGbp: 780_000, daysAgo: 1, closeInDays: 40 },
@@ -256,7 +256,7 @@ export async function seedCrm(): Promise<number> {
     if (spec.stage === 'OFFER_SENT' || spec.stage === 'NEGOTIATION') {
       await db.insert(offers).values({
         id: newId('off'), dealId: id, customerId, watchId: watch?.id ?? null,
-        amount: spec.valueGbp ?? 0, currency: 'GBP', amountGbp: spec.valueGbp ?? 0,
+        amount: spec.valueGbp ?? 0, currency: BASE_CURRENCY, amountGbp: spec.valueGbp ?? 0,
         status: 'SENT', validUntil: ahead(7).toISOString().slice(0, 10),
         createdBy: owner, createdAt: ago(Math.max(1, spec.daysAgo - 3)),
       })
