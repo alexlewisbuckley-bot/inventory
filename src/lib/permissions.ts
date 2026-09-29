@@ -14,6 +14,7 @@ export const CAPABILITIES = [
   'supplier:read', 'supplier:manage',
   'location:read', 'location:manage',
   'owner:read', 'owner:manage',
+  'reseller:read', 'reseller:manage',
   'report:read', 'report:export',
   'data:import',
   'user:read', 'user:manage',
@@ -98,6 +99,7 @@ const MANAGER: Capability[] = [
   'watch:delete', 'watch:restore',
   'sale:update', 'sale:delete',
   'supplier:manage', 'location:manage', 'owner:manage',
+  'reseller:read', 'reseller:manage',
   'data:import', 'user:read', 'settings:read', 'audit:read',
   'customer:delete', 'deal:delete',
 ]

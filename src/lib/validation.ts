@@ -270,6 +270,31 @@ export const supplierSchema = z.object({
   isActive: z.coerce.boolean().default(true),
 })
 
+/**
+ * A colour a customer will actually see.
+ *
+ * Restricted to hex because the value is interpolated into a stylesheet on a
+ * public page: anything else is a place to put something that is not a colour.
+ */
+const hexColour = (label: string) =>
+  trimmed.regex(/^#[0-9a-fA-F]{6}$/, `${label} must be a hex colour such as #04173A.`)
+
+export const resellerSchema = z.object({
+  name: trimmed.min(1, 'Reseller name is required.').max(120),
+  displayName: optionalText(120),
+  headline: optionalText(160),
+  intro: optionalText(600),
+  contactName: optionalText(120),
+  contactEmail: optionalEmail,
+  contactPhone: optionalText(40),
+  website: optionalText(200),
+  brandColor: hexColour('Brand colour').default('#04173A'),
+  accentColor: hexColour('Accent colour').default('#0F766E'),
+  displayCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  notes: optionalText(1000),
+  isActive: z.coerce.boolean().default(true),
+})
+
 export const ownerSchema = z.object({
   name: trimmed.min(1, 'Owner name is required.').max(120),
   type: z.enum(OWNER_TYPES).default('BUSINESS'),

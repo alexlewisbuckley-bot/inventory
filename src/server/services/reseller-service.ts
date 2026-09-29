@@ -1,0 +1,327 @@
+import { randomBytes } from 'node:crypto'
+import { and, asc, count, eq, isNull, sql } from 'drizzle-orm'
+import type { z } from 'zod'
+import { db, withTransaction } from '../db/client'
+import { brands, resellers, watches } from '../db/schema'
+import { recordAudit } from './audit'
+import { diff } from '@/lib/diff'
+import { newId, slugify } from '@/lib/ids'
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
+import { fromBase, type RateTable } from '@/lib/currency'
+import type { resellerSchema } from '@/lib/validation'
+import type { SessionUser } from '../auth/session'
+
+type ResellerInput = z.infer<typeof resellerSchema>
+
+/**
+ * The secret in the shop-window URL.
+ *
+ * 32 random characters from a 256-bit source. This is the whole of the access
+ * control on a page that lists live stock, so it is generated the way a session
+ * token is rather than derived from the reseller's name — a URL somebody can
+ * guess from the company is not access control, it is an invitation.
+ */
+export function newPublicToken(): string {
+  return randomBytes(24).toString('base64url')
+}
+
+/** Reseller list for the management page, with how much stock each can show. */
+export async function listResellers() {
+  const rows = await db
+    .select({
+      id: resellers.id,
+      name: resellers.name,
+      displayName: resellers.displayName,
+      headline: resellers.headline,
+      intro: resellers.intro,
+      contactName: resellers.contactName,
+      contactEmail: resellers.contactEmail,
+      contactPhone: resellers.contactPhone,
+      website: resellers.website,
+      brandColor: resellers.brandColor,
+      accentColor: resellers.accentColor,
+      displayCurrency: resellers.displayCurrency,
+      publicToken: resellers.publicToken,
+      isActive: resellers.isActive,
+      notes: resellers.notes,
+      hasLogo: sql<boolean>`${resellers.logoData} is not null`,
+      updatedAt: resellers.updatedAt,
+    })
+    .from(resellers)
+    .where(isNull(resellers.deletedAt))
+    .orderBy(asc(resellers.sortOrder))
+
+  // One count for everybody rather than one query each: the number is the same
+  // for every reseller, because they all see the same available stock.
+  const available = await countAvailableStock()
+  return rows.map((row) => ({ ...row, availableCount: available }))
+}
+
+/** How many watches a shop window would show right now. */
+export async function countAvailableStock(): Promise<number> {
+  const rows = await db.select({ value: count() }).from(watches)
+    .where(and(eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+  return Number(rows[0]?.value ?? 0)
+}
+
+export async function createReseller(input: ResellerInput, actor: SessionUser): Promise<string> {
+  return withTransaction(async () => {
+    const slug = slugify(input.name)
+    const clash = await db.select({ id: resellers.id }).from(resellers)
+      .where(and(eq(resellers.slug, slug), isNull(resellers.deletedAt))).limit(1)
+    if (clash[0]) throw new ConflictError('A reseller with that name already exists.', { name: 'Already in use.' })
+
+    const highest = await db.select({ max: sql<number>`coalesce(max(${resellers.sortOrder}), 0)` }).from(resellers)
+    const id = newId('rsl')
+    await db.insert(resellers).values({
+      id,
+      slug,
+      publicToken: newPublicToken(),
+      sortOrder: Number(highest[0]?.max ?? 0) + 1,
+      createdById: actor.id,
+      ...input,
+    })
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'CREATE', actorId: actor.id,
+      summary: `Reseller ${input.name} added`,
+    })
+    return id
+  })
+}
+
+export async function updateReseller(id: string, input: Partial<ResellerInput>, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+
+    const patch: Record<string, unknown> = { ...input, updatedAt: new Date() }
+    if (input.name && input.name !== existing.name) patch.slug = slugify(input.name)
+
+    await db.update(resellers).set(patch).where(eq(resellers.id, id))
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Reseller ${existing.name} updated`,
+      changes: diff(existing, input, [
+        'name', 'displayName', 'headline', 'intro', 'contactName', 'contactEmail',
+        'contactPhone', 'website', 'brandColor', 'accentColor', 'displayCurrency',
+        'notes', 'isActive',
+      ]),
+    })
+  })
+}
+
+/**
+ * Issue a new shop-window link and invalidate the old one.
+ *
+ * The only way to take back a link that has been forwarded somewhere it should
+ * not have been. Audited loudly, because it breaks a URL somebody else is
+ * relying on and the reason wants to be findable later.
+ */
+export async function rotateResellerToken(id: string, actor: SessionUser): Promise<string> {
+  return withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+
+    const publicToken = newPublicToken()
+    await db.update(resellers).set({ publicToken, updatedAt: new Date() }).where(eq(resellers.id, id))
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Reseller ${existing.name}: shop link reissued, the previous one stopped working`,
+    })
+    return publicToken
+  })
+}
+
+export async function setResellerLogo(
+  id: string,
+  logo: { data: Buffer; mimeType: string } | null,
+  actor: SessionUser,
+): Promise<void> {
+  const rows = await db.select({ name: resellers.name, deletedAt: resellers.deletedAt })
+    .from(resellers).where(eq(resellers.id, id)).limit(1)
+  const existing = rows[0]
+  if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+
+  await db.update(resellers).set({
+    logoData: logo?.data ?? null,
+    logoMime: logo?.mimeType ?? null,
+    logoByteSize: logo?.data.byteLength ?? null,
+    updatedAt: new Date(),
+  }).where(eq(resellers.id, id))
+
+  await recordAudit({
+    entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+    summary: `Reseller ${existing.name}: logo ${logo ? 'updated' : 'removed'}`,
+  })
+}
+
+export async function getResellerLogo(id: string) {
+  const rows = await db
+    .select({ data: resellers.logoData, mime: resellers.logoMime })
+    .from(resellers)
+    .where(and(eq(resellers.id, id), isNull(resellers.deletedAt)))
+    .limit(1)
+  const row = rows[0]
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
+}
+
+export async function deleteReseller(id: string, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+
+    await db.update(resellers).set({ deletedAt: new Date(), isActive: false }).where(eq(resellers.id, id))
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'DELETE', actorId: actor.id,
+      summary: `Reseller ${existing.name} removed, and their shop link stopped working`,
+    })
+  })
+}
+
+/** What a shop window shows about one watch. */
+export interface ShopWindowItem {
+  id: string
+  brandName: string
+  model: string
+  nickname: string | null
+  year: number | null
+  condition: string
+  boxPapers: string
+  productType: string
+  /** In the reseller's display currency, minor units. Null when unpriced. */
+  price: number | null
+  imageId: string | null
+}
+
+export interface ShopWindow {
+  reseller: {
+    id: string
+    name: string
+    headline: string | null
+    intro: string | null
+    contactName: string | null
+    contactEmail: string | null
+    contactPhone: string | null
+    website: string | null
+    brandColor: string
+    accentColor: string
+    displayCurrency: string
+    hasLogo: boolean
+  }
+  items: ShopWindowItem[]
+}
+
+/**
+ * The shop window behind one token.
+ *
+ * Deliberately not a filtered version of the inventory query. The columns a
+ * customer may see are named here and nothing else is fetched, so cost, margin,
+ * supplier, serial, location and owner cannot reach the page even by mistake —
+ * not hidden in the markup, not present in a payload somebody can read. The
+ * safest way to not leak a figure is to never select it.
+ *
+ * Returns null for an unknown, deleted or deactivated reseller, so a revoked
+ * link is indistinguishable from one that never existed.
+ */
+export async function getShopWindow(token: string, rates: RateTable): Promise<ShopWindow | null> {
+  if (!token || token.length < 16) return null
+
+  const rows = await db
+    .select({
+      id: resellers.id,
+      name: resellers.name,
+      displayName: resellers.displayName,
+      headline: resellers.headline,
+      intro: resellers.intro,
+      contactName: resellers.contactName,
+      contactEmail: resellers.contactEmail,
+      contactPhone: resellers.contactPhone,
+      website: resellers.website,
+      brandColor: resellers.brandColor,
+      accentColor: resellers.accentColor,
+      displayCurrency: resellers.displayCurrency,
+      hasLogo: sql<boolean>`${resellers.logoData} is not null`,
+    })
+    .from(resellers)
+    .where(and(
+      eq(resellers.publicToken, token),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .limit(1)
+
+  const reseller = rows[0]
+  if (!reseller) return null
+
+  const currency = reseller.displayCurrency
+
+  const stock = await db
+    .select({
+      id: watches.id,
+      brandName: brands.name,
+      model: watches.model,
+      nickname: watches.nickname,
+      year: watches.year,
+      condition: watches.condition,
+      boxPapers: watches.boxPapers,
+      productType: watches.productType,
+      estSaleGbp: watches.estSaleGbp,
+      imageId: sql<string | null>`(
+        SELECT i.id FROM watch_images i
+        WHERE i.watch_id = ${watches.id}
+        ORDER BY i.sort_order, i.created_at
+        LIMIT 1
+      )`,
+    })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    // Available means available. Reserved and sale-agreed stock is spoken for,
+    // and showing it is how a reseller promises a customer a watch that is
+    // already going to somebody else.
+    .where(and(eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+    .orderBy(asc(brands.name), asc(watches.model))
+
+  return {
+    reseller: {
+      id: reseller.id,
+      name: reseller.displayName || reseller.name,
+      headline: reseller.headline,
+      intro: reseller.intro,
+      contactName: reseller.contactName,
+      contactEmail: reseller.contactEmail,
+      contactPhone: reseller.contactPhone,
+      website: reseller.website,
+      brandColor: reseller.brandColor,
+      accentColor: reseller.accentColor,
+      displayCurrency: currency,
+      hasLogo: reseller.hasLogo,
+    },
+    items: stock.map((row) => ({
+      id: row.id,
+      brandName: row.brandName,
+      model: row.model,
+      nickname: row.nickname,
+      year: row.year,
+      condition: row.condition,
+      boxPapers: row.boxPapers,
+      productType: row.productType,
+      price: row.estSaleGbp === null ? null : fromBase(row.estSaleGbp, currency, rates),
+      imageId: row.imageId,
+    })),
+  }
+}
+
+/** Guard for logo uploads. */
+export function assertLogoAcceptable(mimeType: string, byteSize: number): void {
+  const allowed = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']
+  if (!allowed.includes(mimeType)) {
+    throw new ValidationError('A logo must be a PNG, JPEG, WebP or SVG file.')
+  }
+  if (byteSize > 2 * 1024 * 1024) {
+    throw new ValidationError('That logo is larger than 2MB. Please use a smaller file.')
+  }
+}

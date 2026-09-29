@@ -155,6 +155,58 @@ export const locations = pgTable(
 )
 
 /**
+ * A reseller, and the shop window they are given.
+ *
+ * They sell our stock to their own customers, so they need a live view of what
+ * is available and what it is priced at — and nothing else about the business.
+ * The branding is theirs so the page reads as their shop rather than ours.
+ *
+ * `publicToken` is the credential for that page. It is long, random and stored
+ * apart from the id so it can be rotated without breaking anything that refers
+ * to the reseller; rotating it revokes every link already handed out.
+ */
+export const resellers = pgTable(
+  'resellers',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    /** What their customers see, where it differs from the name we file them under. */
+    displayName: text('display_name'),
+    headline: text('headline'),
+    intro: text('intro'),
+
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
+    contactPhone: text('contact_phone'),
+    website: text('website'),
+
+    brandColor: text('brand_color').notNull().default('#04173A'),
+    accentColor: text('accent_color').notNull().default('#0F766E'),
+    logoMime: text('logo_mime'),
+    logoData: bytea('logo_data'),
+    logoByteSize: integer('logo_byte_size'),
+
+    publicToken: text('public_token').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    /** Our retail price, converted into what their customers are quoted in. */
+    displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('USD'),
+
+    notes: text('notes'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('resellers_slug_idx').on(t.slug),
+    tokenIdx: uniqueIndex('resellers_token_idx').on(t.publicToken),
+    activeIdx: index('resellers_active_idx').on(t.isActive),
+  }),
+)
+
+/**
  * Who owns a watch, as distinct from where it sits.
  *
  * Stock on the same shelf can belong to different entities — the trading
