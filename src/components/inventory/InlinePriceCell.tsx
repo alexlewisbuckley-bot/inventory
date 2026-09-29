@@ -9,7 +9,7 @@ import { formatMoneyInput, parseMoneyInput } from '@/lib/money'
 import { toBase } from '@/lib/currency'
 
 /**
- * Editable estimated sale price.
+ * Editable retail price.
  *
  * Setting a price was the single most repeated task in the product and cost
  * six interactions: find the row, open the drawer, click edit, wait for a
@@ -107,9 +107,9 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
       // The visible text is a number, so on its own the accessible name is
       // "£14,980" — which says nothing about what pressing it does.
       aria-label={baseMinor === null
-        ? 'Set the estimated sale price'
+        ? 'Set the retail price'
         : `Retail price ${money(baseMinor)}. Edit it.`}
-      title="Click to set the estimated sale price"
+      title="Click to set the retail price"
       className={cn(
         'group/price inline-flex items-center justify-end gap-1.5 rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',
         baseMinor === null && 'text-content-secondary',

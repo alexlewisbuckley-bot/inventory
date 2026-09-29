@@ -18,6 +18,16 @@ export interface StockExportRow {
   purchasePriceGbp: number
   estSaleGbp: number | null
   status: string
+  year: number | null
+  caseSizeMm: number | null
+  caseMaterial: string | null
+  dial: string | null
+  bracelet: string | null
+  movement: string | null
+  waterResistanceM: number | null
+  condition: string
+  boxPapers: string
+  description: string | null
 }
 
 /**
@@ -36,6 +46,8 @@ export async function buildStockWorkbook(
   currency: CurrencyCode,
   rates: RateTable,
   productTypeLabels: Record<string, string>,
+  conditionLabels: Record<string, string>,
+  boxPapersLabels: Record<string, string>,
 ): Promise<Buffer> {
   const columns: SheetColumn[] = IMPORT_COLUMNS.map((column) => ({
     key: column.key,
@@ -44,7 +56,8 @@ export async function buildStockWorkbook(
     kind: column.money
       ? 'money'
       : column.key === 'purchase date' ? 'date'
-        : column.key === 'stock no' ? 'integer' : 'text',
+        : ['stock no', 'year', 'case size', 'water resistance'].includes(column.key)
+          ? 'integer' : 'text',
     // The two columns the importer will not read back.
     muted: column.derived,
   }))
@@ -65,6 +78,18 @@ export async function buildStockWorkbook(
     'purchase date': row.purchaseDate,
     'purchase price': amount(row.purchasePriceGbp),
     retail: amount(row.estSaleGbp),
+    year: row.year,
+    'case size': row.caseSizeMm,
+    'case material': row.caseMaterial ?? '',
+    dial: row.dial ?? '',
+    bracelet: row.bracelet ?? '',
+    movement: row.movement ?? '',
+    'water resistance': row.waterResistanceM,
+    // Written as the words a person reads, and read back the same way, so the
+    // round trip does not make somebody learn the codes.
+    condition: conditionLabels[row.condition] ?? '',
+    'box papers': boxPapersLabels[row.boxPapers] ?? '',
+    description: row.description ?? '',
     'est profit': amount(row.estSaleGbp === null ? null : row.estSaleGbp - row.purchasePriceGbp),
     status: row.status,
   })), currency)

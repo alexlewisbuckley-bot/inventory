@@ -32,6 +32,16 @@ export interface WatchListItem {
   locationName: string
   ownerId: string | null
   ownerName: string | null
+  year: number | null
+  condition: string
+  boxPapers: string
+  caseSizeMm: number | null
+  caseMaterial: string | null
+  dial: string | null
+  bracelet: string | null
+  movement: string | null
+  waterResistanceM: number | null
+  description: string | null
   locationId: string
   purchaseDate: Date
   purchasePriceGbp: number
@@ -108,6 +118,16 @@ const listSelection = {
   locationId: locations.id,
   ownerId: watches.ownerId,
   ownerName: owners.name,
+  year: watches.year,
+  condition: watches.condition,
+  boxPapers: watches.boxPapers,
+  caseSizeMm: watches.caseSizeMm,
+  caseMaterial: watches.caseMaterial,
+  dial: watches.dial,
+  bracelet: watches.bracelet,
+  movement: watches.movement,
+  waterResistanceM: watches.waterResistanceM,
+  description: watches.description,
   soldAmountGbp: sales.saleAmountGbp,
   actualProfitGbp: sales.profitGbp,
   registerCheckStatus: watches.registerCheckStatus,

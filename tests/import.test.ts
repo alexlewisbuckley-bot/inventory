@@ -247,7 +247,13 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
     locationName: 'Own inventory',
     ownerName: 'Bluecroft Traders Limited',
   }
+  const EMPTY_SPEC = {
+    year: null, caseSizeMm: null, caseMaterial: null, dial: null, bracelet: null,
+    movement: null, waterResistanceM: null, condition: null, boxPapers: null,
+    description: null,
+  }
   const sheet = {
+    spec: EMPTY_SPEC,
     productType: 'WATCH' as const,
     brand: 'Rolex',
     model: '126711CHNR',

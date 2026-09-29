@@ -347,7 +347,7 @@ await journey('void a sale', async (page) => {
 // --- 5. Inline price edit ---------------------------------------------------
 await journey('inline price edit', async (page) => {
   await go(page, '/inventory')
-  const cell = page.locator('button[aria-label*="sale price" i]').first()
+  const cell = page.locator('button[aria-label*="retail price" i]').first()
   if (await cell.count() === 0) throw new Error('no editable price cell found')
   await cell.click()
   await page.waitForTimeout(400)

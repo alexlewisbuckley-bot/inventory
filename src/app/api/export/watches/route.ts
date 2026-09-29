@@ -8,7 +8,7 @@ import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { displayMoneyFor } from '@/server/services/display-currency'
-import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
+import { BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import { buildStockWorkbook } from '@/server/services/stock-export'
 import { db } from '@/server/db/client'
 import { watches } from '@/server/db/schema'
@@ -86,7 +86,10 @@ export async function GET(request: NextRequest) {
   // disagree about what a watch cost.
   const display = await displayMoneyFor(user.id)
   const stamp = new Date().toISOString().slice(0, 10)
-  const workbook = await buildStockWorkbook(rows, display.currency, display.rates, PRODUCT_TYPE_LABELS)
+  const workbook = await buildStockWorkbook(
+    rows, display.currency, display.rates,
+    PRODUCT_TYPE_LABELS, CONDITION_LABELS, BOX_PAPERS_LABELS,
+  )
 
   await recordAudit({
     entityType: 'Watch', entityId: 'bulk', action: 'EXPORT', actorId: user.id,

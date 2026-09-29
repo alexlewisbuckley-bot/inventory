@@ -71,6 +71,13 @@ export default async function EditWatchPage({ params }: { params: { id: string }
             estSaleCurrency: watch.estSaleAmount !== null ? watch.estSaleCurrency : BASE_CURRENCY,
             locationId: watch.locationId,
             ownerId: watch.ownerId ?? '',
+            caseSizeMm: watch.caseSizeMm ? String(watch.caseSizeMm) : '',
+            caseMaterial: watch.caseMaterial ?? '',
+            dial: watch.dial ?? '',
+            bracelet: watch.bracelet ?? '',
+            movement: watch.movement ?? '',
+            waterResistanceM: watch.waterResistanceM ? String(watch.waterResistanceM) : '',
+            description: watch.description ?? '',
             notes: watch.notes ?? '',
           }}
         />

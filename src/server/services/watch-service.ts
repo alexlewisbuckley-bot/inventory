@@ -100,6 +100,14 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       estSaleUsd: estGbp,
       locationId: input.locationId,
       ownerId: input.ownerId ?? null,
+      caseSizeMm: input.caseSizeMm ?? null,
+      caseMaterial: input.caseMaterial ?? null,
+      dial: input.dial ?? null,
+      bracelet: input.bracelet ?? null,
+      movement: input.movement ?? null,
+      waterResistanceM: input.waterResistanceM ?? null,
+      description: input.description ?? null,
+
       status: 'IN_STOCK',
       notes: input.notes ?? null,
       createdById: actor.id,
@@ -165,6 +173,16 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.supplierId !== undefined) patch.supplierId = input.supplierId
     if (input.locationId !== undefined) patch.locationId = input.locationId
     if (input.ownerId !== undefined) patch.ownerId = input.ownerId || null
+    // The specification. Written one at a time rather than through a loop, so
+    // each field keeps its own type instead of collapsing into whatever the
+    // union of them all happens to allow.
+    if (input.caseSizeMm !== undefined) patch.caseSizeMm = input.caseSizeMm ?? null
+    if (input.caseMaterial !== undefined) patch.caseMaterial = input.caseMaterial || null
+    if (input.dial !== undefined) patch.dial = input.dial || null
+    if (input.bracelet !== undefined) patch.bracelet = input.bracelet || null
+    if (input.movement !== undefined) patch.movement = input.movement || null
+    if (input.waterResistanceM !== undefined) patch.waterResistanceM = input.waterResistanceM ?? null
+    if (input.description !== undefined) patch.description = input.description || null
     if (input.notes !== undefined) patch.notes = input.notes
     if (input.status !== undefined) patch.status = input.status
     if (input.purchaseDate !== undefined) patch.purchaseDate = input.purchaseDate
@@ -200,6 +218,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     const changes = diff(existing, patch, [
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
+      'caseSizeMm', 'caseMaterial', 'dial', 'bracelet', 'movement', 'waterResistanceM', 'description',
     ])
 
     await recordAudit({

@@ -227,6 +227,15 @@ export interface ShopWindowItem {
   /** In the reseller's display currency, minor units. Null when unpriced. */
   price: number | null
   imageId: string | null
+  /** Every photograph, so the detail view can show more than the first. */
+  imageIds: string[]
+  caseSizeMm: number | null
+  caseMaterial: string | null
+  dial: string | null
+  bracelet: string | null
+  movement: string | null
+  waterResistanceM: number | null
+  description: string | null
 }
 
 export interface ShopWindow {
@@ -304,6 +313,19 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
       boxPapers: watches.boxPapers,
       productType: watches.productType,
       estSaleGbp: watches.estSaleGbp,
+      caseSizeMm: watches.caseSizeMm,
+      caseMaterial: watches.caseMaterial,
+      dial: watches.dial,
+      bracelet: watches.bracelet,
+      movement: watches.movement,
+      waterResistanceM: watches.waterResistanceM,
+      description: watches.description,
+      // Every photograph, in the order they were arranged, as an array. One
+      // query rather than one per watch: a shop window is a page of them.
+      imageIds: sql<string[]>`coalesce((
+        SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
+        FROM watch_images i WHERE i.watch_id = ${watches.id}
+      ), ARRAY[]::text[])`,
       imageId: sql<string | null>`(
         SELECT i.id FROM watch_images i
         WHERE i.watch_id = ${watches.id}
@@ -346,6 +368,14 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
       productType: row.productType,
       price: row.estSaleGbp === null ? null : fromBase(row.estSaleGbp, currency, rates),
       imageId: row.imageId,
+      imageIds: row.imageIds ?? [],
+      caseSizeMm: row.caseSizeMm,
+      caseMaterial: row.caseMaterial,
+      dial: row.dial,
+      bracelet: row.bracelet,
+      movement: row.movement,
+      waterResistanceM: row.waterResistanceM,
+      description: row.description,
     })),
   }
 }

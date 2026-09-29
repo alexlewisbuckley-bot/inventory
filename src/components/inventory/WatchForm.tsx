@@ -36,6 +36,13 @@ export interface WatchFormValues {
   estSaleCurrency: CurrencyCode
   locationId: string
   ownerId: string
+  caseSizeMm: string
+  caseMaterial: string
+  dial: string
+  bracelet: string
+  movement: string
+  waterResistanceM: string
+  description: string
   notes: string
 }
 
@@ -47,6 +54,8 @@ const EMPTY: WatchFormValues = {
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
   locationId: '', ownerId: '', notes: '',
+  caseSizeMm: '', caseMaterial: '', dial: '', bracelet: '', movement: '',
+  waterResistanceM: '', description: '',
 }
 
 /**
@@ -298,6 +307,46 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
                 name="year" label="Year" inputMode="numeric"
                 value={values.year} onChange={set('year')}
                 placeholder="e.g. 2021" error={state.errors?.year}
+              />
+
+              {/* The specification. This is what a reseller's customer reads,
+                  and the reason their page could previously say nothing about
+                  a watch beyond its reference and price. */}
+              <p className="sm:col-span-2 -mb-1 text-caption font-bold uppercase tracking-wider text-content-secondary">
+                Specification
+              </p>
+              <TextField
+                name="caseSizeMm" label="Case size (mm)" inputMode="numeric"
+                value={values.caseSizeMm} onChange={set('caseSizeMm')}
+                placeholder="e.g. 41" error={state.errors?.caseSizeMm}
+              />
+              <TextField
+                name="caseMaterial" label="Case material"
+                value={values.caseMaterial} onChange={set('caseMaterial')}
+                placeholder="e.g. Oystersteel"
+              />
+              <TextField
+                name="dial" label="Dial"
+                value={values.dial} onChange={set('dial')} placeholder="e.g. Black"
+              />
+              <TextField
+                name="bracelet" label="Bracelet or strap"
+                value={values.bracelet} onChange={set('bracelet')} placeholder="e.g. Oyster"
+              />
+              <TextField
+                name="movement" label="Movement"
+                value={values.movement} onChange={set('movement')} placeholder="e.g. Automatic"
+              />
+              <TextField
+                name="waterResistanceM" label="Water resistance (m)" inputMode="numeric"
+                value={values.waterResistanceM} onChange={set('waterResistanceM')}
+                placeholder="e.g. 100" error={state.errors?.waterResistanceM}
+              />
+              <TextareaField
+                name="description" label="Description" className="sm:col-span-2"
+                value={values.description} onChange={set('description')}
+                hint="Shown to customers on a reseller's page. Notes above stay internal."
+                placeholder="A sentence or two about this particular piece."
               />
             </div>
           )}

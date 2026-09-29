@@ -459,6 +459,20 @@ export const watches = pgTable(
     registerCheckRef: text('register_check_ref'),
     registerCheckNotes: text('register_check_notes'),
 
+    /**
+     * What the watch is, as against what it cost.
+     *
+     * All optional: stock is booked in at speed and the detail follows. A
+     * guessed case size on a reseller's page is worse than a blank one.
+     */
+    caseSizeMm: integer('case_size_mm'),
+    caseMaterial: text('case_material'),
+    dial: text('dial'),
+    bracelet: text('bracelet'),
+    movement: text('movement'),
+    waterResistanceM: integer('water_resistance_m'),
+    /** Customer-facing prose. `notes` stays internal. */
+    description: text('description'),
     notes: text('notes'),
     createdById: text('created_by_id').notNull().references(() => users.id),
 

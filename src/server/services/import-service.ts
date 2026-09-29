@@ -10,7 +10,8 @@ import { REQUIRED_KEYS, parseHeader } from '@/lib/import-columns'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import {
-  BASE_CURRENCY, CURRENCIES, DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
+  BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS, CURRENCIES,
+  DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
   type CurrencyCode, type ProductType,
 } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
@@ -66,6 +67,22 @@ export interface ImportRow {
   purchasePriceGbp: number | null
   /** Retail estimate in base major units. */
   estSaleGbp: number | null
+  /** The specification, as far as the sheet fills it in. */
+  spec: WatchSpec
+}
+
+/** What a watch is, as a sheet can describe it. */
+export interface WatchSpec {
+  year: number | null
+  caseSizeMm: number | null
+  caseMaterial: string | null
+  dial: string | null
+  bracelet: string | null
+  movement: string | null
+  waterResistanceM: number | null
+  condition: string | null
+  boxPapers: string | null
+  description: string | null
 }
 
 export interface ImportIssue {
@@ -175,6 +192,16 @@ export function diffAgainstStock(
     productType: string
     serial: string | null
     model: string
+    year?: number | null
+    caseSizeMm?: number | null
+    caseMaterial?: string | null
+    dial?: string | null
+    bracelet?: string | null
+    movement?: string | null
+    waterResistanceM?: number | null
+    condition?: string | null
+    boxPapers?: string | null
+    description?: string | null
     purchaseDate: Date
     purchasePriceGbp: number
     estSaleGbp: number | null
@@ -194,6 +221,7 @@ export function diffAgainstStock(
     purchaseDate: string
     purchasePriceGbp: number | null
     estSaleGbp: number | null
+    spec: WatchSpec
   },
   /**
    * Which optional columns the sheet actually has.
@@ -237,6 +265,25 @@ export function diffAgainstStock(
   // register wiped by an import they thought was about a price.
   if (present.owner && proposed.owner !== null && !sameText(existing.ownerName, proposed.owner)) {
     add('owner', 'Owner', existing.ownerName ?? 'Unassigned', proposed.owner)
+  }
+
+  // Specification. A blank cell is "not stated" rather than "clear it": these
+  // columns are filled in a few at a time, over weeks, and a sheet sent back
+  // with half of them still empty must not wipe the half already done.
+  const specFields: Array<[keyof typeof proposed.spec, string]> = [
+    ['year', 'Year'], ['caseSizeMm', 'Case size'], ['caseMaterial', 'Case material'],
+    ['dial', 'Dial'], ['bracelet', 'Bracelet'], ['movement', 'Movement'],
+    ['waterResistanceM', 'Water resistance'], ['condition', 'Condition'],
+    ['boxPapers', 'Box & papers'], ['description', 'Description'],
+  ]
+  for (const [field, label] of specFields) {
+    const want = proposed.spec[field]
+    if (want === null || want === undefined) continue
+    const have = (existing as unknown as Record<string, unknown>)[field] ?? null
+    const same = typeof want === 'string' && typeof have === 'string'
+      ? sameText(have, want)
+      : String(have ?? '') === String(want)
+    if (!same) add(field.toString(), label, String(have ?? '—'), String(want))
   }
 
   const existingDay = existing.purchaseDate.toISOString().slice(0, 10)
@@ -330,6 +377,19 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         purchaseDate: watches.purchaseDate,
         purchasePriceGbp: watches.purchasePriceGbp,
         estSaleGbp: watches.estSaleGbp,
+        year: watches.year,
+        caseSizeMm: watches.caseSizeMm,
+        caseMaterial: watches.caseMaterial,
+        dial: watches.dial,
+        bracelet: watches.bracelet,
+        movement: watches.movement,
+        waterResistanceM: watches.waterResistanceM,
+        // Loaded because it is compared. A field the diff checks but does not
+        // fetch reads as "changed" on every row, which turns a one-cell edit
+        // into an import that claims to rewrite the whole book.
+        condition: watches.condition,
+        boxPapers: watches.boxPapers,
+        description: watches.description,
         brandName: brands.name,
         supplierName: suppliers.name,
         locationName: locations.name,
@@ -472,12 +532,32 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
       }
     }
 
+    const whole = (name: string): number | null => {
+      const raw = value(name)
+      if (!raw) return null
+      const parsed = Number(raw.replace(/[^0-9.]/g, ''))
+      return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null
+    }
+    const spec: WatchSpec = {
+      year: whole('year'),
+      caseSizeMm: whole('case size'),
+      caseMaterial: value('case material') || null,
+      dial: value('dial') || null,
+      bracelet: value('bracelet') || null,
+      movement: value('movement') || null,
+      waterResistanceM: whole('water resistance'),
+      condition: matchLabel(value('condition'), CONDITION_LABELS),
+      boxPapers: matchLabel(value('box papers'), BOX_PAPERS_LABELS),
+      description: value('description') || null,
+    }
+
     if (!errored) {
       const proposed = {
         productType: productType ?? DEFAULT_PRODUCT_TYPE,
         brand, model, serial, supplier, location, owner,
         purchaseDate: date!.toISOString(),
         purchasePriceGbp: price, estSaleGbp: est,
+        spec,
       }
       const changes = matched ? diffAgainstStock(matched, proposed, present) : []
       const action: ImportAction = !matched ? 'CREATE' : changes.length > 0 ? 'UPDATE' : 'UNCHANGED'
@@ -637,6 +717,9 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
           patch.estSaleAmount = estGbp
           patch.estSaleCurrency = BASE_CURRENCY
         }
+        for (const [field, value] of Object.entries(row.spec)) {
+          if (value !== null && changed.has(field)) patch[field] = value
+        }
 
         await db.update(watches).set(patch).where(eq(watches.id, row.watchId))
         await recordAudit({
@@ -686,6 +769,18 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         estSaleCurrency: BASE_CURRENCY,
         locationId,
         ownerId,
+        // Whatever the sheet knew about the watch itself. Nulls fall through
+        // to the column defaults rather than overwriting them with nothing.
+        year: row.spec.year,
+        caseSizeMm: row.spec.caseSizeMm,
+        caseMaterial: row.spec.caseMaterial,
+        dial: row.spec.dial,
+        bracelet: row.spec.bracelet,
+        movement: row.spec.movement,
+        waterResistanceM: row.spec.waterResistanceM,
+        description: row.spec.description,
+        ...(row.spec.condition ? { condition: row.spec.condition as never } : {}),
+        ...(row.spec.boxPapers ? { boxPapers: row.spec.boxPapers as never } : {}),
         createdById: actor.id,
       })
       await db.insert(stockMovements).values({
@@ -713,6 +808,23 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
  * can say so and still import the row as a watch: a misspelt type is not a
  * reason to reject a watch whose price, supplier and date are all correct.
  */
+/**
+ * Turn a label back into the code it came from.
+ *
+ * The export writes "Full set" because that is what a person reads; a sheet
+ * coming home has to be able to say the same word back. Matched on the label
+ * and on the code, case-insensitively, so both a downloaded export and
+ * somebody typing "EXCELLENT" land in the same place.
+ */
+function matchLabel(raw: string, labels: Record<string, string>): string | null {
+  if (!raw) return null
+  const needle = raw.trim().toLowerCase()
+  for (const [code, label] of Object.entries(labels)) {
+    if (code.toLowerCase() === needle || label.toLowerCase() === needle) return code
+  }
+  return null
+}
+
 export function parseProductType(raw: string): ProductType | null {
   const cleaned = raw.trim().toLowerCase()
   if (!cleaned) return DEFAULT_PRODUCT_TYPE

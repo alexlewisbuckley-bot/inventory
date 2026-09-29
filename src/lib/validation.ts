@@ -61,6 +61,18 @@ const optionalMoney = (label: string) =>
   ).optional()
 
 const trimmed = z.string().trim()
+/**
+ * A whole number that may be left blank.
+ *
+ * The null branch is tried first for the same reason `optionalMoney` does it:
+ * `z.coerce.number()` turns '' into 0, and a case size of 0mm reads as a fact.
+ */
+const optionalWhole = (label: string) =>
+  z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : value),
+    z.union([z.null(), z.coerce.number({ invalid_type_error: `${label} must be a number.` }).int().positive().max(100_000)]),
+  ).optional().transform((v) => (v === undefined ? null : v))
+
 const optionalText = (max = 500) =>
   z.union([trimmed.max(max), z.literal('')]).optional().transform((v) => (v ? v : null))
 
@@ -144,6 +156,18 @@ export const watchCreateSchema = z.object({
    * whichever owner is first in the list.
    */
   ownerId: optionalId,
+  /**
+   * The specification. Every field optional, because a watch is booked in from
+   * an invoice long before anybody has it in hand to measure.
+   */
+  caseSizeMm: optionalWhole('Case size'),
+  caseMaterial: optionalText(60),
+  dial: optionalText(60),
+  bracelet: optionalText(60),
+  movement: optionalText(60),
+  waterResistanceM: optionalWhole('Water resistance'),
+  /** Read by a customer on a reseller's page; `notes` stays internal. */
+  description: optionalText(1200),
   notes: optionalText(2000),
 })
 export type WatchCreateInput = z.infer<typeof watchCreateSchema>
