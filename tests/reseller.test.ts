@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { newPublicToken } from '@/server/services/reseller-service'
-import { resellerSchema, fieldErrors } from '@/lib/validation'
+import { navLinkSchema, parseNavLinks, resellerSchema, fieldErrors } from '@/lib/validation'
 
 /**
  * The shop-window token.
@@ -74,5 +74,61 @@ describe('reseller branding', () => {
 
   it('rejects a contact email that is not one', () => {
     expect(resellerSchema.safeParse({ ...base, contactEmail: 'not-an-email' }).success).toBe(false)
+  })
+})
+
+/**
+ * Navigation links.
+ *
+ * These become anchors on a page somebody else's customers visit, so the
+ * scheme is checked where the link is written rather than escaped wherever it
+ * is rendered. A "javascript:" URL pasted out of somewhere is a script those
+ * customers would run.
+ */
+describe('reseller navigation links', () => {
+  const link = (href: string) => navLinkSchema.safeParse({ label: 'Home', href })
+
+  it('accepts an ordinary website link', () => {
+    expect(link('https://example.com').success).toBe(true)
+    expect(link('http://example.com/collection?a=1').success).toBe(true)
+  })
+
+  it('refuses anything that is not http or https', () => {
+    for (const href of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox',
+      'file:///etc/passwd',
+      '/relative/path',
+      'example.com',
+    ]) {
+      expect(link(href).success, href).toBe(false)
+    }
+  })
+
+  it('requires a label, so a link is never an empty target', () => {
+    expect(navLinkSchema.safeParse({ label: '', href: 'https://example.com' }).success).toBe(false)
+  })
+
+  describe('reading them back', () => {
+    it('returns nothing for a reseller who set none', () => {
+      expect(parseNavLinks(null)).toEqual([])
+      expect(parseNavLinks('')).toEqual([])
+    })
+
+    it('survives whatever is in the column rather than taking the page down', () => {
+      // The column is written by this application, but a page that 500s
+      // because a row holds something unexpected is worse than one that
+      // renders without its navigation.
+      expect(parseNavLinks('not json')).toEqual([])
+      expect(parseNavLinks('{"label":"Home"}')).toEqual([])
+      expect(parseNavLinks('[{"label":"Home","href":"javascript:alert(1)"}]')).toEqual([])
+    })
+
+    it('reads back what was stored', () => {
+      const stored = JSON.stringify([{ label: 'Home', href: 'https://example.com' }])
+      expect(parseNavLinks(stored)).toEqual([{ label: 'Home', href: 'https://example.com' }])
+    })
   })
 })

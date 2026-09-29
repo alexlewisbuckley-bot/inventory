@@ -21,7 +21,16 @@ function toState(error: unknown, fallback: string): ActionState {
 export async function saveResellerAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('reseller:manage')
   const id = formData.get('id')?.toString() || null
+  // Collected as parallel label/href rows from the form, dropping any row
+  // where either half is blank: a half-filled row is somebody who started
+  // typing and thought better of it, not a link.
+  const navLinks = [0, 1, 2, 3, 4].map((i) => ({
+    label: (formData.get(`navLabel${i}`) ?? '').toString().trim(),
+    href: (formData.get(`navHref${i}`) ?? '').toString().trim(),
+  })).filter((link) => link.label && link.href)
+
   const parsed = resellerSchema.safeParse({
+    navLinks,
     name: formData.get('name'),
     displayName: formData.get('displayName'),
     headline: formData.get('headline'),

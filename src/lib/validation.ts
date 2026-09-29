@@ -279,7 +279,36 @@ export const supplierSchema = z.object({
 const hexColour = (label: string) =>
   trimmed.regex(/^#[0-9a-fA-F]{6}$/, `${label} must be a hex colour such as #04173A.`)
 
+/**
+ * A link the reseller puts in their own navigation.
+ *
+ * The href becomes an anchor on a public page, so the scheme is checked rather
+ * than assumed: "javascript:" pasted out of somewhere is a script somebody
+ * else's customers would run, and that has to be refused where it is written,
+ * not escaped wherever it is rendered.
+ */
+export const navLinkSchema = z.object({
+  label: trimmed.min(1).max(40),
+  href: trimmed.max(300).refine(
+    (value) => /^https?:\/\//i.test(value),
+    'A link must start with http:// or https://',
+  ),
+})
+export type NavLink = z.infer<typeof navLinkSchema>
+
+/** Parse the stored JSON back into links, discarding anything malformed. */
+export function parseNavLinks(raw: string | null): NavLink[] {
+  if (!raw) return []
+  try {
+    const parsed = z.array(navLinkSchema).max(6).safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : []
+  } catch {
+    return []
+  }
+}
+
 export const resellerSchema = z.object({
+  navLinks: z.array(navLinkSchema).max(6).default([]),
   name: trimmed.min(1, 'Reseller name is required.').max(120),
   displayName: optionalText(120),
   headline: optionalText(160),

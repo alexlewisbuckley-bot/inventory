@@ -187,6 +187,8 @@ export const resellers = pgTable(
     logoData: bytea('logo_data'),
     logoByteSize: integer('logo_byte_size'),
 
+    /** Their own site's top-level links, as a JSON array of {label, href}. */
+    navLinks: text('nav_links'),
     publicToken: text('public_token').notNull(),
     isActive: boolean('is_active').notNull().default(true),
     /** Our retail price, converted into what their customers are quoted in. */

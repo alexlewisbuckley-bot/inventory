@@ -12,6 +12,7 @@ import {
 } from '@/app/actions/resellers'
 import type { ActionState } from '@/app/actions/auth'
 import { CURRENCIES } from '@/lib/enums'
+import { parseNavLinks } from '@/lib/validation'
 
 export interface ResellerRow {
   id: string
@@ -29,6 +30,7 @@ export interface ResellerRow {
   publicToken: string
   isActive: boolean
   notes: string | null
+  navLinks: string | null
   hasLogo: boolean
   availableCount: number
 }
@@ -262,6 +264,7 @@ function ResellerFormModal({ open, reseller, onClose, onSaved }: {
 }) {
   const [state, action] = useFormState(saveResellerAction, INITIAL)
   const [wasOpen, setWasOpen] = useState(false)
+  const navLinks = parseNavLinks(reseller?.navLinks ?? null)
 
   if (state.ok && open && !wasOpen) {
     setWasOpen(true)
@@ -306,6 +309,39 @@ function ResellerFormModal({ open, reseller, onClose, onSaved }: {
         <TextField name="contactPhone" label="Contact phone" defaultValue={reseller?.contactPhone ?? ''} />
         <TextField name="website" label="Their website" className="sm:col-span-2"
           defaultValue={reseller?.website ?? ''} placeholder="https://" />
+        <fieldset className="sm:col-span-2">
+          <legend className="text-small font-bold text-content-primary">Their navigation</legend>
+          <p className="mt-0.5 text-caption text-content-secondary">
+            Links back to their own website, shown along the top of their shop. Leave a row blank to skip it.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            {[0, 1, 2, 3, 4].map((index) => {
+              const link = navLinks[index]
+              return (
+                <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                  <input
+                    name={`navLabel${index}`}
+                    defaultValue={link?.label ?? ''}
+                    placeholder={index === 0 ? 'Home' : 'Label'}
+                    maxLength={40}
+                    className="h-10 rounded-sm border border-line-subtle bg-surface-raised px-3 text-small text-content-primary placeholder:text-content-muted"
+                  />
+                  <input
+                    name={`navHref${index}`}
+                    defaultValue={link?.href ?? ''}
+                    placeholder="https://their-site.com"
+                    maxLength={300}
+                    className="h-10 rounded-sm border border-line-subtle bg-surface-raised px-3 font-mono text-caption text-content-primary placeholder:text-content-muted"
+                  />
+                </div>
+              )
+            })}
+          </div>
+          {state.errors?.navLinks && (
+            <p className="mt-1.5 text-caption text-state-danger">{state.errors.navLinks}</p>
+          )}
+        </fieldset>
+
         <TextareaField name="notes" label="Internal notes" className="sm:col-span-2"
           defaultValue={reseller?.notes ?? ''} hint="Never shown on their page." />
         <div className="sm:col-span-2">

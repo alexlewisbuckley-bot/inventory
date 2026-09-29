@@ -8,6 +8,7 @@ import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { fromBase, type RateTable } from '@/lib/currency'
+import { parseNavLinks, type NavLink } from '@/lib/validation'
 import type { resellerSchema } from '@/lib/validation'
 import type { SessionUser } from '../auth/session'
 
@@ -44,6 +45,7 @@ export async function listResellers() {
       publicToken: resellers.publicToken,
       isActive: resellers.isActive,
       notes: resellers.notes,
+      navLinks: resellers.navLinks,
       hasLogo: sql<boolean>`${resellers.logoData} is not null`,
       updatedAt: resellers.updatedAt,
     })
@@ -73,13 +75,17 @@ export async function createReseller(input: ResellerInput, actor: SessionUser): 
 
     const highest = await db.select({ max: sql<number>`coalesce(max(${resellers.sortOrder}), 0)` }).from(resellers)
     const id = newId('rsl')
+    const { navLinks, ...rest } = input
     await db.insert(resellers).values({
       id,
       slug,
       publicToken: newPublicToken(),
       sortOrder: Number(highest[0]?.max ?? 0) + 1,
       createdById: actor.id,
-      ...input,
+      ...rest,
+      // Serialised at the boundary: validated objects go in, a string is what
+      // the column holds.
+      navLinks: navLinks && navLinks.length > 0 ? JSON.stringify(navLinks) : null,
     })
     await recordAudit({
       entityType: 'Reseller', entityId: id, action: 'CREATE', actorId: actor.id,
@@ -95,17 +101,24 @@ export async function updateReseller(id: string, input: Partial<ResellerInput>, 
     const existing = rows[0]
     if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
 
-    const patch: Record<string, unknown> = { ...input, updatedAt: new Date() }
+    const { navLinks, ...rest } = input
+    const patch: Record<string, unknown> = { ...rest, updatedAt: new Date() }
     if (input.name && input.name !== existing.name) patch.slug = slugify(input.name)
+    if (navLinks !== undefined) {
+      patch.navLinks = navLinks.length > 0 ? JSON.stringify(navLinks) : null
+    }
 
     await db.update(resellers).set(patch).where(eq(resellers.id, id))
     await recordAudit({
       entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
       summary: `Reseller ${existing.name} updated`,
-      changes: diff(existing, input, [
+      // Compared against the patch rather than the input, so the navigation
+      // reads as the string that was stored rather than as an object the
+      // audit log cannot render.
+      changes: diff(existing, patch, [
         'name', 'displayName', 'headline', 'intro', 'contactName', 'contactEmail',
         'contactPhone', 'website', 'brandColor', 'accentColor', 'displayCurrency',
-        'notes', 'isActive',
+        'navLinks', 'notes', 'isActive',
       ]),
     })
   })
@@ -210,6 +223,7 @@ export interface ShopWindow {
     brandColor: string
     accentColor: string
     displayCurrency: string
+    navLinks: NavLink[]
     hasLogo: boolean
   }
   items: ShopWindowItem[]
@@ -244,6 +258,7 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
       brandColor: resellers.brandColor,
       accentColor: resellers.accentColor,
       displayCurrency: resellers.displayCurrency,
+      navLinks: resellers.navLinks,
       hasLogo: sql<boolean>`${resellers.logoData} is not null`,
     })
     .from(resellers)
@@ -298,6 +313,7 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
       brandColor: reseller.brandColor,
       accentColor: reseller.accentColor,
       displayCurrency: currency,
+      navLinks: parseNavLinks(reseller.navLinks),
       hasLogo: reseller.hasLogo,
     },
     items: stock.map((row) => ({

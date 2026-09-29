@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getShopWindow } from '@/server/services/reseller-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { ShopWindow } from '@/components/shop/ShopWindow'
+import { ShopHeader } from '@/components/shop/ShopHeader'
 import type { CurrencyCode } from '@/lib/enums'
 
 /**
@@ -47,56 +48,48 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
         ['--accent' as string]: reseller.accentColor,
       }}
     >
-      <header className="relative overflow-hidden text-white" style={{ backgroundColor: 'var(--brand)' }}>
-        {/* Depth without a second colour choice to get wrong: the reseller
-            picks one brand colour and the banner shades itself from it. */}
+      <ShopHeader
+        name={reseller.name}
+        token={params.token}
+        hasLogo={reseller.hasLogo}
+        links={reseller.navLinks}
+        website={reseller.website}
+      />
+
+      {/* A band, not a hero. It says what this page is and how much is on it,
+          then gets out of the way — the stock is what somebody came for, and
+          the previous version pushed all of it below the fold. */}
+      <section className="relative overflow-hidden text-white" style={{ backgroundColor: 'var(--brand)' }}>
         <div
-          className="pointer-events-none absolute inset-0 opacity-90"
-          style={{ background: 'radial-gradient(120% 140% at 15% -20%, rgba(255,255,255,0.22), transparent 60%)' }}
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(90% 160% at 12% -40%, rgba(255,255,255,0.20), transparent 62%)' }}
           aria-hidden
         />
-        <div className="relative mx-auto max-w-7xl px-6 py-12 sm:px-10 sm:py-16">
-          {reseller.hasLogo ? (
-            /* On a white plate, because a logo is drawn for a light background
-               far more often than a dark one, and a dark-on-dark wordmark is
-               the commonest way a page like this looks broken. */
-            <span className="mb-7 inline-flex items-center justify-center rounded-xl bg-white px-5 py-3.5 shadow-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/s/${params.token}/logo`}
-                alt={reseller.name}
-                className="h-11 w-auto max-w-[240px] object-contain"
-              />
-            </span>
-          ) : (
-            <p className="mb-5 text-sm font-bold uppercase tracking-[0.22em] text-white/70">
-              {reseller.name}
-            </p>
-          )}
-
-          <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight sm:text-5xl">
-            {reseller.headline || 'Available now'}
-          </h1>
-          {reseller.intro && (
-            <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/75 sm:text-lg">
-              {reseller.intro}
-            </p>
-          )}
-
-          <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm">
+        <div className="relative mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-x-10 gap-y-4 px-6 py-8 sm:px-10 sm:py-10">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-extrabold leading-tight tracking-tight sm:text-[32px]">
+              {reseller.headline || 'Available now'}
+            </h1>
+            {reseller.intro && (
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/75 sm:text-base">
+                {reseller.intro}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 text-sm">
             <span className="inline-flex items-baseline gap-2">
-              <span className="text-2xl font-extrabold tabular-nums">{items.length}</span>
-              <span className="text-white/70">{items.length === 1 ? 'piece available' : 'pieces available'}</span>
+              <span className="text-xl font-extrabold tabular-nums">{items.length}</span>
+              <span className="text-white/70">{items.length === 1 ? 'piece' : 'pieces'}</span>
             </span>
             {priced > 0 && (
               <span className="inline-flex items-baseline gap-2">
-                <span className="text-2xl font-extrabold tabular-nums">{priced}</span>
+                <span className="text-xl font-extrabold tabular-nums">{priced}</span>
                 <span className="text-white/70">priced in {currency}</span>
               </span>
             )}
           </div>
         </div>
-      </header>
+      </section>
 
       <ShopWindow
         items={items}
@@ -121,6 +114,21 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
                 {reseller.website && <a href={reseller.website} target="_blank" rel="noreferrer noopener">Website</a>}
               </div>
             </>
+          )}
+          {reseller.navLinks.length > 0 && (
+            <nav className="mt-6 flex flex-wrap gap-x-7 gap-y-2" aria-label="More from this shop">
+              {reseller.navLinks.map((link) => (
+                <a
+                  key={`${link.label}-${link.href}`}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-sm font-semibold text-[#374151] hover:underline"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
           )}
           <p className="mt-8 text-xs text-[#9CA3AF]">
             Availability and prices are live and can change without notice. Shown in {currency}.
