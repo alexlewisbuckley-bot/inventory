@@ -1,13 +1,14 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, count, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
-import { brands, resellers, watchImages, watches } from '../db/schema'
+import { brands, resellerEnquiries, resellers, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { fromBase, type RateTable } from '@/lib/currency'
+import { sendMail } from './mailer'
 import { parseNavLinks, type NavLink } from '@/lib/validation'
 import type { resellerSchema } from '@/lib/validation'
 import type { SessionUser } from '../auth/session'
@@ -439,4 +440,117 @@ export async function getShopLogo(token: string) {
   const row = rows[0]
   if (!row?.data || !row.mime) return null
   return { data: row.data, mimeType: row.mime }
+}
+
+/**
+ * Record an enquiry, then try to deliver it.
+ *
+ * In that order, and deliberately. The row is the thing that must not be lost:
+ * a customer who fills in a form has done their part, and whether a mail
+ * provider is configured on this deployment is not their problem. The send is
+ * attempted afterwards and its outcome written back, so an enquiry nobody
+ * received is visible in the application rather than gone.
+ *
+ * The token is checked here rather than trusted from the caller: this is the
+ * one write in the application reachable without a session.
+ */
+export async function recordEnquiry(
+  token: string,
+  watchId: string,
+  input: { name: string; email: string; phone: string | null; message: string | null },
+): Promise<{ ok: boolean; delivered: boolean }> {
+  if (!token || token.length < 16) return { ok: false, delivered: false }
+
+  const rows = await db
+    .select({
+      id: resellers.id,
+      name: resellers.name,
+      displayName: resellers.displayName,
+      contactEmail: resellers.contactEmail,
+    })
+    .from(resellers)
+    .where(and(
+      eq(resellers.publicToken, token),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .limit(1)
+  const reseller = rows[0]
+  if (!reseller) return { ok: false, delivered: false }
+
+  // The piece has to be one this shop is actually showing, or an id from
+  // anywhere would attach an enquiry to any watch in the book.
+  const watches_ = await db
+    .select({ id: watches.id, model: watches.model, nickname: watches.nickname, brandId: watches.brandId })
+    .from(watches)
+    .where(and(eq(watches.id, watchId), eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+    .limit(1)
+  const watch = watches_[0]
+  if (!watch) return { ok: false, delivered: false }
+
+  const brand = await db.select({ name: brands.name }).from(brands)
+    .where(eq(brands.id, watch.brandId)).limit(1)
+  const subject = `${brand[0]?.name ?? ''} ${watch.nickname || watch.model}`.trim()
+
+  const id = newId('enq')
+  await db.insert(resellerEnquiries).values({
+    id,
+    resellerId: reseller.id,
+    watchId: watch.id,
+    subject,
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    message: input.message,
+  })
+
+  if (!reseller.contactEmail) {
+    await db.update(resellerEnquiries)
+      .set({ delivery: 'FAILED', deliveryNote: 'This reseller has no contact email set, so there was nowhere to send it.' })
+      .where(eq(resellerEnquiries.id, id))
+    return { ok: true, delivered: false }
+  }
+
+  const result = await sendMail({
+    to: reseller.contactEmail,
+    replyTo: input.email,
+    subject: `Enquiry: ${subject}`,
+    text: [
+      `${input.name} has enquired about ${subject}.`,
+      '',
+      `Reference: ${watch.model}`,
+      `Email: ${input.email}`,
+      input.phone ? `Phone: ${input.phone}` : null,
+      '',
+      input.message ? input.message : '(No message left.)',
+      '',
+      '—',
+      `Sent from the ${reseller.displayName || reseller.name} stock list.`,
+    ].filter((line) => line !== null).join('\n'),
+  })
+
+  await db.update(resellerEnquiries)
+    .set({ delivery: result.sent ? 'SENT' : 'FAILED', deliveryNote: result.note })
+    .where(eq(resellerEnquiries.id, id))
+
+  return { ok: true, delivered: result.sent }
+}
+
+/** Enquiries for the management page, newest first. */
+export async function listEnquiries(resellerId: string, limit = 50) {
+  return db
+    .select()
+    .from(resellerEnquiries)
+    .where(eq(resellerEnquiries.resellerId, resellerId))
+    .orderBy(desc(resellerEnquiries.createdAt))
+    .limit(limit)
+}
+
+/** How many enquiries each reseller has taken. */
+export async function enquiryCounts(): Promise<Record<string, number>> {
+  const rows = await db
+    .select({ resellerId: resellerEnquiries.resellerId, value: count() })
+    .from(resellerEnquiries)
+    .groupBy(resellerEnquiries.resellerId)
+  return Object.fromEntries(rows.map((row) => [row.resellerId, Number(row.value)]))
 }

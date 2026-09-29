@@ -1,5 +1,8 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import { useFormState, useFormStatus } from 'react-dom'
+import { submitEnquiryAction } from '@/app/actions/enquiries'
+import type { ActionState } from '@/app/actions/auth'
 import { ArrowRight, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import {
@@ -262,26 +265,72 @@ function Choice({ label, value, onChange, options }: {
   )
 }
 
+/**
+ * What came with it, as two facts rather than one phrase.
+ *
+ * "Full set" reads as a single claim; a buyer is weighing two separate ones,
+ * and "box only" tells them nothing about papers unless they already know the
+ * vocabulary. Ticked and unticked side by side answers both at a glance.
+ * Unrecorded stays absent — an unticked box is a statement that it is missing.
+ */
+function provenanceOf(item: ShopItem): { box: boolean; papers: boolean } | null {
+  switch (item.boxPapers as BoxPapers) {
+    case 'FULL_SET': return { box: true, papers: true }
+    case 'BOX_ONLY': return { box: true, papers: false }
+    case 'PAPERS_ONLY': return { box: false, papers: true }
+    case 'WATCH_ONLY': return { box: false, papers: false }
+    default: return null
+  }
+}
+
+function Provenance({ label, has }: { label: string; has: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 border px-2 py-[3px] text-[10px] uppercase tracking-[0.14em]"
+      style={{
+        borderColor: has ? 'var(--accent)' : 'var(--hair)',
+        color: has ? 'var(--ink)' : 'var(--ink-mute)',
+      }}
+    >
+      <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 shrink-0 fill-none stroke-current stroke-[1.6]" aria-hidden>
+        {has ? (
+          <path d="M1 5l2.6 2.6L9 1.8" strokeLinecap="round" strokeLinejoin="round" />
+        ) : (
+          <path d="M2 2l6 6M8 2l-6 6" strokeLinecap="round" />
+        )}
+      </svg>
+      {label}
+      <span className="sr-only">{has ? ' included' : ' not included'}</span>
+    </span>
+  )
+}
+
+/** One fact, termed. Aligned so the values line up down a column of cards. */
+function Fact({ term, value }: { term: string; value: string }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-[74px] shrink-0 text-[color:var(--ink-mute)]">{term}</dt>
+      <dd className="shop-num truncate text-[color:var(--ink-soft)]">{value}</dd>
+    </div>
+  )
+}
+
 function ShopCard({ item, token, currency, onOpen }: {
   item: ShopItem
   token: string
   currency: CurrencyCode
   onOpen: () => void
 }) {
-  // A line of the things that decide whether it is the piece somebody wants.
-  // Whatever is unknown is absent rather than labelled as unknown.
-  const facts = [
-    item.year ? String(item.year) : null,
-    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
-    item.caseMaterial,
-    item.dial ? `${item.dial} dial` : null,
-  ].filter(Boolean).slice(0, 3) as string[]
-
-  const set = setOf(item)
-  const condition = conditionOf(item)
+  const provenance = provenanceOf(item)
 
   return (
     <li className="flex">
+      {/*
+        One target for the whole card, so the call to action is a span rather
+        than a button: a button inside a button is invalid, and splitting the
+        card into two hit areas would mean the photograph and the words did
+        different things.
+      */}
       <button
         type="button"
         onClick={onOpen}
@@ -292,7 +341,7 @@ function ShopCard({ item, token, currency, onOpen }: {
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={`/s/${token}/image/${item.imageId}`}
-              alt={`${item.brandName} ${item.model}`}
+              alt={`${item.brandName} ${item.nickname || item.model}`}
               loading="lazy"
               className="h-full w-full object-contain p-6 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06] sm:p-8"
             />
@@ -302,13 +351,6 @@ function ShopCard({ item, token, currency, onOpen }: {
             </div>
           )}
 
-          {/* Provenance worth seeing before you click. A full set is the single
-              fact that most changes what a piece is worth. */}
-          {set === 'Full set' && (
-            <span className="shop-eyebrow absolute left-4 top-4 bg-white/90 px-2.5 py-1 text-[color:var(--ink)] backdrop-blur">
-              Full set
-            </span>
-          )}
           {item.imageIds.length > 1 && (
             <span className="absolute bottom-4 right-4 text-[11px] tabular-nums text-[color:var(--ink-mute)]">
               {item.imageIds.length} photographs
@@ -317,41 +359,52 @@ function ShopCard({ item, token, currency, onOpen }: {
         </div>
 
         {/*
-          One block, with its own padding, so the rule beneath it sits the same
-          distance from the text on every card. Spacing hung off the last
-          element meant a piece with no specification line ended up with its
-          rule tight against the reference, and one with them had a wider gap —
-          a row of cards that each breathed differently.
+          Brand, then the piece, then what came with it, then the numbers that
+          identify it — read in the order somebody shopping actually asks. The
+          price sits on the brand line: it is the other thing they are scanning
+          for, and pinning it to the top keeps it in the same place on every
+          card whether or not the specification beneath runs long.
         */}
-        <div className="pb-5 pt-5">
-          <p className="shop-eyebrow text-[color:var(--ink-mute)]">{item.brandName}</p>
+        <div className="flex flex-1 flex-col pt-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
+            {item.price === null ? (
+              <span className="shop-serif shrink-0 text-[15px] italic leading-none text-[color:var(--ink-soft)]">
+                On request
+              </span>
+            ) : (
+              <span className="shop-serif shop-num shrink-0 text-[18px] font-medium leading-none">
+                {formatCurrency(item.price, currency, { decimals: false })}
+              </span>
+            )}
+          </div>
 
-          <h2 className="shop-serif shop-num mt-2.5 text-[21px] font-medium leading-[1.2] sm:text-[23px]">
+          <h2 className="shop-serif shop-num mt-2 text-[21px] font-medium leading-[1.2] sm:text-[23px]">
             <span className="shop-underline">{item.nickname || item.model}</span>
           </h2>
 
-          {item.nickname && (
-            <p className="mt-1.5 text-[12.5px] text-[color:var(--ink-mute)]">Ref. {item.model}</p>
+          {provenance && (
+            <div className="mt-3.5 flex flex-wrap items-center gap-2">
+              <Provenance label="Box" has={provenance.box} />
+              <Provenance label="Papers" has={provenance.papers} />
+            </div>
           )}
 
-          {facts.length > 0 && (
-            <p className="mt-3 text-[12.5px] leading-[1.55] text-[color:var(--ink-soft)]">
-              {facts.join(' · ')}
-            </p>
-          )}
-        </div>
+          {/* A piece with no model name is headed by its reference, and
+              printing it again under "Reference" is the same string twice. */}
+          <dl className="mt-4 flex flex-col gap-1.5 text-[12.5px] leading-[1.5]">
+            {item.nickname && <Fact term="Reference" value={item.model} />}
+            {item.year && <Fact term="Year" value={String(item.year)} />}
+          </dl>
 
-        <div className="mt-auto flex items-baseline justify-between gap-4 border-t border-[color:var(--hair)] pt-4">
-          {item.price === null ? (
-            <span className="shop-serif text-[17px] italic text-[color:var(--ink-soft)]">Price on request</span>
-          ) : (
-            <span className="shop-serif shop-num text-[20px] font-medium">
-              {formatCurrency(item.price, currency, { decimals: false })}
+          {/* Pinned to the foot so the rule and the action sit at the same
+              height across a row, however much specification each card has. */}
+          <span className="mt-auto pt-5">
+            <span className="shop-cta flex h-10 w-full items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]">
+              Find out more
+              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" aria-hidden />
             </span>
-          )}
-          {condition && (
-            <span className="text-[12px] text-[color:var(--ink-mute)]">{condition}</span>
-          )}
+          </span>
         </div>
       </button>
     </li>
@@ -376,6 +429,7 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
 }) {
   const images = item.imageIds.length > 0 ? item.imageIds : item.imageId ? [item.imageId] : []
   const [index, setIndex] = useState(0)
+  const [enquiring, setEnquiring] = useState(false)
   const spec = specOf(item)
 
   useEffect(() => {
@@ -394,12 +448,6 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
     }
   }, [onClose, images.length])
 
-  const subject = encodeURIComponent(`Enquiry: ${item.brandName} ${item.model}`)
-  const body = encodeURIComponent(
-    `Hello,\n\nI would like to enquire about the ${item.brandName} ${item.nickname || item.model}`
-    + `${item.year ? ` (${item.year})` : ''}, reference ${item.model}.\n\nThank you.`,
-  )
-
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#14161a]/45 backdrop-blur-sm sm:p-8">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close" onClick={onClose} />
@@ -408,7 +456,7 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
         role="dialog"
         aria-modal="true"
         aria-label={`${item.brandName} ${item.model}`}
-        className="relative w-full max-w-6xl bg-white shadow-[0_40px_120px_-20px_rgba(20,22,26,0.4)]"
+        className="relative w-full max-w-5xl bg-white shadow-[0_40px_120px_-20px_rgba(20,22,26,0.4)]"
       >
         <button
           type="button"
@@ -419,7 +467,7 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
           <X className="h-5 w-5" />
         </button>
 
-        <div className="grid md:grid-cols-[1.15fr_1fr]">
+        <div className="grid md:grid-cols-[1fr_1fr]">
           <div className="bg-[color:var(--plinth)]">
             <div className="relative aspect-square">
               {images.length > 0 ? (
@@ -427,7 +475,7 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
                 <img
                   src={`/s/${token}/image/${images[index]}`}
                   alt={`${item.brandName} ${item.model}`}
-                  className="h-full w-full object-contain p-14"
+                  className="h-full w-full object-contain p-10"
                 />
               ) : (
                 <div className="flex h-full items-center justify-center">
@@ -475,19 +523,26 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
             )}
           </div>
 
-          <div className="flex flex-col p-8 sm:p-12">
+          <div className="flex flex-col p-7 sm:p-9">
             {hasLogo && (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={`/s/${token}/logo`}
                 alt={shopName}
-                className="mb-7 h-8 w-auto max-w-[150px] object-contain"
+                /*
+                 * self-start, because this sits in a flex column: without it
+                 * the image stretches to the full width of the panel and
+                 * object-contain centres the artwork inside that box, so the
+                 * mark floated in the middle while every line under it started
+                 * at the left margin.
+                 */
+                className="mb-5 h-7 w-auto max-w-[130px] self-start object-contain object-left"
               />
             )}
             <p className="shop-eyebrow text-[color:var(--ink-mute)]">{item.brandName}</p>
             {/* Lining figures on the heading too: plenty of these names are a
                 reference number, and old-style digits make one look mistyped. */}
-            <h2 className="shop-serif shop-num mt-3 text-[34px] font-medium leading-[1.08] sm:text-[42px]">
+            <h2 className="shop-serif shop-num mt-2.5 text-[28px] font-medium leading-[1.1] sm:text-[34px]">
               {item.nickname || item.model}
             </h2>
             {/* Only when it says something the heading did not. */}
@@ -495,56 +550,180 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
               <p className="mt-2 text-sm text-[color:var(--ink-mute)]">Reference {item.model}</p>
             )}
 
-            <p className="mt-7 border-t border-[color:var(--hair)] pt-7">
+            <p className="mt-5 border-t border-[color:var(--hair)] pt-5">
               {item.price === null ? (
-                <span className="shop-serif text-[24px] italic text-[color:var(--ink-soft)]">Price on request</span>
+                <span className="shop-serif text-[20px] italic text-[color:var(--ink-soft)]">Price on request</span>
               ) : (
-                <span className="shop-serif shop-num text-[34px] font-medium">
+                <span className="shop-serif shop-num text-[28px] font-medium">
                   {formatCurrency(item.price, currency, { decimals: false })}
                 </span>
               )}
             </p>
 
             {item.description && (
-              <p className="mt-6 text-[15px] leading-[1.75] text-[color:var(--ink-soft)]">{item.description}</p>
+              <p className="mt-5 text-[14px] leading-[1.7] text-[color:var(--ink-soft)]">{item.description}</p>
             )}
 
             {spec.length > 0 && (
-              <dl className="mt-8 border-t border-[color:var(--hair)]">
+              <dl className="mt-6 border-t border-[color:var(--hair)]">
                 {spec.map(([label, value]) => (
                   <div
                     key={label}
-                    className="flex items-baseline justify-between gap-6 border-b border-[color:var(--hair)] py-3"
+                    className="flex items-baseline justify-between gap-6 border-b border-[color:var(--hair)] py-2.5"
                   >
-                    <dt className="text-[13px] text-[color:var(--ink-mute)]">{label}</dt>
-                    <dd className="text-[14px] font-medium text-[color:var(--ink)]">{value}</dd>
+                    <dt className="text-[12.5px] text-[color:var(--ink-mute)]">{label}</dt>
+                    <dd className="text-[13.5px] font-medium text-[color:var(--ink)]">{value}</dd>
                   </div>
                 ))}
               </dl>
             )}
 
-            <div className="mt-auto pt-10">
-              {contactEmail && (
-                <a
-                  href={`mailto:${contactEmail}?subject=${subject}&body=${body}`}
-                  className="group inline-flex h-14 w-full items-center justify-center gap-3 px-8 text-[13px] font-bold uppercase tracking-[0.16em] text-white transition hover:brightness-110"
-                  style={{ backgroundColor: 'var(--brand)' }}
-                >
-                  Enquire
-                  <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </a>
+            <div className="mt-auto pt-8">
+              {/*
+                A form, not a mailto. A mail link needs a client configured on
+                the customer's machine, leaves nothing behind here when it is
+                not, and only appeared at all when the reseller had filled in a
+                contact address — so the reseller who had not had no way for
+                anybody to enquire at all.
+              */}
+              {enquiring ? (
+                <EnquiryForm
+                  token={token}
+                  watchId={item.id}
+                  onCancel={() => setEnquiring(false)}
+                />
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setEnquiring(true)}
+                    className="group inline-flex h-13 w-full items-center justify-center gap-3 px-8 py-4 text-[12px] font-bold uppercase tracking-[0.16em] text-white transition hover:brightness-110"
+                    style={{ backgroundColor: 'var(--brand)' }}
+                  >
+                    Enquire now
+                    <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="mt-3.5 w-full text-[12.5px] text-[color:var(--ink-mute)] underline-offset-4 transition hover:text-[color:var(--ink)] hover:underline"
+                  >
+                    Back to the collection
+                  </button>
+                </>
               )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="mt-4 w-full text-[13px] text-[color:var(--ink-mute)] underline-offset-4 transition hover:text-[color:var(--ink)] hover:underline"
-              >
-                Back to the collection
-              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * The enquiry.
+ *
+ * Four fields and nothing clever. A customer who has decided to ask about a
+ * watch should not meet a wizard; the only required things are a name and a
+ * way to reply.
+ *
+ * On success the form is replaced by the acknowledgement rather than clearing
+ * itself, because a form that empties looks like it lost what you typed.
+ */
+function EnquiryForm({ token, watchId, onCancel }: {
+  token: string
+  watchId: string
+  onCancel: () => void
+}) {
+  const [state, action] = useFormState(submitEnquiryAction, { ok: false } as ActionState)
+
+  if (state.ok) {
+    return (
+      <div className="border-t border-[color:var(--hair)] pt-6 text-center">
+        <p className="shop-serif text-[22px] leading-snug">Thank you.</p>
+        <p className="mt-2 text-[13.5px] leading-relaxed text-[color:var(--ink-soft)]">
+          {state.message}
+        </p>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-5 text-[12.5px] text-[color:var(--ink-mute)] underline-offset-4 hover:text-[color:var(--ink)] hover:underline"
+        >
+          Back to the collection
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form action={action} className="border-t border-[color:var(--hair)] pt-6">
+      <input type="hidden" name="token" value={token} />
+      <input type="hidden" name="watchId" value={watchId} />
+
+      {state.message && (
+        <p role="alert" className="mb-4 text-[12.5px] text-[#9b2c2c]">{state.message}</p>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="name" label="Your name" required error={state.errors?.name} />
+        <Field name="email" label="Email" type="email" required error={state.errors?.email} />
+      </div>
+      <div className="mt-3">
+        <Field name="phone" label="Phone (optional)" error={state.errors?.phone} />
+      </div>
+      <label className="mt-3 block">
+        <span className="shop-eyebrow text-[color:var(--ink-mute)]">Message</span>
+        <textarea
+          name="message"
+          rows={3}
+          placeholder="Anything you would like to know."
+          className="mt-1.5 w-full border border-[color:var(--hair)] bg-white px-3 py-2 text-[13.5px] outline-none transition focus:border-[color:var(--accent)]"
+        />
+      </label>
+
+      <SendButton />
+      <button
+        type="button"
+        onClick={onCancel}
+        className="mt-3 w-full text-[12.5px] text-[color:var(--ink-mute)] underline-offset-4 hover:text-[color:var(--ink)] hover:underline"
+      >
+        Cancel
+      </button>
+    </form>
+  )
+}
+
+function Field({ name, label, type = 'text', required, error }: {
+  name: string
+  label: string
+  type?: string
+  required?: boolean
+  error?: string
+}) {
+  return (
+    <label className="block">
+      <span className="shop-eyebrow text-[color:var(--ink-mute)]">{label}</span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        className="mt-1.5 h-10 w-full border border-[color:var(--hair)] bg-white px-3 text-[13.5px] outline-none transition focus:border-[color:var(--accent)]"
+      />
+      {error && <span className="mt-1 block text-[12px] text-[#9b2c2c]">{error}</span>}
+    </label>
+  )
+}
+
+function SendButton() {
+  const { pending } = useFormStatus()
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="mt-5 w-full px-8 py-4 text-[12px] font-bold uppercase tracking-[0.16em] text-white transition hover:brightness-110 disabled:opacity-60"
+      style={{ backgroundColor: 'var(--brand)' }}
+    >
+      {pending ? 'Sending…' : 'Send enquiry'}
+    </button>
   )
 }

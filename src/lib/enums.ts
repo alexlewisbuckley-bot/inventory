@@ -32,6 +32,10 @@ export type LocationType = (typeof LOCATION_TYPES)[number]
  * itself, because "whose is this" is the question a stocktake, an insurance
  * schedule and a set of accounts each need answered differently.
  */
+/** Whether an enquiry reached the reseller's inbox. */
+export const ENQUIRY_DELIVERY = ['PENDING', 'SENT', 'FAILED'] as const
+export type EnquiryDelivery = (typeof ENQUIRY_DELIVERY)[number]
+
 export const OWNER_TYPES = ['BUSINESS', 'INDIVIDUAL'] as const
 export type OwnerType = (typeof OWNER_TYPES)[number]
 

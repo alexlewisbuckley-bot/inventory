@@ -372,6 +372,25 @@
 }
 .group:hover .shop-underline { background-size: 100% 1px; }
 
+/*
+ * The card's call to action.
+ *
+ * Drawn in CSS rather than with inline styles because the hover state has to
+ * swap the reseller's colour from the text to the background, and an inline
+ * style beats any class that tries to change it back.
+ */
+.shop-root .shop-cta {
+  border: 1px solid var(--brand);
+  color: var(--brand);
+  transition: background-color 300ms ease, color 300ms ease;
+}
+
+.shop-root .group:hover .shop-cta,
+.shop-root .group:focus-visible .shop-cta {
+  background-color: var(--brand);
+  color: #fff;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shop-underline { transition: none; }
   .shop-root * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

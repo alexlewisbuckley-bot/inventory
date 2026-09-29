@@ -383,6 +383,21 @@ export const resellerSchema = z.object({
   isActive: z.coerce.boolean().default(true),
 })
 
+/**
+ * An enquiry from somebody a reseller is selling to.
+ *
+ * Public: this is the one schema in the application that anybody on the
+ * internet can post to, so it is deliberately narrow. Short bounded strings, a
+ * real email address, and nothing that is interpreted anywhere — the message
+ * reaches a plain-text email and a table, never a template.
+ */
+export const enquirySchema = z.object({
+  name: trimmed.min(1, 'Please give your name.').max(120),
+  email: emailSchema,
+  phone: optionalText(40),
+  message: optionalText(2000),
+})
+
 export const ownerSchema = z.object({
   name: trimmed.min(1, 'Owner name is required.').max(120),
   type: z.enum(OWNER_TYPES).default('BUSINESS'),

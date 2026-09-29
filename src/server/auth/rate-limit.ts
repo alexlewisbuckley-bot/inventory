@@ -55,4 +55,8 @@ export const LIMITS = {
   mutation: { limit: 120, windowMs: 60_000 },
   import: { limit: 5, windowMs: 60_000 },
   export: { limit: 20, windowMs: 60_000 },
+  // Public: reachable by anybody holding a shop link, so the ceiling is what
+  // keeps one of them from filling the enquiries table overnight. Generous
+  // enough that a genuine customer asking about three watches never meets it.
+  enquiry: { limit: 10, windowMs: 10 * 60_000 },
 } as const

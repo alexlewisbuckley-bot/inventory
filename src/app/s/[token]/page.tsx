@@ -91,7 +91,7 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
                 <img
                   src={`/s/${params.token}/logo`}
                   alt={reseller.name}
-                  className="mt-5 h-10 w-auto max-w-[190px] object-contain"
+                  className="mt-5 h-10 w-auto max-w-[190px] object-contain object-left"
                 />
               ) : (
                 <p className="shop-serif mt-5 text-[26px] font-medium leading-tight">{reseller.name}</p>

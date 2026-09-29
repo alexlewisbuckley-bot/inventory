@@ -7,7 +7,8 @@ import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS,
-  IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES, OWNER_TYPES,
+  ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
+  OFFER_STATUSES, OWNER_TYPES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
@@ -240,6 +241,40 @@ export const owners = pgTable(
   (t) => ({
     slugIdx: uniqueIndex('owners_slug_idx').on(t.slug),
     activeIdx: index('owners_active_idx').on(t.isActive),
+  }),
+)
+
+/**
+ * Somebody asking a reseller about a piece.
+ *
+ * Recorded before it is sent. Email needs a provider, a key and a network, and
+ * none of those being present is a reason to lose a customer's enquiry — so
+ * the row is written first and the send attempted after, with its outcome kept
+ * here so an undelivered enquiry is visible rather than silent.
+ */
+export const resellerEnquiries = pgTable(
+  'reseller_enquiries',
+  {
+    id: text('id').primaryKey(),
+    resellerId: text('reseller_id').notNull()
+      .references(() => resellers.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    /** What the piece was called at the time, so this still reads if it goes. */
+    subject: text('subject').notNull(),
+
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    phone: text('phone'),
+    message: text('message'),
+
+    delivery: text('delivery', { enum: ENQUIRY_DELIVERY }).notNull().default('PENDING'),
+    deliveryNote: text('delivery_note'),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    resellerIdx: index('reseller_enquiries_reseller_idx').on(t.resellerId, t.createdAt),
+    deliveryIdx: index('reseller_enquiries_delivery_idx').on(t.delivery),
   }),
 )
 
