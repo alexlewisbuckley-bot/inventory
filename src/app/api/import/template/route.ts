@@ -6,6 +6,7 @@ import { db } from '@/server/db/client'
 import { locations } from '@/server/db/schema'
 import { buildImportTemplate } from '@/server/services/import-template'
 import { templateCsv } from '@/lib/import-columns'
+import { displayMoneyFor } from '@/server/services/display-currency'
 import type { Role } from '@/lib/enums'
 
 export const dynamic = 'force-dynamic'
@@ -27,8 +28,12 @@ export async function GET(request: NextRequest) {
   const rows = await db.select({ name: locations.name }).from(locations).where(isNull(locations.deletedAt))
   const names = rows.map((row) => row.name)
 
+  // The same currency the export uses for this person, so the template they
+  // download and the file they export have identical headers.
+  const { currency } = await displayMoneyFor(user.id)
+
   if (request.nextUrl.searchParams.get('format') === 'csv') {
-    return new Response(templateCsv(), {
+    return new Response(templateCsv(currency), {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="bluecroft-stock-template.csv"',
@@ -36,7 +41,7 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const workbook = await buildImportTemplate(names)
+  const workbook = await buildImportTemplate(names, currency)
   return new Response(new Uint8Array(workbook), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
-import { IMPORT_COLUMNS } from '@/lib/import-columns'
+import { IMPORT_COLUMNS, headerFor } from '@/lib/import-columns'
+import type { CurrencyCode } from '@/lib/enums'
 
 /**
  * The import template as a real spreadsheet.
@@ -14,7 +15,10 @@ import { IMPORT_COLUMNS } from '@/lib/import-columns'
  * instructions say, so it is written to survive that: every value in it is a
  * valid one.
  */
-export async function buildImportTemplate(locationNames: string[]): Promise<Buffer> {
+export async function buildImportTemplate(
+  locationNames: string[],
+  currency: CurrencyCode,
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'Bluecroft Stock'
   workbook.created = new Date(0)
@@ -23,9 +27,12 @@ export async function buildImportTemplate(locationNames: string[]): Promise<Buff
     views: [{ state: 'frozen', ySplit: 2 }],
   })
 
+  // Every column the export writes, in the export's order and the export's
+  // currency, so a downloaded export and a downloaded template are the same
+  // sheet. The derived ones are read-only and say so in their hint.
   sheet.columns = IMPORT_COLUMNS.map((column) => ({
-    header: column.header,
-    key: column.header,
+    header: headerFor(column, currency),
+    key: column.key,
     width: column.width,
   }))
 
@@ -39,7 +46,10 @@ export async function buildImportTemplate(locationNames: string[]): Promise<Buff
   headerRow.height = 22
 
   const hintRow = sheet.addRow(
-    IMPORT_COLUMNS.map((c) => (c.required ? `Required · ${c.hint}` : `Optional · ${c.hint}`)),
+    IMPORT_COLUMNS.map((c) => {
+      if (c.derived) return `Read-only · ${c.hint}`
+      return c.required ? `Required · ${c.hint}` : `Optional · ${c.hint}`
+    }),
   )
   hintRow.font = { italic: true, size: 9, color: { argb: 'FF51617D' } }
   hintRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F8FC' } }

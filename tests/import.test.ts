@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv, toCsv, csvCell } from '@/lib/csv'
-import { diffAgainstStock, estimateFromSheet, parseProductType } from '@/server/services/import-service'
-import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/enums'
+import { diffAgainstStock, estimateFromSheet, parseAmount, parseProductType } from '@/server/services/import-service'
+import { CURRENCIES, PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import {
-  IMPORT_COLUMNS, REQUIRED_HEADERS, normaliseHeader, templateCsv,
+  IMPORT_COLUMNS, REQUIRED_HEADERS, REQUIRED_KEYS, WRITABLE_COLUMNS,
+  headerFor, headersFor, normaliseHeader, parseHeader, templateCsv,
 } from '@/lib/import-columns'
 
 describe('CSV parsing', () => {
@@ -134,8 +135,18 @@ describe('import headers', () => {
     expect(normaliseHeader('Category')).toBe('type')
   })
 
-  it('normalises case and internal spacing', () => {
-    expect(normaliseHeader('Purchase   Price (GBP)')).toBe('purchase price (gbp)')
+  it('normalises case and internal spacing, and lifts the currency off', () => {
+    // The unit belongs to the figures, not to the column's identity: one
+    // "purchase price" column, quoted in whichever currency the header names.
+    expect(parseHeader('Purchase   Price (GBP)')).toEqual({ key: 'purchase price', currency: 'GBP' })
+    expect(parseHeader('purchase price (aed)')).toEqual({ key: 'purchase price', currency: 'AED' })
+    expect(parseHeader('Cost')).toEqual({ key: 'purchase price', currency: null })
+    // An old sheet saying "Est Sale" is the Retail column under its old name.
+    expect(parseHeader('Est Sale (USD)')).toEqual({ key: 'retail', currency: 'USD' })
+  })
+
+  it('does not mistake a bracketed word for a currency', () => {
+    expect(parseHeader('Reference (old)')).toEqual({ key: 'reference (old)', currency: null })
   })
 
   it('leaves an unrecognised header alone rather than guessing', () => {
@@ -145,16 +156,55 @@ describe('import headers', () => {
   it('keeps the template and the parser in step', () => {
     // The template, the parser and the on-screen guide all read one list. This
     // fails if a column is added to the template without the parser noticing.
-    const headers = templateCsv().split('\n')[0].split(',')
-    expect(headers).toEqual(IMPORT_COLUMNS.map((column) => column.header))
+    const headers = templateCsv('USD').split('\n')[0].split(',')
+    expect(headers).toEqual(headersFor('USD'))
     for (const required of REQUIRED_HEADERS) {
-      expect(headers).toContain(required)
+      expect(headers.some((h) => h.startsWith(required))).toBe(true)
+    }
+  })
+
+  /**
+   * The round trip, asserted on the shapes.
+   *
+   * The export and the template were written as separate lists and drifted two
+   * columns apart, so the application produced a file it could not read back.
+   * They now come from one list; this is the test that keeps them there, and it
+   * checks every currency because the money headers carry the unit.
+   */
+  it('exports exactly the columns the template offers, in every currency', () => {
+    for (const currency of CURRENCIES) {
+      const exported = headersFor(currency)
+      const template = templateCsv(currency).split('\n')[0].split(',')
+      expect(template, currency).toEqual(exported)
+    }
+  })
+
+  it('reads every exported money header back, whatever the currency', () => {
+    for (const currency of CURRENCIES) {
+      for (const column of IMPORT_COLUMNS.filter((c) => c.money)) {
+        const header = headerFor(column, currency)
+        expect(parseHeader(header), header).toEqual({ key: column.key, currency })
+      }
     }
   })
 
   it('ships an example value for every column somebody must fill in', () => {
     for (const column of IMPORT_COLUMNS.filter((c) => c.required)) {
-      expect(column.example.length, column.header).toBeGreaterThan(0)
+      expect(column.example.length, column.label).toBeGreaterThan(0)
+    }
+  })
+
+  /**
+   * Profit and status are written by the export and owned by the application.
+   * They are listed so the two shapes match, and marked so a sheet cannot set
+   * them: a profit typed into a spreadsheet is not a fact about a watch.
+   */
+  it('exports the derived columns but will not let a sheet set them', () => {
+    const derived = IMPORT_COLUMNS.filter((c) => c.derived).map((c) => c.key)
+    expect(derived).toEqual(['est profit', 'status'])
+    for (const key of derived) {
+      expect(WRITABLE_COLUMNS.map((c) => c.key)).not.toContain(key)
+      expect(REQUIRED_KEYS).not.toContain(key)
     }
   })
 
@@ -167,7 +217,7 @@ describe('import headers', () => {
    * every installation.
    */
   it('leaves the stock number blank in the example row', () => {
-    const stockNo = IMPORT_COLUMNS.find((c) => c.header === 'Stock No')
+    const stockNo = IMPORT_COLUMNS.find((c) => c.key === 'stock no')
     expect(stockNo).toBeDefined()
     expect(stockNo!.required).toBe(false)
     expect(stockNo!.example).toBe('')
@@ -251,4 +301,35 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
   it('treats a blank owner cell as unstated rather than as unassigning', () => {
     expect(diffAgainstStock(stored, { ...sheet, owner: null }, ALL)).toEqual([])
   })
+})
+
+/**
+ * Money cells, as the export actually writes them.
+ *
+ * Figures are exported formatted, because a column of bare numbers is what
+ * somebody reconciles against and gets wrong. The parser then has to read that
+ * formatting back. It handled only the pound and dollar signs, so an export by
+ * anyone reading in dirhams or Hong Kong dollars failed on every row — a file
+ * the application had just produced.
+ */
+describe('a formatted money cell survives the round trip', () => {
+  const cases: Array<[string, number | null]> = [
+    ['$9,631.56', 9631.56],
+    ['AED 35,340.12', 35340.12],
+    ['HK$1,200.00', 1200],
+    ['£9,631.56', 9631.56],
+    ['USD 13,105.51', 13105.51],
+    ['13105.51', 13105.51],
+    ['1,498,000', 1498000],
+    // Accountants write a loss in brackets.
+    ['($568.44)', -568.44],
+    ['', null],
+    ['about ten grand', null],
+  ]
+
+  for (const [input, expected] of cases) {
+    it(`reads ${input === '' ? '(blank)' : input}`, () => {
+      expect(parseAmount(input)).toBe(expected)
+    })
+  }
 })

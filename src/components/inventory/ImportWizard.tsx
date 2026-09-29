@@ -12,7 +12,7 @@ import {
 import { previewImportAction, commitImportAction, type ImportPreviewState } from '@/app/actions/watches'
 import { toMinor } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
-import { IMPORT_COLUMNS } from '@/lib/import-columns'
+import { IMPORT_COLUMNS, headerFor, headersFor } from '@/lib/import-columns'
 import { cn } from '@/lib/cn'
 
 const INITIAL: ImportPreviewState = { ok: false }
@@ -31,7 +31,7 @@ const INITIAL: ImportPreviewState = { ok: false }
 export function ImportWizard({ locationNames }: { locationNames: string[] }) {
   const router = useRouter()
   const toast = useToast()
-  const { money } = useCurrency()
+  const { money, currency } = useCurrency()
   const [state, action] = useFormState(previewImportAction, INITIAL)
   const [committing, setCommitting] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -109,11 +109,11 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
                 </THead>
                 <TBody>
                   {IMPORT_COLUMNS.map((column) => (
-                    <TR key={column.header}>
-                      <TD className="font-bold text-content-primary">{column.header}</TD>
+                    <TR key={column.key}>
+                      <TD className="font-bold text-content-primary">{headerFor(column, currency)}</TD>
                       <TD>
-                        <Chip tone={column.required ? 'navy' : 'neutral'}>
-                          {column.required ? 'Required' : 'Optional'}
+                        <Chip tone={column.derived ? 'neutral' : column.required ? 'navy' : 'neutral'}>
+                          {column.derived ? 'Read-only' : column.required ? 'Required' : 'Optional'}
                         </Chip>
                       </TD>
                       <TD className="text-content-secondary">{column.hint}</TD>
@@ -206,7 +206,7 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
                   name="csv"
                   rows={5}
                   aria-label="Paste rows"
-                  placeholder={`${IMPORT_COLUMNS.map((c) => c.header).join(',')}\n${IMPORT_COLUMNS.map((c) => c.example).join(',')}`}
+                  placeholder={`${headersFor(currency).join(',')}\n${IMPORT_COLUMNS.map((c) => c.example).join(',')}`}
                   className="mt-2 w-full rounded-md border border-line-subtle bg-surface-raised px-3.5 py-3 font-mono text-caption text-content-primary placeholder:text-content-muted"
                 />
               )}

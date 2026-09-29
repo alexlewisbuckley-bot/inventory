@@ -6,11 +6,12 @@ import { newId, slugify } from '@/lib/ids'
 import { toMinor } from '@/lib/money'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
-import { REQUIRED_HEADERS, normaliseHeader } from '@/lib/import-columns'
-import { RATE_SCALE } from '@/lib/currency'
+import { REQUIRED_KEYS, parseHeader } from '@/lib/import-columns'
+import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import {
-  BASE_CURRENCY, DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, type ProductType,
+  BASE_CURRENCY, CURRENCIES, DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
+  type CurrencyCode, type ProductType,
 } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
 
@@ -88,7 +89,7 @@ export interface ImportPreview {
   unchangedCount: number
 }
 
-const REQUIRED = REQUIRED_HEADERS.map((h) => normaliseHeader(h))
+const REQUIRED = REQUIRED_KEYS
 
 /**
  * Read a spreadsheet or CSV into a table of strings.
@@ -143,18 +144,20 @@ function cellToText(value: unknown): string {
 }
 
 /**
- * How many base units one pound is worth, as a plain multiplier.
+ * Convert a major-unit figure quoted in `currency` into the base.
  *
- * Sheets written before the base moved quote sterling, and the figure has to
- * reach the base the same way a typed-in purchase would. Falls back to the
- * environment default only if sterling has no managed rate, which would
- * otherwise leave an old sheet silently importing pounds as dollars.
+ * The rate comes from the managed table, so an imported sheet converts at the
+ * same rate a typed-in purchase does. A currency with no rate is left as it
+ * stands rather than multiplied by a guess: a figure in the wrong unit is
+ * recoverable, a figure silently scaled by a made-up rate is not.
  */
-async function gbpToBase(): Promise<number> {
-  const rates = await getRateTable()
-  const gbp = rates.GBP
-  if (gbp && gbp > 0) return RATE_SCALE / gbp
-  return Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
+function converter(rates: RateTable) {
+  return (major: number, currency: CurrencyCode): number => {
+    if (currency === BASE_CURRENCY) return major
+    const rate = rates[currency]
+    if (!rate) return major
+    return (major * RATE_SCALE) / rate
+  }
 }
 
 /** The shape a preview returns when nothing could be read from the file. */
@@ -269,11 +272,9 @@ const emptyCounts = () => ({
 
 export async function parseImport(input: string | { name: string; buffer: ArrayBuffer }): Promise<ImportPreview> {
   const table = typeof input === 'string' ? parseCsv(input) : await readTable(input)
-  // Only needed for sheets still quoting figures in sterling. Taken from the
-  // managed rate table so an import converts at the same rate the rest of the
-  // application does, rather than at whatever an environment variable was set
-  // to when the container booted.
-  const usdRate = await gbpToBase()
+  // Rates come from the managed table so an import converts at exactly the rate
+  // the rest of the application does.
+  const intoBase = converter(await getRateTable())
   const issues: ImportIssue[] = []
   const rows: ImportRow[] = []
 
@@ -284,12 +285,22 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     }
   }
 
-  const header = table[0]!.map((h) => normaliseHeader(h))
+  // Each header gives a key and, for a money column, the currency its figures
+  // are quoted in. Taking the currency off the header is what lets a sheet
+  // exported by somebody reading in dirhams come home and be understood.
+  const parsed = table[0]!.map((h) => parseHeader(h))
+  const header = parsed.map((h) => h.key)
   const index = (name: string): number => header.indexOf(name)
+  const currencyOf = (name: string): CurrencyCode => {
+    const at = index(name)
+    return (at === -1 ? null : parsed[at]!.currency) ?? BASE_CURRENCY
+  }
+  const priceCurrency = currencyOf('purchase price')
+  const retailCurrency = currencyOf('retail')
   const present = {
     serial: index('serial') !== -1,
     owner: index('owner') !== -1,
-    retail: index('est sale (usd)') !== -1 || index('est sale (gbp)') !== -1,
+    retail: index('retail') !== -1,
     type: index('type') !== -1,
   }
   for (const required of REQUIRED) {
@@ -382,11 +393,8 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     // "(GBP)" one is converted. Reading an old sheet's sterling as dollars
     // would understate every purchase by a third, silently, which is exactly
     // the mistake a header exists to prevent.
-    const rawPrice = value('purchase price (usd)') || value('purchase price (gbp)')
-    const priceIsGbp = !value('purchase price (usd)') && Boolean(value('purchase price (gbp)'))
-    const priceField = priceIsGbp ? 'purchase price (gbp)' : 'purchase price (usd)'
-    const rawEst = value('est sale (usd)') || value('est sale (gbp)')
-    const estIsGbp = !value('est sale (usd)') && Boolean(value('est sale (gbp)'))
+    const rawPrice = value('purchase price')
+    const rawEst = value('retail')
 
     let errored = false
     const fail = (field: string, message: string) => {
@@ -403,31 +411,15 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     else if (date.getTime() > Date.now() + 86_400_000) fail('purchase date', 'Purchase date is in the future.')
 
     const rawPriceAmount = parseAmount(rawPrice)
-    const price = rawPriceAmount === null
-      ? null
-      : priceIsGbp ? rawPriceAmount * usdRate : rawPriceAmount
-    if (price === null) fail(priceField, `Could not read the price "${rawPrice}".`)
-    else if (price <= 0) fail(priceField, 'Purchase price must be greater than zero.')
-    else if (priceIsGbp && rawPriceAmount !== null) {
-      issues.push({
-        line, field: priceField,
-        message: `Converted £${rawPriceAmount} to $${price.toFixed(2)} at ${usdRate}.`,
-        severity: 'warning',
-      })
-    }
+    const price = rawPriceAmount === null ? null : intoBase(rawPriceAmount, priceCurrency)
+    if (price === null) fail('purchase price', `Could not read the price "${rawPrice}".`)
+    else if (price <= 0) fail('purchase price', 'Purchase price must be greater than zero.')
 
     const rawEstAmount = rawEst ? parseAmount(rawEst) : null
     if (rawEst && rawEstAmount === null) {
-      issues.push({ line, field: 'est sale', message: `Ignoring unreadable sale price "${rawEst}".`, severity: 'warning' })
+      issues.push({ line, field: 'retail', message: `Ignoring unreadable retail price "${rawEst}".`, severity: 'warning' })
     }
-    const est = rawEstAmount === null ? null : estIsGbp ? rawEstAmount * usdRate : rawEstAmount
-    if (estIsGbp && rawEstAmount !== null) {
-      issues.push({
-        line, field: 'est sale (gbp)',
-        message: `Converted £${rawEstAmount} to $${est!.toFixed(2)} at ${usdRate}.`,
-        severity: 'warning',
-      })
-    }
+    const est = rawEstAmount === null ? null : intoBase(rawEstAmount, retailCurrency)
 
     if (location && !locationNames.has(location.toLowerCase())) {
       unknownLocations.add(location)
@@ -499,6 +491,19 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         ...proposed,
       })
     }
+  }
+
+  // Said once about the file rather than once per row. A sheet quoted in
+  // dirhams is a fact about the sheet, and twenty-eight identical warnings on
+  // an import that changes nothing buries the one row that does.
+  for (const currency of new Set([priceCurrency, retailCurrency])) {
+    if (currency === BASE_CURRENCY) continue
+    issues.push({
+      line: 1,
+      field: 'file',
+      message: `Figures are quoted in ${currency} and were converted to ${BASE_CURRENCY} at the managed rate.`,
+      severity: 'warning',
+    })
   }
 
   return {
@@ -731,11 +736,32 @@ function parseDate(raw: string): Date | null {
   return null
 }
 
-function parseAmount(raw: string): number | null {
+/**
+ * Read a money cell, however the spreadsheet chose to dress it up.
+ *
+ * The export formats figures the way the screens do — "AED 35,340.12",
+ * "HK$1,200", "£9,631.56", "$568.44" — because a column of bare numbers is what
+ * somebody reconciles against and gets wrong. That formatting then has to
+ * survive the trip home: this stripped only the pound and dollar signs, so an
+ * export by anyone reading in dirhams or Hong Kong dollars failed on every
+ * single row, on a file the application had just written.
+ *
+ * Any currency symbol or three-letter code is removed, along with grouping
+ * separators. A parenthesised figure is negative, as accountants write it.
+ */
+export function parseAmount(raw: string): number | null {
   if (!raw) return null
-  const cleaned = raw.replace(/[£$,\s]/g, '')
+  const trimmed = raw.trim()
+  const negative = /^\(.*\)$/.test(trimmed)
+  const cleaned = trimmed
+    .replace(/^\(|\)$/g, '')
+    .replace(new RegExp(`\\b(?:${CURRENCIES.join('|')})\\b`, 'gi'), '')
+    .replace(/[£$€¥,\s]/g, '')
+    .replace(/HK/gi, '')
+  if (cleaned === '' || cleaned === '-') return null
   const parsed = Number(cleaned)
-  return Number.isFinite(parsed) ? parsed : null
+  if (!Number.isFinite(parsed)) return null
+  return negative ? -parsed : parsed
 }
 
 /**

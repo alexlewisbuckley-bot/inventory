@@ -8,6 +8,7 @@ import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { toCsv } from '@/lib/csv'
+import { headersFor } from '@/lib/import-columns'
 import { formatBase } from '@/lib/currency'
 import { displayMoneyFor } from '@/server/services/display-currency'
 import type { CurrencyCode } from '@/lib/enums'
@@ -27,11 +28,11 @@ export const dynamic = 'force-dynamic'
  * full of numbers that are neither pounds nor recognisable as money is the
  * kind of export somebody reconciles against and gets wrong.
  */
-const columnsFor = (currency: CurrencyCode) => [
-  'Stock No', 'Type', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location', 'Owner',
-  'Purchase Date', `Purchase Price (${currency})`, `Retail (${currency})`,
-  `Est Profit (${currency})`, 'Status',
-] as const
+// Taken from the import definition rather than written out again. These two
+// lists were separate and drifted by two columns, which is how the application
+// came to produce a file it could not read back. One list, one shape: what the
+// export writes is what the template offers and the import accepts.
+const columnsFor = (currency: CurrencyCode) => headersFor(currency)
 
 /**
  * CSV export of the current view.
