@@ -2111,7 +2111,9 @@ await journey('a reseller gets a live shop window that leaks nothing', async (pa
   const name = `Journey Resellers ${Date.now()}`
   await page.fill('input[name="name"]', name)
   await page.fill('input[name="headline"]', 'Available now')
-  await page.click('button[form="reseller-form"]')
+  // The modal's footer sits beside the form rather than inside it, so the
+  // save is an ordinary button that asks the form to submit itself.
+  await page.locator('footer button:has-text("Add reseller")').click()
   await page.waitForTimeout(2500)
 
   const listing = await page.locator('body').innerText()

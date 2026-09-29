@@ -256,13 +256,34 @@ function LogoButton({ reseller, onDone, onFail }: {
   )
 }
 
+/**
+ * The save, with the failure the form could not previously report.
+ *
+ * `useFormState` surfaces what an action returns; it cannot surface an action
+ * that never ran. The commonest reason for that is a deployment landing while
+ * the page is open — server actions are tied to a build id, so the request is
+ * refused before any of our code executes and the form simply sits there.
+ * Catching it here turns the one failure that looked like a broken button into
+ * a sentence saying what to do about it.
+ */
+async function submitReseller(previous: ActionState, formData: FormData): Promise<ActionState> {
+  try {
+    return await saveResellerAction(previous, formData)
+  } catch {
+    return {
+      ok: false,
+      message: 'Could not reach the server. This usually means the application was updated while this tab was open — reload the page and try again.',
+    }
+  }
+}
+
 function ResellerFormModal({ open, reseller, onClose, onSaved }: {
   open: boolean
   reseller: ResellerRow | null
   onClose: () => void
   onSaved: (message: string) => void
 }) {
-  const [state, action] = useFormState(saveResellerAction, INITIAL)
+  const [state, action] = useFormState(submitReseller, INITIAL)
   const [wasOpen, setWasOpen] = useState(false)
   const navLinks = parseNavLinks(reseller?.navLinks ?? null)
 
@@ -395,10 +416,20 @@ function FormProblems({ state }: { state: ActionState }) {
 
 function FormFooter({ onClose, isEdit, formId }: { onClose: () => void; isEdit: boolean; formId: string }) {
   const { pending } = useFormStatus()
+  // The modal renders its footer beside the form rather than inside it, so
+  // this button is not a descendant of the form it submits. Asking the form to
+  // submit itself is the same code path as a button inside it, without
+  // depending on the `form` attribute being honoured from out here.
+  const submit = () => {
+    const form = document.getElementById(formId)
+    if (form instanceof HTMLFormElement) form.requestSubmit()
+  }
   return (
     <>
-      <Button variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
-      <Button type="submit" form={formId} loading={pending}>{isEdit ? 'Save changes' : 'Add reseller'}</Button>
+      <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>Cancel</Button>
+      <Button type="button" onClick={submit} loading={pending}>
+        {isEdit ? 'Save changes' : 'Add reseller'}
+      </Button>
     </>
   )
 }
