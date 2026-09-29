@@ -19,7 +19,16 @@ function toState(error: unknown, fallback: string): ActionState {
 }
 
 export async function saveResellerAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const actor = await requireCapability('reseller:manage')
+  // Inside the try, like everything else. A rejected server action shows the
+  // user nothing at all — no toast, no message, a button that looks broken —
+  // so a session that has lapsed or a role that cannot do this has to come
+  // back as a message rather than as a rejection.
+  let actor
+  try {
+    actor = await requireCapability('reseller:manage')
+  } catch (error) {
+    return toState(error, 'You are not signed in to do that. Refresh the page and try again.')
+  }
   const id = formData.get('id')?.toString() || null
   // Collected as parallel label/href rows from the form, dropping any row
   // where either half is blank: a half-filled row is somebody who started
@@ -58,8 +67,8 @@ export async function saveResellerAction(_prev: ActionState, formData: FormData)
 }
 
 export async function deleteResellerAction(id: string): Promise<ActionState> {
-  const actor = await requireCapability('reseller:manage')
   try {
+    const actor = await requireCapability('reseller:manage')
     await deleteReseller(id, actor)
     revalidatePath('/resellers')
     return { ok: true, message: 'Reseller removed, and their link stopped working.' }
@@ -76,8 +85,8 @@ export async function deleteResellerAction(id: string): Promise<ActionState> {
  * than leaving the user to guess whether it worked.
  */
 export async function rotateResellerTokenAction(id: string): Promise<ActionState & { token?: string }> {
-  const actor = await requireCapability('reseller:manage')
   try {
+    const actor = await requireCapability('reseller:manage')
     const token = await rotateResellerToken(id, actor)
     revalidatePath('/resellers')
     return { ok: true, token, message: 'New link issued. The previous one no longer works.' }
@@ -87,7 +96,6 @@ export async function rotateResellerTokenAction(id: string): Promise<ActionState
 }
 
 export async function uploadResellerLogoAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const actor = await requireCapability('reseller:manage')
   const id = formData.get('id')?.toString()
   if (!id) return { ok: false, message: 'No reseller was named.' }
 
@@ -97,6 +105,7 @@ export async function uploadResellerLogoAction(_prev: ActionState, formData: For
   }
 
   try {
+    const actor = await requireCapability('reseller:manage')
     assertLogoAcceptable(file.type, file.size)
     const data = Buffer.from(await file.arrayBuffer())
     await setResellerLogo(id, { data, mimeType: file.type }, actor)
@@ -108,8 +117,8 @@ export async function uploadResellerLogoAction(_prev: ActionState, formData: For
 }
 
 export async function removeResellerLogoAction(id: string): Promise<ActionState> {
-  const actor = await requireCapability('reseller:manage')
   try {
+    const actor = await requireCapability('reseller:manage')
     await setResellerLogo(id, null, actor)
     revalidatePath('/resellers')
     return { ok: true, message: 'Logo removed.' }

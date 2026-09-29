@@ -282,6 +282,7 @@ function ResellerFormModal({ open, reseller, onClose, onSaved }: {
     >
       <form id="reseller-form" action={action} className="grid gap-4 sm:grid-cols-2" noValidate>
         {reseller && <input type="hidden" name="id" value={reseller.id} />}
+        <FormProblems state={state} />
         <TextField name="name" label="Reseller name" required className="sm:col-span-2"
           defaultValue={reseller?.name ?? ''} error={state.errors?.name}
           hint="What you call them internally." placeholder="e.g. Gulf Timepieces" />
@@ -351,6 +352,44 @@ function ResellerFormModal({ open, reseller, onClose, onSaved }: {
         </div>
       </form>
     </Modal>
+  )
+}
+
+/** Which errors already appear beside a field. */
+const INLINE_ERRORS = new Set(['name', 'contactEmail', 'brandColor', 'accentColor'])
+
+/**
+ * Anything the form refused that no field is showing.
+ *
+ * A validation error keyed to something without a visible field — a nested
+ * `navLinks.0.href`, or a field added later and not wired up — used to make
+ * the form do nothing at all: no message, dialog open, button apparently
+ * broken. A submission that is refused has to say so somewhere, and this is
+ * the somewhere, whatever the key turns out to be.
+ */
+function FormProblems({ state }: { state: ActionState }) {
+  const errors = state.errors ?? {}
+  const unshown = Object.entries(errors).filter(([key]) => !INLINE_ERRORS.has(key))
+  if (unshown.length === 0 && !state.message) return null
+
+  const label = (key: string) => {
+    const nav = key.match(/^navLinks\.(\d+)\./)
+    if (nav) return `Link ${Number(nav[1]) + 1}`
+    if (key === '_form' || key === 'navLinks') return null
+    return key
+  }
+
+  return (
+    <div
+      role="alert"
+      className="sm:col-span-2 rounded-sm border border-state-danger/30 bg-state-danger/5 px-3.5 py-3 text-caption text-state-danger"
+    >
+      {state.message && <p className="font-bold">{state.message}</p>}
+      {unshown.map(([key, message]) => {
+        const name = label(key)
+        return <p key={key}>{name ? `${name}: ${message}` : message}</p>
+      })}
+    </div>
   )
 }
 
