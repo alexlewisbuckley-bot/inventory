@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { submitEnquiryAction } from '@/app/actions/enquiries'
 import type { ActionState } from '@/app/actions/auth'
-import { ArrowRight, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/currency'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS,
@@ -241,26 +241,49 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
   )
 }
 
-/** A select that reads as a line of text rather than as a form control. */
+/**
+ * A select that reads as a line of text rather than as a form control.
+ *
+ * The native control is laid over the top at full size and made invisible,
+ * and the text beside the arrow is ours. That is the only way to have both:
+ * a styled `appearance-none` select is sized by its *longest* option, so the
+ * chevron parked at its right edge sat a brand name's width away from the
+ * words actually on screen — "All brands" with the arrow somewhere off near
+ * where "Patek Philippe" would have ended. Drawing the current label
+ * ourselves means the control is exactly as wide as what it says, while the
+ * select underneath keeps the platform's own menu, keyboard handling and
+ * touch behaviour.
+ */
 function Choice({ label, value, onChange, options }: {
   label: string
   value: string
   onChange: (value: string) => void
   options: Array<{ value: string; label: string }>
 }) {
+  const current = options.find((option) => option.value === value)?.label ?? ''
+
   return (
-    <label className="group relative inline-flex items-center">
+    <label className="relative inline-flex h-9 cursor-pointer items-center gap-2 border-b border-transparent transition hover:border-[color:var(--hair)] focus-within:border-[color:var(--accent)]">
       <span className="sr-only">{label}</span>
+      <span aria-hidden className="whitespace-nowrap text-sm text-[color:var(--ink)]">{current}</span>
+      {/* In the shop's own colour, and a hair below the text's centre line,
+          where a chevron reads as pointing at the words rather than floating
+          beside them. */}
+      <ChevronDown
+        aria-hidden
+        className="mt-px h-3.5 w-3.5 shrink-0"
+        strokeWidth={2}
+        style={{ color: 'var(--brand)' }}
+      />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 cursor-pointer appearance-none border-b border-transparent bg-transparent pr-5 text-sm text-[color:var(--ink)] outline-none transition hover:border-[color:var(--hair)] focus:border-[color:var(--accent)]"
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
         ))}
       </select>
-      <span className="pointer-events-none absolute right-0 text-[color:var(--ink-mute)]" aria-hidden>▾</span>
     </label>
   )
 }
@@ -287,18 +310,29 @@ function Provenance({ label, has }: { label: string; has: boolean }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.13em]"
+      /*
+       * The contrast between the two states does the work, not the marks
+       * themselves. A watch with neither box nor papers is most of the
+       * trade; two heavy crosses on its card read as two things wrong with
+       * it. Absent is drawn as a hairline in the lightest grey on the page
+       * and simply recedes, while present is picked out in the reseller's
+       * accent — so a full set is what catches the eye across a grid.
+       */
       style={{ color: has ? 'var(--ink-soft)' : 'var(--ink-mute)' }}
     >
       <svg
         viewBox="0 0 12 12"
-        className="h-[11px] w-[11px] shrink-0 fill-none stroke-[1.4]"
-        style={{ stroke: has ? 'var(--accent)' : 'currentColor' }}
+        className="h-[10px] w-[10px] shrink-0 fill-none"
+        style={{
+          stroke: has ? 'var(--accent)' : 'var(--ink-mute)',
+          strokeWidth: has ? 1.5 : 1.1,
+        }}
         aria-hidden
       >
         {has ? (
           <path d="M1.5 6.2l3 3L10.5 2.8" strokeLinecap="round" strokeLinejoin="round" />
         ) : (
-          <path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8" strokeLinecap="round" />
+          <path d="M2.8 2.8l6.4 6.4M9.2 2.8l-6.4 6.4" strokeLinecap="round" />
         )}
       </svg>
       {label}
@@ -351,39 +385,42 @@ function ShopCard({ item, token, currency, onOpen }: {
         </div>
 
         {/*
-          Brand, then the piece, then what came with it, then the numbers that
-          identify it — read in the order somebody shopping actually asks. The
-          price sits on the brand line: it is the other thing they are scanning
-          for, and pinning it to the top keeps it in the same place on every
-          card whether or not the specification beneath runs long.
-        */}
-        {/*
           The piece and its price carry the card; everything else is there to
-          confirm a decision those two have already prompted. So the name and
-          the figure sit together at the top of the block at the sizes that
-          say so, what came with it reads as a quiet pair of marks rather than
-          two boxes competing with the name, and the reference and year — the
-          things somebody checks last — close the block on one small line.
+          confirm a decision those two have already prompted.
+
+          Spacing on a scale rather than by eye: 8px inside the identity block
+          (brand, name, figure — three lines that are one thought), 20px to
+          break to the secondary facts, 8px inside those, and 24px of clear
+          air before the action. Gaps chosen line by line are what made the
+          last version feel arbitrary.
+
+          The name no longer carries a hover underline. It was a rule drawn at
+          the foot of its line box, which put it within a few pixels of the
+          price the moment anybody moved a cursor over the card — and it was
+          the third thing on the card announcing the same hover, after the
+          photograph lifting and the button filling. Two is already plenty.
         */}
-        <div className="flex flex-1 flex-col pt-5">
+        <div className="flex flex-1 flex-col pt-6">
           <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
 
           <h2 className="shop-serif shop-num mt-2 text-[24px] font-medium leading-[1.15] sm:text-[26px]">
-            <span className="shop-underline">{item.nickname || item.model}</span>
+            {item.nickname || item.model}
           </h2>
 
+          {/* leading-[1.1] rather than none: a currency prefix and lining
+              figures both sit tall, and a zero line-height clips them. */}
           {item.price === null ? (
-            <p className="shop-serif mt-1.5 text-[18px] italic leading-none text-[color:var(--ink-soft)]">
+            <p className="shop-serif mt-2 text-[18px] italic leading-[1.1] text-[color:var(--ink-soft)]">
               Price on request
             </p>
           ) : (
-            <p className="shop-serif shop-num mt-1.5 text-[20px] font-medium leading-none">
+            <p className="shop-serif shop-num mt-2 text-[20px] font-medium leading-[1.1]">
               {formatCurrency(item.price, currency, { decimals: false })}
             </p>
           )}
 
           {provenance && (
-            <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <Provenance label="Box" has={provenance.box} />
               <Provenance label="Papers" has={provenance.papers} />
             </div>
@@ -392,14 +429,14 @@ function ShopCard({ item, token, currency, onOpen }: {
           {/* A piece with no model name is headed by its reference, so it is
               not repeated here. */}
           {(item.nickname || item.year) && (
-            <p className="shop-num mt-2.5 truncate text-[11.5px] text-[color:var(--ink-mute)]">
+            <p className="shop-num mt-2 truncate text-[11.5px] text-[color:var(--ink-mute)]">
               {[item.nickname ? `Ref. ${item.model}` : null, item.year ? String(item.year) : null]
                 .filter(Boolean)
                 .join('  ·  ')}
             </p>
           )}
 
-          <span className="mt-auto pt-5">
+          <span className="mt-auto pt-6">
             <span className="shop-cta flex h-10 w-full items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]">
               Find out more
               <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" aria-hidden />
