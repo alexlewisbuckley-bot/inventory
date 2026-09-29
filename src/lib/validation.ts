@@ -300,6 +300,41 @@ export const supplierSchema = z.object({
  * Restricted to hex because the value is interpolated into a stylesheet on a
  * public page: anything else is a place to put something that is not a colour.
  */
+/**
+ * A website somebody typed, turned into one a browser will follow.
+ *
+ * Stored as plain text, "trendsourcing.com" becomes a *relative* href: the
+ * browser resolves it against the page it is on, so the reseller's own logo
+ * sent their customers to a path on our domain. People do not type schemes, so
+ * this adds one rather than refusing the value, and then checks the result is
+ * really http(s) — the same rule the navigation links follow, because these
+ * are the same kind of link.
+ */
+const websiteUrl = z.union([z.string(), z.literal('')])
+  .optional()
+  .transform((value) => {
+    const trimmed = (value ?? '').trim()
+    if (!trimmed) return null
+    // Something already carrying a scheme is left exactly as typed, so that
+    // anything which is not http(s) is refused below rather than disguised by
+    // a prefix: "https://javascript:alert(1)" is not a fixed link, it is a
+    // broken one that passed a regex.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return trimmed
+    return `https://${trimmed}`
+  })
+  .refine((value) => {
+    if (value === null) return true
+    try {
+      // Parsed rather than matched. A URL parser knows what a host is; a
+      // regular expression that thinks it does is how "not a website" ends up
+      // in an href.
+      const url = new URL(value)
+      return (url.protocol === 'http:' || url.protocol === 'https:') && url.hostname.includes('.')
+    } catch {
+      return false
+    }
+  }, 'Enter a web address, such as example.com or https://example.com')
+
 const hexColour = (label: string) =>
   trimmed.regex(/^#[0-9a-fA-F]{6}$/, `${label} must be a hex colour such as #04173A.`)
 
@@ -340,7 +375,7 @@ export const resellerSchema = z.object({
   contactName: optionalText(120),
   contactEmail: optionalEmail,
   contactPhone: optionalText(40),
-  website: optionalText(200),
+  website: websiteUrl,
   brandColor: hexColour('Brand colour').default('#04173A'),
   accentColor: hexColour('Accent colour').default('#0F766E'),
   displayCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),

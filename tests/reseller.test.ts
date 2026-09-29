@@ -132,3 +132,45 @@ describe('reseller navigation links', () => {
     })
   })
 })
+
+/**
+ * The reseller's own website.
+ *
+ * Their logo and the button in the header both point at it, so a value a
+ * browser will not follow sends their customers somewhere wrong. Typed without
+ * a scheme it is a relative path, which resolves against the page it is on —
+ * that is, against our domain rather than theirs.
+ */
+describe('the reseller website', () => {
+  const site = (website: string) => {
+    const result = resellerSchema.safeParse({ name: 'Gulf Timepieces', website })
+    return result.success ? result.data.website : `ERROR: ${fieldErrors(result.error).website}`
+  }
+
+  it('adds the scheme people do not type', () => {
+    expect(site('trendsourcing.com')).toBe('https://trendsourcing.com')
+    expect(site('www.trendsourcing.com')).toBe('https://www.trendsourcing.com')
+    expect(site('  trendsourcing.com  ')).toBe('https://trendsourcing.com')
+  })
+
+  it('leaves a full address alone', () => {
+    expect(site('https://trendsourcing.com')).toBe('https://trendsourcing.com')
+    expect(site('http://trendsourcing.com/collection')).toBe('http://trendsourcing.com/collection')
+  })
+
+  it('treats blank as no website rather than as an empty link', () => {
+    expect(site('')).toBeNull()
+  })
+
+  it('refuses something that is not a web address', () => {
+    for (const bad of [
+      'javascript:alert(1)',
+      'not a website',
+      'mailto:someone@example.com',
+      'data:text/html,<script>alert(1)</script>',
+      'localhost',
+    ]) {
+      expect(String(site(bad)), bad).toMatch(/^ERROR/)
+    }
+  })
+})

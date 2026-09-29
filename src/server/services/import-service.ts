@@ -73,6 +73,7 @@ export interface ImportRow {
 
 /** What a watch is, as a sheet can describe it. */
 export interface WatchSpec {
+  modelName: string | null
   year: number | null
   caseSizeMm: number | null
   caseMaterial: string | null
@@ -192,6 +193,7 @@ export function diffAgainstStock(
     productType: string
     serial: string | null
     model: string
+    modelName?: string | null
     year?: number | null
     caseSizeMm?: number | null
     caseMaterial?: string | null
@@ -271,7 +273,7 @@ export function diffAgainstStock(
   // columns are filled in a few at a time, over weeks, and a sheet sent back
   // with half of them still empty must not wipe the half already done.
   const specFields: Array<[keyof typeof proposed.spec, string]> = [
-    ['year', 'Year'], ['caseSizeMm', 'Case size'], ['caseMaterial', 'Case material'],
+    ['modelName', 'Model'], ['year', 'Year'], ['caseSizeMm', 'Case size'], ['caseMaterial', 'Case material'],
     ['dial', 'Dial'], ['bracelet', 'Bracelet'], ['movement', 'Movement'],
     ['waterResistanceM', 'Water resistance'], ['condition', 'Condition'],
     ['boxPapers', 'Box & papers'], ['description', 'Description'],
@@ -377,6 +379,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         purchaseDate: watches.purchaseDate,
         purchasePriceGbp: watches.purchasePriceGbp,
         estSaleGbp: watches.estSaleGbp,
+        modelName: watches.nickname,
         year: watches.year,
         caseSizeMm: watches.caseSizeMm,
         caseMaterial: watches.caseMaterial,
@@ -539,6 +542,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
       return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null
     }
     const spec: WatchSpec = {
+      modelName: value('model name') || null,
       year: whole('year'),
       caseSizeMm: whole('case size'),
       caseMaterial: value('case material') || null,
@@ -718,7 +722,10 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
           patch.estSaleCurrency = BASE_CURRENCY
         }
         for (const [field, value] of Object.entries(row.spec)) {
-          if (value !== null && changed.has(field)) patch[field] = value
+          if (value === null || !changed.has(field)) continue
+          // The model name lives in a column called `nickname`, from before
+          // anybody needed to show it to a customer.
+          patch[field === 'modelName' ? 'nickname' : field] = value
         }
 
         await db.update(watches).set(patch).where(eq(watches.id, row.watchId))
@@ -771,6 +778,7 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         ownerId,
         // Whatever the sheet knew about the watch itself. Nulls fall through
         // to the column defaults rather than overwriting them with nothing.
+        nickname: row.spec.modelName,
         year: row.spec.year,
         caseSizeMm: row.spec.caseSizeMm,
         caseMaterial: row.spec.caseMaterial,

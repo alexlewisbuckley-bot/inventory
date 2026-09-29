@@ -70,6 +70,7 @@ export default async function EditWatchPage({ params }: { params: { id: string }
               : watch.estSaleGbp !== null ? String(toMajor(watch.estSaleGbp)) : '',
             estSaleCurrency: watch.estSaleAmount !== null ? watch.estSaleCurrency : BASE_CURRENCY,
             locationId: watch.locationId,
+            nickname: watch.nickname ?? '',
             ownerId: watch.ownerId ?? '',
             caseSizeMm: watch.caseSizeMm ? String(watch.caseSizeMm) : '',
             caseMaterial: watch.caseMaterial ?? '',

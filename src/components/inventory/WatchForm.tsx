@@ -34,6 +34,7 @@ export interface WatchFormValues {
   purchaseCurrency: CurrencyCode
   estSaleAmount: string
   estSaleCurrency: CurrencyCode
+  nickname: string
   locationId: string
   ownerId: string
   caseSizeMm: string
@@ -53,6 +54,7 @@ const EMPTY: WatchFormValues = {
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
+  nickname: '',
   locationId: '', ownerId: '', notes: '',
   caseSizeMm: '', caseMaterial: '', dial: '', bracelet: '', movement: '',
   waterResistanceM: '', description: '',
@@ -194,6 +196,18 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
             value={values.model} onChange={set('model')}
             hint={reference.hint}
             placeholder={reference.placeholder} error={state.errors?.model}
+          />
+          {/*
+            The name the piece is known by, as against its reference. A shop
+            window headed "116518NG" is not what anybody calls a Daytona, and
+            until now there was nowhere in this form to say so — the column
+            existed, but only the seed ever filled it.
+          */}
+          <TextField
+            name="nickname" label="Model"
+            hint="What the piece is known as — shown to customers ahead of the reference."
+            value={values.nickname} onChange={set('nickname')}
+            placeholder="e.g. Daytona"
           />
           <TextField
             name="serial" label="Serial number"

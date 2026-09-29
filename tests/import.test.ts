@@ -121,12 +121,24 @@ describe('imported product type', () => {
 })
 
 describe('import headers', () => {
-  it('still accepts sheets written before Model was renamed to Reference', () => {
-    // Every spreadsheet the business already has says "Model". Breaking those
-    // would mean the rename silently broke the import for existing files.
-    expect(normaliseHeader('Model')).toBe('reference')
-    expect(normaliseHeader('  MODEL REFERENCE  ')).toBe('reference')
+  /**
+   * "Model" means the model name.
+   *
+   * It was this application's header for the reference once, and that alias is
+   * deliberately not kept. A watch has both — the reference 116518NG and the
+   * name Daytona — and the name is what a customer reads, so sending "Model"
+   * to the reference would fill the customer-facing field with a part number.
+   *
+   * A sheet old enough to mean the reference by "Model" now fails on the
+   * missing Reference column, which is a message somebody can act on rather
+   * than an import that quietly puts the wrong thing in the wrong place.
+   */
+  it('reads Model as the model name, and Reference as the reference', () => {
+    expect(normaliseHeader('Model')).toBe('model name')
+    expect(normaliseHeader('  MODEL NAME  ')).toBe('model name')
     expect(normaliseHeader('Reference')).toBe('reference')
+    expect(normaliseHeader('  MODEL REFERENCE  ')).toBe('reference')
+    expect(normaliseHeader('Reference Number')).toBe('reference')
   })
 
   it('accepts the names people give the type column', () => {
@@ -248,7 +260,7 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
     ownerName: 'Bluecroft Traders Limited',
   }
   const EMPTY_SPEC = {
-    year: null, caseSizeMm: null, caseMaterial: null, dial: null, bracelet: null,
+    modelName: null, year: null, caseSizeMm: null, caseMaterial: null, dial: null, bracelet: null,
     movement: null, waterResistanceM: null, condition: null, boxPapers: null,
     description: null,
   }

@@ -46,6 +46,10 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { key: 'type', label: 'Type', required: false, hint: 'Watch if left blank', example: 'Watch', width: 12 },
   { key: 'brand', label: 'Brand', required: true, hint: 'Created automatically if new', example: 'Rolex', width: 16 },
   { key: 'reference', label: 'Reference', required: true, hint: 'The manufacturer reference', example: '126711CHNR', width: 18 },
+  // The name the piece is known by — Daytona, Submariner, Nautilus. Without
+  // it a shop window can only show a reference, which is not what anybody
+  // calls a watch.
+  { key: 'model name', label: 'Model', required: false, hint: 'e.g. Daytona', example: 'GMT-Master II', width: 20 },
   { key: 'serial', label: 'Serial', required: false, hint: 'Checked against existing stock', example: '1T41F071', width: 16 },
   { key: 'supplier', label: 'Supplier', required: true, hint: 'Created automatically if new', example: 'GB Luxury Limited', width: 22 },
   { key: 'location', label: 'Location', required: true, hint: 'Must already exist', example: 'Own inventory', width: 18 },
@@ -101,7 +105,15 @@ export const HEADER_ALIASES: Record<string, string> = {
   'product type': 'type',
   'item type': 'type',
   category: 'type',
-  model: 'reference',
+  // "Model" now means the model name, which is what the word means to anybody
+  // looking at a watch. It used to be this application's header for the
+  // reference, and that alias is deliberately not kept: mapping it to the
+  // reference would put "126711CHNR" into the field a customer reads as the
+  // name. A sheet old enough to say Model for a reference will fail on the
+  // missing Reference column instead, which is a message rather than a
+  // silently wrong import.
+  model: 'model name',
+  'model name': 'model name',
   'model reference': 'reference',
   'reference number': 'reference',
   'stock reference': 'reference',

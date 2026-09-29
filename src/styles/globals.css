@@ -355,6 +355,20 @@
   background-position: 0 100%;
   background-size: 0 1px;
   transition: background-size 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  /*
+   * Clear the descenders.
+   *
+   * The rule was drawn at the foot of the line box, which in a garalde sits
+   * right where the tail of a 'y' or a 'j' is — so "Daytona" came out with a
+   * line struck through its descender. The padding moves the rule below the
+   * glyphs; the negative margin stops that padding opening a gap under the
+   * name, so the rhythm of the card is unchanged.
+   */
+  padding-bottom: 0.16em;
+  margin-bottom: -0.16em;
+  /* A hairline at any density, rather than a half-pixel smear on a retina
+     screen rounding up to two. */
+  background-size: 0 1px;
 }
 .group:hover .shop-underline { background-size: 100% 1px; }
 

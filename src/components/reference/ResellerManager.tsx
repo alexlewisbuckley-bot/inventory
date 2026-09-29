@@ -330,7 +330,9 @@ function ResellerFormModal({ open, reseller, onClose, onSaved }: {
           defaultValue={reseller?.contactEmail ?? ''} error={state.errors?.contactEmail} />
         <TextField name="contactPhone" label="Contact phone" defaultValue={reseller?.contactPhone ?? ''} />
         <TextField name="website" label="Their website" className="sm:col-span-2"
-          defaultValue={reseller?.website ?? ''} placeholder="https://" />
+          defaultValue={reseller?.website ?? ''} placeholder="example.com"
+          error={state.errors?.website}
+          hint="Where their logo and the “Visit our site” button send customers." />
         <fieldset className="sm:col-span-2">
           <legend className="text-small font-bold text-content-primary">Their navigation</legend>
           <p className="mt-0.5 text-caption text-content-secondary">

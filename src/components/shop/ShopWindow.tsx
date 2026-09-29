@@ -126,8 +126,8 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
         with a hairline under them, and only assert themselves when in use.
       */}
       <div className="sticky top-[72px] z-20 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur">
-        <div className="mx-auto flex max-w-[1760px] flex-wrap items-center gap-x-8 gap-y-3 px-6 py-4 sm:px-10">
-          <label className="relative min-w-0 flex-1 sm:max-w-[280px]">
+        <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-6 py-4 sm:px-10 md:flex-row md:items-center md:gap-x-8">
+          <label className="relative w-full md:w-[240px] md:shrink-0 lg:w-[280px]">
             <span className="sr-only">Search the collection</span>
             <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--ink-mute)]" aria-hidden />
             <input
@@ -139,25 +139,26 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
             />
           </label>
 
-          <Choice
-            label="Brand" value={brand} onChange={setBrand}
-            options={[{ value: '', label: 'All brands' }, ...brands.map((b) => ({ value: b, label: b }))]}
-          />
-          <Choice
-            label="Order" value={sort} onChange={(v) => setSort(v as Sort)}
-            options={SORTS}
-          />
+          <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+            <Choice
+              label="Brand" value={brand} onChange={setBrand}
+              options={[{ value: '', label: 'All brands' }, ...brands.map((b) => ({ value: b, label: b }))]}
+            />
+            <Choice
+              label="Order" value={sort} onChange={(v) => setSort(v as Sort)}
+              options={SORTS}
+            />
 
           {/* Reads as a control rather than a caption: a box that fills when
               it is on, which is what a person expects of a thing they can
               switch. Letterspaced caption text on its own looked like a label
               somebody had forgotten to attach to something. */}
-          <button
-            type="button"
-            onClick={() => setPricedOnly((on) => !on)}
-            aria-pressed={pricedOnly}
-            className="group inline-flex items-center gap-2.5 text-sm text-[color:var(--ink-soft)] transition hover:text-[color:var(--ink)]"
-          >
+            <button
+              type="button"
+              onClick={() => setPricedOnly((on) => !on)}
+              aria-pressed={pricedOnly}
+              className="group inline-flex items-center gap-2.5 text-sm text-[color:var(--ink-soft)] transition hover:text-[color:var(--ink)]"
+            >
             <span
               className="flex h-4 w-4 items-center justify-center border transition"
               style={{
@@ -172,10 +173,11 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
                 </svg>
               )}
             </span>
-            Priced only
-          </button>
+              Priced only
+            </button>
+          </div>
 
-          <p className="ml-auto text-sm text-[color:var(--ink-mute)]">
+          <p className="text-sm text-[color:var(--ink-mute)] md:ml-auto md:shrink-0">
             <span className="tabular-nums text-[color:var(--ink)]">{shown.length}</span>
             {shown.length === 1 ? ' piece available' : ' pieces available'}
             {filtering && (
@@ -213,7 +215,7 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
             )}
           </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-x-6 gap-y-12 sm:gap-x-8 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-x-6 gap-y-12 sm:gap-x-8 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {shown.map((item) => (
               <ShopCard key={item.id} item={item} token={token} currency={currency} onOpen={() => setViewing(item)} />
             ))}
@@ -285,7 +287,7 @@ function ShopCard({ item, token, currency, onOpen }: {
         onClick={onOpen}
         className="group flex h-full w-full flex-col text-left outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-8"
       >
-        <div className="relative aspect-[4/5] w-full overflow-hidden bg-[color:var(--plinth)]">
+        <div className="relative aspect-[4/5] w-full overflow-hidden bg-[color:var(--plinth)] transition-colors duration-500 group-hover:bg-[#f2f2ef]">
           {item.imageId ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -314,18 +316,30 @@ function ShopCard({ item, token, currency, onOpen }: {
           )}
         </div>
 
-        <p className="shop-eyebrow mt-5 text-[color:var(--ink-mute)]">{item.brandName}</p>
+        {/*
+          One block, with its own padding, so the rule beneath it sits the same
+          distance from the text on every card. Spacing hung off the last
+          element meant a piece with no specification line ended up with its
+          rule tight against the reference, and one with them had a wider gap —
+          a row of cards that each breathed differently.
+        */}
+        <div className="pb-5 pt-5">
+          <p className="shop-eyebrow text-[color:var(--ink-mute)]">{item.brandName}</p>
 
-        <h2 className="shop-serif shop-num mt-2 text-[21px] font-medium leading-[1.18] sm:text-[23px]">
-          <span className="shop-underline">{item.nickname || item.model}</span>
-        </h2>
-        {item.nickname && (
-          <p className="mt-1 text-[12.5px] text-[color:var(--ink-mute)]">Ref. {item.model}</p>
-        )}
+          <h2 className="shop-serif shop-num mt-2.5 text-[21px] font-medium leading-[1.2] sm:text-[23px]">
+            <span className="shop-underline">{item.nickname || item.model}</span>
+          </h2>
 
-        {facts.length > 0 && (
-          <p className="mb-4 mt-2.5 text-[12.5px] leading-[1.5] text-[color:var(--ink-soft)]">{facts.join(' · ')}</p>
-        )}
+          {item.nickname && (
+            <p className="mt-1.5 text-[12.5px] text-[color:var(--ink-mute)]">Ref. {item.model}</p>
+          )}
+
+          {facts.length > 0 && (
+            <p className="mt-3 text-[12.5px] leading-[1.55] text-[color:var(--ink-soft)]">
+              {facts.join(' · ')}
+            </p>
+          )}
+        </div>
 
         <div className="mt-auto flex items-baseline justify-between gap-4 border-t border-[color:var(--hair)] pt-4">
           {item.price === null ? (

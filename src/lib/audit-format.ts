@@ -27,6 +27,7 @@ const FIELD_LABELS: Record<string, string> = {
   isActive: 'Active',
   legalName: 'Legal entity',
   locationId: 'Location',
+  nickname: 'Model',
   ownerId: 'Owner',
   caseSizeMm: 'Case size',
   caseMaterial: 'Case material',
