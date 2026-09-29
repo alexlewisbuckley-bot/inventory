@@ -1,6 +1,7 @@
 'use client'
 
 import { SelectField, TextField, TextareaField } from '@/components/ui'
+import { BASE_CURRENCY } from '@/lib/enums'
 import { Composer } from './Composer'
 import { createOfferAction } from '@/app/actions/crm'
 import { CURRENCIES, CURRENCY_LABELS } from '@/lib/enums'
@@ -18,7 +19,7 @@ import { CURRENCIES, CURRENCY_LABELS } from '@/lib/enums'
  * A validity date is offered but not required. An offer with no expiry is the
  * normal case in the trade; one with an expiry generates the chase.
  */
-export function OfferComposer({ can, scope, defaultCurrency = 'GBP', label = 'Record an offer' }: {
+export function OfferComposer({ can, scope, defaultCurrency = BASE_CURRENCY, label = 'Record an offer' }: {
   can: boolean
   scope: { customerId?: string | null; watchId?: string | null; dealId?: string | null }
   defaultCurrency?: string

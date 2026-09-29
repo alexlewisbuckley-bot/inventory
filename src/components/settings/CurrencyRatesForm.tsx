@@ -56,7 +56,7 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
       <Card>
         <CardHeader
           title="Exchange rates"
-          description={`Amounts are stored in ${BASE_CURRENCY} — what the invoices are written in — and shown in ${DEFAULT_DISPLAY_CURRENCY} unless somebody sets otherwise in their profile. Rates are entered manually; nothing changes them behind your back.`}
+          description={`Every amount is stored in ${BASE_CURRENCY} and converted into whatever each person reads in. Rates are entered manually; nothing changes them behind your back.`}
         />
 
         <CardBody className="flex flex-col gap-5">
@@ -163,11 +163,10 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
 
           <p className="text-caption text-content-secondary">
             Enter how many units of each currency one {BASE_CURRENCY} buys. For example, if
-            £1 = 4.88&nbsp;AED, enter 4.88. Changing a rate re-values how existing stock is
-            displayed; it never alters what was recorded. The{' '}
-            <span className="font-bold text-content-primary">{DEFAULT_DISPLAY_CURRENCY}</span> rate
-            is the one nearly every figure in the app passes through, since that is what screens
-            default to — it is worth keeping current.
+            $1&nbsp;= 3.67&nbsp;AED, enter 3.67. Changing a rate re-values how existing stock is
+            displayed; it never alters what was recorded. Figures shown in{' '}
+            {BASE_CURRENCY} pass through no rate at all, which is why the base is the one
+            currency with nothing to keep current.
           </p>
         </CardBody>
 

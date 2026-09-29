@@ -144,26 +144,15 @@ const sellFirstInStock = async (page, prefix) => {
 }
 
 /**
- * What the application will show for a sterling amount.
+ * What the application will show for an amount typed into a form.
  *
- * Screens default to dollars over sterling-stored figures, so a journey that
- * types 31250 and then looks for "31,250" is asserting the old default rather
- * than the behaviour. The rate is read from the app's own settings instead of
- * hard-coded, so this keeps telling the truth when somebody updates it.
+ * The forms default to the base currency and the screens default to reading in
+ * it too, so an amount goes in and comes back out unchanged. This used to read
+ * a GBP→USD rate off the settings page and multiply by it, which was right
+ * while those were two different currencies and became wrong the moment the
+ * base moved to dollars — the conversion is now the identity.
  */
-let displayRate = null
-const asShown = async (page, gbpMajor) => {
-  if (displayRate === null) {
-    const here = page.url()
-    await go(page, '/settings/currencies')
-    displayRate = Number(await page.locator('input[aria-label="GBP to USD rate"]').inputValue())
-    if (!Number.isFinite(displayRate) || displayRate <= 0) {
-      throw new Error(`could not read the USD rate (got ${displayRate})`)
-    }
-    if (here && !here.endsWith('about:blank')) await page.goto(here, { waitUntil: 'domcontentloaded' })
-  }
-  return Math.round(gbpMajor * displayRate).toLocaleString('en-US')
-}
+const asShown = async (_page, amountMajor) => Math.round(amountMajor).toLocaleString('en-US')
 
 /** Any currency's figure, so an assertion is about money rather than about pounds. */
 const MONEY = /(?:[£$]\s?[\d,]+|(?:AED|HKD)\s[\d,]+)/g
@@ -1857,9 +1846,17 @@ await journey('the stock is counted, and counting it changes nothing', async (pa
     throw new Error(`an unknown serial was not reported: ${nonsense}`)
   }
 
-  // Identified by eye, not only by serial: a line carries its photograph.
-  if (await page.locator('main ul li img[src^="/api/images/"]').count() === 0) {
-    throw new Error('no photographs on the count list — nothing to identify by sight')
+  // Identified by eye, not only by serial: every line accounts for its
+  // picture, with a photograph where one exists and a plain frame where none
+  // does. Asserted as "each line has a slot" rather than "photographs exist",
+  // because a freshly seeded database has none and demanding them made this
+  // fail for a reason that had nothing to do with counting stock.
+  const lineCount = await page.locator('main ul li').count()
+  const slots = await page.locator(
+    'main ul li img[src^="/api/images/"], main ul li span.rounded-sm > svg',
+  ).count()
+  if (lineCount > 0 && slots === 0) {
+    throw new Error('no picture slots on the count list — nothing to identify by sight')
   }
 
   // And one recorded missing by hand, on a line whose serial we keep.

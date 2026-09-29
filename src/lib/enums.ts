@@ -159,14 +159,20 @@ export type CurrencyCode = (typeof CURRENCIES)[number]
 /**
  * The currency every amount is stored in. Everything else is converted.
  *
- * A storage unit, not a preference. Stock is bought on UK invoices in sterling
- * and that is the figure the contract, the VAT and the margin scheme are all
- * expressed in, so it is what the integers in the database mean. Changing this
- * constant does not re-denominate anything — it would only stop the conversion
- * happening, which is how every price on every screen quietly becomes wrong by
- * the exchange rate.
+ * A storage unit, not a preference: it is what the integers in the database
+ * mean. Dollars, since migration 0018 converted every stored amount and turned
+ * the rate table from "units per GBP" into "units per USD".
+ *
+ * Changing this constant on its own re-denominates nothing. It would only stop
+ * the conversion happening, which is how every price on every screen quietly
+ * becomes wrong by the exchange rate — so it moves with a migration or not at
+ * all.
+ *
+ * The columns and fields behind it are still named `*_gbp` / `*Gbp` and now
+ * hold dollars. That is known debt, recorded in 0018: renaming them is right
+ * and needs a single sweep across some 560 identifiers.
  */
-export const BASE_CURRENCY: CurrencyCode = 'GBP'
+export const BASE_CURRENCY: CurrencyCode = 'USD'
 
 /**
  * The currency the business reads its own numbers in.

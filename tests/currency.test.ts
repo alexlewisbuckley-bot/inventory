@@ -5,20 +5,24 @@ import {
 } from '@/lib/currency'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 
-/** Rates as seeded: units of each currency per 1 GBP, scaled by 10,000. */
-const RATES = { GBP: 10_000, USD: 13_300, AED: 48_800, HKD: 103_000 }
+/**
+ * Rates as the database holds them after the base moved to dollars: units of
+ * each currency per 1 USD, scaled by 10,000. Sterling has a rate of its own
+ * now, which it never had while it was the base and was pinned at 1.
+ */
+const RATES = { USD: 10_000, GBP: 7_519, AED: 36_692, HKD: 77_444 }
 
 describe('conversion', () => {
   it('leaves base-currency amounts untouched', () => {
-    expect(fromBase(25_104_639, 'GBP', RATES)).toBe(25_104_639)
-    expect(toBase(25_104_639, 'GBP', RATES)).toBe(25_104_639)
+    expect(fromBase(33_389_170, 'USD', RATES)).toBe(33_389_170)
+    expect(toBase(33_389_170, 'USD', RATES)).toBe(33_389_170)
   })
 
-  it('converts the real portfolio total into each currency', () => {
-    const capitalGbp = 25_104_639 // £251,046.39
-    expect(fromBase(capitalGbp, 'USD', RATES)).toBe(33_389_170)
-    expect(fromBase(capitalGbp, 'AED', RATES)).toBe(122_510_638)
-    expect(fromBase(capitalGbp, 'HKD', RATES)).toBe(258_577_782)
+  it('converts the portfolio total out of the base into each currency', () => {
+    const capital = 33_389_170 // $333,891.70
+    expect(fromBase(capital, 'GBP', RATES)).toBe(25_105_317)
+    expect(fromBase(capital, 'AED', RATES)).toBe(122_511_543)
+    expect(fromBase(capital, 'HKD', RATES)).toBe(258_579_088)
   })
 
   it('round-trips within a penny', () => {
@@ -30,7 +34,7 @@ describe('conversion', () => {
   })
 
   it('falls back to the base amount when a rate is missing', () => {
-    expect(fromBase(1000, 'AED', { GBP: RATE_SCALE })).toBe(1000)
+    expect(fromBase(1000, 'AED', { USD: RATE_SCALE })).toBe(1000)
   })
 })
 
@@ -43,7 +47,7 @@ describe('formatting', () => {
   })
 
   it('formats a base amount in the chosen currency', () => {
-    expect(formatBase(25_104_639, 'AED', RATES)).toMatch(/1,225,106/)
+    expect(formatBase(33_389_170, 'AED', RATES)).toMatch(/1,225,115/)
     expect(formatBase(null, 'AED', RATES)).toBe('—')
   })
 
@@ -54,8 +58,8 @@ describe('formatting', () => {
   })
 
   it('describes a rate in the direction users enter it', () => {
-    expect(describeRate('AED', RATES)).toBe('1 GBP = 4.88 AED')
-    expect(describeRate('GBP', RATES)).toBe('Base currency')
+    expect(describeRate('AED', RATES)).toBe('1 USD = 3.6692 AED')
+    expect(describeRate('USD', RATES)).toBe('Base currency')
   })
 
   it('recognises only supported currencies', () => {
@@ -65,38 +69,42 @@ describe('formatting', () => {
   })
 })
 
-describe('showing dollars over sterling figures', () => {
-  it('reads in dollars while storing in sterling', () => {
-    // The two are deliberately different constants. If they are ever made the
-    // same by accident, conversion short-circuits and every figure on every
-    // screen silently becomes its sterling amount behind a dollar sign.
-    expect(BASE_CURRENCY).toBe('GBP')
+describe('dollars as the base', () => {
+  it('stores and reads in the same currency', () => {
+    // These were deliberately different while the base was sterling and the
+    // screens showed dollars. Both are dollars now, so the everyday path
+    // converts nothing and a missing rate cannot misstate the common case.
+    expect(BASE_CURRENCY).toBe('USD')
     expect(DEFAULT_DISPLAY_CURRENCY).toBe('USD')
   })
 
-  it('converts a stored sterling amount for display', () => {
-    expect(formatBase(950_000, DEFAULT_DISPLAY_CURRENCY, RATES)).toBe('$12,635')
+  it('shows a stored amount as it stands', () => {
+    expect(formatBase(950_000, DEFAULT_DISPLAY_CURRENCY, RATES)).toBe('$9,500')
+  })
+
+  it('converts out of the base for anybody reading in something else', () => {
+    expect(formatBase(950_000, 'GBP', RATES)).toBe('£7,143')
+    expect(formatBase(950_000, 'AED', RATES)).toMatch(/34,857/)
   })
 
   it('admits which currency it is in when no rate is set', () => {
-    // The failure this guards. Without a USD rate the conversion is the
-    // identity, so relabelling the result would print the sterling figure
-    // under a dollar sign — wrong by the exchange rate and indistinguishable
-    // from a correct one. Better to show sterling and look odd.
-    const noUsd = { GBP: RATE_SCALE }
-    expect(hasRate('USD', noUsd)).toBe(false)
-    expect(formatBase(950_000, 'USD', noUsd)).toBe('£9,500')
-    expect(formatBaseSigned(250_000, 'USD', noUsd)).toBe('+£2,500')
+    // The failure this guards, now pointing the other way: without a sterling
+    // rate, relabelling would print the dollar figure behind a pound sign —
+    // wrong by the exchange rate and indistinguishable from a correct one.
+    const noGbp = { USD: RATE_SCALE }
+    expect(hasRate('GBP', noGbp)).toBe(false)
+    expect(formatBase(950_000, 'GBP', noGbp)).toBe('$9,500')
+    expect(formatBaseSigned(250_000, 'GBP', noGbp)).toBe('+$2,500')
   })
 
   it('needs no rate for the currency it stores in', () => {
-    expect(hasRate('GBP', {})).toBe(true)
-    expect(formatBase(950_000, 'GBP', {})).toBe('£9,500')
+    expect(hasRate('USD', {})).toBe(true)
+    expect(formatBase(950_000, 'USD', {})).toBe('$9,500')
   })
 
   it('still converts normally once a rate exists', () => {
-    expect(hasRate('USD', RATES)).toBe(true)
-    expect(formatBaseSigned(250_000, 'USD', RATES)).toBe('+$3,325')
+    expect(hasRate('GBP', RATES)).toBe(true)
+    expect(formatBaseSigned(250_000, 'GBP', RATES)).toBe('+£1,880')
   })
 })
 
@@ -133,7 +141,7 @@ describe('rates seen from the currency you are reading in', () => {
   })
 
   it('still names the base on the screen where the base is the point', () => {
-    expect(describeRate('GBP', RATES)).toBe('Base currency')
-    expect(describeRate('AED', RATES)).toBe('1 GBP = 4.88 AED')
+    expect(describeRate('USD', RATES)).toBe('Base currency')
+    expect(describeRate('AED', RATES)).toBe('1 USD = 3.6692 AED')
   })
 })

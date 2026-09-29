@@ -4,17 +4,24 @@ import { can } from '@/lib/permissions'
 import { findSales } from '@/server/repositories/sale-repository'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { toMajor } from '@/lib/money'
 import { toCsv } from '@/lib/csv'
+import { formatBase } from '@/lib/currency'
+import { displayMoneyFor } from '@/server/services/display-currency'
+import type { CurrencyCode } from '@/lib/enums'
 
 export const dynamic = 'force-dynamic'
 
-// GBP is the reporting base, so the export leads with it. USD is retained
-// because historic exports were denominated that way and downstream
-// spreadsheets still reconcile against the column.
-const COLUMNS = [
+/**
+ * Named after the currency the reader works in, and written as currency.
+ *
+ * The money columns were headed "(GBP)" and filled with bare decimals, which
+ * is two problems at once: the figures are shown in dollars everywhere else in
+ * the product, and a column of unlabelled numbers is the kind of thing
+ * somebody reconciles against and gets wrong.
+ */
+const columnsFor = (currency: CurrencyCode) => [
   'Invoice', 'Sale Date', 'Stock No', 'Brand', 'Reference', 'Supplier', 'Customer', 'Channel',
-  'Cost (GBP)', 'Sale (GBP)', 'Profit (GBP)', 'Margin %', 'Sale (USD)',
+  `Cost (${currency})`, `Sale (${currency})`, `Profit (${currency})`, 'Margin %',
 ] as const
 
 /** CSV export of the sales ledger, honouring the current filters. */
@@ -45,14 +52,19 @@ export async function GET(request: NextRequest) {
     if (page >= result.pages || result.items.length === 0) break
   }
 
-  const csv = toCsv(COLUMNS, items.map((s) => [
+  // Converted for whoever is downloading it, the same way the screens convert
+  // for whoever is reading them.
+  const display = await displayMoneyFor(user.id)
+  const money = (base: number | null) =>
+    base === null ? '' : formatBase(base, display.currency, display.rates, { decimals: true })
+
+  const csv = toCsv(columnsFor(display.currency), items.map((s) => [
     s.invoiceNo, s.saleDate.toISOString().slice(0, 10), s.stockNo, s.brandName, s.model,
     s.supplierName, s.customerName, s.channel,
-    toMajor(s.costGbp).toFixed(2),
-    toMajor(s.amountGbp).toFixed(2),
-    toMajor(s.profitGbp).toFixed(2),
-    (s.marginBps / 100).toFixed(2),
-    toMajor(s.amountUsd).toFixed(2),
+    money(s.costGbp),
+    money(s.amountGbp),
+    money(s.profitGbp),
+    `${(s.marginBps / 100).toFixed(2)}%`,
   ]))
 
   await recordAudit({

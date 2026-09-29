@@ -7,8 +7,10 @@ import { watchQuerySchema } from '@/lib/validation'
 import { parseFilters, WATCH_FIELDS } from '@/lib/filters'
 import { recordAudit } from '@/server/services/audit'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { toMajor } from '@/lib/money'
 import { toCsv } from '@/lib/csv'
+import { formatBase } from '@/lib/currency'
+import { displayMoneyFor } from '@/server/services/display-currency'
+import type { CurrencyCode } from '@/lib/enums'
 import { PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import { db } from '@/server/db/client'
 import { watches } from '@/server/db/schema'
@@ -16,14 +18,19 @@ import { watches } from '@/server/db/schema'
 export const dynamic = 'force-dynamic'
 
 /**
- * Column names and order match the import template exactly, so a file exported
- * here can be edited and imported straight back — which is the only reason to
- * offer both. Everything is in the GBP base the rest of the system reports in.
+ * Column names and order match the import template, so a file exported here
+ * can be edited and imported straight back — the only reason to offer both.
+ *
+ * The money columns are named after the currency the reader actually works in
+ * rather than the one the figures happen to be stored in, and are written as
+ * currency rather than as bare decimals. A spreadsheet column headed "(GBP)"
+ * full of numbers that are neither pounds nor recognisable as money is the
+ * kind of export somebody reconciles against and gets wrong.
  */
-const COLUMNS = [
+const columnsFor = (currency: CurrencyCode) => [
   'Stock No', 'Type', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
-  'Purchase Date', 'Purchase Price (GBP)', 'Est Sale (GBP)', 'Est Profit (GBP)',
-  'Status',
+  'Purchase Date', `Purchase Price (${currency})`, `Est Sale (${currency})`,
+  `Est Profit (${currency})`, 'Status',
 ] as const
 
 /**
@@ -78,13 +85,20 @@ export async function GET(request: NextRequest) {
     rows = rows.filter((row) => allowed.has(row.id))
   }
 
-  const csv = toCsv(COLUMNS, rows.map((w) => [
+  // Converted for the person downloading it, exactly as the screens convert
+  // for the person reading them, so a CSV and the page it came from cannot
+  // disagree about what a watch cost.
+  const display = await displayMoneyFor(user.id)
+  const money = (base: number | null) =>
+    base === null ? '' : formatBase(base, display.currency, display.rates, { decimals: true })
+
+  const csv = toCsv(columnsFor(display.currency), rows.map((w) => [
     w.stockNo, PRODUCT_TYPE_LABELS[w.productType], w.brandName, w.model, w.serial,
     w.supplierName, w.locationName,
     w.purchaseDate.toISOString().slice(0, 10),
-    toMajor(w.purchasePriceGbp).toFixed(2),
-    w.estSaleGbp !== null ? toMajor(w.estSaleGbp).toFixed(2) : '',
-    w.estSaleGbp !== null ? toMajor(w.estSaleGbp - w.purchasePriceGbp).toFixed(2) : '',
+    money(w.purchasePriceGbp),
+    money(w.estSaleGbp),
+    money(w.estSaleGbp !== null ? w.estSaleGbp - w.purchasePriceGbp : null),
     w.status,
   ]))
 

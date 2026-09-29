@@ -90,12 +90,22 @@ BEGIN
   GET DIAGNOSTICS touched = ROW_COUNT;
   RAISE NOTICE 'Repriced % of 22 watches in AED at %/GBP', touched, aed_per_gbp;
 
-  -- All twenty-two or none. This was verified against a database holding every
-  -- one of these serials; if production holds fewer, the honest outcome is a
-  -- build that stops and says so, not a price list where fourteen rows were
-  -- restated and eight were quietly left at the old figure. A failed migration
-  -- leaves the previous deployment serving and the data untouched, which is
-  -- recoverable. Half-applied accounts are not.
+  -- An empty database is not a failed match. Migrations run before the seed,
+  -- so on a first deployment there is no stock for these serials to be found
+  -- among, and stopping the build over it would mean no new environment could
+  -- ever be created. Nothing to reprice is a correct outcome here; the wrong
+  -- number repriced is not.
+  IF (SELECT count(*) FROM watches WHERE deleted_at IS NULL) = 0 THEN
+    RAISE NOTICE 'No stock yet — nothing to reprice.';
+    RETURN;
+  END IF;
+
+  -- Otherwise all twenty-two or none. This was verified against a database
+  -- holding every one of these serials; if production holds fewer, the honest
+  -- outcome is a build that stops and says so, not a price list where fourteen
+  -- rows were restated and eight were quietly left at the old figure. A failed
+  -- migration leaves the previous deployment serving and the data untouched,
+  -- which is recoverable. Half-applied accounts are not.
   IF touched <> 22 THEN
     RAISE EXCEPTION
       'Expected to reprice 22 watches but matched %. No prices have been changed. '

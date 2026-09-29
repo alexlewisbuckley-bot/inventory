@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BASE_CURRENCY } from '@/lib/enums'
 import { watchCreateSchema, saleCreateSchema, watchQuerySchema, fieldErrors } from '@/lib/validation'
 
 const baseWatch = {
@@ -57,13 +58,15 @@ describe('watch validation', () => {
   })
 
   it('defaults an omitted purchase currency to the reporting base', () => {
-    // A form posted without the currency select must not be read as dollars —
-    // the whole capital figure derives from this.
+    // A form posted without the currency select is read as the base, whatever
+    // the base currently is. Asserted against the constant rather than against
+    // a literal so this says "the base" and keeps saying it — the whole
+    // capital figure derives from this default.
     const result = watchCreateSchema.safeParse(baseWatch)
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.purchaseCurrency).toBe('GBP')
-      expect(result.data.estSaleCurrency).toBe('GBP')
+      expect(result.data.purchaseCurrency).toBe(BASE_CURRENCY)
+      expect(result.data.estSaleCurrency).toBe(BASE_CURRENCY)
     }
   })
 
@@ -124,7 +127,7 @@ describe('sale validation', () => {
     // currency the rest of the system reports in.
     const result = saleCreateSchema.safeParse(baseSale)
     expect(result.success).toBe(true)
-    if (result.success) expect(result.data.saleCurrency).toBe('GBP')
+    if (result.success) expect(result.data.saleCurrency).toBe(BASE_CURRENCY)
   })
 
   it('accepts a sale agreed in a non-base currency', () => {

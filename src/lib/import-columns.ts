@@ -26,8 +26,8 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { header: 'Supplier', required: true, hint: 'Created automatically if new', example: 'GB Luxury Limited', width: 22 },
   { header: 'Location', required: true, hint: 'Must already exist', example: 'Own inventory', width: 18 },
   { header: 'Purchase Date', required: true, hint: 'DD/MM/YYYY', example: '08/04/2026', width: 16 },
-  { header: 'Purchase Price (GBP)', required: true, hint: 'Numbers only', example: '13105.51', width: 20 },
-  { header: 'Est Sale (GBP)', required: false, hint: 'Leave blank to price later', example: '14980.00', width: 18 },
+  { header: 'Purchase Price (USD)', required: true, hint: 'Numbers only', example: '13105.51', width: 20 },
+  { header: 'Est Sale (USD)', required: false, hint: 'Leave blank to price later', example: '14980.00', width: 18 },
 ] as const
 
 /**
@@ -35,9 +35,12 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
  *
  * "Model" was the header for two versions of this application and is still in
  * every spreadsheet the business already has, so a file exported before the
- * rename must keep importing. Likewise the estimate used to be quoted in
- * dollars; a sheet with that header still loads, and the value is treated as
- * dollars so the figure is not silently reinterpreted as sterling.
+ * rename must keep importing.
+ *
+ * The money headers said GBP until the base moved to dollars. A sheet written
+ * against the old headers still loads, and its figures are read as sterling
+ * and converted, so re-importing an old export does not silently inflate every
+ * price by the exchange rate.
  */
 export const HEADER_ALIASES: Record<string, string> = {
   'product type': 'type',
@@ -48,12 +51,19 @@ export const HEADER_ALIASES: Record<string, string> = {
   'reference number': 'reference',
   'stock reference': 'reference',
   'serial number': 'serial',
-  'purchase price': 'purchase price (gbp)',
+  'purchase price': 'purchase price (usd)',
+  'purchase price (usd)': 'purchase price (usd)',
+  cost: 'purchase price (usd)',
+  'cost (usd)': 'purchase price (usd)',
+  'est sale': 'est sale (usd)',
+  'estimated sale': 'est sale (usd)',
+  'est sale price': 'est sale (usd)',
+  // Left pointing at their own keys, not folded into the dollar ones: a sheet
+  // that says GBP holds sterling, and the parser converts it rather than
+  // reading the number as though the header had changed under it.
+  'purchase price (gbp)': 'purchase price (gbp)',
   'cost (gbp)': 'purchase price (gbp)',
-  cost: 'purchase price (gbp)',
-  'est sale': 'est sale (gbp)',
-  'estimated sale': 'est sale (gbp)',
-  'est sale price': 'est sale (gbp)',
+  'est sale (gbp)': 'est sale (gbp)',
 }
 
 /** Normalise a header cell to the key the parser looks for. */

@@ -179,11 +179,15 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     const location = value('location')
     const serial = value('serial') || null
     const rawDate = value('purchase date')
-    const rawPrice = value('purchase price (gbp)')
-    const rawEst = value('est sale (gbp)') || value('est sale (usd)')
-    // A sheet written before the change to sterling still says "(USD)". Honour
-    // its header rather than reading dollars as pounds.
-    const estIsUsd = !value('est sale (gbp)') && Boolean(value('est sale (usd)'))
+    // Dollars are the base now, so a "(USD)" column is read as it stands and a
+    // "(GBP)" one is converted. Reading an old sheet's sterling as dollars
+    // would understate every purchase by a third, silently, which is exactly
+    // the mistake a header exists to prevent.
+    const rawPrice = value('purchase price (usd)') || value('purchase price (gbp)')
+    const priceIsGbp = !value('purchase price (usd)') && Boolean(value('purchase price (gbp)'))
+    const priceField = priceIsGbp ? 'purchase price (gbp)' : 'purchase price (usd)'
+    const rawEst = value('est sale (usd)') || value('est sale (gbp)')
+    const estIsGbp = !value('est sale (usd)') && Boolean(value('est sale (gbp)'))
 
     let errored = false
     const fail = (field: string, message: string) => {
@@ -199,19 +203,29 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     if (!date) fail('purchase date', `Could not read the date "${rawDate}". Use DD/MM/YYYY or YYYY-MM-DD.`)
     else if (date.getTime() > Date.now() + 86_400_000) fail('purchase date', 'Purchase date is in the future.')
 
-    const price = parseAmount(rawPrice)
-    if (price === null) fail('purchase price (gbp)', `Could not read the price "${rawPrice}".`)
-    else if (price <= 0) fail('purchase price (gbp)', 'Purchase price must be greater than zero.')
+    const rawPriceAmount = parseAmount(rawPrice)
+    const price = rawPriceAmount === null
+      ? null
+      : priceIsGbp ? rawPriceAmount * usdRate : rawPriceAmount
+    if (price === null) fail(priceField, `Could not read the price "${rawPrice}".`)
+    else if (price <= 0) fail(priceField, 'Purchase price must be greater than zero.')
+    else if (priceIsGbp && rawPriceAmount !== null) {
+      issues.push({
+        line, field: priceField,
+        message: `Converted £${rawPriceAmount} to $${price.toFixed(2)} at ${usdRate}.`,
+        severity: 'warning',
+      })
+    }
 
     const rawEstAmount = rawEst ? parseAmount(rawEst) : null
     if (rawEst && rawEstAmount === null) {
       issues.push({ line, field: 'est sale', message: `Ignoring unreadable sale price "${rawEst}".`, severity: 'warning' })
     }
-    const est = rawEstAmount === null ? null : estIsUsd ? rawEstAmount / usdRate : rawEstAmount
-    if (estIsUsd && rawEstAmount !== null) {
+    const est = rawEstAmount === null ? null : estIsGbp ? rawEstAmount * usdRate : rawEstAmount
+    if (estIsGbp && rawEstAmount !== null) {
       issues.push({
-        line, field: 'est sale (usd)',
-        message: `Converted $${rawEstAmount} to £${est!.toFixed(2)} at ${usdRate}.`,
+        line, field: 'est sale (gbp)',
+        message: `Converted £${rawEstAmount} to $${est!.toFixed(2)} at ${usdRate}.`,
         severity: 'warning',
       })
     }

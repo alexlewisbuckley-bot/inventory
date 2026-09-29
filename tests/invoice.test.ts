@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BASE_CURRENCY } from '@/lib/enums'
 import {
   parseInvoiceText, detectVatScheme, parseAmount, parseInvoiceDate,
   reconcile, coerceExtraction, undoubleText, unspaceText, EMPTY_EXTRACTION,
@@ -748,7 +749,9 @@ describe('what comes back from Claude', () => {
     expect(coerced!.supplier.name).toBe('GB Luxury')
     // The string "null" is not a value; it is a model writing the word.
     expect(coerced!.supplier.vatNo).toBeNull()
-    expect(coerced!.currency).toBe('GBP')
+    // An unsupported currency code falls back to the reporting base rather
+    // than being taken at face value from a model's output.
+    expect(coerced!.currency).toBe(BASE_CURRENCY)
     expect(coerced!.vatScheme).toBe('UNKNOWN')
     expect(coerced!.grossAmount).toBe(8950)
     expect(coerced!.invoiceDate?.slice(0, 10)).toBe('2026-04-08')
