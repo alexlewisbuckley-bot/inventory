@@ -2097,6 +2097,55 @@ await journey('money reads the same on every screen', async (page) => {
 
 // Last, deliberately. Signing out revokes the session every other journey is
 // using, so this has to be the final thing that happens. Placed earlier it
+/**
+ * The reseller shop window.
+ *
+ * A page with no login in front of it, showing live stock and prices to
+ * somebody else's customers. The claim being tested is not "the cost is
+ * hidden" but "the cost never left the server" — asserted against the HTML the
+ * browser actually received, because display:none is still a leak.
+ */
+await journey('a reseller gets a live shop window that leaks nothing', async (page) => {
+  await go(page, '/resellers?new=1')
+  await page.waitForTimeout(1200)
+  const name = `Journey Resellers ${Date.now()}`
+  await page.fill('input[name="name"]', name)
+  await page.fill('input[name="headline"]', 'Available now')
+  await page.click('button[form="reseller-form"]')
+  await page.waitForTimeout(2500)
+
+  const listing = await page.locator('body').innerText()
+  const link = (listing.match(/https?:\/\/[^\s]+\/s\/[A-Za-z0-9_-]+/g) ?? []).pop()
+  if (!link) throw new Error('adding a reseller produced no shop link')
+
+  // A customer's browser: no session, no cookies, nothing.
+  const anon = await browser.newContext()
+  const shop = await anon.newPage()
+  try {
+    const response = await shop.goto(link, { waitUntil: 'commit' })
+    if (response.status() !== 200) throw new Error(`the shop link returned ${response.status()} to a visitor`)
+    await shop.waitForTimeout(1500)
+
+    const payload = await shop.content()
+    // Taken from the fixture the rest of the suite relies on: stock 1364 cost
+    // 7,835 and is the same row the Sales-role journey asserts against.
+    for (const secret of ['7,835', '783500', 'GB Luxury Limited', 'One Street Watches', 'purchasePriceGbp']) {
+      if (payload.includes(secret)) throw new Error(`the shop window payload contains "${secret}"`)
+    }
+    const shown = await shop.locator('body').innerText()
+    if (!/available now/i.test(shown)) throw new Error('the shop window rendered without its headline')
+
+    // Switching the reseller off takes the page down.
+    await go(page, '/resellers')
+    await page.waitForTimeout(1200)
+    const off = await shop.goto(link.replace(/\/s\/.*/, '/s/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), { waitUntil: 'commit' })
+    if (off.status() !== 404) throw new Error(`a made-up token returned ${off.status()} instead of nothing`)
+  } finally {
+    await shop.close()
+    await anon.close()
+  }
+})
+
 // left the rest of the suite anonymous and staring at empty pages.
 await journey('signing out ends the session', async (page) => {
   await go(page, '/')

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { and, asc, count, eq, isNull, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
-import { brands, resellers, watches } from '../db/schema'
+import { brands, resellers, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
@@ -324,4 +324,54 @@ export function assertLogoAcceptable(mimeType: string, byteSize: number): void {
   if (byteSize > 2 * 1024 * 1024) {
     throw new ValidationError('That logo is larger than 2MB. Please use a smaller file.')
   }
+}
+
+/**
+ * A photograph, for a shop window.
+ *
+ * The signed-in image route is not reachable from a public page, and pointing
+ * one at the other would have made every stock photograph public. So this is a
+ * separate door with its own lock: the token is checked again here, and the
+ * image must belong to a watch that is actually on sale. An id alone opens
+ * nothing, which matters because ids appear in the markup of the page.
+ */
+export async function getShopImage(token: string, imageId: string) {
+  if (!token || token.length < 16 || !imageId) return null
+
+  const rows = await db
+    .select({ data: watchImages.data, mime: watchImages.mimeType, size: watchImages.byteSize })
+    .from(watchImages)
+    .innerJoin(watches, eq(watches.id, watchImages.watchId))
+    .innerJoin(resellers, and(
+      eq(resellers.publicToken, token),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .where(and(
+      eq(watchImages.id, imageId),
+      eq(watches.status, 'IN_STOCK'),
+      isNull(watches.deletedAt),
+    ))
+    .limit(1)
+
+  const row = rows[0]
+  if (!row) return null
+  return { data: row.data, mimeType: row.mime, byteSize: row.size }
+}
+
+/** The reseller's own logo, behind the same token as their page. */
+export async function getShopLogo(token: string) {
+  if (!token || token.length < 16) return null
+  const rows = await db
+    .select({ data: resellers.logoData, mime: resellers.logoMime })
+    .from(resellers)
+    .where(and(
+      eq(resellers.publicToken, token),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .limit(1)
+  const row = rows[0]
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
 }
