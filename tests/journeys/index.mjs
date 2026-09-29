@@ -542,7 +542,7 @@ if (!only || 'inventory on a phone'.includes(only)) {
   const { ctx, page } = await newPage(390, 844)
   try {
     await go(page, '/inventory')
-    const cards = page.locator('main ul > li:has-text("Est. sale")')
+    const cards = page.locator('main ul > li:has-text("Retail")')
     if (await cards.count() === 0) throw new Error('no cards rendered; the table would need a sideways scroll')
 
     const first = cards.first()

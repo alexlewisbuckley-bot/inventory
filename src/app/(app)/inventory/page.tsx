@@ -5,7 +5,7 @@ import { asc, eq, isNull } from 'drizzle-orm'
 import { Download, FileText, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands, locations, suppliers } from '@/server/db/schema'
+import { brands, locations, owners, suppliers } from '@/server/db/schema'
 import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { parseFilters, toSearchParams, WATCH_FIELDS } from '@/lib/filters'
@@ -100,13 +100,15 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   })()
 
   const [
-    result, summary, locationOptions, supplierOptions, brandOptions, rates, preferences,
+    result, summary, locationOptions, ownerOptions, supplierOptions, brandOptions, rates, preferences,
     unpricedCount, customers, dealsByWatch, savedViews,
   ] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
     db.select({ id: locations.id, name: locations.name }).from(locations)
       .where(isNull(locations.deletedAt)).orderBy(asc(locations.sortOrder)),
+    db.select({ id: owners.id, name: owners.name }).from(owners)
+      .where(isNull(owners.deletedAt)).orderBy(asc(owners.sortOrder)),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
@@ -196,7 +198,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
           <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
         )}
         {showRevenue && (
-          <StatCard label="Est. sale value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
+          <StatCard label="Retail value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
         )}
         {showCost && (
           <StatCard
@@ -215,6 +217,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         placeholder="Search by stock number, model, reference or serial…"
         options={{
           locations: locationOptions.map((row) => ({ value: row.id, label: row.name })),
+          owners: ownerOptions.map((row) => ({ value: row.id, label: row.name })),
           suppliers: supplierOptions.map((row) => ({ value: row.id, label: row.name })),
           brands: brandOptions.map((row) => ({ value: row.id, label: row.name })),
         }}

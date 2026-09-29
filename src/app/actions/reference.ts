@@ -4,8 +4,9 @@ import { requireCapability } from '@/server/auth/session'
 import {
   createSupplier, updateSupplier, deleteSupplier,
   createLocation, updateLocation, deleteLocation,
+  createOwner, updateOwner, deleteOwner,
 } from '@/server/services/reference-service'
-import { supplierSchema, locationSchema, fieldErrors } from '@/lib/validation'
+import { supplierSchema, locationSchema, ownerSchema, fieldErrors } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import type { ActionState } from './auth'
@@ -88,6 +89,46 @@ export async function deleteLocationAction(id: string): Promise<ActionState> {
     return { ok: true, message: 'Location deleted.' }
   } catch (error) {
     return toState(error, 'Could not delete the location.')
+  }
+}
+
+// --- Owners ----------------------------------------------------------------
+
+export async function saveOwnerAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const actor = await requireCapability('owner:manage')
+  const id = formData.get('id')?.toString() || null
+  const parsed = ownerSchema.safeParse({
+    name: formData.get('name'),
+    type: formData.get('type'),
+    legalName: formData.get('legalName'),
+    registrationNo: formData.get('registrationNo'),
+    contactName: formData.get('contactName'),
+    contactEmail: formData.get('contactEmail'),
+    contactPhone: formData.get('contactPhone'),
+    notes: formData.get('notes'),
+    isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
+  })
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+
+  try {
+    if (id) await updateOwner(id, parsed.data, actor)
+    else await createOwner(parsed.data, actor)
+    revalidatePath('/owners')
+    revalidatePath('/inventory')
+    return { ok: true, message: id ? 'Owner updated.' : 'Owner added.' }
+  } catch (error) {
+    return toState(error, 'Could not save the owner.')
+  }
+}
+
+export async function deleteOwnerAction(id: string): Promise<ActionState> {
+  const actor = await requireCapability('owner:manage')
+  try {
+    await deleteOwner(id, actor)
+    revalidatePath('/owners')
+    return { ok: true, message: 'Owner deleted.' }
+  } catch (error) {
+    return toState(error, 'Could not delete the owner.')
   }
 }
 

@@ -7,7 +7,7 @@ import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS,
-  IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES,
+  IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES, OFFER_STATUSES, OWNER_TYPES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
@@ -151,6 +151,41 @@ export const locations = pgTable(
   (t) => ({
     slugIdx: uniqueIndex('locations_slug_idx').on(t.slug),
     activeIdx: index('locations_active_idx').on(t.isActive),
+  }),
+)
+
+/**
+ * Who owns a watch, as distinct from where it sits.
+ *
+ * Stock on the same shelf can belong to different entities — the trading
+ * company, a sister company, or a private individual whose piece is being held
+ * or sold on their behalf. Location answers "where is it"; this answers "whose
+ * is it", and the two move independently: a watch can be moved between vaults
+ * without changing hands, and can change hands without moving at all.
+ */
+export const owners = pgTable(
+  'owners',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    type: text('type', { enum: OWNER_TYPES }).notNull().default('BUSINESS'),
+    /** The registered entity where it differs from the name in use. */
+    legalName: text('legal_name'),
+    registrationNo: text('registration_no'),
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
+    contactPhone: text('contact_phone'),
+    notes: text('notes'),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('owners_slug_idx').on(t.slug),
+    activeIdx: index('owners_active_idx').on(t.isActive),
   }),
 )
 
@@ -342,6 +377,12 @@ export const watches = pgTable(
     purchaseCurrency: text('purchase_currency', { enum: CURRENCIES }).notNull().default('GBP'),
 
     locationId: text('location_id').notNull().references(() => locations.id),
+    /**
+     * Nullable on purpose. Stock that predates the owner register has an owner
+     * in real life, but nobody has told the system which — and inventing one
+     * on a record the accounts are built from is worse than an honest blank.
+     */
+    ownerId: text('owner_id').references(() => owners.id),
     status: text('status', { enum: WATCH_STATUSES }).notNull().default('IN_STOCK'),
 
     /** The supplier invoice this watch was booked in from, when it came from one. */
@@ -377,6 +418,7 @@ export const watches = pgTable(
     stockNoIdx: uniqueIndex('watches_stock_no_idx').on(t.stockNo),
     statusIdx: index('watches_status_idx').on(t.status),
     locationIdx: index('watches_location_idx').on(t.locationId),
+    ownerIdx: index('watches_owner_idx').on(t.ownerId),
     supplierIdx: index('watches_supplier_idx').on(t.supplierId),
     brandIdx: index('watches_brand_idx').on(t.brandId),
     productTypeIdx: index('watches_product_type_idx').on(t.productType).where(sql`deleted_at IS NULL`),

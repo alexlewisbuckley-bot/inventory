@@ -73,7 +73,7 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
           ref={input}
           value={value}
           inputMode="decimal"
-          aria-label="Estimated sale price"
+          aria-label="Retail price"
           onChange={(event) => setValue(formatMoneyInput(event.target.value))}
           onKeyDown={(event) => {
             if (event.key === 'Enter') { event.preventDefault(); void save() }
@@ -108,7 +108,7 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
       // "£14,980" — which says nothing about what pressing it does.
       aria-label={baseMinor === null
         ? 'Set the estimated sale price'
-        : `Estimated sale price ${money(baseMinor)}. Edit it.`}
+        : `Retail price ${money(baseMinor)}. Edit it.`}
       title="Click to set the estimated sale price"
       className={cn(
         'group/price inline-flex items-center justify-end gap-1.5 rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',

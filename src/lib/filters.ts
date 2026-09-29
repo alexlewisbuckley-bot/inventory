@@ -124,11 +124,12 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'productType', label: 'Type', type: 'enum', options: enumOptions(PRODUCT_TYPES, PRODUCT_TYPE_LABELS) },
   { key: 'brandId', label: 'Brand', type: 'reference', optionSource: 'brands' },
   { key: 'locationId', label: 'Location', type: 'reference', optionSource: 'locations' },
+  { key: 'ownerId', label: 'Owner', type: 'reference', optionSource: 'owners' },
   { key: 'supplierId', label: 'Supplier', type: 'reference', optionSource: 'suppliers' },
   { key: 'model', label: 'Model', type: 'text' },
   { key: 'serial', label: 'Serial', type: 'text' },
   { key: 'purchasePriceGbp', label: 'Cost', type: 'money' },
-  { key: 'estSaleGbp', label: 'Asking price', type: 'money' },
+  { key: 'estSaleGbp', label: 'Retail', type: 'money' },
   { key: 'purchaseDate', label: 'Bought', type: 'date' },
   { key: 'year', label: 'Year', type: 'number' },
   {

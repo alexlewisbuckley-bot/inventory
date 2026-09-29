@@ -60,7 +60,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
     can(user.role, 'deal:read') ? interestInWatch(params.id) : Promise.resolve(null),
     can(user.role, 'customer:read') ? ownershipHistory(params.id) : Promise.resolve([]),
   ])
-  const { watch, brand, supplier, location, sale, invoice, registerCheckedByName } = record
+  const { watch, brand, supplier, location, owner, sale, invoice, registerCheckedByName } = record
 
   // Both lights, computed on the server so the table, the drawer and this page
   // cannot disagree about what green means.
@@ -123,7 +123,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
         )}
         {can(user.role, 'revenue:read') && (
           <StatCard
-            label="Est. sale price"
+            label="Retail price"
             value={watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'Not set'}
             caption={watch.estSaleGbp === null ? 'Needs a price' : 'Target'}
           />
@@ -160,6 +160,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
               />
               <Row label="Supplier" value={supplier.name} />
               <Row label="Location" value={location.name} />
+              <Row label="Owner" value={owner?.name ?? 'Not recorded'} />
               {invoice && (
                 <Row
                   label="Invoice"

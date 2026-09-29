@@ -99,6 +99,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       // base column now, so it is copied rather than converted.
       estSaleUsd: estGbp,
       locationId: input.locationId,
+      ownerId: input.ownerId ?? null,
       status: 'IN_STOCK',
       notes: input.notes ?? null,
       createdById: actor.id,
@@ -163,6 +164,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.brandId !== undefined) patch.brandId = input.brandId
     if (input.supplierId !== undefined) patch.supplierId = input.supplierId
     if (input.locationId !== undefined) patch.locationId = input.locationId
+    if (input.ownerId !== undefined) patch.ownerId = input.ownerId || null
     if (input.notes !== undefined) patch.notes = input.notes
     if (input.status !== undefined) patch.status = input.status
     if (input.purchaseDate !== undefined) patch.purchaseDate = input.purchaseDate
@@ -197,7 +199,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
 
     const changes = diff(existing, patch, [
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
-      'supplierId', 'locationId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
+      'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
     ])
 
     await recordAudit({

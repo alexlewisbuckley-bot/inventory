@@ -35,6 +35,7 @@ export interface WatchFormValues {
   estSaleAmount: string
   estSaleCurrency: CurrencyCode
   locationId: string
+  ownerId: string
   notes: string
 }
 
@@ -45,7 +46,7 @@ const EMPTY: WatchFormValues = {
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
-  locationId: '', notes: '',
+  locationId: '', ownerId: '', notes: '',
 }
 
 /**
@@ -87,7 +88,7 @@ const INITIAL: ActionState = { ok: false }
  * drift apart. In edit mode a hidden `version` field carries the optimistic
  * concurrency token read when the form was opened.
  */
-export function WatchForm({ mode, initial, brands, suppliers, locations, requestId }: {
+export function WatchForm({ mode, initial, brands, suppliers, locations, owners = [], requestId }: {
   mode: 'create' | 'edit'
   initial?: Partial<WatchFormValues>
   /** Set when intake is fulfilling a want: the action settles the request. */
@@ -95,6 +96,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
   brands: Option[]
   suppliers: Option[]
   locations: Option[]
+  owners?: Option[]
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -223,7 +225,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
             error={state.errors?.purchaseAmount}
           />
           <MoneyField
-            label="Est. sale price"
+            label="Retail price"
             amountName="estSaleAmount"
             currencyName="estSaleCurrency"
             amount={values.estSaleAmount}
@@ -239,6 +241,17 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, request
             placeholder="Choose a location…"
             options={locations.map((l) => ({ value: l.id, label: l.name }))}
             error={state.errors?.locationId}
+          />
+          {/* Optional, unlike the location. Forcing a choice here would be
+              answered by whoever is first in the list, and a wrong owner on a
+              stock record is worse than an unanswered one. */}
+          <SelectField
+            name="ownerId" label="Owner"
+            value={values.ownerId} onChange={set('ownerId')}
+            placeholder="Not recorded yet"
+            options={owners.map((o) => ({ value: o.id, label: o.name }))}
+            hint="Whose watch this is. Can be set later."
+            error={state.errors?.ownerId}
           />
           <TextareaField
             name="notes" label="Notes" className="sm:col-span-2"

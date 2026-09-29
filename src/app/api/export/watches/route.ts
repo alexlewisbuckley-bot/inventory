@@ -28,8 +28,8 @@ export const dynamic = 'force-dynamic'
  * kind of export somebody reconciles against and gets wrong.
  */
 const columnsFor = (currency: CurrencyCode) => [
-  'Stock No', 'Type', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location',
-  'Purchase Date', `Purchase Price (${currency})`, `Est Sale (${currency})`,
+  'Stock No', 'Type', 'Brand', 'Reference', 'Serial', 'Supplier', 'Location', 'Owner',
+  'Purchase Date', `Purchase Price (${currency})`, `Retail (${currency})`,
   `Est Profit (${currency})`, 'Status',
 ] as const
 
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
   const csv = toCsv(columnsFor(display.currency), rows.map((w) => [
     w.stockNo, PRODUCT_TYPE_LABELS[w.productType], w.brandName, w.model, w.serial,
-    w.supplierName, w.locationName,
+    w.supplierName, w.locationName, w.ownerName ?? '',
     w.purchaseDate.toISOString().slice(0, 10),
     money(w.purchasePriceGbp),
     money(w.estSaleGbp),

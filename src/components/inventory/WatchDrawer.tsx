@@ -50,6 +50,7 @@ export async function WatchDrawer({ watchId, capabilities }: {
         brandName: record.brand.name,
         supplierName: record.supplier.name,
         locationName: record.location.name,
+        ownerName: record.owner?.name ?? null,
         locationId: record.location.id,
         createdByName: record.createdByName,
         invoice: record.invoice?.id

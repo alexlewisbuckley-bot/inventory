@@ -23,6 +23,18 @@ export type WatchStatus = (typeof WATCH_STATUSES)[number]
 export const LOCATION_TYPES = ['STORE', 'VAULT', 'TRANSIT', 'CONSIGNMENT'] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 
+/**
+ * Who owns a watch, as against where it is sitting.
+ *
+ * A company and a person are not the same kind of owner: one has a registration
+ * number and files accounts, the other is a private individual whose stock is
+ * held rather than traded. The distinction is worth recording on the record
+ * itself, because "whose is this" is the question a stocktake, an insurance
+ * schedule and a set of accounts each need answered differently.
+ */
+export const OWNER_TYPES = ['BUSINESS', 'INDIVIDUAL'] as const
+export type OwnerType = (typeof OWNER_TYPES)[number]
+
 export const CONDITIONS = ['UNKNOWN', 'UNWORN', 'EXCELLENT', 'GOOD', 'FAIR'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
@@ -239,6 +251,11 @@ export const WATCH_STATUS_TONE: Record<WatchStatus, 'accent' | 'gold' | 'navy' |
 
 /** Statuses that still represent owned, sellable inventory. */
 export const ACTIVE_STATUSES: readonly WatchStatus[] = ['IN_STOCK', 'RESERVED', 'SALE_AGREED']
+
+export const OWNER_TYPE_LABELS: Record<OwnerType, string> = {
+  BUSINESS: 'Business',
+  INDIVIDUAL: 'Individual',
+}
 
 export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
   STORE: 'Store',

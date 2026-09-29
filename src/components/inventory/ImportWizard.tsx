@@ -40,7 +40,11 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
   const fileInput = useRef<HTMLInputElement>(null)
 
   const preview = state.preview
-  const canCommit = preview && preview.errorCount === 0 && preview.validCount > 0
+  // Something to do, not merely something to read. A file whose every row
+  // matches stock exactly is a successful check with nothing to apply, and
+  // offering an enabled Import button for it invites a pointless write.
+  const pending = preview ? preview.createCount + preview.updateCount : 0
+  const canCommit = preview && preview.errorCount === 0 && pending > 0
 
   const takeFiles = (files: FileList | null) => {
     const file = files?.[0]
@@ -223,11 +227,18 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
         <Card>
           <CardHeader
             title="3 · Review what will happen"
-            description={`${preview.validCount} row${preview.validCount === 1 ? '' : 's'} ready · ${preview.errorCount} to fix`}
+            description={[
+              preview.updateCount > 0 ? `${preview.updateCount} to update` : null,
+              preview.createCount > 0 ? `${preview.createCount} to book in` : null,
+              preview.unchangedCount > 0 ? `${preview.unchangedCount} unchanged` : null,
+              preview.errorCount > 0 ? `${preview.errorCount} to fix` : null,
+            ].filter(Boolean).join(' · ') || 'Nothing to do'}
             action={
-              preview.errorCount === 0
-                ? <Chip tone="accent" dot>Ready to import</Chip>
-                : <Chip tone="danger">Needs attention</Chip>
+              preview.errorCount > 0
+                ? <Chip tone="danger">Needs attention</Chip>
+                : pending > 0
+                  ? <Chip tone="accent" dot>Ready to apply</Chip>
+                  : <Chip tone="neutral">No changes</Chip>
             }
           />
 
@@ -248,54 +259,85 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
 
             {preview.issues.length > 0 && <IssueList issues={preview.issues} />}
 
-            {preview.rows.length > 0 && (
-              <div className="overflow-hidden rounded-md border border-line-subtle">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH width="60px">Row</TH>
-                      <TH>Watch</TH>
-                      <TH width="140px">Supplier</TH>
-                      <TH width="140px">Location</TH>
-                      <TH width="110px">Purchased</TH>
-                      <TH width="110px" align="right">Cost</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {preview.rows.slice(0, 20).map((row) => (
-                      <TR key={row.line}>
-                        <TD className="text-content-secondary">{row.line}</TD>
-                        <TD>
-                          <span className="block font-bold text-content-primary">{row.brand} {row.model}</span>
-                          {row.serial && <span className="block text-caption text-content-secondary">Serial {row.serial}</span>}
-                        </TD>
-                        <TD className="text-content-secondary">{row.supplier}</TD>
-                        <TD className="text-content-secondary">{row.location}</TD>
-                        <TD className="text-content-secondary">{formatDate(row.purchaseDate)}</TD>
-                        <TD align="right" className="font-bold">
-                          {money(toMinor(row.purchasePriceGbp ?? 0))}
-                        </TD>
+            {preview.rows.length > 0 && (() => {
+              // Rows that do something come first. The point of the review step
+              // is the handful that changed, and burying them under twenty-odd
+              // identical rows is how somebody confirms without reading.
+              const rank = { UPDATE: 0, CREATE: 1, UNCHANGED: 2 } as const
+              const ordered = [...preview.rows].sort(
+                (a, b) => rank[a.action] - rank[b.action] || a.line - b.line,
+              )
+              const shown = ordered.slice(0, 20)
+              return (
+                <div className="overflow-hidden rounded-md border border-line-subtle">
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH width="96px">Stock</TH>
+                        <TH width="110px">Action</TH>
+                        <TH>Watch</TH>
+                        <TH>What changes</TH>
                       </TR>
-                    ))}
-                  </TBody>
-                </Table>
-                {preview.rows.length > 20 && (
-                  <p className="border-t border-line-subtle px-4 py-2.5 text-caption text-content-secondary">
-                    Showing the first 20 of {preview.rows.length} rows. All of them will be imported.
-                  </p>
-                )}
-              </div>
-            )}
+                    </THead>
+                    <TBody>
+                      {shown.map((row) => (
+                        <TR key={row.line}>
+                          <TD className="text-content-secondary tabular-nums">
+                            {row.stockNo ?? <span className="text-content-tertiary">New</span>}
+                          </TD>
+                          <TD>
+                            {row.action === 'UPDATE' && <Chip tone="accent">Update</Chip>}
+                            {row.action === 'CREATE' && <Chip tone="accent" dot>Book in</Chip>}
+                            {row.action === 'UNCHANGED' && <Chip tone="neutral">Unchanged</Chip>}
+                          </TD>
+                          <TD>
+                            <span className="block font-bold text-content-primary">{row.brand} {row.model}</span>
+                            {row.serial && <span className="block text-caption text-content-secondary">Serial {row.serial}</span>}
+                          </TD>
+                          <TD className="text-content-secondary">
+                            {row.action === 'UPDATE' ? (
+                              <ul className="flex flex-col gap-0.5">
+                                {row.changes.map((change) => (
+                                  <li key={change.field} className="text-caption">
+                                    <span className="font-semibold text-content-primary">{change.label}</span>{' '}
+                                    <span className="line-through">{change.from}</span>
+                                    {' → '}
+                                    <span className="font-bold text-content-primary">{change.to}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : row.action === 'CREATE' ? (
+                              <span className="text-caption">
+                                New purchase · {row.supplier} · {formatDate(row.purchaseDate)} · {money(toMinor(row.purchasePriceGbp ?? 0))}
+                              </span>
+                            ) : (
+                              <span className="text-caption text-content-tertiary">Matches the record exactly</span>
+                            )}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                  {ordered.length > shown.length && (
+                    <p className="border-t border-line-subtle px-4 py-2.5 text-caption text-content-secondary">
+                      Showing {shown.length} of {ordered.length} rows, changes first.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
           </CardBody>
 
           <CardFooter>
             <span className="text-caption text-content-secondary">
-              {canCommit
-                ? 'Stock numbers are allocated automatically, continuing your existing sequence.'
-                : 'Fix the rows listed above, then send the file again.'}
+              {preview.errorCount > 0
+                ? 'Fix the rows listed above, then send the file again.'
+                : pending === 0
+                  ? 'Every row matches the inventory. There is nothing to write.'
+                  : 'Only the rows listed as changing will be written. Everything else is left alone.'}
             </span>
             <Button onClick={commit} loading={committing} disabled={!canCommit} icon={<Upload className="h-4 w-4" />}>
-              Import {preview.validCount} {preview.validCount === 1 ? 'watch' : 'watches'}
+              {pending === 0 ? 'Nothing to apply' : `Apply ${pending} change${pending === 1 ? '' : 's'}`}
             </Button>
           </CardFooter>
         </Card>

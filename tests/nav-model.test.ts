@@ -12,19 +12,29 @@ const activeFor = (pathname: string) =>
 
 describe('navigation highlighting', () => {
   it('marks exactly one destination as current, whatever the path', () => {
-    // /settings/users is matched by both "Settings" and "Users". Lighting both
-    // left the user unsure which section they were actually in.
+    // Two destinations lit at once left the user unsure which section they
+    // were actually in, so a sidebar path must resolve to exactly one.
     for (const path of ['/today', '/insights', '/inventory', '/inventory/new', '/sales',
-                        '/suppliers', '/locations', '/reports', '/reports/ageing', '/settings',
-                        '/settings/users', '/settings/currencies', '/settings/audit']) {
+                        '/suppliers', '/locations', '/owners', '/reports', '/reports/ageing']) {
       expect(activeFor(path), `for ${path}`).toHaveLength(1)
     }
   })
 
+  /**
+   * Settings, Users and Help live in the account menu and the command palette,
+   * not in the sidebar. Nothing in the sidebar is the section you are in while
+   * you are in one of them, so nothing lights up — highlighting a neighbour
+   * would be worse than highlighting nothing.
+   */
+  it('highlights no sidebar section for the account-menu destinations', () => {
+    for (const path of ['/settings', '/settings/users', '/settings/currencies', '/settings/audit']) {
+      expect(activeFor(path), `for ${path}`).toHaveLength(0)
+    }
+  })
+
   it('gives the most specific destination the highlight', () => {
-    expect(activeFor('/settings/users')).toEqual(['Users'])
-    expect(activeFor('/settings/currencies')).toEqual(['Settings'])
     expect(activeFor('/reports/ageing')).toEqual(['Ageing stock'])
+    expect(activeFor('/owners')).toEqual(['Owners'])
   })
 
   it('never highlights a saved-view shortcut from a section prefix', () => {

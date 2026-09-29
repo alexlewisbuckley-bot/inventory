@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
-  LayoutDashboard, MapPin, Package, Receipt, Search, Users2,
+  Landmark, LayoutDashboard, MapPin, Package, Receipt, Search, Users2,
   type LucideIcon,
 } from 'lucide-react'
 import { can, type Capability } from '@/lib/permissions'
@@ -75,6 +75,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
       items: [
         { href: '/suppliers', label: 'Suppliers', icon: Building2, capability: 'supplier:read', match: '/suppliers' },
         { href: '/locations', label: 'Locations', icon: MapPin, capability: 'location:read', match: '/locations' },
+        { href: '/owners', label: 'Owners', icon: Landmark, capability: 'owner:read', match: '/owners' },
         // Under Manage rather than Needs attention: counting the stock is a
         // job somebody schedules, not one the system nags about.
         { href: '/stock-checks', label: 'Stock checks', icon: ClipboardCheck, capability: 'watch:read', match: '/stock-checks' },

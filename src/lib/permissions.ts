@@ -13,6 +13,7 @@ export const CAPABILITIES = [
   'sale:read', 'sale:create', 'sale:update', 'sale:delete',
   'supplier:read', 'supplier:manage',
   'location:read', 'location:manage',
+  'owner:read', 'owner:manage',
   'report:read', 'report:export',
   'data:import',
   'user:read', 'user:manage',
@@ -42,7 +43,7 @@ export const CAPABILITIES = [
 export type Capability = (typeof CAPABILITIES)[number]
 
 const VIEWER: Capability[] = [
-  'watch:read', 'sale:read', 'supplier:read', 'location:read', 'report:read',
+  'watch:read', 'sale:read', 'supplier:read', 'location:read', 'owner:read', 'report:read',
   'revenue:read', 'cost:read',
 ]
 
@@ -55,7 +56,7 @@ const VIEWER: Capability[] = [
  * the figures are absent from what the server sends, not hidden by CSS.
  */
 const SALES: Capability[] = [
-  'watch:read', 'sale:read', 'sale:create', 'supplier:read', 'location:read',
+  'watch:read', 'sale:read', 'sale:create', 'supplier:read', 'location:read', 'owner:read',
   'revenue:read',
   'watch:price',
   'customer:read', 'customer:create', 'customer:update',
@@ -75,7 +76,7 @@ const SALES: Capability[] = [
  */
 const OPERATIONS: Capability[] = [
   'watch:read', 'watch:create', 'watch:update', 'watch:move',
-  'supplier:read', 'location:read', 'location:manage',
+  'supplier:read', 'location:read', 'location:manage', 'owner:read',
   'task:read', 'task:create', 'task:update',
 ]
 
@@ -96,7 +97,7 @@ const MANAGER: Capability[] = [
   ...STAFF,
   'watch:delete', 'watch:restore',
   'sale:update', 'sale:delete',
-  'supplier:manage', 'location:manage',
+  'supplier:manage', 'location:manage', 'owner:manage',
   'data:import', 'user:read', 'settings:read', 'audit:read',
   'customer:delete', 'deal:delete',
 ]

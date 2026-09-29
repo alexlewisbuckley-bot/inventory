@@ -36,6 +36,7 @@ export interface DrawerRecord {
   brandName: string
   supplierName: string
   locationName: string
+  ownerName: string | null
   locationId: string
   createdByName: string
   /** The supplier invoice this watch was booked in from, when it came from one. */
@@ -147,6 +148,7 @@ export function WatchDrawerClient({
           </div>
           <Fact label="Purchased" value={formatDate(record.purchaseDate)} />
           <Fact label="Location" value={record.locationName} />
+          <Fact label="Owner" value={record.ownerName ?? 'Not recorded'} />
           <Fact label="Added by" value={record.createdByName} />
           {record.invoice && (
             <div className="flex items-start justify-between gap-4 border-b border-line-subtle py-2.5 last:border-0">
@@ -170,7 +172,7 @@ export function WatchDrawerClient({
           <h3 className="mb-3 text-caption font-semibold text-content-secondary">Financials</h3>
           <dl className="flex flex-col gap-2.5">
             <Money label="Purchase price" value={money(record.purchasePriceGbp)} />
-            <Money label="Est. sale price" value={record.estSaleGbp !== null ? money(record.estSaleGbp) : 'Not set'} muted={record.estSaleGbp === null} />
+            <Money label="Retail price" value={record.estSaleGbp !== null ? money(record.estSaleGbp) : 'Not set'} muted={record.estSaleGbp === null} />
             <Money
               label="Est. profit"
               value={estProfit !== null ? `${signed(estProfit)}${estMargin !== null ? `  (${formatPct(estMargin)})` : ''}` : '—'}

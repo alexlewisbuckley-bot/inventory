@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands, locations, suppliers } from '@/server/db/schema'
+import { brands, locations, owners, suppliers } from '@/server/db/schema'
 import { getWatchDetail } from '@/server/services/watch-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { WatchForm } from '@/components/inventory/WatchForm'
@@ -19,12 +19,14 @@ export default async function EditWatchPage({ params }: { params: { id: string }
   const record = await getWatchDetail(params.id).catch(() => null)
   if (!record) notFound()
 
-  const [brandRows, supplierRows, locationRows] = await Promise.all([
+  const [brandRows, supplierRows, locationRows, ownerRows] = await Promise.all([
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
     db.select({ id: locations.id, name: locations.name }).from(locations)
       .where(isNull(locations.deletedAt)).orderBy(asc(locations.sortOrder)),
+    db.select({ id: owners.id, name: owners.name }).from(owners)
+      .where(and(isNull(owners.deletedAt), eq(owners.isActive, true))).orderBy(asc(owners.sortOrder)),
   ])
 
   const { watch } = record
@@ -46,6 +48,7 @@ export default async function EditWatchPage({ params }: { params: { id: string }
           brands={brandRows}
           suppliers={supplierRows}
           locations={locationRows}
+          owners={ownerRows}
           initial={{
             id: watch.id,
             version: watch.version,
@@ -67,6 +70,7 @@ export default async function EditWatchPage({ params }: { params: { id: string }
               : watch.estSaleGbp !== null ? String(toMajor(watch.estSaleGbp)) : '',
             estSaleCurrency: watch.estSaleAmount !== null ? watch.estSaleCurrency : BASE_CURRENCY,
             locationId: watch.locationId,
+            ownerId: watch.ownerId ?? '',
             notes: watch.notes ?? '',
           }}
         />

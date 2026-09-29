@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, 
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
-  brands, locations, purchaseInvoices, sales, suppliers, users, watchImages, watches,
+  brands, locations, owners, purchaseInvoices, sales, suppliers, users, watchImages, watches,
 } from '../db/schema'
 import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
@@ -30,12 +30,14 @@ export interface WatchListItem {
   supplierName: string
   supplierId: string
   locationName: string
+  ownerId: string | null
+  ownerName: string | null
   locationId: string
   purchaseDate: Date
   purchasePriceGbp: number
   purchasePriceUsd: number | null
   estSaleUsd: number | null
-  /** Estimated sale price in GBP minor units — the base every figure derives from. */
+  /** Retail price in base minor units — what every other figure derives from. */
   estSaleGbp: number | null
   estSaleCurrency: string
   /** Estimated profit in GBP minor units; null when the watch is unpriced. */
@@ -104,6 +106,8 @@ const listSelection = {
   supplierId: suppliers.id,
   locationName: locations.name,
   locationId: locations.id,
+  ownerId: watches.ownerId,
+  ownerName: owners.name,
   soldAmountGbp: sales.saleAmountGbp,
   actualProfitGbp: sales.profitGbp,
   registerCheckStatus: watches.registerCheckStatus,
@@ -189,6 +193,7 @@ const WATCH_COLUMNS: ColumnMap = {
   condition: { column: watches.condition, kind: 'enum' },
   brandId: { column: watches.brandId, kind: 'enum' },
   locationId: { column: watches.locationId, kind: 'enum' },
+  ownerId: { column: watches.ownerId, kind: 'enum' },
   supplierId: { column: watches.supplierId, kind: 'enum' },
   model: { column: watches.model, kind: 'text' },
   serial: { column: watches.serial, kind: 'text' },
@@ -212,6 +217,7 @@ function buildOrder(query: WatchQuery): SQL {
     case 'estSaleUsd': return direction(watches.estSaleGbp)
     case 'status': return direction(watches.status)
     case 'location': return direction(locations.name)
+    case 'owner': return direction(owners.name)
     // Sorting by margin needs the derived expression, not a stored column.
     case 'margin': return direction(sql`(${watches.estSaleGbp} - ${watches.purchasePriceGbp})`)
     case 'stockNo':
@@ -230,6 +236,9 @@ export async function findWatches(query: WatchQuery): Promise<WatchListResult> {
       .innerJoin(brands, eq(brands.id, watches.brandId))
       .innerJoin(suppliers, eq(suppliers.id, watches.supplierId))
       .innerJoin(locations, eq(locations.id, watches.locationId))
+      // Left, not inner: ownership is optional and an inner join would drop
+      // every watch nobody has claimed yet straight off the stock list.
+      .leftJoin(owners, eq(owners.id, watches.ownerId))
       .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))
       .where(where)
       .orderBy(buildOrder(query))
@@ -329,6 +338,7 @@ export async function findWatchById(id: string) {
       brand: brands,
       supplier: suppliers,
       location: locations,
+      owner: owners,
       sale: sales,
       createdByName: users.name,
       createdByInitials: users.initials,
@@ -348,6 +358,7 @@ export async function findWatchById(id: string) {
     .innerJoin(brands, eq(brands.id, watches.brandId))
     .innerJoin(suppliers, eq(suppliers.id, watches.supplierId))
     .innerJoin(locations, eq(locations.id, watches.locationId))
+    .leftJoin(owners, eq(owners.id, watches.ownerId))
     .innerJoin(users, eq(users.id, watches.createdById))
     .leftJoin(registerChecker, eq(registerChecker.id, watches.registerCheckedById))
     .leftJoin(sales, and(eq(sales.watchId, watches.id), liveSale()))

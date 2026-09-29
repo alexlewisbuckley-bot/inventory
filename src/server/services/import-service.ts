@@ -1,6 +1,6 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { brands, locations, suppliers, watches, stockMovements } from '../db/schema'
+import { brands, locations, owners, suppliers, watches, stockMovements } from '../db/schema'
 import { recordAudit } from './audit'
 import { newId, slugify } from '@/lib/ids'
 import { toMinor } from '@/lib/money'
@@ -27,9 +27,32 @@ import type { SessionUser } from '../auth/session'
  * people quietly give up.
  */
 
+/**
+ * What the importer proposes to do with one row.
+ *
+ * CREATE is a purchase the system has not seen. UPDATE is a row that matched an
+ * existing watch and differs from it. UNCHANGED matched and is identical, which
+ * is the usual verdict for most of a re-uploaded export and must not be written
+ * or counted as work.
+ */
+export type ImportAction = 'CREATE' | 'UPDATE' | 'UNCHANGED'
+
+/** One field the sheet would change, in the words the user reads on screen. */
+export interface ImportChange {
+  field: string
+  label: string
+  from: string
+  to: string
+}
+
 export interface ImportRow {
   line: number
+  /** Set when the row matched existing stock — the watch this row is about. */
+  watchId: string | null
   stockNo: number | null
+  action: ImportAction
+  /** Populated for UPDATE rows: exactly what would change, and from what. */
+  changes: ImportChange[]
   /** Watch unless the sheet says otherwise — see `parseProductType`. */
   productType: ProductType
   brand: string
@@ -37,9 +60,10 @@ export interface ImportRow {
   serial: string | null
   supplier: string
   location: string
+  owner: string | null
   purchaseDate: string
   purchasePriceGbp: number | null
-  /** Estimate in GBP minor-unit major form, i.e. pounds. */
+  /** Retail estimate in base major units. */
   estSaleGbp: number | null
 }
 
@@ -56,8 +80,12 @@ export interface ImportPreview {
   newBrands: string[]
   newSuppliers: string[]
   unknownLocations: string[]
+  unknownOwners: string[]
   validCount: number
   errorCount: number
+  createCount: number
+  updateCount: number
+  unchangedCount: number
 }
 
 const REQUIRED = REQUIRED_HEADERS.map((h) => normaliseHeader(h))
@@ -129,6 +157,116 @@ async function gbpToBase(): Promise<number> {
   return Number(process.env.DEFAULT_FX_GBP_USD ?? 1.33)
 }
 
+/** The shape a preview returns when nothing could be read from the file. */
+/**
+ * What a sheet row would change about the watch it matched.
+ *
+ * Compared in the same units the row will eventually be written in, and with
+ * the same tolerance the screens display at: money to the minor unit, dates to
+ * the day. Comparing a formatted date string or a float would make a row that
+ * changes nothing look like an edit, and an import that claims to change
+ * twenty-eight watches when it changes one is an import nobody will confirm.
+ */
+export function diffAgainstStock(
+  existing: {
+    productType: string
+    serial: string | null
+    model: string
+    purchaseDate: Date
+    purchasePriceGbp: number
+    estSaleGbp: number | null
+    brandName: string
+    supplierName: string
+    locationName: string
+    ownerName: string | null
+  },
+  proposed: {
+    productType: ProductType
+    brand: string
+    model: string
+    serial: string | null
+    supplier: string
+    location: string
+    owner: string | null
+    purchaseDate: string
+    purchasePriceGbp: number | null
+    estSaleGbp: number | null
+  },
+  /**
+   * Which optional columns the sheet actually has.
+   *
+   * A column that is not in the file is a question the sheet does not answer,
+   * so the stored value stands. Without this, deleting the Retail column from
+   * an export and sending it back would read as "clear the retail price on
+   * every watch" — a destructive edit nobody asked for, presented as an
+   * update to the one row they did change.
+   */
+  present: { serial: boolean; owner: boolean; retail: boolean; type: boolean },
+): ImportChange[] {
+  const changes: ImportChange[] = []
+  const add = (field: string, label: string, from: string, to: string) =>
+    changes.push({ field, label, from, to })
+
+  const sameText = (a: string | null, b: string | null) =>
+    (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase()
+
+  if (!sameText(existing.brandName, proposed.brand)) {
+    add('brand', 'Brand', existing.brandName, proposed.brand)
+  }
+  if (!sameText(existing.model, proposed.model)) {
+    add('reference', 'Reference', existing.model, proposed.model)
+  }
+  if (present.serial && !sameText(existing.serial, proposed.serial)) {
+    add('serial', 'Serial', existing.serial ?? '—', proposed.serial ?? '—')
+  }
+  if (present.type && existing.productType !== proposed.productType) {
+    add('type', 'Type', PRODUCT_TYPE_LABELS[existing.productType as ProductType] ?? existing.productType,
+      PRODUCT_TYPE_LABELS[proposed.productType])
+  }
+  if (!sameText(existing.supplierName, proposed.supplier)) {
+    add('supplier', 'Supplier', existing.supplierName, proposed.supplier)
+  }
+  if (!sameText(existing.locationName, proposed.location)) {
+    add('location', 'Location', existing.locationName, proposed.location)
+  }
+  // A blank owner column is "not stated", not "clear the owner". Somebody who
+  // deletes the column, or exports before assigning owners, must not have the
+  // register wiped by an import they thought was about a price.
+  if (present.owner && proposed.owner !== null && !sameText(existing.ownerName, proposed.owner)) {
+    add('owner', 'Owner', existing.ownerName ?? 'Unassigned', proposed.owner)
+  }
+
+  const existingDay = existing.purchaseDate.toISOString().slice(0, 10)
+  const proposedDay = proposed.purchaseDate.slice(0, 10)
+  if (existingDay !== proposedDay) {
+    add('purchase date', 'Purchase date', existingDay, proposedDay)
+  }
+
+  const proposedCost = proposed.purchasePriceGbp === null ? null : toMinor(proposed.purchasePriceGbp)
+  if (proposedCost !== null && proposedCost !== existing.purchasePriceGbp) {
+    add('purchase price', 'Purchase price',
+      majorString(existing.purchasePriceGbp), majorString(proposedCost))
+  }
+
+  const proposedRetail = proposed.estSaleGbp === null ? null : toMinor(proposed.estSaleGbp)
+  if (present.retail && proposedRetail !== existing.estSaleGbp) {
+    add('retail', 'Retail', majorString(existing.estSaleGbp), majorString(proposedRetail))
+  }
+
+  return changes
+}
+
+/** Minor units as a plain decimal, for the before/after shown in the preview. */
+function majorString(minor: number | null): string {
+  return minor === null ? '—' : (minor / 100).toFixed(2)
+}
+
+const emptyCounts = () => ({
+  newBrands: [] as string[], newSuppliers: [] as string[],
+  unknownLocations: [] as string[], unknownOwners: [] as string[],
+  validCount: 0, errorCount: 0, createCount: 0, updateCount: 0, unchangedCount: 0,
+})
+
 export async function parseImport(input: string | { name: string; buffer: ArrayBuffer }): Promise<ImportPreview> {
   const table = typeof input === 'string' ? parseCsv(input) : await readTable(input)
   // Only needed for sheets still quoting figures in sterling. Taken from the
@@ -142,34 +280,72 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
   if (table.length < 2) {
     return {
       rows: [], issues: [{ line: 0, field: 'file', message: 'The file has no data rows.', severity: 'error' }],
-      newBrands: [], newSuppliers: [], unknownLocations: [], validCount: 0, errorCount: 1,
+      ...emptyCounts(), errorCount: 1,
     }
   }
 
   const header = table[0]!.map((h) => normaliseHeader(h))
   const index = (name: string): number => header.indexOf(name)
+  const present = {
+    serial: index('serial') !== -1,
+    owner: index('owner') !== -1,
+    retail: index('est sale (usd)') !== -1 || index('est sale (gbp)') !== -1,
+    type: index('type') !== -1,
+  }
   for (const required of REQUIRED) {
     if (index(required) === -1) {
       issues.push({ line: 1, field: required, message: `Missing required column "${required}".`, severity: 'error' })
     }
   }
   if (issues.length > 0) {
-    return { rows: [], issues, newBrands: [], newSuppliers: [], unknownLocations: [], validCount: 0, errorCount: issues.length }
+    return { rows: [], issues, ...emptyCounts(), errorCount: issues.length }
   }
 
-  const [existingBrands, existingSuppliers, existingLocations] = await Promise.all([
-    db.select({ name: brands.name }).from(brands),
-    db.select({ name: suppliers.name }).from(suppliers).where(isNull(suppliers.deletedAt)),
-    db.select({ name: locations.name }).from(locations).where(isNull(locations.deletedAt)),
-  ])
+  const [existingBrands, existingSuppliers, existingLocations, existingOwners, existingStock] =
+    await Promise.all([
+      db.select({ name: brands.name }).from(brands),
+      db.select({ name: suppliers.name }).from(suppliers).where(isNull(suppliers.deletedAt)),
+      db.select({ name: locations.name }).from(locations).where(isNull(locations.deletedAt)),
+      db.select({ name: owners.name }).from(owners).where(isNull(owners.deletedAt)),
+      // Every live watch, with the fields a sheet is allowed to change. Loaded
+      // once rather than queried per row: an import is a few hundred rows and
+      // a round trip each would make the preview take longer than the upload.
+      db.select({
+        id: watches.id,
+        stockNo: watches.stockNo,
+        productType: watches.productType,
+        serial: watches.serial,
+        model: watches.model,
+        purchaseDate: watches.purchaseDate,
+        purchasePriceGbp: watches.purchasePriceGbp,
+        estSaleGbp: watches.estSaleGbp,
+        brandName: brands.name,
+        supplierName: suppliers.name,
+        locationName: locations.name,
+        ownerName: owners.name,
+      })
+        .from(watches)
+        .innerJoin(brands, eq(brands.id, watches.brandId))
+        .innerJoin(suppliers, eq(suppliers.id, watches.supplierId))
+        .innerJoin(locations, eq(locations.id, watches.locationId))
+        .leftJoin(owners, eq(owners.id, watches.ownerId))
+        .where(isNull(watches.deletedAt)),
+    ])
   const brandNames = new Set(existingBrands.map((b) => b.name.toLowerCase()))
   const supplierNames = new Set(existingSuppliers.map((s) => s.name.toLowerCase()))
   const locationNames = new Set(existingLocations.map((l) => l.name.toLowerCase()))
+  const ownerNames = new Set(existingOwners.map((o) => o.name.toLowerCase()))
+  const byStockNo = new Map(existingStock.map((w) => [w.stockNo, w]))
+  const bySerial = new Map(
+    existingStock.filter((w) => w.serial).map((w) => [w.serial!.toLowerCase(), w]),
+  )
 
   const newBrands = new Set<string>()
   const newSuppliers = new Set<string>()
   const unknownLocations = new Set<string>()
+  const unknownOwners = new Set<string>()
   const seenSerials = new Set<string>()
+  const seenStockNos = new Set<number>()
 
   for (let r = 1; r < table.length; r += 1) {
     const line = r + 1
@@ -197,7 +373,10 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     const model = value('reference')
     const supplier = value('supplier')
     const location = value('location')
+    const owner = value('owner') || null
     const serial = value('serial') || null
+    const rawStockNo = value('stock no')
+    const stockNo = rawStockNo ? Number(rawStockNo.replace(/[^0-9]/g, '')) : null
     const rawDate = value('purchase date')
     // Dollars are the base now, so a "(USD)" column is read as it stands and a
     // "(GBP)" one is converted. Reading an old sheet's sterling as dollars
@@ -257,22 +436,67 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     if (brand && !brandNames.has(brand.toLowerCase())) newBrands.add(brand)
     if (supplier && !supplierNames.has(supplier.toLowerCase())) newSuppliers.add(supplier)
 
+    if (owner && !ownerNames.has(owner.toLowerCase())) {
+      unknownOwners.add(owner)
+      fail('owner', `Owner "${owner}" does not exist. Create it first, or correct the spelling.`)
+    }
+
+    // Which watch is this row about?
+    //
+    // The stock number is the identity the export carries, so it wins. A serial
+    // is the fallback for a sheet typed by hand. Without either, the row is a
+    // new purchase.
+    if (stockNo !== null && Number.isNaN(stockNo)) {
+      fail('stock no', `Could not read the stock number "${rawStockNo}".`)
+    }
+    const matched = stockNo !== null && !Number.isNaN(stockNo)
+      ? byStockNo.get(stockNo) ?? null
+      : serial ? bySerial.get(serial.toLowerCase()) ?? null : null
+
+    if (stockNo !== null && !Number.isNaN(stockNo)) {
+      if (seenStockNos.has(stockNo)) {
+        fail('stock no', `Stock number ${stockNo} appears more than once in this file.`)
+      } else {
+        seenStockNos.add(stockNo)
+      }
+      if (!matched) {
+        fail('stock no', `Stock number ${stockNo} is not in the inventory. Clear the cell to book it in as new.`)
+      }
+    }
+
     if (serial) {
       if (seenSerials.has(serial.toLowerCase())) {
         fail('serial', `Serial "${serial}" appears more than once in this file.`)
       } else {
         seenSerials.add(serial.toLowerCase())
-        const clash = await db.select({ stockNo: watches.stockNo }).from(watches)
-          .where(and(eq(watches.serial, serial), isNull(watches.deletedAt))).limit(1)
-        if (clash[0]) fail('serial', `Serial "${serial}" is already on stock number ${clash[0].stockNo}.`)
+        // A serial already held by the very watch this row is about is the
+        // normal case for a re-uploaded export, not a duplicate. Only a serial
+        // belonging to a *different* watch is a clash. Rejecting the first case
+        // is what made an exported sheet impossible to send back.
+        const holder = bySerial.get(serial.toLowerCase())
+        if (holder && holder.id !== matched?.id) {
+          fail('serial', `Serial "${serial}" is already on stock number ${holder.stockNo}.`)
+        }
       }
     }
 
     if (!errored) {
-      rows.push({
-        line, stockNo: null, productType: productType ?? DEFAULT_PRODUCT_TYPE, brand, model, serial,
-        supplier, location, purchaseDate: date!.toISOString(),
+      const proposed = {
+        productType: productType ?? DEFAULT_PRODUCT_TYPE,
+        brand, model, serial, supplier, location, owner,
+        purchaseDate: date!.toISOString(),
         purchasePriceGbp: price, estSaleGbp: est,
+      }
+      const changes = matched ? diffAgainstStock(matched, proposed, present) : []
+      const action: ImportAction = !matched ? 'CREATE' : changes.length > 0 ? 'UPDATE' : 'UNCHANGED'
+
+      rows.push({
+        line,
+        watchId: matched?.id ?? null,
+        stockNo: matched?.stockNo ?? null,
+        action,
+        changes,
+        ...proposed,
       })
     }
   }
@@ -283,21 +507,48 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     newBrands: [...newBrands],
     newSuppliers: [...newSuppliers],
     unknownLocations: [...unknownLocations],
+    unknownOwners: [...unknownOwners],
     validCount: rows.length,
     errorCount: issues.filter((i) => i.severity === 'error').length,
+    createCount: rows.filter((r) => r.action === 'CREATE').length,
+    updateCount: rows.filter((r) => r.action === 'UPDATE').length,
+    unchangedCount: rows.filter((r) => r.action === 'UNCHANGED').length,
   }
 }
 
-/** Write a previously validated import. All-or-nothing. */
-export async function commitImport(rows: ImportRow[], actor: SessionUser): Promise<number> {
-  if (rows.length === 0) return 0
+export interface ImportResult {
+  created: number
+  updated: number
+  skipped: number
+}
+
+/**
+ * Write a previously validated import. All-or-nothing.
+ *
+ * Rows that matched existing stock and differ are updated in place; rows that
+ * matched and are identical are skipped, so re-uploading an export is a no-op
+ * rather than twenty-eight duplicate purchases.
+ *
+ * Known limit: the diff carried on each row was computed when the file was
+ * checked, not now. If somebody edits a watch between the preview and the
+ * confirmation, the sheet still wins. Re-deriving the diff inside this
+ * transaction would close that window and is the right fix if imports ever
+ * become something two people do at once.
+ */
+export async function commitImport(rows: ImportRow[], actor: SessionUser): Promise<ImportResult> {
+  if (rows.length === 0) return { created: 0, updated: 0, skipped: 0 }
 
   return withTransaction(async () => {
     const brandIds = new Map<string, string>()
     const supplierIds = new Map<string, string>()
     const locationIds = new Map<string, string>()
+    const ownerIds = new Map<string, string>()
 
-    for (const row of rows) {
+    // Unchanged rows are not written, so they need nothing resolved and must
+    // not create a brand or supplier as a side effect of being looked at.
+    const writing = rows.filter((r) => r.action !== 'UNCHANGED')
+
+    for (const row of writing) {
       if (!brandIds.has(row.brand.toLowerCase())) {
         const slug = slugify(row.brand)
         const found = await db.select({ id: brands.id }).from(brands).where(eq(brands.slug, slug)).limit(1)
@@ -324,6 +575,12 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         if (!found[0]) throw new Error(`Location "${row.location}" no longer exists.`)
         locationIds.set(row.location.toLowerCase(), found[0].id)
       }
+      if (row.owner && !ownerIds.has(row.owner.toLowerCase())) {
+        const found = await db.select({ id: owners.id }).from(owners)
+          .where(and(eq(owners.slug, slugify(row.owner)), isNull(owners.deletedAt))).limit(1)
+        if (!found[0]) throw new Error(`Owner "${row.owner}" no longer exists.`)
+        ownerIds.set(row.owner.toLowerCase(), found[0].id)
+      }
     }
 
     const highest = await db.select({ max: watches.stockNo }).from(watches)
@@ -331,11 +588,73 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
     let nextStock = Math.max(1399, ...(await db.select({ n: watches.stockNo }).from(watches)).map((r) => r.n)) + 1
     void highest
 
-    for (const row of rows) {
-      const id = newId('wch')
+    let created = 0
+    let updated = 0
+
+    for (const row of writing) {
       const priceMinor = toMinor(row.purchasePriceGbp!)
       const { gbp: estGbp, usd: estUsd } = estimateFromSheet(row.estSaleGbp)
       const locationId = locationIds.get(row.location.toLowerCase())!
+      const ownerId = row.owner ? ownerIds.get(row.owner.toLowerCase())! : null
+
+      // An existing watch is amended, not re-created. Only the fields the
+      // preview listed are touched, so a sheet that changed one price cannot
+      // quietly reset a status, a condition or a set of papers that the
+      // spreadsheet never carried a column for.
+      if (row.action === 'UPDATE' && row.watchId) {
+        // The version is bumped like any other edit. Without it, a form opened
+        // before the import and saved after it would carry a version the row
+        // still had, pass the concurrency check, and quietly put back what the
+        // sheet just changed.
+        const patch: Record<string, unknown> = {
+          updatedAt: new Date(),
+          version: sql`${watches.version} + 1`,
+        }
+        const changed = new Set(row.changes.map((c) => c.field))
+        if (changed.has('brand')) patch.brandId = brandIds.get(row.brand.toLowerCase())!
+        if (changed.has('reference')) patch.model = row.model
+        if (changed.has('serial')) patch.serial = row.serial
+        if (changed.has('type')) patch.productType = row.productType
+        if (changed.has('supplier')) patch.supplierId = supplierIds.get(row.supplier.toLowerCase())!
+        if (changed.has('location')) patch.locationId = locationId
+        if (changed.has('owner')) patch.ownerId = ownerId
+        if (changed.has('purchase date')) patch.purchaseDate = new Date(row.purchaseDate)
+        if (changed.has('purchase price')) {
+          patch.purchasePriceGbp = priceMinor
+          patch.purchasePriceUsd = priceMinor
+          patch.purchaseAmount = priceMinor
+          patch.purchaseCurrency = BASE_CURRENCY
+          patch.purchaseFxRate = RATE_SCALE
+        }
+        if (changed.has('retail')) {
+          patch.estSaleGbp = estGbp
+          patch.estSaleUsd = estUsd
+          patch.estSaleAmount = estGbp
+          patch.estSaleCurrency = BASE_CURRENCY
+        }
+
+        await db.update(watches).set(patch).where(eq(watches.id, row.watchId))
+        await recordAudit({
+          entityType: 'Watch', entityId: row.watchId, action: 'UPDATE', actorId: actor.id,
+          summary: `Stock ${row.stockNo} updated from an imported sheet`,
+          changes: Object.fromEntries(
+            row.changes.map((c) => [c.field, { from: c.from, to: c.to }]),
+          ),
+        })
+
+        // A location change is a stock movement in its own right, exactly as it
+        // is when somebody edits the watch by hand.
+        if (changed.has('location')) {
+          await db.insert(stockMovements).values({
+            id: newId('mov'), watchId: row.watchId, fromLocationId: null,
+            toLocationId: locationId, reason: 'Moved by import', movedById: actor.id,
+          })
+        }
+        updated += 1
+        continue
+      }
+
+      const id = newId('wch')
       await db.insert(watches).values({
         id,
         stockNo: nextStock,
@@ -361,21 +680,24 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         estSaleAmount: estGbp,
         estSaleCurrency: BASE_CURRENCY,
         locationId,
+        ownerId,
         createdById: actor.id,
       })
       await db.insert(stockMovements).values({
         id: newId('mov'), watchId: id, fromLocationId: null,
         toLocationId: locationId, reason: 'Imported from CSV', movedById: actor.id,
       })
+      created += 1
       nextStock += 1
     }
 
+    const skipped = rows.length - writing.length
     await recordAudit({
       entityType: 'Watch', entityId: 'bulk', action: 'IMPORT', actorId: actor.id,
-      summary: `${rows.length} watches imported from CSV`,
+      summary: `Import: ${created} booked in, ${updated} updated, ${skipped} unchanged`,
     })
-    logger.info('import committed', { count: rows.length, actorId: actor.id })
-    return rows.length
+    logger.info('import committed', { created, updated, skipped, actorId: actor.id })
+    return { created, updated, skipped }
   })
 }
 

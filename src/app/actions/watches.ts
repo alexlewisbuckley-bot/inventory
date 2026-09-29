@@ -235,9 +235,17 @@ export async function commitImportAction(
 
   try {
     const { commitImport } = await import('@/server/services/import-service')
-    const count = await commitImport(rows, actor)
+    const { created, updated, skipped } = await commitImport(rows, actor)
     refreshInventory()
-    return { ok: true, message: `${count} ${count === 1 ? 'watch' : 'watches'} imported.` }
+    // Says what actually happened rather than one total. "28 watches imported"
+    // when twenty-seven were left alone is the sentence that makes somebody
+    // think they have just duplicated their inventory.
+    const parts = [
+      created > 0 ? `${created} booked in` : null,
+      updated > 0 ? `${updated} updated` : null,
+      skipped > 0 ? `${skipped} unchanged` : null,
+    ].filter(Boolean)
+    return { ok: true, message: parts.length > 0 ? `Import complete — ${parts.join(', ')}.` : 'Nothing to change.' }
   } catch (error) {
     return toState(error, 'Could not complete the import.')
   }

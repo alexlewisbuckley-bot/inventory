@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv, toCsv, csvCell } from '@/lib/csv'
-import { estimateFromSheet, parseProductType } from '@/server/services/import-service'
+import { diffAgainstStock, estimateFromSheet, parseProductType } from '@/server/services/import-service'
 import { PRODUCT_TYPES, PRODUCT_TYPE_LABELS } from '@/lib/enums'
 import {
   IMPORT_COLUMNS, REQUIRED_HEADERS, normaliseHeader, templateCsv,
@@ -152,9 +152,103 @@ describe('import headers', () => {
     }
   })
 
-  it('ships an example value for every column, so the template parses as-is', () => {
-    for (const column of IMPORT_COLUMNS) {
-      expect(column.example.length).toBeGreaterThan(0)
+  it('ships an example value for every column somebody must fill in', () => {
+    for (const column of IMPORT_COLUMNS.filter((c) => c.required)) {
+      expect(column.example.length, column.header).toBeGreaterThan(0)
     }
+  })
+
+  /**
+   * The identity column is the exception, and has to be.
+   *
+   * A blank stock number is what a new purchase looks like, so the worked
+   * example row has to leave it empty — a number there would name a watch the
+   * template cannot know exists, and the example row would fail to import on
+   * every installation.
+   */
+  it('leaves the stock number blank in the example row', () => {
+    const stockNo = IMPORT_COLUMNS.find((c) => c.header === 'Stock No')
+    expect(stockNo).toBeDefined()
+    expect(stockNo!.required).toBe(false)
+    expect(stockNo!.example).toBe('')
+  })
+})
+
+/**
+ * Re-uploading an export.
+ *
+ * The importer was one-way: every row became a new purchase, and a serial the
+ * system already held was rejected as a duplicate — so the natural workflow of
+ * exporting, editing a cell and sending it back either failed outright or
+ * duplicated the inventory. These cover the rule that makes it work: a row is
+ * about a watch, and only what actually differs is a change.
+ */
+describe('a sheet sent back is matched against stock, not re-added', () => {
+  const stored = {
+    productType: 'WATCH',
+    serial: '1T41F071',
+    model: '126711CHNR',
+    purchaseDate: new Date('2026-04-08T00:00:00.000Z'),
+    purchasePriceGbp: 1_310_551,
+    estSaleGbp: 1_498_000,
+    brandName: 'Rolex',
+    supplierName: 'GB Luxury Limited',
+    locationName: 'Own inventory',
+    ownerName: 'Bluecroft Traders Limited',
+  }
+  const sheet = {
+    productType: 'WATCH' as const,
+    brand: 'Rolex',
+    model: '126711CHNR',
+    serial: '1T41F071',
+    supplier: 'GB Luxury Limited',
+    location: 'Own inventory',
+    owner: 'Bluecroft Traders Limited',
+    purchaseDate: '2026-04-08T00:00:00.000Z',
+    purchasePriceGbp: 13_105.51,
+    estSaleGbp: 14_980,
+  }
+  const ALL = { serial: true, owner: true, retail: true, type: true }
+
+  it('reports nothing to do when the row is the record', () => {
+    expect(diffAgainstStock(stored, sheet, ALL)).toEqual([])
+  })
+
+  it('reports only the field that actually moved', () => {
+    const changes = diffAgainstStock(stored, { ...sheet, estSaleGbp: 16_500 }, ALL)
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ field: 'retail', from: '14980.00', to: '16500.00' })
+  })
+
+  it('does not mistake a re-formatted date for an edit', () => {
+    // The export writes a plain day; the record carries a timestamp. Comparing
+    // them as written would make every row an update.
+    expect(diffAgainstStock(stored, { ...sheet, purchaseDate: '2026-04-08' }, ALL)).toEqual([])
+  })
+
+  it('ignores case and stray spacing in the reference data', () => {
+    const changes = diffAgainstStock(stored, { ...sheet, brand: ' rolex ', supplier: 'GB LUXURY LIMITED' }, ALL)
+    expect(changes).toEqual([])
+  })
+
+  /**
+   * The destructive case. Someone deletes a column they do not care about and
+   * sends the sheet back; without this, that reads as "clear this field on
+   * every watch" and the confirmation dialog says so far too quietly.
+   */
+  it('leaves a field alone when the sheet has no column for it', () => {
+    const withoutRetail = { ...sheet, estSaleGbp: null, owner: null }
+    expect(diffAgainstStock(stored, withoutRetail, { serial: true, owner: false, retail: false, type: true }))
+      .toEqual([])
+  })
+
+  it('still clears a retail price when the column is there and the cell is empty', () => {
+    const changes = diffAgainstStock(stored, { ...sheet, estSaleGbp: null }, ALL)
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ field: 'retail', to: '—' })
+  })
+
+  it('treats a blank owner cell as unstated rather than as unassigning', () => {
+    expect(diffAgainstStock(stored, { ...sheet, owner: null }, ALL)).toEqual([])
   })
 })

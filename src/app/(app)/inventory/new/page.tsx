@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
-import { asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands, locations, suppliers } from '@/server/db/schema'
+import { brands, locations, owners, suppliers } from '@/server/db/schema'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { WatchForm } from '@/components/inventory/WatchForm'
 import { sourcingPrefill } from '@/server/services/sourcing-service'
@@ -22,12 +22,14 @@ export default async function NewWatchPage({ searchParams }: {
     ? await sourcingPrefill(searchParams.request, searchParams.enquiry ?? null)
     : null
 
-  const [brandRows, supplierRows, locationRows] = await Promise.all([
+  const [brandRows, supplierRows, locationRows, ownerRows] = await Promise.all([
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
     db.select({ id: locations.id, name: locations.name }).from(locations)
       .where(isNull(locations.deletedAt)).orderBy(asc(locations.sortOrder)),
+    db.select({ id: owners.id, name: owners.name }).from(owners)
+      .where(and(isNull(owners.deletedAt), eq(owners.isActive, true))).orderBy(asc(owners.sortOrder)),
   ])
 
   return (
@@ -45,6 +47,7 @@ export default async function NewWatchPage({ searchParams }: {
           brands={brandRows}
           suppliers={supplierRows}
           locations={locationRows}
+          owners={ownerRows}
           requestId={prefill?.requestId}
           initial={prefill ? {
             brandId: prefill.brandId ?? '',

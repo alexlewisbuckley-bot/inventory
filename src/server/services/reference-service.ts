@@ -1,17 +1,18 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { alias } from 'drizzle-orm/pg-core'
-import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
+import { brands, locations, owners, sales, suppliers, users, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import type { SessionUser } from '../auth/session'
 import type { z } from 'zod'
-import type { supplierSchema, locationSchema } from '@/lib/validation'
+import type { supplierSchema, locationSchema, ownerSchema } from '@/lib/validation'
 
 type SupplierInput = z.infer<typeof supplierSchema>
 type LocationInput = z.infer<typeof locationSchema>
+type OwnerInput = z.infer<typeof ownerSchema>
 
 // --- Suppliers -------------------------------------------------------------
 
@@ -216,6 +217,108 @@ export async function deleteLocation(id: string, actor: SessionUser): Promise<vo
     await recordAudit({
       entityType: 'Location', entityId: id, action: 'DELETE', actorId: actor.id,
       summary: `Location ${existing.name} deleted`,
+    })
+  })
+}
+
+// --- Owners ----------------------------------------------------------------
+
+/** Owner list with the stock each one holds and what it cost. */
+export async function listOwners() {
+  return db
+    .select({
+      id: owners.id,
+      name: owners.name,
+      type: owners.type,
+      legalName: owners.legalName,
+      registrationNo: owners.registrationNo,
+      contactName: owners.contactName,
+      contactEmail: owners.contactEmail,
+      contactPhone: owners.contactPhone,
+      notes: owners.notes,
+      isActive: owners.isActive,
+      sortOrder: owners.sortOrder,
+      watchCount: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then 1 else 0 end), 0)`,
+      valueGbp: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then ${watches.purchasePriceGbp} else 0 end), 0)`,
+    })
+    .from(owners)
+    .leftJoin(watches, and(eq(watches.ownerId, owners.id), isNull(watches.deletedAt)))
+    .where(isNull(owners.deletedAt))
+    .groupBy(owners.id)
+    .orderBy(owners.sortOrder)
+}
+
+/** How much stock has no owner recorded — the worklist, not an error. */
+export async function countUnowned(): Promise<number> {
+  const rows = await db.select({ value: count() }).from(watches)
+    .where(and(isNull(watches.ownerId), isNull(watches.deletedAt)))
+  return Number(rows[0]?.value ?? 0)
+}
+
+export async function createOwner(input: OwnerInput, actor: SessionUser): Promise<string> {
+  return withTransaction(async () => {
+    const slug = slugify(input.name)
+    const clash = await db.select({ id: owners.id }).from(owners)
+      .where(and(eq(owners.slug, slug), isNull(owners.deletedAt))).limit(1)
+    if (clash[0]) throw new ConflictError('An owner with that name already exists.', { name: 'Already in use.' })
+
+    const highest = await db.select({ max: sql<number>`coalesce(max(${owners.sortOrder}), 0)` }).from(owners)
+    const id = newId('own')
+    await db.insert(owners).values({ id, slug, sortOrder: Number(highest[0]?.max ?? 0) + 1, ...input })
+    await recordAudit({
+      entityType: 'Owner', entityId: id, action: 'CREATE', actorId: actor.id,
+      summary: `Owner ${input.name} added`,
+    })
+    return id
+  })
+}
+
+export async function updateOwner(id: string, input: Partial<OwnerInput>, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(owners).where(eq(owners.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Owner')
+
+    const patch: Record<string, unknown> = { ...input, updatedAt: new Date() }
+    if (input.name && input.name !== existing.name) patch.slug = slugify(input.name)
+
+    await db.update(owners).set(patch).where(eq(owners.id, id))
+    await recordAudit({
+      entityType: 'Owner', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Owner ${existing.name} updated`,
+      changes: diff(existing, input, [
+        'name', 'type', 'legalName', 'registrationNo',
+        'contactName', 'contactEmail', 'contactPhone', 'notes', 'isActive',
+      ]),
+    })
+  })
+}
+
+/**
+ * Soft-delete an owner. Refused while stock is still recorded against them.
+ *
+ * Deleting anyway would leave watches pointing at a removed owner, which reads
+ * on screen as unowned — the same as stock nobody has got to yet, and
+ * indistinguishable from it afterwards.
+ */
+export async function deleteOwner(id: string, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(owners).where(eq(owners.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Owner')
+
+    const held = await db.select({ value: count() }).from(watches)
+      .where(and(eq(watches.ownerId, id), isNull(watches.deletedAt)))
+    if (Number(held[0]?.value ?? 0) > 0) {
+      throw new ValidationError(
+        `${existing.name} still owns ${held[0]!.value} watches. Reassign them before deleting this owner.`,
+      )
+    }
+
+    await db.update(owners).set({ deletedAt: new Date() }).where(eq(owners.id, id))
+    await recordAudit({
+      entityType: 'Owner', entityId: id, action: 'DELETE', actorId: actor.id,
+      summary: `Owner ${existing.name} deleted`,
     })
   })
 }

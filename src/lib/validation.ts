@@ -3,7 +3,7 @@ import type { FilterClause } from './filters'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DEFAULT_PRODUCT_TYPE,
-  DELIVERY_STATUSES, DENSITIES, ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, PAYMENT_STATUSES,
+  DELIVERY_STATUSES, DENSITIES, ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, OWNER_TYPES, PAYMENT_STATUSES,
   PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_STATUSES, ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
@@ -67,6 +67,23 @@ const optionalText = (max = 500) =>
 export const emailSchema = trimmed.min(1, 'Email address is required.').email('Enter a valid email address.')
   .max(255).toLowerCase()
 
+/** An email that may be left blank, stored as null rather than an empty string. */
+const optionalEmail = z.union([
+  trimmed.email('Enter a valid email address.').max(255).toLowerCase(),
+  z.literal(''),
+]).optional().transform((v) => (v ? v : null))
+
+/**
+ * A reference that may be left unset.
+ *
+ * A select posted with nothing chosen sends '', which is not a missing value
+ * to a foreign key — it is a row id that does not exist. Normalising it to
+ * null here is what keeps an unanswered question out of the database as a
+ * failed insert.
+ */
+const optionalId = z.union([trimmed.max(40), z.literal('')])
+  .optional().transform((v) => (v ? v : null))
+
 // --- Auth ------------------------------------------------------------------
 
 export const loginSchema = z.object({
@@ -117,9 +134,16 @@ export const watchCreateSchema = z.object({
    */
   purchaseAmount: money('Purchase price'),
   purchaseCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
-  estSaleAmount: optionalMoney('Estimated sale price'),
+  estSaleAmount: optionalMoney('Retail price'),
   estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   locationId: trimmed.min(1, 'Choose a location.'),
+  /**
+   * Optional, unlike the location. A watch always sits somewhere, but the
+   * entity it belongs to may genuinely not be settled at the moment it is
+   * booked in — and a required field here would be answered by picking
+   * whichever owner is first in the list.
+   */
+  ownerId: optionalId,
   notes: optionalText(2000),
 })
 export type WatchCreateInput = z.infer<typeof watchCreateSchema>
@@ -140,7 +164,7 @@ export const watchMoveSchema = z.object({
 
 export const watchPriceSchema = z.object({
   id: trimmed.min(1),
-  estSaleAmount: money('Estimated sale price'),
+  estSaleAmount: money('Retail price'),
   estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
 })
 
@@ -246,6 +270,18 @@ export const supplierSchema = z.object({
   isActive: z.coerce.boolean().default(true),
 })
 
+export const ownerSchema = z.object({
+  name: trimmed.min(1, 'Owner name is required.').max(120),
+  type: z.enum(OWNER_TYPES).default('BUSINESS'),
+  legalName: optionalText(160),
+  registrationNo: optionalText(40),
+  contactName: optionalText(120),
+  contactEmail: optionalEmail,
+  contactPhone: optionalText(40),
+  notes: optionalText(1000),
+  isActive: z.coerce.boolean().default(true),
+})
+
 export const locationSchema = z.object({
   name: trimmed.min(1, 'Location name is required.').max(120),
   type: z.enum(LOCATION_TYPES).default('STORE'),
@@ -290,7 +326,7 @@ export const settingsSchema = z.record(z.string().max(64), z.string().max(500))
 // --- List query ------------------------------------------------------------
 
 export const WATCH_SORT_FIELDS = [
-  'stockNo', 'model', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd', 'status', 'location', 'margin',
+  'stockNo', 'model', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd', 'status', 'location', 'owner', 'margin',
 ] as const
 export type WatchSortField = (typeof WATCH_SORT_FIELDS)[number]
 
@@ -307,6 +343,7 @@ export const watchQuerySchema = z.object({
   q: z.string().trim().max(120).optional(),
   status: z.array(z.enum(WATCH_STATUSES)).optional(),
   locationId: z.array(z.string()).optional(),
+  ownerId: z.array(z.string()).optional(),
   supplierId: z.array(z.string()).optional(),
   brandId: z.array(z.string()).optional(),
   /** Only watches with no estimated sale price set. */

@@ -45,14 +45,17 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'supplier', label: 'Supplier' },
   { key: 'purchased', label: 'Purchased' },
   { key: 'cost', label: 'Cost' },
-  { key: 'estSale', label: 'Est. sale' },
+  { key: 'estSale', label: 'Retail' },
   { key: 'profit', label: 'Est. profit' },
   { key: 'location', label: 'Location' },
+  { key: 'owner', label: 'Owner' },
   { key: 'status', label: 'Status' },
   { key: 'checks', label: 'Checks' },
 ]
 
-const DEFAULT_HIDDEN = ['serial', 'supplier'] as const
+// Owner starts hidden like serial and supplier: it matters to whoever is
+// reconciling ownership, not to everyone reading the list every day.
+const DEFAULT_HIDDEN = ['serial', 'supplier', 'owner'] as const
 const STORAGE_KEY = 'bluecroft.inventory.columns'
 
 export interface InventoryListProps {
@@ -249,9 +252,10 @@ export function InventoryList({
               {show('supplier') && <TH width="170px">Supplier</TH>}
               {show('purchased') && <TH width="120px" sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
               {show('cost') && <TH width="110px" align="right" sortKey="purchasePriceGbp" sort={sort} onSort={query.sortBy}>Cost</TH>}
-              {show('estSale') && <TH width="110px" align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Est. sale</TH>}
+              {show('estSale') && <TH width="110px" align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Retail</TH>}
               {show('profit') && <TH width="120px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
               {show('location') && <TH width="170px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
+              {show('owner') && <TH width="170px" sortKey="owner" sort={sort} onSort={query.sortBy}>Owner</TH>}
               {show('status') && <TH width="128px">Status</TH>}
               {show('checks') && <TH width="72px" align="center">Checks</TH>}
               <TH width="88px" align="right"><span className="sr-only">Actions</span></TH>
@@ -397,7 +401,7 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
           <dd className="truncate font-bold tabular-nums text-content-primary">{money(watch.purchasePriceGbp)}</dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-content-secondary">{sold ? 'Sold for' : 'Est. sale'}</dt>
+          <dt className="text-content-secondary">{sold ? 'Sold for' : 'Retail'}</dt>
           <dd className="truncate font-bold tabular-nums text-content-primary">
             {sold && watch.soldAmountGbp !== null
               ? money(watch.soldAmountGbp)
@@ -572,6 +576,15 @@ function Row({
       {show('location') && (
         <TD className="text-content-secondary">
           <span className="block truncate" title={watch.locationName}>{watch.locationName}</span>
+        </TD>
+      )}
+      {show('owner') && (
+        <TD className="text-content-secondary">
+          {/* Not a dash. Unowned stock is a question nobody has answered yet,
+              and saying so is what gets it answered. */}
+          {watch.ownerName
+            ? <span className="block truncate" title={watch.ownerName}>{watch.ownerName}</span>
+            : <span className="text-content-tertiary">Unassigned</span>}
         </TD>
       )}
       {show('status') && (
