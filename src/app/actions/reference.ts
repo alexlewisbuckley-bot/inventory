@@ -7,7 +7,7 @@ import {
   createOwner, updateOwner, deleteOwner,
 } from '@/server/services/reference-service'
 import { supplierSchema, locationSchema, ownerSchema, fieldErrors } from '@/lib/validation'
-import { isAppError } from '@/lib/errors'
+import { describeDbError, isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import type { ActionState } from './auth'
 
@@ -15,6 +15,9 @@ function toState(error: unknown, fallback: string): ActionState {
   if (isAppError(error)) {
     return { ok: false, message: error.message, errors: error.details as Record<string, string> | undefined }
   }
+  // A constraint the person can do something about, rather than the fallback.
+  const described = describeDbError(error)
+  if (described) return { ok: false, message: described }
   logger.error(fallback, { error: (error as Error).message })
   return { ok: false, message: fallback }
 }

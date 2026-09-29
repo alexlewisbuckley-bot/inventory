@@ -60,3 +60,33 @@ export class RateLimitError extends AppError {
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError
 }
+
+/**
+ * A database constraint, in words the person can act on.
+ *
+ * A unique violation reaching a form as "Could not save" tells somebody
+ * nothing: they cannot see the row they are colliding with, and on a
+ * soft-deleted record they cannot see it at all. Postgres names the index it
+ * refused on, which is enough to say what was duplicated.
+ *
+ * Only the constraints a person can actually hit from a form are translated.
+ * Anything else stays generic on purpose — an index name is a detail of the
+ * schema, not something to show.
+ */
+const CONSTRAINT_MESSAGES: Record<string, string> = {
+  resellers_slug_idx: 'A reseller with that name already exists.',
+  owners_slug_idx: 'An owner with that name already exists.',
+  locations_slug_idx: 'A location with that name already exists.',
+  suppliers_name_idx: 'A supplier with that name already exists.',
+  brands_slug_idx: 'A brand with that name already exists.',
+  watches_serial_idx: 'That serial number is already in stock.',
+}
+
+export function describeDbError(error: unknown): string | null {
+  const code = (error as { code?: string } | null)?.code
+  if (code !== '23505') return null
+  const constraint = (error as { constraint_name?: string; constraint?: string }).constraint_name
+    ?? (error as { constraint?: string }).constraint
+  if (constraint && CONSTRAINT_MESSAGES[constraint]) return CONSTRAINT_MESSAGES[constraint]
+  return 'Something with that name already exists.'
+}

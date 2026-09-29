@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, count, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, eq, isNotNull, isNull, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
 import { brands, resellers, watchImages, watches } from '../db/schema'
@@ -72,6 +72,17 @@ export async function createReseller(input: ResellerInput, actor: SessionUser): 
     const clash = await db.select({ id: resellers.id }).from(resellers)
       .where(and(eq(resellers.slug, slug), isNull(resellers.deletedAt))).limit(1)
     if (clash[0]) throw new ConflictError('A reseller with that name already exists.', { name: 'Already in use.' })
+
+    // A deleted reseller keeps its row, and its slug with it. Uniqueness is
+    // scoped to the living, but a database that has not had that change
+    // applied yet would refuse this insert on an index rather than on the
+    // check above — which reaches the user as a save that will not save, with
+    // no way to work out that the name is being held by something they
+    // deleted. Standing the old slug aside costs one statement and makes the
+    // outcome the same either way.
+    await db.update(resellers)
+      .set({ slug: sql`${resellers.slug} || '-deleted-' || ${resellers.id}` })
+      .where(and(eq(resellers.slug, slug), isNotNull(resellers.deletedAt)))
 
     const highest = await db.select({ max: sql<number>`coalesce(max(${resellers.sortOrder}), 0)` }).from(resellers)
     const id = newId('rsl')
@@ -187,7 +198,15 @@ export async function deleteReseller(id: string, actor: SessionUser): Promise<vo
     const existing = rows[0]
     if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
 
-    await db.update(resellers).set({ deletedAt: new Date(), isActive: false }).where(eq(resellers.id, id))
+    // The name goes back into circulation with the row, rather than being
+    // reserved by something nobody can see any more.
+    await db.update(resellers)
+      .set({
+        deletedAt: new Date(),
+        isActive: false,
+        slug: `${existing.slug}-deleted-${existing.id}`,
+      })
+      .where(eq(resellers.id, id))
     await recordAudit({
       entityType: 'Reseller', entityId: id, action: 'DELETE', actorId: actor.id,
       summary: `Reseller ${existing.name} removed, and their shop link stopped working`,
