@@ -10,6 +10,17 @@ import type { Role } from './enums'
 export const CAPABILITIES = [
   'watch:read', 'watch:create', 'watch:update', 'watch:delete', 'watch:restore',
   'watch:move', 'watch:price',
+  /**
+   * Correcting a booked-in figure from the list itself — cost, trade, year,
+   * serial — without opening the record.
+   *
+   * Held apart from `watch:update`, which is the whole record behind a form
+   * with a save button. This is a value changed in a cell in one gesture, on
+   * the numbers the business is valued on, and it is the owner's alone. The
+   * retail price is deliberately not in here: `watch:price` already covers
+   * it, and quoting is a salesperson's job.
+   */
+  'watch:amend',
   'sale:read', 'sale:create', 'sale:update', 'sale:delete',
   'supplier:read', 'supplier:manage',
   'location:read', 'location:manage',
@@ -112,7 +123,7 @@ const MANAGER: Capability[] = [
   'customer:delete', 'deal:delete',
 ]
 
-const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage']
+const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage', 'watch:amend']
 
 /**
  * A dealer we sell to. One capability, and it is a read.

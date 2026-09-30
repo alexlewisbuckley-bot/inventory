@@ -204,6 +204,44 @@ export const watchPriceSchema = z.object({
   estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
 })
 
+/**
+ * One field, changed in place on the list.
+ *
+ * Deliberately narrow. The full update schema accepts the whole record, and
+ * an action that took it would let a single mis-shaped call from a cell
+ * rewrite a watch. This names the four fields that can be corrected from a
+ * cell and nothing else, so what the action is allowed to touch is visible
+ * here rather than inferred from the caller.
+ */
+export const watchAmendSchema = z.discriminatedUnion('field', [
+  z.object({
+    field: z.literal('purchase'),
+    id: trimmed.min(1),
+    amount: money('Cost'),
+    currency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  }),
+  z.object({
+    field: z.literal('trade'),
+    id: trimmed.min(1),
+    amount: money('Trade price'),
+    currency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  }),
+  z.object({
+    field: z.literal('year'),
+    id: trimmed.min(1),
+    // The same bounds the create form uses: a plausible year, or cleared.
+    year: z.coerce.number().int().min(1900, 'Enter a year from 1900 onwards.')
+      .max(new Date().getFullYear() + 1, 'That year is in the future.')
+      .nullable(),
+  }),
+  z.object({
+    field: z.literal('serial'),
+    id: trimmed.min(1),
+    serial: optionalText(60),
+  }),
+])
+export type WatchAmendInput = z.infer<typeof watchAmendSchema>
+
 export const saleCreateSchema = z.object({
   watchId: trimmed.min(1),
   invoiceNo: trimmed.min(1, 'Invoice number is required.').max(40),

@@ -25,6 +25,28 @@ describe('the role matrix', () => {
     }
   })
 
+  /**
+   * Correcting cost, trade, year or serial from the list itself is the
+   * owner's alone. The cells that offer it are hidden without the capability,
+   * but the cells are not the control — the server action asserts this, and
+   * this asserts who the server action lets through.
+   */
+  it('lets only the Owner amend a booked-in figure in place', () => {
+    for (const role of ROLES) {
+      expect(can(role, 'watch:amend'), role).toBe(role === 'OWNER')
+    }
+  })
+
+  /**
+   * And it is a narrower thing than editing the record, which several roles
+   * can do through the form. If these ever collapse into one, an in-place
+   * edit of a cost silently becomes a manager's to make.
+   */
+  it('keeps amending apart from updating the record', () => {
+    expect(can('MANAGER', 'watch:update')).toBe(true)
+    expect(can('MANAGER', 'watch:amend')).toBe(false)
+  })
+
   it('gives no member of staff more than the Owner', () => {
     // The staff roles are a ladder and the Owner is the top of it. A trade
     // partner is not on that ladder at all — they are an outside party whose

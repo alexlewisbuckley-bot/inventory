@@ -8,7 +8,8 @@ import {
 } from '@/server/services/watch-service'
 import {
   watchCreateSchema, watchUpdateSchema, watchMoveSchema, watchPriceSchema,
-  saleCreateSchema, fieldErrors,
+  watchAmendSchema, saleCreateSchema, fieldErrors,
+  type WatchAmendInput,
 } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
@@ -113,6 +114,44 @@ export async function setPriceAction(
     return { ok: true, message: 'Price updated.' }
   } catch (error) {
     return toState(error, 'Could not update the price.')
+  }
+}
+
+/**
+ * Correct one figure from the list, without opening the record.
+ *
+ * The same service call the edit form makes, so the version check, the audit
+ * entry and the money conversion are the ones the record has always used —
+ * an in-place edit is a different gesture, not a different write path. The
+ * capability is the owner's alone; the cells that offer this are hidden
+ * without it, and this is the door that actually holds.
+ */
+export async function amendWatchAction(input: WatchAmendInput): Promise<ActionState> {
+  const actor = await requireCapability('watch:amend')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = watchAmendSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+  const change = parsed.data
+
+  try {
+    const { getWatchDetail } = await import('@/server/services/watch-service')
+    const current = await getWatchDetail(change.id)
+
+    const patch =
+      change.field === 'purchase'
+        ? { purchaseAmount: change.amount, purchaseCurrency: change.currency }
+        : change.field === 'trade'
+          ? { tradeAmount: change.amount, tradeCurrency: change.currency }
+          : change.field === 'year'
+            ? { year: change.year }
+            : { serial: change.serial }
+
+    await updateWatch({ id: change.id, version: current.watch.version, ...patch }, actor)
+    refreshInventory()
+    return { ok: true, message: 'Saved.' }
+  } catch (error) {
+    return toState(error, 'Could not save that change.')
   }
 }
 

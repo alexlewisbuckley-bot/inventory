@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Loader2, Pencil, X } from 'lucide-react'
+import { Check, Loader2, Lock, Pencil, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useToast, useCurrency } from '@/components/ui'
 import { setPriceAction } from '@/app/actions/watches'
@@ -108,8 +108,10 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
       // "£14,980" — which says nothing about what pressing it does.
       aria-label={baseMinor === null
         ? 'Set the retail price'
-        : `Retail price ${money(baseMinor)}. Edit it.`}
-      title="Click to set the retail price"
+        : `Retail price ${money(baseMinor)}. Locked — press to unlock and change it.`}
+      title={baseMinor === null
+        ? 'Click to set the retail price'
+        : 'Unlock the retail price to change it'}
       className={cn(
         // The negative margin cancels the padding for layout while keeping it
         // for the hover chip, so the figure's right edge is the cell's right
@@ -128,10 +130,22 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
           Left rather than right because the slack in a right-aligned money
           column is all on that side: hung off the right it overflowed the
           cell instead. */}
-      <Pencil
-        className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
-        aria-hidden
-      />
+      {/* A price that is already set shows a lock rather than a pencil: the
+          same reading as cost, trade, year and serial, where the mark tells
+          you whether pressing will open a field or fill an empty one. */}
+      {baseMinor === null
+        ? (
+          <Pencil
+            className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
+            aria-hidden
+          />
+        )
+        : (
+          <Lock
+            className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
+            aria-hidden
+          />
+        )}
     </button>
   )
 }

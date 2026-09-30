@@ -15,12 +15,15 @@ import {
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
 } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
+import { parseMoneyInput } from '@/lib/money'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
 import {
   QuickSellModal, type QuickSellTarget, type SellCustomerOption, type SellDealOption,
 } from './QuickSellModal'
 import { InlinePriceCell } from './InlinePriceCell'
+import { InlineEditCell } from './InlineEditCell'
+import { amendWatchAction } from '@/app/actions/watches'
 import { StatusCell } from './StatusCell'
 import { InventoryGallery } from './InventoryGallery'
 import { CheckDot } from '@/components/compliance/CheckLight'
@@ -334,6 +337,7 @@ export function InventoryList({
                 onToggle={() => toggleOne(watch.id)}
                 canSell={capabilities['sale:create']}
                 canPrice={capabilities['watch:price']}
+                canAmend={capabilities['watch:amend']}
                 canEditStatus={capabilities['watch:update']}
                 canVoid={capabilities['sale:delete']}
                 onVoid={() => setVoidTarget({
@@ -536,7 +540,7 @@ function DisplaySwitch({ mode, onChange }: { mode: DisplayMode; onChange: (mode:
 
 function Row({
   watch, show, selectable, selected, onToggle,
-  canSell, canPrice, canEditStatus, canVoid, onSell, onVoid,
+  canSell, canPrice, canAmend, canEditStatus, canVoid, onSell, onVoid,
 }: {
   watch: WatchListItem
   show: (key: string) => boolean
@@ -545,6 +549,8 @@ function Row({
   onToggle: () => void
   canSell: boolean
   canPrice: boolean
+  /** The owner's alone: correcting a booked-in figure from the list. */
+  canAmend: boolean
   canEditStatus: boolean
   canVoid: boolean
   onSell: () => void
@@ -553,8 +559,21 @@ function Row({
   const query = useListQuery()
   const pathname = usePathname()
   const params = useSearchParams()
-  const { money, signed } = useCurrency()
+  const { money, signed, currency, convert } = useCurrency()
   const sold = watch.status === 'SOLD'
+  /**
+   * A figure is edited in whatever currency is on display and sent back in
+   * that currency, exactly as the retail price already works — nobody should
+   * have to convert by hand to correct a cost.
+   */
+  const asInput = (baseMinor: number | null) =>
+    baseMinor === null ? '' : String(convert(baseMinor) / 100)
+  const amendMoney = (field: 'purchase' | 'trade') => async (raw: string) => {
+    const entered = parseMoneyInput(raw)
+    if (entered === null) return 'Enter an amount.'
+    const result = await amendWatchAction({ field, id: watch.id, amount: entered / 100, currency })
+    return result.ok ? null : (result.message ?? 'The change was rejected.')
+  }
   // Sold rows show realised figures; everything else shows the estimate.
   const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
   const checks = watchChecks({
@@ -617,12 +636,33 @@ function Row({
           than drifting against each other. */}
       {show('year') && (
         <TD className="tabular-nums text-content-secondary">
-          {watch.year ?? <span className="text-content-muted">—</span>}
+          <InlineEditCell
+            label="year" kind="number" editable={canAmend && !watch.deletedAt}
+            value={watch.year === null ? '' : String(watch.year)}
+            display={watch.year ?? <span className="text-content-muted">—</span>}
+            placeholder="Add year"
+            onSave={async (raw) => {
+              const text = raw.trim()
+              const result = await amendWatchAction({
+                field: 'year', id: watch.id, year: text === '' ? null : Number(text),
+              })
+              return result.ok ? null : (result.message ?? 'The change was rejected.')
+            }}
+          />
         </TD>
       )}
       {show('serial') && (
         <TD className="truncate text-content-secondary" title={watch.serial ?? undefined}>
-          {watch.serial ?? <span className="text-content-muted">—</span>}
+          <InlineEditCell
+            label="serial number" editable={canAmend && !watch.deletedAt}
+            value={watch.serial ?? ''}
+            display={watch.serial ?? <span className="text-content-muted">—</span>}
+            placeholder="Add serial"
+            onSave={async (raw) => {
+              const result = await amendWatchAction({ field: 'serial', id: watch.id, serial: raw.trim() })
+              return result.ok ? null : (result.message ?? 'The change was rejected.')
+            }}
+          />
         </TD>
       )}
       {show('supplier') && (
@@ -631,15 +671,31 @@ function Row({
         </TD>
       )}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
-      {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
+      {show('cost') && (
+        <TD align="right" className="font-bold">
+          <InlineEditCell
+            label="cost" kind="money" align="right" editable={canAmend && !watch.deletedAt}
+            value={asInput(watch.purchasePriceGbp)}
+            display={money(watch.purchasePriceGbp)}
+            placeholder="Set cost"
+            onSave={amendMoney('purchase')}
+          />
+        </TD>
+      )}
       {/* Between the two it sits between, in the same order as the form. A
           watch never offered to the trade says so rather than showing a
           zero. */}
       {show('trade') && (
         <TD align="right" className="text-content-secondary">
-          {watch.tradePriceGbp === null
-            ? <span className="text-content-muted">—</span>
-            : money(watch.tradePriceGbp)}
+          <InlineEditCell
+            label="trade price" kind="money" align="right" editable={canAmend && !watch.deletedAt}
+            value={asInput(watch.tradePriceGbp)}
+            display={watch.tradePriceGbp === null
+              ? <span className="text-content-muted">—</span>
+              : money(watch.tradePriceGbp)}
+            placeholder="Set trade"
+            onSave={amendMoney('trade')}
+          />
         </TD>
       )}
       {show('estSale') && (
