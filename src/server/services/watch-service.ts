@@ -51,6 +51,8 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
   const priceGbp = toBase(purchaseMinor, input.purchaseCurrency, rates)
   const estMinor = input.estSaleAmount ? Math.round(Number(input.estSaleAmount) * 100) : null
   const estGbp = estMinor === null ? null : toBase(estMinor, input.estSaleCurrency, rates)
+  const tradeMinor = input.tradeAmount ? Math.round(Number(input.tradeAmount) * 100) : null
+  const tradeBase = tradeMinor === null ? null : toBase(tradeMinor, input.tradeCurrency, rates)
 
   return withTransaction(async () => {
     await assertReferencesExist(input.supplierId, input.locationId)
@@ -98,6 +100,9 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       // Retained so historic USD exports still reconcile. Same unit as the
       // base column now, so it is copied rather than converted.
       estSaleUsd: estGbp,
+      tradePriceGbp: tradeBase,
+      tradeAmount: tradeMinor,
+      tradeCurrency: input.tradeCurrency,
       locationId: input.locationId,
       ownerId: input.ownerId ?? null,
       caseSizeMm: input.caseSizeMm ?? null,
@@ -203,6 +208,12 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
       patch.estSaleGbp = minor === null ? null : toBase(minor, patch.estSaleCurrency, rates)
       patch.estSaleUsd = patch.estSaleGbp
     }
+    if (input.tradeAmount !== undefined) {
+      const minor = input.tradeAmount === null ? null : Math.round(Number(input.tradeAmount) * 100)
+      patch.tradeAmount = minor
+      patch.tradeCurrency = input.tradeCurrency ?? BASE_CURRENCY
+      patch.tradePriceGbp = minor === null ? null : toBase(minor, patch.tradeCurrency, rates)
+    }
 
     // A location change is a stock movement in its own right, not just a field edit.
     if (patch.locationId && patch.locationId !== existing.locationId) {
@@ -218,6 +229,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     const changes = diff(existing, patch, [
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
+      'tradePriceGbp',
       'caseSizeMm', 'caseMaterial', 'dial', 'bracelet', 'movement', 'waterResistanceM', 'description',
     ])
 

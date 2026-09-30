@@ -49,6 +49,8 @@ export interface WatchListItem {
   estSaleUsd: number | null
   /** Retail price in base minor units — what every other figure derives from. */
   estSaleGbp: number | null
+  /** What the trade pays, base minor units. Null when not offered. */
+  tradePriceGbp: number | null
   estSaleCurrency: string
   /** Estimated profit in GBP minor units; null when the watch is unpriced. */
   estProfitGbp: number | null
@@ -107,6 +109,7 @@ const listSelection = {
   purchasePriceUsd: watches.purchasePriceUsd,
   estSaleUsd: watches.estSaleUsd,
   estSaleGbp: watches.estSaleGbp,
+  tradePriceGbp: watches.tradePriceGbp,
   estSaleCurrency: watches.estSaleCurrency,
   status: watches.status,
   version: watches.version,
@@ -219,6 +222,7 @@ const WATCH_COLUMNS: ColumnMap = {
   serial: { column: watches.serial, kind: 'text' },
   purchasePriceGbp: { column: watches.purchasePriceGbp, kind: 'money' },
   estSaleGbp: { column: watches.estSaleGbp, kind: 'money' },
+  tradePriceGbp: { column: watches.tradePriceGbp, kind: 'money' },
   purchaseDate: { column: watches.purchaseDate, kind: 'date' },
   year: { column: watches.year, kind: 'number' },
 }

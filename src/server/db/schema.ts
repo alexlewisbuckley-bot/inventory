@@ -465,6 +465,17 @@ export const watches = pgTable(
     purchaseAmount: integer('purchase_amount'),
     purchaseCurrency: text('purchase_currency', { enum: CURRENCIES }).notNull().default('GBP'),
 
+    /**
+     * What another dealer is quoted, in base minor units.
+     *
+     * Between cost and retail, and nullable: not every watch is offered to the
+     * trade, and a zero would read as "free" rather than "not quoted".
+     */
+    tradePriceGbp: integer('trade_price_gbp'),
+    /** The trade amount and currency as quoted, preserved as entered. */
+    tradeAmount: integer('trade_amount'),
+    tradeCurrency: text('trade_currency', { enum: CURRENCIES }).notNull().default('USD'),
+
     locationId: text('location_id').notNull().references(() => locations.id),
     /**
      * Nullable on purpose. Stock that predates the owner register has an owner

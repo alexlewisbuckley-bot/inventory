@@ -1,9 +1,10 @@
 import {
+  BookOpen,
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
   Landmark, LayoutDashboard, MapPin, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
 } from 'lucide-react'
-import { can, type Capability } from '@/lib/permissions'
+import { can, isExternalRole, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
 
 export interface SidebarCounts {
@@ -50,6 +51,9 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         // now. The figures moved to Insights, under Manage, where they are
         // looked at deliberately.
         { href: '/today', label: 'Today', icon: LayoutDashboard, match: '/today' },
+        // The trade partner's whole application. It sits first because for
+        // that role it is also the only thing in the rail.
+        { href: '/catalogue', label: 'Catalogue', icon: BookOpen, capability: 'catalogue:read', match: '/catalogue' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
       ],
@@ -90,7 +94,16 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
   ]
 
   return groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => !item.capability || can(role, item.capability)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        // "Today" carries no capability because every member of staff has it.
+        // An outside party is not staff: they get their own page and nothing
+        // that reports on the business running around them.
+        if (!item.capability) return !isExternalRole(role)
+        return can(role, item.capability)
+      }),
+    }))
     .filter((group) => group.items.length > 0)
 }
 

@@ -69,6 +69,12 @@ export default async function EditWatchPage({ params }: { params: { id: string }
               ? String(toMajor(watch.estSaleAmount))
               : watch.estSaleGbp !== null ? String(toMajor(watch.estSaleGbp)) : '',
             estSaleCurrency: watch.estSaleAmount !== null ? watch.estSaleCurrency : BASE_CURRENCY,
+            // Same reopening rule: the quote as given, falling back to the
+            // base figure for stock priced before the currency was recorded.
+            tradeAmount: watch.tradeAmount !== null
+              ? String(toMajor(watch.tradeAmount))
+              : watch.tradePriceGbp !== null ? String(toMajor(watch.tradePriceGbp)) : '',
+            tradeCurrency: watch.tradeAmount !== null ? watch.tradeCurrency : BASE_CURRENCY,
             locationId: watch.locationId,
             nickname: watch.nickname ?? '',
             ownerId: watch.ownerId ?? '',

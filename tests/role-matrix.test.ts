@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ROLES, type Role } from '@/lib/enums'
 import {
-  assignableRoles, can, canSeeCost, CAPABILITIES, ROLE_CAPABILITIES,
+  assignableRoles, can, canSeeCost, isExternalRole, CAPABILITIES, ROLE_CAPABILITIES,
 } from '@/lib/permissions'
 
 /**
@@ -25,12 +25,30 @@ describe('the role matrix', () => {
     }
   })
 
-  it('gives nobody more than the Owner', () => {
+  it('gives no member of staff more than the Owner', () => {
+    // The staff roles are a ladder and the Owner is the top of it. A trade
+    // partner is not on that ladder at all — they are an outside party whose
+    // one capability opens a page no member of staff has any use for — so the
+    // rule is stated for staff and the exception is asserted below rather
+    // than the rule being quietly relaxed to accommodate it.
     const owner = new Set(ROLE_CAPABILITIES.OWNER)
     for (const role of ROLES) {
+      if (isExternalRole(role)) continue
       for (const capability of ROLE_CAPABILITIES[role]) {
         expect(owner.has(capability), `${role} has ${capability} but OWNER does not`).toBe(true)
       }
+    }
+  })
+
+  it('keeps the outside roles and the staff roles disjoint', () => {
+    // Nothing an outside party holds may also be held by staff, and nothing
+    // staff hold may leak to them. Stated as a set relation so the next role
+    // added on either side has to decide which side it is on.
+    const staff = new Set(ROLES.filter((r) => !isExternalRole(r)).flatMap((r) => [...ROLE_CAPABILITIES[r]]))
+    const outside = new Set(ROLES.filter(isExternalRole).flatMap((r) => [...ROLE_CAPABILITIES[r]]))
+    expect(outside.size).toBeGreaterThan(0)
+    for (const capability of outside) {
+      expect(staff.has(capability), `${capability} is held by both staff and an outside role`).toBe(false)
     }
   })
 
@@ -85,6 +103,30 @@ describe('the role matrix', () => {
     expect(assignableRoles('STAFF' as Role)).toEqual([])
     expect(assignableRoles('SALES' as Role)).toEqual([])
     expect(assignableRoles('OPERATIONS' as Role)).toEqual([])
+    expect(assignableRoles('TRADER' as Role)).toEqual([])
+  })
+
+  it('gives a trade partner the catalogue and nothing else', () => {
+    // Written as a whole-set assertion rather than a handful of nots: a
+    // capability added to the list later is granted to nobody by accident,
+    // and this is the role where an accident is an outside party reading
+    // what a watch cost.
+    expect([...ROLE_CAPABILITIES.TRADER]).toEqual(['catalogue:read'])
+    for (const capability of CAPABILITIES) {
+      if (capability === 'catalogue:read') continue
+      expect(can('TRADER', capability), `TRADER must not hold ${capability}`).toBe(false)
+    }
+    // The inventory list, the sales ledger and the customer book are the
+    // three screens that would hurt most. Named so a failure says which.
+    expect(can('TRADER', 'watch:read')).toBe(false)
+    expect(can('TRADER', 'sale:read')).toBe(false)
+    expect(can('TRADER', 'customer:read')).toBe(false)
+    expect(can('TRADER', 'watch:update')).toBe(false)
+    // And no member of staff loses their own door to the catalogue's arrival.
+    expect(can('OWNER', 'catalogue:read')).toBe(false)
+    expect(isExternalRole('TRADER')).toBe(true)
+    expect(isExternalRole('VIEWER')).toBe(false)
+    expect(can('VIEWER', 'watch:read')).toBe(true)
   })
 
   it('holds the sensitive-field matrix, exhaustively', () => {
@@ -98,6 +140,10 @@ describe('the role matrix', () => {
       VIEWER: { cost: true, revenue: true },
       SALES: { cost: false, revenue: true },
       OPERATIONS: { cost: false, revenue: false },
+      // A trade partner reads their prices off the catalogue, which serves
+      // them without consulting either grade. Both false, so nothing they
+      // are not entitled to can reach them through a shared read boundary.
+      TRADER: { cost: false, revenue: false },
     }
     for (const role of ROLES) {
       expect(canSeeCost(role), `${role} cost`).toBe(expected[role].cost)

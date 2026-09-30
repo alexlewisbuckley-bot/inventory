@@ -3,7 +3,7 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, MoneyField, useToast } from '@/components/ui'
+import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, MoneyField, useToast, useCurrency } from '@/components/ui'
 import { createWatchAction, updateWatchAction } from '@/app/actions/watches'
 import { createBrandAction, createSupplierInlineAction } from '@/app/actions/reference'
 import { ChevronDown } from 'lucide-react'
@@ -13,7 +13,8 @@ import {
   DEFAULT_PRODUCT_TYPE, PRODUCT_TYPES, PRODUCT_TYPE_LABELS, PRODUCT_TYPE_NOUNS, referenceLabel,
   type CurrencyCode, type ProductType,
 } from '@/lib/enums'
-import { toMajor } from '@/lib/money'
+import { parseMoneyInput, toMajor } from '@/lib/money'
+import { toBase } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
 
 export interface Option { id: string; name: string }
@@ -34,6 +35,8 @@ export interface WatchFormValues {
   purchaseCurrency: CurrencyCode
   estSaleAmount: string
   estSaleCurrency: CurrencyCode
+  tradeAmount: string
+  tradeCurrency: CurrencyCode
   nickname: string
   locationId: string
   ownerId: string
@@ -54,6 +57,7 @@ const EMPTY: WatchFormValues = {
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
+  tradeAmount: '', tradeCurrency: BASE_CURRENCY,
   nickname: '',
   locationId: '', ownerId: '', notes: '',
   caseSizeMm: '', caseMaterial: '', dial: '', bracelet: '', movement: '',
@@ -112,6 +116,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
   const router = useRouter()
   const toast = useToast()
   const action = mode === 'create' ? createWatchAction : updateWatchAction
+  const currency = useCurrency()
   const [state, formAction] = useFormState(action, INITIAL)
   const [values, setValues] = useState<WatchFormValues>({ ...EMPTY, ...initial })
   // Opened automatically when editing a record that already has these set.
@@ -145,6 +150,31 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
 
   const setField = (key: keyof WatchFormValues) => (value: string) =>
     setValues((current) => ({ ...current, [key]: value }))
+
+
+  /**
+   * The three prices, sanity-checked as they are typed rather than rejected.
+   *
+   * Trade below cost is a loss somebody may be taking deliberately to clear a
+   * piece, and trade above retail is almost always a typo — neither is the
+   * form's business to forbid, but both are worth saying out loud while the
+   * person who knows the answer is still looking at the field. Compared in
+   * base units so three figures in three different currencies still compare.
+   */
+  const priceOrder = (() => {
+    const { rates } = currency
+    const base = (amount: string, code: CurrencyCode) => {
+      const minor = parseMoneyInput(amount)
+      return minor === null ? null : toBase(minor, code, rates)
+    }
+    const trade = base(values.tradeAmount, values.tradeCurrency)
+    if (trade === null) return null
+    const cost = base(values.purchaseAmount, values.purchaseCurrency)
+    const retail = base(values.estSaleAmount, values.estSaleCurrency)
+    if (retail !== null && trade > retail) return 'This is above the retail price — worth a second look.'
+    if (cost !== null && trade < cost) return 'This is below what the watch cost.'
+    return null
+  })()
 
   return (
     <form action={formAction} noValidate>
@@ -246,6 +276,20 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
             onCurrencyChange={(code: CurrencyCode) => setValues((c) => ({ ...c, purchaseCurrency: code }))}
             hint="The amount you actually agreed with the supplier."
             error={state.errors?.purchaseAmount}
+          />
+          {/* Between the two it sits between, so the three prices read in
+              the order they rise and a trade price typed above retail is
+              obvious on the page rather than in a report a week later. */}
+          <MoneyField
+            label="Trade price"
+            amountName="tradeAmount"
+            currencyName="tradeCurrency"
+            amount={values.tradeAmount}
+            currency={values.tradeCurrency}
+            onAmountChange={setField('tradeAmount')}
+            onCurrencyChange={(code: CurrencyCode) => setValues((c) => ({ ...c, tradeCurrency: code }))}
+            hint={priceOrder ?? 'What another dealer pays. Leave blank if this one is not offered to the trade.'}
+            error={state.errors?.tradeAmount}
           />
           <MoneyField
             label="Retail price"

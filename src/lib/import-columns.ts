@@ -56,6 +56,7 @@ export const IMPORT_COLUMNS: readonly ImportColumn[] = [
   { key: 'owner', label: 'Owner', required: false, hint: 'Must already exist', example: 'Bluecroft Traders Limited', width: 24 },
   { key: 'purchase date', label: 'Purchase Date', required: true, hint: 'DD/MM/YYYY', example: '08/04/2026', width: 16 },
   { key: 'purchase price', label: 'Purchase Price', required: true, money: true, hint: 'Numbers only', example: '13105.51', width: 20 },
+  { key: 'trade', label: 'Trade', required: false, money: true, hint: 'What the trade pays', example: '13950.00', width: 18 },
   { key: 'retail', label: 'Retail', required: false, money: true, hint: 'Leave blank to price later', example: '14980.00', width: 18 },
   // The specification. Optional, and the reason the export and the import are
   // one list: eighty stock records get their detail filled in by exporting,
@@ -143,6 +144,11 @@ export const HEADER_ALIASES: Record<string, string> = {
   'est sale price': 'retail',
   'asking price': 'retail',
   'retail price': 'retail',
+  // The word the trade itself uses, and the two spellings a dealer's own
+  // sheet is most likely to carry.
+  'trade price': 'trade',
+  'dealer price': 'trade',
+  'wholesale': 'trade',
   profit: 'est profit',
   'estimated profit': 'est profit',
 }

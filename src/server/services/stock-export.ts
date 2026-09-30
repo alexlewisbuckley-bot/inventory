@@ -18,6 +18,7 @@ export interface StockExportRow {
   /** Base minor units — converted to the reader's currency here. */
   purchasePriceGbp: number
   estSaleGbp: number | null
+  tradePriceGbp: number | null
   status: string
   year: number | null
   caseSizeMm: number | null
@@ -79,6 +80,7 @@ export async function buildStockWorkbook(
     owner: row.ownerName ?? '',
     'purchase date': row.purchaseDate,
     'purchase price': amount(row.purchasePriceGbp),
+    trade: amount(row.tradePriceGbp),
     retail: amount(row.estSaleGbp),
     year: row.year,
     'case size': row.caseSizeMm,

@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { getSessionUser } from '@/server/auth/session'
 import { getImageBytes } from '@/server/services/image-service'
-import { can } from '@/lib/permissions'
+import { canAny } from '@/lib/permissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +16,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const user = await getSessionUser()
   if (!user) return new Response('Unauthorised', { status: 401 })
-  if (!can(user.role, 'watch:read')) return new Response('Forbidden', { status: 403 })
+  // A trade partner reads the catalogue, which is photographs of the same
+  // stock. The picture is the one part of a watch record that is meant to
+  // leave the building, so both doors open it.
+  if (!canAny(user.role, ['watch:read', 'catalogue:read'])) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   const image = await getImageBytes(params.id)
   if (!image) return new Response('Not found', { status: 404 })

@@ -67,6 +67,8 @@ export interface ImportRow {
   purchasePriceGbp: number | null
   /** Retail estimate in base major units. */
   estSaleGbp: number | null
+  /** Trade price in base major units, null when the sheet leaves it blank. */
+  tradePriceGbp: number | null
   /** The specification, as far as the sheet fills it in. */
   spec: WatchSpec
 }
@@ -207,6 +209,7 @@ export function diffAgainstStock(
     purchaseDate: Date
     purchasePriceGbp: number
     estSaleGbp: number | null
+    tradePriceGbp?: number | null
     brandName: string
     supplierName: string
     locationName: string
@@ -223,6 +226,7 @@ export function diffAgainstStock(
     purchaseDate: string
     purchasePriceGbp: number | null
     estSaleGbp: number | null
+    tradePriceGbp?: number | null
     spec: WatchSpec
   },
   /**
@@ -234,7 +238,7 @@ export function diffAgainstStock(
    * every watch" — a destructive edit nobody asked for, presented as an
    * update to the one row they did change.
    */
-  present: { serial: boolean; owner: boolean; retail: boolean; type: boolean },
+  present: { serial: boolean; owner: boolean; retail: boolean; trade: boolean; type: boolean },
 ): ImportChange[] {
   const changes: ImportChange[] = []
   const add = (field: string, label: string, from: string, to: string) =>
@@ -305,6 +309,11 @@ export function diffAgainstStock(
     add('retail', 'Retail', majorString(existing.estSaleGbp), majorString(proposedRetail))
   }
 
+  const proposedTrade = proposed.tradePriceGbp == null ? null : toMinor(proposed.tradePriceGbp)
+  if (present.trade && proposedTrade !== (existing.tradePriceGbp ?? null)) {
+    add('trade', 'Trade', majorString(existing.tradePriceGbp ?? null), majorString(proposedTrade))
+  }
+
   return changes
 }
 
@@ -346,10 +355,12 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
   }
   const priceCurrency = currencyOf('purchase price')
   const retailCurrency = currencyOf('retail')
+  const tradeCurrency = currencyOf('trade')
   const present = {
     serial: index('serial') !== -1,
     owner: index('owner') !== -1,
     retail: index('retail') !== -1,
+    trade: index('trade') !== -1,
     type: index('type') !== -1,
   }
   for (const required of REQUIRED) {
@@ -379,6 +390,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         purchaseDate: watches.purchaseDate,
         purchasePriceGbp: watches.purchasePriceGbp,
         estSaleGbp: watches.estSaleGbp,
+        tradePriceGbp: watches.tradePriceGbp,
         modelName: watches.nickname,
         year: watches.year,
         caseSizeMm: watches.caseSizeMm,
@@ -458,6 +470,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
     // the mistake a header exists to prevent.
     const rawPrice = value('purchase price')
     const rawEst = value('retail')
+    const rawTrade = value('trade')
 
     let errored = false
     const fail = (field: string, message: string) => {
@@ -483,6 +496,12 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
       issues.push({ line, field: 'retail', message: `Ignoring unreadable retail price "${rawEst}".`, severity: 'warning' })
     }
     const est = rawEstAmount === null ? null : intoBase(rawEstAmount, retailCurrency)
+
+    const rawTradeAmount = rawTrade ? parseAmount(rawTrade) : null
+    if (rawTrade && rawTradeAmount === null) {
+      issues.push({ line, field: 'trade', message: `Ignoring unreadable trade price "${rawTrade}".`, severity: 'warning' })
+    }
+    const trade = rawTradeAmount === null ? null : intoBase(rawTradeAmount, tradeCurrency)
 
     if (location && !locationNames.has(location.toLowerCase())) {
       unknownLocations.add(location)
@@ -560,7 +579,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         productType: productType ?? DEFAULT_PRODUCT_TYPE,
         brand, model, serial, supplier, location, owner,
         purchaseDate: date!.toISOString(),
-        purchasePriceGbp: price, estSaleGbp: est,
+        purchasePriceGbp: price, estSaleGbp: est, tradePriceGbp: trade,
         spec,
       }
       const changes = matched ? diffAgainstStock(matched, proposed, present) : []
@@ -580,7 +599,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
   // Said once about the file rather than once per row. A sheet quoted in
   // dirhams is a fact about the sheet, and twenty-eight identical warnings on
   // an import that changes nothing buries the one row that does.
-  for (const currency of new Set([priceCurrency, retailCurrency])) {
+  for (const currency of new Set([priceCurrency, retailCurrency, tradeCurrency])) {
     if (currency === BASE_CURRENCY) continue
     issues.push({
       line: 1,
@@ -721,6 +740,13 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
           patch.estSaleAmount = estGbp
           patch.estSaleCurrency = BASE_CURRENCY
         }
+        if (changed.has('trade')) {
+          // Already in base units by the time it gets here, so the "as
+          // quoted" pair records the base rather than a second conversion.
+          patch.tradePriceGbp = row.tradePriceGbp === null ? null : toMinor(row.tradePriceGbp)
+          patch.tradeAmount = row.tradePriceGbp === null ? null : toMinor(row.tradePriceGbp)
+          patch.tradeCurrency = BASE_CURRENCY
+        }
         for (const [field, value] of Object.entries(row.spec)) {
           if (value === null || !changed.has(field)) continue
           // The model name lives in a column called `nickname`, from before
@@ -774,6 +800,9 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         estSaleGbp: estGbp,
         estSaleAmount: estGbp,
         estSaleCurrency: BASE_CURRENCY,
+        tradePriceGbp: row.tradePriceGbp === null ? null : toMinor(row.tradePriceGbp),
+        tradeAmount: row.tradePriceGbp === null ? null : toMinor(row.tradePriceGbp),
+        tradeCurrency: BASE_CURRENCY,
         locationId,
         ownerId,
         // Whatever the sheet knew about the watch itself. Nulls fall through

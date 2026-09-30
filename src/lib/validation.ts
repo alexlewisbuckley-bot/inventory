@@ -148,6 +148,18 @@ export const watchCreateSchema = z.object({
   purchaseCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   estSaleAmount: optionalMoney('Retail price'),
   estSaleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  /**
+   * What another dealer is quoted. Optional: plenty of stock is never offered
+   * to the trade, and an empty field says that where a zero would not.
+   *
+   * Not validated against the other two here. Trade below cost is a loss
+   * somebody may be taking deliberately to clear a piece, and trade above
+   * retail is a mistake — but both are judgements about a deal, not about
+   * whether the form can be submitted, and the second is caught where it
+   * belongs, in front of the person typing it.
+   */
+  tradeAmount: optionalMoney('Trade price'),
+  tradeCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   locationId: trimmed.min(1, 'Choose a location.'),
   /**
    * Optional, unlike the location. A watch always sits somewhere, but the

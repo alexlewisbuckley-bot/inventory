@@ -277,7 +277,7 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
     purchasePriceGbp: 13_105.51,
     estSaleGbp: 14_980,
   }
-  const ALL = { serial: true, owner: true, retail: true, type: true }
+  const ALL = { serial: true, owner: true, retail: true, trade: true, type: true }
 
   it('reports nothing to do when the row is the record', () => {
     expect(diffAgainstStock(stored, sheet, ALL)).toEqual([])
@@ -307,8 +307,35 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
    */
   it('leaves a field alone when the sheet has no column for it', () => {
     const withoutRetail = { ...sheet, estSaleGbp: null, owner: null }
-    expect(diffAgainstStock(stored, withoutRetail, { serial: true, owner: false, retail: false, type: true }))
+    expect(diffAgainstStock(stored, withoutRetail, { serial: true, owner: false, retail: false, trade: false, type: true }))
       .toEqual([])
+  })
+
+  it('sees a trade price move, and only that', () => {
+    const changes = diffAgainstStock(
+      { ...stored, tradePriceGbp: 1_395_000 },
+      { ...sheet, tradePriceGbp: 13_750 },
+      ALL,
+    )
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ field: 'trade', from: '13950.00', to: '13750.00' })
+  })
+
+  it('does not invent a trade change when neither side has one', () => {
+    // The common case by far: most stock is never quoted to the trade, and a
+    // blank column against a blank field must read as nothing to do rather
+    // than as an edit on every row in the book.
+    expect(diffAgainstStock(stored, { ...sheet, tradePriceGbp: null }, ALL)).toEqual([])
+  })
+
+  it('leaves the trade price alone when the sheet has no column for it', () => {
+    expect(
+      diffAgainstStock(
+        { ...stored, tradePriceGbp: 1_395_000 },
+        { ...sheet, tradePriceGbp: null },
+        { ...ALL, trade: false },
+      ),
+    ).toEqual([])
   })
 
   it('still clears a retail price when the column is there and the cell is empty', () => {

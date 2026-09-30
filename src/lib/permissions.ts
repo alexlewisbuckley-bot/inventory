@@ -15,6 +15,14 @@ export const CAPABILITIES = [
   'location:read', 'location:manage',
   'owner:read', 'owner:manage',
   'reseller:read', 'reseller:manage',
+  /**
+   * The trade catalogue: our stock at trade and retail prices, and nothing
+   * else. Held apart from `watch:read` on purpose — the inventory list is
+   * built around supplier, serial, location and cost, so a role that may see
+   * stock but none of that needs its own door rather than a redacted version
+   * of somebody else's.
+   */
+  'catalogue:read',
   'report:read', 'report:export',
   'data:import',
   'user:read', 'user:manage',
@@ -106,6 +114,18 @@ const MANAGER: Capability[] = [
 
 const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage']
 
+/**
+ * A dealer we sell to. One capability, and it is a read.
+ *
+ * Deliberately not `watch:read`: that opens the inventory list, which is a
+ * working screen built around supplier, serial, location, cost and margin —
+ * every one of which is ours and none of which is theirs. The catalogue is a
+ * separate route over a separate query that names only the columns a trade
+ * partner is entitled to, so there is no redaction to get wrong and no
+ * mutation to forbid, because the page offers none.
+ */
+const TRADER: Capability[] = ['catalogue:read']
+
 export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   VIEWER: VIEWER,
   STAFF: STAFF,
@@ -113,6 +133,7 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   OPERATIONS: OPERATIONS,
   MANAGER: MANAGER,
   OWNER: OWNER,
+  TRADER: TRADER,
 }
 
 export function can(role: Role | null | undefined, capability: Capability): boolean {
@@ -130,8 +151,8 @@ export function canAll(role: Role | null | undefined, capabilities: Capability[]
 
 /** Roles a given actor is allowed to assign. Nobody may create an Owner but an Owner. */
 export function assignableRoles(actorRole: Role): Role[] {
-  if (actorRole === 'OWNER') return ['OWNER', 'MANAGER', 'STAFF', 'SALES', 'OPERATIONS', 'VIEWER']
-  if (actorRole === 'MANAGER') return ['STAFF', 'SALES', 'OPERATIONS', 'VIEWER']
+  if (actorRole === 'OWNER') return ['OWNER', 'MANAGER', 'STAFF', 'SALES', 'OPERATIONS', 'VIEWER', 'TRADER']
+  if (actorRole === 'MANAGER') return ['STAFF', 'SALES', 'OPERATIONS', 'VIEWER', 'TRADER']
   return []
 }
 
@@ -144,4 +165,15 @@ export function assignableRoles(actorRole: Role): Role[] {
  */
 export function canSeeCost(role: Role | null | undefined): boolean {
   return can(role, 'cost:read')
+}
+
+/**
+ * Whether this role is an outside party rather than a member of staff.
+ *
+ * Asked where the answer is "show them their own front door and nothing
+ * else" — the landing redirect and the navigation rail — rather than at a
+ * read boundary, which asks for a capability like everything else.
+ */
+export function isExternalRole(role: Role | null | undefined): boolean {
+  return role === 'TRADER'
 }
