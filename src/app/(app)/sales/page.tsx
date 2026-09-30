@@ -134,7 +134,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             action={<LinkButton href="/sales" variant="secondary">Clear filters</LinkButton>}
           />
         ) : (
-          <SalesTable result={{ ...result, items }} showCost={showCost} />
+          <SalesTable
+            result={{ ...result, items }}
+            showCost={showCost}
+            canVoid={can(user.role, 'sale:delete')}
+          />
         )}
       </Card>
         </>

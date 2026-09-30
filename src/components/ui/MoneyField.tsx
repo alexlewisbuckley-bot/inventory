@@ -1,9 +1,9 @@
 'use client'
 
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { useCurrency } from './CurrencyProvider'
 import { CURRENCIES, BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
-import { formatBase, symbolFor, toBase } from '@/lib/currency'
+import { formatBase, fromBase, hasRate, symbolFor, toBase } from '@/lib/currency'
 import { formatMoneyInput, parseMoneyInput } from '@/lib/money'
 import { cn } from '@/lib/cn'
 
@@ -15,6 +15,15 @@ import { cn } from '@/lib/cn'
  * they did by hand was then stored as fact. The figure is captured exactly as
  * agreed and converted only for reporting, with the converted value shown live
  * underneath so there is no surprise about what will be recorded.
+ *
+ * Changing the currency converts the amount. It used to leave the number where
+ * it was, which on a form opened over an existing record — a cost of 10,000
+ * USD switched to AED — silently restated that cost as 10,000 AED and lost
+ * nearly three quarters of it. Nothing on screen said anything had happened.
+ * Now the figure moves with the selector at the stored rate and a line under
+ * the field says so, so the one case the old behaviour served — "I typed the
+ * number but picked the wrong currency" — is visible and one retype away
+ * rather than being the silent default.
  */
 export function MoneyField({
   label,
@@ -45,6 +54,31 @@ export function MoneyField({
 }) {
   const id = useId()
   const { rates } = useCurrency()
+  const [converted, setConverted] = useState<{ from: CurrencyCode; to: CurrencyCode } | null>(null)
+
+  /**
+   * Re-express what is typed in the newly chosen currency.
+   *
+   * Via the base currency, because that is the only pair every rate is quoted
+   * against. An empty field has nothing to convert, and a currency with no
+   * rate set would convert at 1:1 — which is the very error this exists to
+   * prevent — so both cases change the selector and leave the number alone.
+   */
+  const changeCurrency = (next: CurrencyCode) => {
+    if (next === currency) return
+    const typed = parseMoneyInput(amount)
+    const convertible = typed !== null && typed !== 0
+      && hasRate(currency, rates) && hasRate(next, rates)
+
+    if (convertible) {
+      const moved = fromBase(toBase(typed, currency, rates), next, rates)
+      onAmountChange(formatMoneyInput((moved / 100).toFixed(2)))
+      setConverted({ from: currency, to: next })
+    } else {
+      setConverted(null)
+    }
+    onCurrencyChange(next)
+  }
 
   const minor = parseMoneyInput(amount)
   const equivalent = minor !== null && currency !== BASE_CURRENCY
@@ -89,7 +123,7 @@ export function MoneyField({
           value={amount}
           // Grouped as it is typed: 13105.51 read at a glance is one
           // mis-scan away from a ten-times pricing error.
-          onChange={(event) => onAmountChange(formatMoneyInput(event.target.value))}
+          onChange={(event) => { setConverted(null); onAmountChange(formatMoneyInput(event.target.value)) }}
           inputMode="decimal"
           autoFocus={autoFocus}
           disabled={disabled}
@@ -106,7 +140,7 @@ export function MoneyField({
           name={currencyName}
           value={currency}
           disabled={disabled}
-          onChange={(event) => onCurrencyChange(event.target.value as CurrencyCode)}
+          onChange={(event) => changeCurrency(event.target.value as CurrencyCode)}
           aria-label={`${label} currency`}
           className="border-l border-line-subtle bg-surface-subtle px-2.5 text-small font-semibold text-content-primary outline-none focus-visible:bg-surface-page"
         >
@@ -118,8 +152,15 @@ export function MoneyField({
 
       {error
         ? <p id={`${id}-error`} className="text-caption text-state-danger">{error}</p>
-        : (equivalent || hint) && (
+        : (converted || equivalent || hint) && (
           <p id={`${id}-hint`} className="text-caption text-content-secondary">
+            {/* Said out loud, and politely announced, because the number under
+                the cursor changed without the cursor touching it. */}
+            {converted && (
+              <span role="status" className="text-content-primary">
+                Converted from {converted.from} to {converted.to}.{' '}
+              </span>
+            )}
             {equivalent ? `Recorded as ${equivalent}` : hint}
           </p>
         )}
