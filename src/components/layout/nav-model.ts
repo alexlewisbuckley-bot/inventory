@@ -1,5 +1,4 @@
 import {
-  BookOpen,
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
   Landmark, LayoutDashboard, MapPin, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
@@ -53,7 +52,13 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/today', label: 'Today', icon: LayoutDashboard, match: '/today' },
         // The trade partner's whole application. It sits first because for
         // that role it is also the only thing in the rail.
-        { href: '/catalogue', label: 'Catalogue', icon: BookOpen, capability: 'catalogue:read', match: '/catalogue' },
+        //
+        // Labelled "Inventory", same as the staff screen below it, because to
+        // the reader it is the stock — the two never appear in one person's
+        // rail, so the shared label cannot be ambiguous to anybody. The route
+        // stays /catalogue to keep them apart in the code, where the
+        // distinction is the whole point.
+        { href: '/catalogue', label: 'Inventory', icon: Package, capability: 'catalogue:read', match: '/catalogue' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
       ],

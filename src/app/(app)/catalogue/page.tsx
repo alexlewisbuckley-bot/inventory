@@ -8,7 +8,7 @@ import { CatalogueGrid } from '@/components/catalogue/CatalogueGrid'
 import { isCurrency } from '@/lib/currency'
 import { DEFAULT_DISPLAY_CURRENCY, type CurrencyCode } from '@/lib/enums'
 
-export const metadata: Metadata = { title: 'Catalogue' }
+export const metadata: Metadata = { title: 'Inventory' }
 export const dynamic = 'force-dynamic'
 
 type SearchParams = Record<string, string | string[] | undefined>
@@ -43,7 +43,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: Se
   return (
     <>
       <PageHeader
-        title="Catalogue"
+        title="Inventory"
         description={result.total > 0
           ? `${result.total} ${result.total === 1 ? 'piece' : 'pieces'} available at trade.`
           : 'Everything currently available to the trade.'}
