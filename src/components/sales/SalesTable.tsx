@@ -52,7 +52,7 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
             <TH width="110px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
             <TH width="130px">Invoice</TH>
             <TH width="80px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-            <TH>Watch</TH>
+            <TH width="100%">Watch</TH>
             <TH width="120px">Customer</TH>
             <TH width="100px">Channel</TH>
             {showCost && <TH width="110px" align="right">Cost</TH>}

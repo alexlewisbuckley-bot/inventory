@@ -239,6 +239,12 @@ function buildOrder(query: WatchQuery): SQL {
     // purchase date, so ordering by it put the rows in an order that did not
     // match the numbers on screen.
     case 'estSaleUsd': return direction(watches.estSaleGbp)
+    // NULLS LAST both ways: stock never offered to the trade belongs at the
+    // end of the list whether the sort is high-to-low or low-to-high, not
+    // treated as free at one end of it.
+    case 'tradePriceGbp': return query.dir === 'asc'
+      ? sql`${watches.tradePriceGbp} ASC NULLS LAST`
+      : sql`${watches.tradePriceGbp} DESC NULLS LAST`
     case 'status': return direction(watches.status)
     case 'location': return direction(locations.name)
     case 'owner': return direction(owners.name)

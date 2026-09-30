@@ -127,7 +127,11 @@ export function TH({ children, className, align = 'left', sortKey, sort, onSort,
           type="button"
           onClick={() => onSort(sortKey)}
           className={cn(
-            'inline-flex items-center gap-1 rounded-sm transition-colors hover:text-content-primary',
+            // uppercase and the tracking are repeated here on purpose: the
+            // base reset sets `text-transform: none` on every button, so a
+            // sortable header did not inherit the treatment its neighbours
+            // had and the row came out half capitals, half sentence case.
+            'inline-flex items-center gap-1 rounded-sm uppercase tracking-[0.14em] transition-colors hover:text-content-primary',
             'focus-visible:opacity-100 [&_svg]:focus-visible:opacity-40',
             align === 'right' && 'flex-row-reverse',
             active && 'text-content-primary',

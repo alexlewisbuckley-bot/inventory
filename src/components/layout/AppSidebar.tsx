@@ -75,16 +75,35 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
         </Link>
       </div>
 
-      <nav aria-label="Main" className="flex-1 overflow-y-auto px-2.5 py-4">
+      {/*
+        The rail, set the way the brand sets navigation.
+        
+        It was a stack of sentence-case links with a grey rounded slab under
+        the current one and round badges on the counts — the standard shape of
+        an admin sidebar, and the last place in the application still wearing
+        it. The site's own navigation is tracked capitals with nothing behind
+        them, so the current page is marked the way a boutique marks one: a
+        single sage rule at the edge, and the ink going black. No fill.
+      */}
+      <nav aria-label="Main" className="flex-1 overflow-y-auto py-5">
         {groups.map((group, index) => {
           return (
-            <div key={group.heading ?? `group-${index}`} className={index > 0 ? 'mt-6' : undefined}>
+            <div
+              key={group.heading ?? `group-${index}`}
+              className={cn(
+                index > 0 && 'mt-5 pt-5',
+                // A hairline between groups instead of a gap alone: it is the
+                // brand's own device, and it holds the sections apart at a
+                // glance without spending 24px of rail on every one.
+                index > 0 && !collapsed && 'border-t border-line-subtle',
+              )}
+            >
               {group.heading && !collapsed && (
-                <p className="mb-1.5 px-2.5 text-micro font-semibold uppercase tracking-wide text-content-secondary">
+                <p className="mb-3 px-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-content-muted">
                   {group.heading}
                 </p>
               )}
-              <ul className="flex flex-col gap-0.5">
+              <ul className="flex flex-col">
                 {group.items.map((item) => {
                   const active = isActive(item, pathname, allItems)
                   const Icon = item.icon
@@ -95,24 +114,32 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
                         aria-current={active ? 'page' : undefined}
                         title={collapsed ? item.label : undefined}
                         className={cn(
-                          'flex h-9 items-center gap-3 rounded-md px-2.5 text-body transition-colors',
+                          'relative flex h-10 items-center gap-3 pl-5 pr-4 text-[11.5px] uppercase tracking-[0.11em] transition-colors',
                           collapsed && 'justify-center px-0',
                           active
-                            ? 'bg-navy-700/10 font-bold text-content-primary'
-                            : 'font-medium text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
+                            ? 'font-semibold text-content-primary'
+                            : 'font-medium text-content-secondary hover:text-content-primary',
                         )}
                       >
-                        <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                        {/* The marker. Two pixels of sage at the edge, which is
+                            all the site uses to say "you are here". */}
+                        {active && (
+                          <span
+                            className="absolute inset-y-0 left-0 w-[2px] bg-teal-500"
+                            aria-hidden
+                          />
+                        )}
+                        <Icon className={cn('h-[17px] w-[17px] shrink-0', active && 'text-content-accent')} aria-hidden />
                         {!collapsed && (
                           <>
                             <span className="flex-1 truncate">{item.label}</span>
                             {item.count !== undefined && item.count > 0 && (
                               <span
                                 className={cn(
-                                  'shrink-0 rounded-pill px-1.5 py-0.5 text-micro font-bold tabular-nums',
+                                  'shrink-0 text-[11px] tabular-nums',
                                   item.attention
-                                    ? 'bg-state-gold/20 text-state-gold'
-                                    : 'text-content-secondary',
+                                    ? 'font-semibold text-state-warning'
+                                    : 'font-normal text-content-muted',
                                 )}
                               >
                                 {item.count}

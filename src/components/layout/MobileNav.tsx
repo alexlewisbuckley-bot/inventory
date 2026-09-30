@@ -106,7 +106,7 @@ export function MobileNav({ role, counts }: { role: Role; counts: SidebarCounts 
               {groups.map((group, index) => (
                 <div key={group.heading ?? `group-${index}`} className={index > 0 ? 'mt-6' : undefined}>
                   {group.heading && (
-                    <p className="mb-1.5 px-2.5 text-micro font-semibold uppercase tracking-wide text-content-secondary">
+                    <p className="mb-3 px-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-content-muted">
                       {group.heading}
                     </p>
                   )}
@@ -121,19 +121,20 @@ export function MobileNav({ role, counts }: { role: Role; counts: SidebarCounts 
                             aria-current={active ? 'page' : undefined}
                             className={cn(
                               // 44px minimum height: this is a thumb target, not a pointer target.
-                              'flex min-h-[44px] items-center gap-3 rounded-md px-2.5 py-2 text-body transition-colors',
+                              'relative flex min-h-[44px] items-center gap-3 pl-4 pr-3 py-2 text-[11.5px] uppercase tracking-[0.11em] transition-colors',
                               active
-                                ? 'bg-navy-700/10 font-bold text-content-primary'
-                                : 'font-medium text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
+                                ? 'font-semibold text-content-primary'
+                                : 'font-medium text-content-secondary hover:text-content-primary',
                             )}
                           >
-                            <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+                            {active && <span className="absolute inset-y-0 left-0 w-[2px] bg-teal-500" aria-hidden />}
+                            <Icon className={cn('h-[17px] w-[17px] shrink-0', active && 'text-content-accent')} aria-hidden />
                             <span className="flex-1 truncate">{item.label}</span>
                             {item.count !== undefined && item.count > 0 && (
                               <span
                                 className={cn(
-                                  'shrink-0 rounded-pill px-1.5 py-0.5 text-micro font-bold tabular-nums',
-                                  item.attention ? 'bg-state-gold/20 text-state-gold' : 'text-content-secondary',
+                                  'shrink-0 text-[11px] tabular-nums',
+                                  item.attention ? 'font-semibold text-state-warning' : 'font-normal text-content-muted',
                                 )}
                               >
                                 {item.count}

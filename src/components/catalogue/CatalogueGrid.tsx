@@ -147,7 +147,7 @@ function CatalogueTable({ items, currency }: { items: CatalogueItem[]; currency:
         <THead>
           <TR>
             <TH width="64px"><span className="sr-only">Photograph</span></TH>
-            <TH>Piece</TH>
+            <TH width="100%">Piece</TH>
             <TH width="130px">Reference</TH>
             <TH width="80px">Year</TH>
             <TH width="130px">Accompanied by</TH>

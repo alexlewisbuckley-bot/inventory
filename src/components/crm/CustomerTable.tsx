@@ -111,7 +111,7 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
             <Table>
               <THead>
                 <TR>
-                  <TH>Customer</TH>
+                  <TH width="100%">Customer</TH>
                   <TH width="90px">Side</TH>
                   <TH width="190px">Contact</TH>
                   <TH width="120px">Country</TH>

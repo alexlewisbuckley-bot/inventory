@@ -45,6 +45,7 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'supplier', label: 'Supplier' },
   { key: 'purchased', label: 'Purchased' },
   { key: 'cost', label: 'Cost' },
+  { key: 'trade', label: 'Trade' },
   { key: 'estSale', label: 'Retail' },
   { key: 'profit', label: 'Est. profit' },
   { key: 'location', label: 'Location' },
@@ -247,11 +248,15 @@ export function InventoryList({
                 </TH>
               )}
               <TH width="96px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-              <TH sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
+              {/* The elastic column. Every other header states a width, so
+                  without one column claiming the remainder the browser shares
+                  it out evenly and hiding a column just pads the rest. */}
+              <TH width="100%" sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
               {show('serial') && <TH width="110px">Serial</TH>}
               {show('supplier') && <TH width="170px">Supplier</TH>}
               {show('purchased') && <TH width="120px" sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
               {show('cost') && <TH width="110px" align="right" sortKey="purchasePriceGbp" sort={sort} onSort={query.sortBy}>Cost</TH>}
+              {show('trade') && <TH width="110px" align="right" sortKey="tradePriceGbp" sort={sort} onSort={query.sortBy}>Trade</TH>}
               {show('estSale') && <TH width="110px" align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Retail</TH>}
               {show('profit') && <TH width="120px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
               {show('location') && <TH width="170px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
@@ -559,6 +564,16 @@ function Row({
       )}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
       {show('cost') && <TD align="right" className="font-bold">{money(watch.purchasePriceGbp)}</TD>}
+      {/* Between the two it sits between, in the same order as the form. A
+          watch never offered to the trade says so rather than showing a
+          zero. */}
+      {show('trade') && (
+        <TD align="right" className="text-content-secondary">
+          {watch.tradePriceGbp === null
+            ? <span className="text-content-muted">—</span>
+            : money(watch.tradePriceGbp)}
+        </TD>
+      )}
       {show('estSale') && (
         <TD align="right">
           {/* A sold watch shows what it actually made, not what somebody once
