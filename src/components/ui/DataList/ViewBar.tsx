@@ -257,7 +257,7 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
 
 function chipClass(active: boolean): string {
   return cn(
-    'inline-flex h-9 items-center rounded-md px-3 text-small font-semibold transition-colors',
+    'inline-flex h-9 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
     active
       ? 'bg-navy-700 text-content-on-brand'
       : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',

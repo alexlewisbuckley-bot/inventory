@@ -45,7 +45,7 @@ export function Chip({ tone = 'neutral', dot = false, children, className }: Chi
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-micro font-semibold whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] whitespace-nowrap',
         TONES[tone],
         className,
       )}

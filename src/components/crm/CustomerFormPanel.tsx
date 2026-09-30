@@ -204,7 +204,7 @@ export function CustomerFormPanel({
                   {brands.map((brand) => (
                     <label
                       key={brand.id}
-                      className="inline-flex cursor-pointer items-center gap-2 rounded-pill border border-line-subtle px-3.5 py-2 text-small text-content-primary transition-colors hover:border-line-strong has-[:checked]:border-teal-500 has-[:checked]:bg-teal-100"
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-sm border border-line-subtle px-3.5 py-2 text-small text-content-primary transition-colors hover:border-line-strong has-[:checked]:border-teal-500 has-[:checked]:bg-teal-100"
                     >
                       <input
                         type="checkbox"

@@ -86,7 +86,16 @@ const config: Config = {
           'div-5': 'rgb(var(--c-chart-div-5) / <alpha-value>)',
         },
       },
-      borderRadius: { xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', pill: '999px', full: '999px' },
+      /*
+       * Squared, because the brand is.
+       *
+       * The boutique, the cards, the site's buttons and its image frames are
+       * all right angles — a 12px radius is the single loudest thing saying
+       * "software" rather than "One Street". `pill` and `full` survive for
+       * the things that are genuinely round: an avatar, a status dot, a
+       * count badge.
+       */
+      borderRadius: { xs: '0px', sm: '0px', md: '2px', lg: '2px', xl: '2px', pill: '999px', full: '999px' },
       spacing: {
         1: '4px', 2: '8px', 3: '12px', 4: '16px', 5: '20px', 6: '24px',
         8: '32px', 10: '40px', 12: '48px', 16: '64px', 20: '80px', 24: '96px', 30: '120px',
@@ -125,11 +134,24 @@ const config: Config = {
         emphasis: 'cubic-bezier(.4, 0, .2, 1)',
         exit: 'cubic-bezier(.4, 0, 1, 1)',
       },
+      /*
+       * The weight scale, capped.
+       *
+       * One Street sets nothing heavier than a medium: the navigation, the
+       * hero, the cards and the packaging are all light-to-semibold. The
+       * application had `font-extrabold` on thirty-three headings, which is
+       * the difference between a shopfront and a spreadsheet.
+       *
+       * Remapped here rather than edited at each call site, so the intent
+       * lives in one place and no new heading can reintroduce 800 by writing
+       * the class everyone else writes.
+       */
+      fontWeight: { semibold: '500', bold: '600', extrabold: '600' },
       fontFamily: {
         // The webfont leads, but the fallback stack is a deliberate, complete
         // system stack — if the CDN is blocked the app still renders correctly.
         sans: [
-          'var(--font-jakarta)', 'ui-sans-serif', 'system-ui', '-apple-system',
+          'var(--font-sans)', 'ui-sans-serif', 'system-ui', '-apple-system',
           'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif',
         ],
       },
@@ -139,14 +161,23 @@ const config: Config = {
         small: ['13px', { lineHeight: '20px' }],
         body: ['14px', { lineHeight: '22px' }],
         'body-lg': ['16px', { lineHeight: '26px' }],
-        h3: ['20px', { lineHeight: '28px', letterSpacing: '-0.01em' }],
-        h2: ['26px', { lineHeight: '34px', letterSpacing: '-0.015em' }],
-        h1: ['32px', { lineHeight: '40px', letterSpacing: '-0.02em' }],
-        display: ['40px', { lineHeight: '48px', letterSpacing: '-0.025em' }],
+        // Headings grew and loosened. The site's hero runs large and light
+        // with normal tracking; the old scale was small, tight and
+        // extrabold, which is the house style of a dashboard.
+        h3: ['21px', { lineHeight: '30px', letterSpacing: '-0.005em' }],
+        h2: ['28px', { lineHeight: '38px', letterSpacing: '-0.01em' }],
+        h1: ['36px', { lineHeight: '46px', letterSpacing: '-0.015em' }],
+        display: ['48px', { lineHeight: '58px', letterSpacing: '-0.02em' }],
+        // The brand's own label: uppercase, widely tracked, quiet. Its
+        // business cards run 0.2em and its navigation about the same.
+        eyebrow: ['11px', { lineHeight: '16px', letterSpacing: '0.18em' }],
       },
       boxShadow: {
-        card: '0 2px 8px rgb(var(--c-shadow) / 0.06)',
-        raised: '0 4px 16px rgb(var(--c-shadow) / 0.10)',
+        // A card is defined by its rule, not by floating. The brand's
+        // surfaces sit on the page; only the two blocking surfaces below —
+        // which genuinely are above everything — keep a shadow.
+        card: 'none',
+        raised: '0 1px 2px rgb(var(--c-shadow) / 0.04)',
         overlay: '0 20px 60px -10px rgb(var(--c-shadow) / 0.30)',
         drawer: '-12px 0 40px -8px rgb(var(--c-shadow) / 0.25)',
       },

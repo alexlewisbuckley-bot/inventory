@@ -11,7 +11,11 @@ import { ToastProvider } from '@/components/ui/Toast'
  * what was happening here. The weight-variable woff2 ships in the package and
  * is served from this origin, so it is either present or the build fails.
  */
-import '@fontsource-variable/plus-jakarta-sans/wght.css'
+// The optical-size axis, not just weight: this interface runs from a
+// 10px tracked label to a display figure on a stat tile, and Inter's opsz
+// is what keeps the small end from closing up and the large end from
+// looking loose.
+import '@fontsource-variable/inter/opsz.css'
 import '@/styles/globals.css'
 
 export const metadata: Metadata = {

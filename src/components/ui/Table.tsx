@@ -32,7 +32,7 @@ export function Table({ children, className, density = 'COMFORTABLE' }: {
 }
 
 export function THead({ children }: { children: ReactNode }) {
-  return <thead className="group/head bg-surface-subtle">{children}</thead>
+  return <thead className="group/head border-b border-line-strong">{children}</thead>
 }
 
 export function TBody({ children }: { children: ReactNode }) {
@@ -116,7 +116,7 @@ export function TH({ children, className, align = 'left', sortKey, sort, onSort,
       style={width ? { width } : undefined}
       aria-sort={ariaSort}
       className={cn(
-        'whitespace-nowrap px-4 py-3 text-caption font-semibold text-content-secondary first:pl-6 last:pr-6',
+        'whitespace-nowrap px-4 py-3.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-content-secondary first:pl-6 last:pr-6',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,

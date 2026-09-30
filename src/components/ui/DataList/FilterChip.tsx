@@ -63,7 +63,7 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
   const editable = choices.length > 0 && (clause.operator === 'is' || clause.operator === 'isNot')
 
   return (
-    <span className="inline-flex items-center rounded-pill border border-line-subtle bg-surface-raised text-caption">
+    <span className="inline-flex items-center rounded-sm border border-line-subtle bg-surface-raised text-caption">
       <button
         ref={operatorTrigger}
         type="button"

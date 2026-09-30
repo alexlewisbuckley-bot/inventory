@@ -119,7 +119,7 @@ export function BulkActionBar({
       <div
         role="region"
         aria-label={`${count} selected`}
-        className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-pill border border-line-subtle bg-surface-raised px-4 py-3 shadow-raised animate-slide-up"
+        className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-sm border border-line-subtle bg-surface-raised px-4 py-3 shadow-raised animate-slide-up"
       >
         <span className="pl-2 text-small font-bold text-content-primary" aria-live="polite">
           {count} selected

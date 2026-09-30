@@ -9,7 +9,7 @@
 @layer base {
   :root {
     /* Served from this origin by @fontsource-variable, not from a CDN. */
-    --font-jakarta: 'Plus Jakarta Sans Variable';
+    --font-sans: 'Inter Variable';
 
     /* The density multiplier. Read by the `dy-*` spacing scale in
        tailwind.config.ts. Declared here rather than passed as a prop because
@@ -190,6 +190,9 @@
 
   body {
     @apply bg-surface-subtle text-content-primary font-sans antialiased;
+    /* Inter's own: cv11 gives the single-storey 'a' the brand's cards
+       use, ss01 the alternate digits. Both were already named here for a
+       face that did not have them. */
     font-feature-settings: 'cv11', 'ss01';
   }
 

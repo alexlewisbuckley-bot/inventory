@@ -8,17 +8,17 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subt
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-teal-500 text-content-on-accent hover:bg-teal-600 active:bg-teal-600 shadow-sm',
-  secondary: 'bg-transparent text-navy-700 border-[1.5px] border-navy-700 hover:bg-navy-700/5',
+  primary: 'bg-teal-500 text-content-on-accent hover:bg-teal-600 active:bg-teal-600',
+  secondary: 'bg-transparent text-navy-700 border border-navy-700 hover:bg-navy-700/5',
   ghost: 'bg-transparent text-navy-700 hover:bg-navy-700/8',
   danger: 'bg-state-danger text-content-on-status hover:brightness-95',
   subtle: 'bg-surface-subtle text-content-primary border border-line-subtle hover:border-line-strong',
 }
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3 text-small gap-1.5',
-  md: 'h-11 px-5 text-body gap-2',
-  lg: 'h-12 px-6 text-body-lg gap-2',
+  sm: 'h-8 px-3.5 text-[11px] gap-1.5',
+  md: 'h-11 px-6 text-[12px] gap-2',
+  lg: 'h-12 px-8 text-[13px] gap-2.5',
 }
 
 interface BaseProps {
@@ -34,8 +34,13 @@ interface BaseProps {
 
 export interface ButtonProps extends BaseProps, Omit<ButtonHTMLAttributes<HTMLButtonElement>, keyof BaseProps> {}
 
+/*
+ * The brand's button is a rectangle with tracked capitals in it — on the
+ * site, on the cards, on the packaging. A bold pill is the other thing
+ * entirely, and it was the second loudest tell after the corner radius.
+ */
 const base =
-  'inline-flex items-center justify-center rounded-pill font-bold whitespace-nowrap ' +
+  'inline-flex items-center justify-center rounded-sm font-semibold uppercase tracking-[0.1em] whitespace-nowrap ' +
   'transition-[background-color,border-color,filter,opacity] duration-150 ' +
   'disabled:opacity-50 disabled:pointer-events-none select-none'
 

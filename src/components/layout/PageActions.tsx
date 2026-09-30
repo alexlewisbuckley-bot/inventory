@@ -46,7 +46,7 @@ export function PageActions({ secondary, primary }: {
             aria-haspopup="menu"
             aria-expanded={open}
             aria-label="More actions"
-            className="flex h-11 w-11 items-center justify-center rounded-pill border-[1.5px] border-navy-700 text-navy-700 transition-colors hover:bg-navy-700/5 sm:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-sm border border-navy-700 text-navy-700 transition-colors hover:bg-navy-700/5 sm:hidden"
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden />
           </button>
