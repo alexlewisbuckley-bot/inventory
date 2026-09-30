@@ -50,22 +50,29 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
           content — see the note on the Table component. */}
       <Table
         layout="fixed"
-        minWidth={`${844 + (showCost ? 350 : 0) + (canVoid ? 104 : 0)}px`}
+        minWidth={`${844 + 176 + (showCost ? 350 : 0)}px`}
       >
         <THead>
           <TR>
             <TH width="110px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
             <TH width="124px">Invoice</TH>
             <TH width="80px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-            {/* elastic: the only column without a width */}
-            <TH>Watch</TH>
+            {/* Sized like the inventory list, which shows the same reference
+                and brand: measured at 171px for the longest in stock. */}
+            <TH width="176px">Watch</TH>
             <TH width="120px">Customer</TH>
             <TH width="100px">Channel</TH>
             {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
             {showCost && <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>}
             {showCost && <TH width="130px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
-            {canVoid && <TH width="104px" align="right"><span className="sr-only">Actions</span></TH>}
+            {/* Always present, and the one column without a width, so it
+                takes whatever is left over. The watch used to be elastic, and
+                on a wide screen that put a hand's width of empty table
+                between a reference and the customer who bought it. The slack
+                belongs at the end of the row, behind right-aligned contents,
+                where it reads as the row finishing. */}
+            <TH align="right"><span className="sr-only">Actions</span></TH>
           </TR>
         </THead>
         <TBody>
@@ -105,8 +112,8 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
               </TD>
               </>
               )}
-              {canVoid && (
-                <TD align="right">
+              <TD align="right">
+                {canVoid && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -121,8 +128,8 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
                   >
                     Void
                   </Button>
-                </TD>
-              )}
+                )}
+              </TD>
             </TR>
           ))}
         </TBody>

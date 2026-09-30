@@ -242,16 +242,21 @@
 }
 
 @layer components {
-  /* Compact density: roughly a third more rows on screen without shrinking
-     type below a comfortable reading size. */
+  /* Compact density: more rows on screen without shrinking type below a
+     comfortable reading size, and without dropping anything.
+
+     It claimed to do that and did neither. The only rule with any effect set
+     the vertical padding to `py-2` — which is exactly what a cell already
+     had, so the row height never moved — and the one rule that did change
+     something hid every caption, which on the inventory list is the brand
+     name under the reference. A denser table that tells you less is not the
+     trade anyone wanted. The height is what gives rows back: 56px to 44px is
+     a fifth more of them, and the brand stays where it was. */
   [data-density='compact'] td {
-    @apply py-2;
+    @apply h-10 py-1 leading-[1.35];
   }
   [data-density='compact'] th {
-    @apply py-2;
-  }
-  [data-density='compact'] td .text-caption {
-    @apply hidden;
+    @apply py-2.5;
   }
 
   .skeleton {

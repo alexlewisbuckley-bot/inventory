@@ -3,15 +3,21 @@ import type { ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { requestPeek, type PeekTarget } from './Peek'
+import { useDensity } from './DensityProvider'
 
 /**
  * Density is applied via a data attribute on the wrapper rather than threaded
  * through every cell, so a table becomes compact without any of its children
  * knowing the setting exists.
  */
-export function Table({ children, className, density = 'COMFORTABLE', layout = 'auto', minWidth }: {
+export function Table({ children, className, density, layout = 'auto', minWidth }: {
   children: ReactNode
   className?: string
+  /**
+   * Row height. Left off, it follows the reader's saved preference, which is
+   * the usual case — a table only states this when it has a reason to differ
+   * from the rest of the application.
+   */
   density?: 'COMFORTABLE' | 'COMPACT'
   /**
    * `fixed` makes the widths on `TH` authoritative.
@@ -38,6 +44,9 @@ export function Table({ children, className, density = 'COMFORTABLE', layout = '
    */
   minWidth?: string
 }) {
+  const preferred = useDensity()
+  const applied = density ?? preferred
+
   return (
     // `relative` is load-bearing, not decoration. Tailwind's `sr-only` is
     // `position: absolute`, and an absolutely-positioned descendant is only
@@ -48,7 +57,7 @@ export function Table({ children, className, density = 'COMFORTABLE', layout = '
     // phone and rendered at a third of its width.
     <div
       className="relative w-full overflow-x-auto"
-      data-density={density === 'COMPACT' ? 'compact' : undefined}
+      data-density={applied === 'COMPACT' ? 'compact' : undefined}
     >
       <table
         style={minWidth ? { minWidth } : undefined}

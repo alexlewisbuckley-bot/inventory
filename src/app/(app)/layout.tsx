@@ -14,11 +14,20 @@ import { countUnpriced, findAgeingStock, summariseInventory } from '@/server/rep
 import { watchQuerySchema } from '@/lib/validation'
 import { sales } from '@/server/db/schema'
 import { CurrencyProvider } from '@/components/ui/CurrencyProvider'
+import { DensityProvider } from '@/components/ui/DensityProvider'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { isCurrency } from '@/lib/currency'
-import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, type Role } from '@/lib/enums'
+import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, DENSITIES, type Density, type Role } from '@/lib/enums'
 import { can, isExternalRole } from '@/lib/permissions'
+
+/**
+ * The reader's saved row height, or the comfortable default if they have not
+ * chosen one. Stored as free text, so it is checked rather than trusted.
+ */
+function densityOf(value: string | null | undefined): Density {
+  return DENSITIES.includes(value as Density) ? (value as Density) : 'COMFORTABLE'
+}
 
 /**
  * Authenticated shell. Every route in this group is guaranteed a session —
@@ -44,6 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     return (
       <CurrencyProvider initial={partnerCurrency} rates={rates}>
+        <DensityProvider value={densityOf(preferences?.density)}>
         <div className="flex min-h-screen flex-col bg-surface-subtle">
           <PartnerTopBar user={user} brands={partnerBrands} />
           <main
@@ -54,6 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {children}
           </main>
         </div>
+        </DensityProvider>
       </CurrencyProvider>
     )
   }
@@ -105,6 +116,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <CurrencyProvider initial={displayCurrency} rates={rates}>
+      <DensityProvider value={densityOf(preferences?.density)}>
       <div className="flex min-h-screen bg-surface-subtle">
         <AppSidebar role={user.role as Role} counts={counts} />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -123,6 +135,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <BottomBar />
       <KeyboardShortcuts canCreate={can(user.role, 'watch:create')} />
+      </DensityProvider>
     </CurrencyProvider>
   )
 }

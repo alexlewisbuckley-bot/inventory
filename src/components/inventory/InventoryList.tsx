@@ -65,21 +65,33 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
  * cannot drift apart.
  */
 const COL_WIDTH = {
-  select: 56, stockNo: 84, year: 72, serial: 96, supplier: 140, purchased: 116,
-  cost: 96, trade: 96, estSale: 104, profit: 116, location: 140, owner: 140,
-  status: 118, checks: 92, actions: 104,
+  select: 56, stockNo: 84, watch: 176, year: 72, serial: 96, supplier: 140,
+  purchased: 116, cost: 96, trade: 96, estSale: 104, profit: 116, location: 140,
+  owner: 140, status: 118, checks: 92, actions: 104,
 } as const
 
 /**
- * The floor for the elastic column.
+ * Every column is measured, and one empty column at the end takes what is
+ * left over.
  *
- * It takes whatever the others leave, and with enough columns showing that
- * was nothing at all: measured at 0px, with the watch — the one thing every
- * row is actually identified by — collapsed to an empty sliver while twelve
- * fixed columns sat at their full width. Below this the table scrolls
- * sideways instead.
+ * The watch column used to be the elastic one, on the reasoning that it holds
+ * the longest text. What that actually produced was a column sized to the
+ * window rather than to its contents: on a wide screen it ran to four hundred
+ * and fifty pixels for a reference and a brand name that need barely two
+ * hundred, and put a hand's width of empty table between the watch and its
+ * year. A gap in the middle of a row is read as a mistake, and it made the
+ * row harder to follow across — which is the entire job of this table.
+ *
+ * So the data columns are all sized to their contents and sit together, and
+ * the slack is collected at the end, where whitespace before the row's own
+ * actions reads as the row finishing rather than as a hole.
+ *
+ * The widths are measured, not guessed. The watch column is 176px because the
+ * longest reference and brand in stock render at 171px with the cell's own
+ * padding, and the median at 85px; anything longer truncates with the full
+ * value on hover. The first pass at this used 232px, which was 60px of empty
+ * table on every row for no reason.
  */
-const WATCH_MIN = 200
 
 // Owner starts hidden like serial and supplier: it matters to whoever is
 // reconciling ownership, not to everyone reading the list every day.
@@ -148,13 +160,14 @@ export function InventoryList({
   const selectable = capabilities['watch:move'] || capabilities['watch:delete']
 
   /**
-   * How wide the table needs to be for every column to hold its stated width
-   * and the watch still to be readable. Below it the wrapper scrolls, which
-   * is the honest answer when twelve columns are switched on at once — better
-   * than every one of them being quietly squeezed.
+   * How wide the table needs to be for every column to hold its stated width.
+   * Below it the wrapper scrolls, which is the honest answer when twelve
+   * columns are switched on at once — better than every one of them being
+   * quietly squeezed. Above it the surplus goes to the spacer, not to a data
+   * column.
    */
   const tableMinWidth = `${
-    (selectable ? COL_WIDTH.select : 0) + COL_WIDTH.stockNo + WATCH_MIN + COL_WIDTH.actions
+    (selectable ? COL_WIDTH.select : 0) + COL_WIDTH.stockNo + COL_WIDTH.watch + COL_WIDTH.actions
     + (['year', 'serial', 'supplier', 'purchased', 'cost', 'trade', 'estSale', 'profit',
         'location', 'owner', 'status', 'checks'] as const)
       .reduce((sum, key) => sum + (show(key) ? COL_WIDTH[key] : 0), 0)
@@ -288,10 +301,7 @@ export function InventoryList({
                 </TH>
               )}
               <TH width={`${COL_WIDTH.stockNo}px`} sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-              {/* The elastic column, and the only one without a width: under
-                  `table-fixed` the leftover goes to whichever column states
-                  none, so the watch takes it and the rest stay put. */}
-              <TH sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
+              <TH width={`${COL_WIDTH.watch}px`} sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
               {show('year') && <TH width={`${COL_WIDTH.year}px`} sortKey="year" sort={sort} onSort={query.sortBy}>Year</TH>}
               {show('serial') && <TH width={`${COL_WIDTH.serial}px`}>Serial</TH>}
               {show('supplier') && <TH width={`${COL_WIDTH.supplier}px`}>Supplier</TH>}
@@ -304,9 +314,13 @@ export function InventoryList({
               {show('owner') && <TH width={`${COL_WIDTH.owner}px`} sortKey="owner" sort={sort} onSort={query.sortBy}>Owner</TH>}
               {show('status') && <TH width={`${COL_WIDTH.status}px`}>Status</TH>}
               {show('checks') && <TH width={`${COL_WIDTH.checks}px`} align="center">Checks</TH>}
-              {/* Wide enough for Sell beside the menu, which only appears on
-                  hover — a narrower column would clip it under `table-fixed`. */}
-              <TH width={`${COL_WIDTH.actions}px`} align="right"><span className="sr-only">Actions</span></TH>
+              {/* The column that takes up the slack — the only one without a
+                  width, so under `table-fixed` everything the others leave
+                  comes here. Its contents are pinned to the right regardless,
+                  so the actions stay at the edge of the row while the data
+                  stays packed together on the left. No phantom column, and
+                  nothing in the table that does not mean something. */}
+              <TH align="right"><span className="sr-only">Actions</span></TH>
             </TR>
           </THead>
           <TBody>
