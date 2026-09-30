@@ -15,7 +15,7 @@ import '@fontsource-variable/plus-jakarta-sans/wght.css'
 import '@/styles/globals.css'
 
 export const metadata: Metadata = {
-  title: { default: 'Bluecroft Stock', template: '%s · Bluecroft Stock' },
+  title: { default: 'One Street Watches', template: '%s · One Street Watches' },
   description: 'Internal luxury watch inventory management for Bluecroft.',
   robots: { index: false, follow: false },
 }
@@ -39,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <a
           href="#main"
-          className="sr-only-focusable absolute left-4 top-4 z-[100] rounded-md bg-navy-700 px-4 py-2 text-body font-bold text-white"
+          className="sr-only-focusable absolute left-4 top-4 z-[100] rounded-md bg-navy-700 px-4 py-2 text-body font-bold text-content-on-brand"
         >
           Skip to main content
         </a>

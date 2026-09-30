@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Wordmark } from './Wordmark'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -89,7 +90,7 @@ export function MobileNav({ role, counts }: { role: Role; counts: SidebarCounts 
             <div className="flex h-[60px] shrink-0 items-center justify-between border-b border-line-subtle pl-5 pr-3">
               <Link href="/" className="flex items-center gap-2" aria-label="Bluecroft Stock — dashboard">
                 <span className="h-2.5 w-2.5 rounded-pill bg-teal-500" aria-hidden />
-                <span className="text-body-lg font-extrabold text-content-primary">bluecroft</span>
+                <Wordmark />
               </Link>
               <button
                 type="button"

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { Wordmark } from './Wordmark'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronsLeft } from 'lucide-react'
@@ -69,9 +70,8 @@ export function AppSidebar({ role, counts }: { role: Role; counts: SidebarCounts
       style={{ visibility: mounted ? 'visible' : 'hidden' }}
     >
       <div className={cn('flex h-[60px] items-center border-b border-line-subtle', collapsed ? 'justify-center px-2' : 'px-5')}>
-        <Link href="/" className="flex items-center gap-2 overflow-hidden" aria-label="Bluecroft Stock — dashboard">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-pill bg-teal-500" aria-hidden />
-          {!collapsed && <span className="truncate text-body-lg font-extrabold text-content-primary">bluecroft</span>}
+        <Link href="/" className="flex items-center overflow-hidden" aria-label="One Street Watches — dashboard">
+          <Wordmark compact={collapsed} />
         </Link>
       </div>
 

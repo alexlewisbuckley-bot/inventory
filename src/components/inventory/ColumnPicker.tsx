@@ -59,7 +59,7 @@ export function ColumnPicker({ columns, isHidden, onToggle, onReset, hiddenCount
         <Columns3 className="h-4 w-4" aria-hidden />
         Columns
         {hiddenCount > 0 && (
-          <span className="rounded-pill bg-teal-500 px-1.5 text-micro font-bold text-navy-900">
+          <span className="rounded-pill bg-teal-500 px-1.5 text-micro font-bold text-content-on-accent">
             {hiddenCount} hidden
           </span>
         )}

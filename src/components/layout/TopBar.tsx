@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Wordmark } from './Wordmark'
 import { Bell } from 'lucide-react'
 import { UserMenu } from './UserMenu'
 import { CommandTrigger } from './CommandTrigger'
@@ -27,9 +28,8 @@ export function TopBar({ user, unreadCount, counts }: {
         <MobileNav role={user.role as Role} counts={counts} />
         {/* The wordmark appears only where the sidebar is hidden and there is
             room for it: on the narrowest screens the controls win. */}
-        <Link href="/" className="hidden items-center gap-2 sm:flex lg:hidden" aria-label="Bluecroft Stock — dashboard">
-          <span className="h-2 w-2 rounded-pill bg-teal-500" aria-hidden />
-          <span className="text-body-lg font-extrabold text-content-primary">bluecroft</span>
+        <Link href="/" className="hidden items-center sm:flex lg:hidden" aria-label="One Street Watches — dashboard">
+          <Wordmark />
         </Link>
 
         <div className="ml-auto flex items-center gap-2">
@@ -42,7 +42,7 @@ export function TopBar({ user, unreadCount, counts }: {
           >
             <Bell className="h-[18px] w-[18px]" aria-hidden />
             {unreadCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-pill bg-state-danger px-1 text-micro font-bold text-white">
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-pill bg-state-danger px-1 text-micro font-bold text-content-on-status">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}

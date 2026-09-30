@@ -86,7 +86,7 @@ function PageButton({ children, label, onClick, disabled, current }: {
       aria-current={current ? 'page' : undefined}
       className={cn(
         'inline-flex h-8 min-w-8 items-center justify-center rounded-sm px-2 text-small font-medium transition-colors',
-        current ? 'bg-navy-700 font-bold text-white' : 'text-content-secondary hover:bg-surface-subtle',
+        current ? 'bg-navy-700 font-bold text-content-on-brand' : 'text-content-secondary hover:bg-surface-subtle',
         disabled && 'pointer-events-none opacity-40',
       )}
     >

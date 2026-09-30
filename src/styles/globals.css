@@ -17,27 +17,39 @@
        a table and every row, cell and inline control inside it inherits. */
     --density-y: 1;
 
-    --c-navy-900: 4 23 58;
-    --c-navy-700: 1 45 104;
-    --c-navy-500: 30 78 157;
-    --c-teal-500: 0 194 203;
-    --c-teal-600: 0 168 176;
-    --c-teal-100: 217 246 247;
-    --c-surface-page: 255 255 255;
-    --c-surface-subtle: 245 248 252;
-    --c-surface-raised: 255 255 255;
-    --c-surface-inverse: 4 23 58;
-    --c-text-primary: 10 31 68;
-    --c-text-secondary: 81 97 125;
-    --c-text-inverse: 255 255 255;
-    --c-text-inverse-muted: 170 189 218;
-    --c-text-accent: 0 122 128;
-    --c-border-subtle: 227 234 243;
-    --c-border-strong: 198 211 228;
-    --c-success: 0 182 122;
-    --c-gold: 245 184 65;
-    --c-danger: 214 69 69;
-    --c-shadow: 10 31 68;
+    --c-navy-900: 12 9 8;                /* #0C0908 deepest ink */
+    --c-navy-700: 28 27 25;               /* #1C1B19 INK */
+    --c-navy-500: 59 57 53;               /* #3B3935 mid ink */
+    --c-teal-500: 47 107 71;              /* #2F6B47 SAGE */
+    --c-teal-600: 37 87 57;               /* #255739 sage, pressed */
+    --c-teal-100: 228 237 231;            /* #E4EDE7 sage wash */
+    --c-surface-page: 247 244 239;        /* #F7F4EF IVORY */
+    --c-surface-subtle: 239 235 228;      /* #EFEBE4 SAND */
+    --c-surface-raised: 253 252 250;      /* #FDFCFA — lifts off sand */
+    --c-surface-inverse: 28 27 25;        /* #1C1B19 INK */
+    --c-text-primary: 28 27 25;           /* #1C1B19 INK */
+    --c-text-secondary: 91 86 78;         /* #5B564E */
+    --c-text-inverse: 247 244 239;        /* #F7F4EF IVORY */
+    --c-text-inverse-muted: 169 164 155;  /* #A9A49B */
+    --c-text-accent: 42 97 64;            /* #2A6140 sage, for text */
+    /*
+     * The ink that sits ON a brand or accent fill.
+     *
+     * A token rather than `text-white` at each call site, because the brand
+     * fills are dark in one theme and light in the other: sage on Ivory takes
+     * Ivory text, sage on Obsidian is lifted to #6FAE86 and takes Ink. Every
+     * `text-white` hard-coded against a brand background read at 2.3:1 the
+     * moment the dark palette stopped being navy.
+     */
+    --c-on-accent: 247 244 239;           /* #F7F4EF Ivory on sage */
+    --c-on-brand: 247 244 239;            /* #F7F4EF Ivory on ink */
+    --c-on-status: 253 252 250;           /* #FDFCFA on a filled status */
+    --c-border-subtle: 227 222 213;       /* #E3DED5 */
+    --c-border-strong: 207 201 191;       /* #CFC9BF TAUPE */
+    --c-success: 31 122 76;               /* #1F7A4C */
+    --c-gold: 138 107 10;                 /* #8A6B0A bronze */
+    --c-danger: 155 44 34;                /* #9B2C22 oxblood */
+    --c-shadow: 12 9 8;                   /* #0C0908 */
 
     /* Chart series. Validated for CVD separation and contrast against the
        light surface (scripts/validate_palette.js). Dark mode below uses its
@@ -54,21 +66,21 @@
 
     /* A third ink level. V1 used `secondary` for both metadata and
        placeholders, which made an empty input look filled in. */
-    --c-content-muted: 122 138 165;      /* #7A8AA5 */
+    --c-content-muted: 138 133 124;       /* #8A857C */
 
     /* One step above `raised`, for modals and the command palette. In dark
        mode this is lightness, not shadow — a shadow on a dark surface
        carries no information. */
-    --c-surface-overlay: 255 255 255;    /* #FFFFFF */
+    --c-surface-overlay: 255 255 255;     /* #FFFFFF */
 
     /* Four reserved status colours, never reused as a series or an accent.
        `serious` is new: V1 collapsed it into danger, so an overdue task and
        a failed migration looked identical. The distinction is "someone
        should act" versus "something is broken". */
-    --c-state-good: 0 135 90;            /* #00875A */
-    --c-state-warning: 178 106 0;        /* #B26A00 */
-    --c-state-serious: 194 65 12;        /* #C2410C */
-    --c-state-critical: 163 20 9;        /* #A31409 */
+    --c-state-good: 31 122 76;            /* #1F7A4C */
+    --c-state-warning: 138 107 10;        /* #8A6B0A */
+    --c-state-serious: 194 90 27;         /* #C25A1B */
+    --c-state-critical: 155 44 34;        /* #9B2C22 */
 
     /* Categorical chart palette, six slots, assigned in this fixed order and
        never cycled. Computed rather than chosen: all five checks of
@@ -101,27 +113,30 @@
   }
 
   .dark {
-    --c-navy-900: 226 235 249;
-    --c-navy-700: 147 185 255;
-    --c-navy-500: 96 145 226;
-    --c-teal-500: 0 194 203;
-    --c-teal-600: 79 217 224;
-    --c-teal-100: 8 51 60;
-    --c-surface-page: 7 16 35;
-    --c-surface-subtle: 11 24 45;
-    --c-surface-raised: 17 33 58;
-    --c-surface-inverse: 226 235 249;
-    --c-text-primary: 233 240 251;
-    --c-text-secondary: 154 170 198;
-    --c-text-inverse: 7 16 35;
-    --c-text-inverse-muted: 81 97 125;
-    --c-text-accent: 79 217 224;
-    --c-border-subtle: 30 48 80;
-    --c-border-strong: 44 67 104;
-    --c-success: 42 205 148;
-    --c-gold: 245 184 65;
-    --c-danger: 240 113 113;
-    --c-shadow: 0 0 0;
+    --c-navy-900: 242 239 233;            /* #F2EFE9 */
+    --c-navy-700: 217 211 200;            /* #D9D3C8 */
+    --c-navy-500: 183 176 163;            /* #B7B0A3 */
+    --c-teal-500: 111 174 134;            /* #6FAE86 sage, lifted */
+    --c-teal-600: 140 196 160;            /* #8CC4A0 */
+    --c-teal-100: 30 46 35;               /* #1E2E23 */
+    --c-surface-page: 17 16 16;           /* #111010 obsidian */
+    --c-surface-subtle: 26 25 23;         /* #1A1917 */
+    --c-surface-raised: 35 34 32;         /* #232220 */
+    --c-surface-inverse: 247 244 239;     /* #F7F4EF */
+    --c-text-primary: 247 244 239;        /* #F7F4EF IVORY */
+    --c-text-secondary: 189 183 172;      /* #BDB7AC */
+    --c-text-inverse: 28 27 25;           /* #1C1B19 */
+    --c-text-inverse-muted: 107 102 93;   /* #6B665D */
+    --c-text-accent: 127 184 148;        /* #7FB894 */
+    --c-on-accent: 28 27 25;             /* #1C1B19 Ink on lifted sage */
+    --c-on-brand: 28 27 25;              /* #1C1B19 Ink on light brand */
+    --c-on-status: 28 27 25;             /* #1C1B19 — the dark statuses are light */
+    --c-border-subtle: 48 46 42;          /* #302E2A */
+    --c-border-strong: 70 67 61;          /* #46433D */
+    --c-success: 99 196 141;              /* #63C48D */
+    --c-gold: 226 180 74;                 /* #E2B44A */
+    --c-danger: 242 96 111;              /* #F2606F */
+    --c-shadow: 0 0 0;                    /* black */
 
     --c-series-1: 63 114 204;  /* #3F72CC — re-stepped for the dark surface */
     --c-series-2: 15 166 174;  /* #0FA6AE */
@@ -131,14 +146,14 @@
        that fail the lightness band; every value below was re-stepped and
        re-validated. */
 
-    --c-content-muted: 108 127 156;      /* #6C7F9C */
+    --c-content-muted: 140 134 123;      /* #8C867B */
 
-    --c-surface-overlay: 19 34 61;       /* #13223D — one step above raised */
+    --c-surface-overlay: 43 42 39;       /* #2B2A27 */
 
-    --c-state-good: 61 214 140;          /* #3DD68C */
-    --c-state-warning: 245 184 65;       /* #F5B841 */
-    --c-state-serious: 251 146 60;       /* #FB923C */
-    --c-state-critical: 249 112 102;     /* #F97066 */
+    --c-state-good: 99 196 141;          /* #63C48D */
+    --c-state-warning: 226 180 74;        /* #E2B44A */
+    --c-state-serious: 232 132 60;        /* #E8843C */
+    --c-state-critical: 242 96 111;      /* #F2606F */
 
     /* Re-stepped and re-validated against the dark raised surface: all five
        checks pass on adjacent pairs, worst-case tritan ΔE 6.8. Slots 1, 4 and

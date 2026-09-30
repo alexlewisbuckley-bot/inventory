@@ -259,7 +259,7 @@ function chipClass(active: boolean): string {
   return cn(
     'inline-flex h-9 items-center rounded-md px-3 text-small font-semibold transition-colors',
     active
-      ? 'bg-navy-700 text-white'
+      ? 'bg-navy-700 text-content-on-brand'
       : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
   )
 }

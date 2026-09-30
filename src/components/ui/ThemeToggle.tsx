@@ -33,7 +33,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
           onClick={() => setTheme(value)}
           className={cn(
             'inline-flex h-8 items-center gap-1.5 rounded-xs px-2.5 text-caption font-semibold transition-colors',
-            theme === value ? 'bg-navy-700 text-white' : 'text-content-secondary hover:bg-surface-subtle',
+            theme === value ? 'bg-navy-700 text-content-on-brand' : 'text-content-secondary hover:bg-surface-subtle',
           )}
         >
           <Icon className="h-3.5 w-3.5" aria-hidden />

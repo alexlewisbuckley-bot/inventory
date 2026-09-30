@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Wordmark } from './Wordmark'
 import { UserMenu } from './UserMenu'
 import { CurrencySwitcher } from './CurrencySwitcher'
 import { CatalogueControls } from '@/components/catalogue/CatalogueControls'
@@ -28,9 +29,8 @@ export function PartnerTopBar({ user, brands }: {
   return (
     <header className="sticky top-0 z-30 border-b border-line-subtle bg-surface-page/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-[1800px] flex-wrap items-center gap-x-5 gap-y-2.5 px-5 py-2.5 lg:flex-nowrap lg:px-8">
-        <Link href="/catalogue" className="flex shrink-0 items-center gap-2" aria-label="Bluecroft Stock — inventory">
-          <span className="h-2 w-2 rounded-pill bg-teal-500" aria-hidden />
-          <span className="text-body-lg font-extrabold text-content-primary">bluecroft</span>
+        <Link href="/catalogue" className="flex shrink-0 items-center" aria-label="One Street Watches — inventory">
+          <Wordmark />
         </Link>
 
         <CatalogueControls brands={brands} />

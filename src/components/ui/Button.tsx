@@ -8,10 +8,10 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subt
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-teal-500 text-navy-900 hover:bg-teal-600 active:bg-teal-600 shadow-sm',
+  primary: 'bg-teal-500 text-content-on-accent hover:bg-teal-600 active:bg-teal-600 shadow-sm',
   secondary: 'bg-transparent text-navy-700 border-[1.5px] border-navy-700 hover:bg-navy-700/5',
   ghost: 'bg-transparent text-navy-700 hover:bg-navy-700/8',
-  danger: 'bg-state-danger text-white hover:brightness-95',
+  danger: 'bg-state-danger text-content-on-status hover:brightness-95',
   subtle: 'bg-surface-subtle text-content-primary border border-line-subtle hover:border-line-strong',
 }
 

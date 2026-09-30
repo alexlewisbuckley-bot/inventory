@@ -185,7 +185,7 @@ function ViewButton({ active, onClick, icon, label }: {
       aria-pressed={active}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-caption font-semibold transition-colors',
-        active ? 'bg-navy-700 text-white' : 'text-content-secondary hover:bg-surface-subtle',
+        active ? 'bg-navy-700 text-content-on-brand' : 'text-content-secondary hover:bg-surface-subtle',
       )}
     >
       {icon}

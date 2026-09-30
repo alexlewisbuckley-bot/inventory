@@ -112,8 +112,8 @@ export const CHART_DIVERGING: Record<ThemeMode, readonly string[]> = {
 
 /** The surfaces the palettes above were validated against. */
 export const CHART_SURFACE: Record<ThemeMode, string> = {
-  light: '#FFFFFF',
-  dark: '#11213A',
+  light: '#FDFCFA',
+  dark: '#232220',
 }
 
 /**
@@ -167,8 +167,8 @@ export function worstTone(tones: readonly StatusTone[]): StatusTone {
 }
 
 export const STATUS_HEX: Record<ThemeMode, Record<Exclude<StatusTone, 'neutral'>, string>> = {
-  light: { good: '#00875A', warning: '#B26A00', serious: '#C2410C', critical: '#A31409' },
-  dark: { good: '#3DD68C', warning: '#F5B841', serious: '#FB923C', critical: '#F97066' },
+  light: { good: '#1F7A4C', warning: '#8A6B0A', serious: '#C25A1B', critical: '#9B2C22' },
+  dark: { good: '#63C48D', warning: '#E2B44A', serious: '#E8843C', critical: '#F2606F' },
 }
 
 // ---------------------------------------------------------------------------

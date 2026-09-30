@@ -30,7 +30,7 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         autoComplete="username"
         autoFocus
         required
-        placeholder="you@bluecroft.co.uk"
+        placeholder="you@onestreetwatches.com"
         error={state.errors?.email}
       />
       <TextField
