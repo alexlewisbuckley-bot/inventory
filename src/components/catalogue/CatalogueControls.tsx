@@ -32,9 +32,8 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
   const brand = query.get('brand') ?? ''
   const sort = query.get('sort') ?? 'brand'
   const q = query.get('q') ?? ''
-  const quotedOnly = query.get('quotedOnly') === 'true'
   const view = query.get('view') === 'table' ? 'table' : 'gallery'
-  const filtering = Boolean(brand || q || quotedOnly)
+  const filtering = Boolean(brand || q)
 
   const [text, setText] = useState(q)
   useEffect(() => { setText(q) }, [q])
@@ -85,21 +84,10 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
         <Chevron />
       </label>
 
-      <label className="flex shrink-0 items-center gap-2 text-body text-content-secondary">
-        <input
-          type="checkbox"
-          checked={quotedOnly}
-          onChange={(e) => query.set('quotedOnly', e.target.checked ? 'true' : null)}
-          className="h-4 w-4 accent-teal-600"
-        />
-        <span className="hidden xl:inline">Trade priced only</span>
-        <span className="xl:hidden">Priced</span>
-      </label>
-
       {filtering && (
         <button
           type="button"
-          onClick={() => { setText(''); query.setMany({ q: null, brand: null, quotedOnly: null }) }}
+          onClick={() => { setText(''); query.setMany({ q: null, brand: null }) }}
           className="inline-flex shrink-0 items-center gap-1 text-caption text-content-secondary hover:text-content-primary"
         >
           <X className="h-3.5 w-3.5" aria-hidden /> Clear

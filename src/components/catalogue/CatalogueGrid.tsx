@@ -18,7 +18,7 @@ export function CatalogueGrid({ result, currency }: {
   // The controls are in the bar; the state they write is still the URL, so
   // this reads the same values from the same place without owning them.
   const view = query.get('view') === 'table' ? 'table' : 'gallery'
-  const filtering = Boolean(query.get('q') || query.get('brand') || query.get('quotedOnly'))
+  const filtering = Boolean(query.get('q') || query.get('brand'))
 
   return (
     <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
@@ -143,14 +143,19 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
 function CatalogueTable({ items, currency }: { items: CatalogueItem[]; currency: CurrencyCode }) {
   return (
     <Card>
-      <Table>
+      <Table layout="fixed" minWidth="998px">
         <THead>
           <TR>
-            <TH width="64px"><span className="sr-only">Photograph</span></TH>
-            <TH width="100%">Piece</TH>
+            {/* 88px, not 64: the cell's own padding is 40px, so a 64px column left
+                24px for a 48px thumbnail. Under the old auto layout the browser
+                quietly widened the column to compensate; under `fixed` it is
+                taken at its word and the photograph overflowed. */}
+            <TH width="88px"><span className="sr-only">Photograph</span></TH>
+            {/* elastic: the only column without a width */}
+            <TH>Piece</TH>
             <TH width="130px">Reference</TH>
             <TH width="80px">Year</TH>
-            <TH width="130px">Accompanied by</TH>
+            <TH width="152px">Accompanied by</TH>
             <TH width="110px">Condition</TH>
             <TH width="120px" align="right">Trade</TH>
             <TH width="120px" align="right">Retail</TH>

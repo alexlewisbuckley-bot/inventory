@@ -33,7 +33,6 @@ export default async function CataloguePage({ searchParams }: { searchParams: Se
   const result = await getCatalogue({
     q: one(searchParams.q),
     brand: one(searchParams.brand),
-    quotedOnly: one(searchParams.quotedOnly) === 'true',
     sort: SORTS.includes(rawSort as CatalogueSort) ? (rawSort as CatalogueSort) : 'brand',
     page: Number(one(searchParams.page) ?? 1),
     perPage: Number(one(searchParams.perPage) ?? 24),

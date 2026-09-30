@@ -55,6 +55,32 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'checks', label: 'Checks' },
 ]
 
+/**
+ * Column widths, in pixels, in one place.
+ *
+ * The table lays out `fixed`, so these are honoured exactly rather than
+ * treated as hints — which is the point, but it means the table has to be
+ * told how wide it needs to be before it will scroll instead of squeezing.
+ * Both the headers and that minimum are computed from this map, so they
+ * cannot drift apart.
+ */
+const COL_WIDTH = {
+  select: 56, stockNo: 84, year: 72, serial: 96, supplier: 140, purchased: 116,
+  cost: 96, trade: 96, estSale: 104, profit: 116, location: 140, owner: 140,
+  status: 118, checks: 92, actions: 104,
+} as const
+
+/**
+ * The floor for the elastic column.
+ *
+ * It takes whatever the others leave, and with enough columns showing that
+ * was nothing at all: measured at 0px, with the watch — the one thing every
+ * row is actually identified by — collapsed to an empty sliver while twelve
+ * fixed columns sat at their full width. Below this the table scrolls
+ * sideways instead.
+ */
+const WATCH_MIN = 200
+
 // Owner starts hidden like serial and supplier: it matters to whoever is
 // reconciling ownership, not to everyone reading the list every day.
 const DEFAULT_HIDDEN = ['serial', 'supplier', 'owner'] as const
@@ -120,6 +146,19 @@ export function InventoryList({
   )
 
   const selectable = capabilities['watch:move'] || capabilities['watch:delete']
+
+  /**
+   * How wide the table needs to be for every column to hold its stated width
+   * and the watch still to be readable. Below it the wrapper scrolls, which
+   * is the honest answer when twelve columns are switched on at once — better
+   * than every one of them being quietly squeezed.
+   */
+  const tableMinWidth = `${
+    (selectable ? COL_WIDTH.select : 0) + COL_WIDTH.stockNo + WATCH_MIN + COL_WIDTH.actions
+    + (['year', 'serial', 'supplier', 'purchased', 'cost', 'trade', 'estSale', 'profit',
+        'location', 'owner', 'status', 'checks'] as const)
+      .reduce((sum, key) => sum + (show(key) ? COL_WIDTH[key] : 0), 0)
+  }px`
   const pageIds = useMemo(() => result.items.map((item) => item.id), [result.items])
   const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selection.isSelected(id))
 
@@ -234,11 +273,11 @@ export function InventoryList({
         </ul>
 
         <div className="hidden sm:block">
-        <Table>
+        <Table layout="fixed" minWidth={tableMinWidth}>
           <THead>
             <TR>
               {selectable && (
-                <TH width="44px" className="hidden sm:table-cell">
+                <TH width={`${COL_WIDTH.select}px`} className="hidden sm:table-cell">
                   <input
                     type="checkbox"
                     checked={allOnPageSelected}
@@ -248,24 +287,26 @@ export function InventoryList({
                   />
                 </TH>
               )}
-              <TH width="96px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-              {/* The elastic column. Every other header states a width, so
-                  without one column claiming the remainder the browser shares
-                  it out evenly and hiding a column just pads the rest. */}
-              <TH width="100%" sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
-              {show('year') && <TH width="72px" sortKey="year" sort={sort} onSort={query.sortBy}>Year</TH>}
-              {show('serial') && <TH width="110px">Serial</TH>}
-              {show('supplier') && <TH width="170px">Supplier</TH>}
-              {show('purchased') && <TH width="120px" sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
-              {show('cost') && <TH width="110px" align="right" sortKey="purchasePriceGbp" sort={sort} onSort={query.sortBy}>Cost</TH>}
-              {show('trade') && <TH width="110px" align="right" sortKey="tradePriceGbp" sort={sort} onSort={query.sortBy}>Trade</TH>}
-              {show('estSale') && <TH width="110px" align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Retail</TH>}
-              {show('profit') && <TH width="120px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
-              {show('location') && <TH width="170px" sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
-              {show('owner') && <TH width="170px" sortKey="owner" sort={sort} onSort={query.sortBy}>Owner</TH>}
-              {show('status') && <TH width="128px">Status</TH>}
-              {show('checks') && <TH width="72px" align="center">Checks</TH>}
-              <TH width="88px" align="right"><span className="sr-only">Actions</span></TH>
+              <TH width={`${COL_WIDTH.stockNo}px`} sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
+              {/* The elastic column, and the only one without a width: under
+                  `table-fixed` the leftover goes to whichever column states
+                  none, so the watch takes it and the rest stay put. */}
+              <TH sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
+              {show('year') && <TH width={`${COL_WIDTH.year}px`} sortKey="year" sort={sort} onSort={query.sortBy}>Year</TH>}
+              {show('serial') && <TH width={`${COL_WIDTH.serial}px`}>Serial</TH>}
+              {show('supplier') && <TH width={`${COL_WIDTH.supplier}px`}>Supplier</TH>}
+              {show('purchased') && <TH width={`${COL_WIDTH.purchased}px`} sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
+              {show('cost') && <TH width={`${COL_WIDTH.cost}px`} align="right" sortKey="purchasePriceGbp" sort={sort} onSort={query.sortBy}>Cost</TH>}
+              {show('trade') && <TH width={`${COL_WIDTH.trade}px`} align="right" sortKey="tradePriceGbp" sort={sort} onSort={query.sortBy}>Trade</TH>}
+              {show('estSale') && <TH width={`${COL_WIDTH.estSale}px`} align="right" sortKey="estSaleUsd" sort={sort} onSort={query.sortBy}>Retail</TH>}
+              {show('profit') && <TH width={`${COL_WIDTH.profit}px`} align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Est. profit</TH>}
+              {show('location') && <TH width={`${COL_WIDTH.location}px`} sortKey="location" sort={sort} onSort={query.sortBy}>Location</TH>}
+              {show('owner') && <TH width={`${COL_WIDTH.owner}px`} sortKey="owner" sort={sort} onSort={query.sortBy}>Owner</TH>}
+              {show('status') && <TH width={`${COL_WIDTH.status}px`}>Status</TH>}
+              {show('checks') && <TH width={`${COL_WIDTH.checks}px`} align="center">Checks</TH>}
+              {/* Wide enough for Sell beside the menu, which only appears on
+                  hover — a narrower column would clip it under `table-fixed`. */}
+              <TH width={`${COL_WIDTH.actions}px`} align="right"><span className="sr-only">Actions</span></TH>
             </TR>
           </THead>
           <TBody>
@@ -534,7 +575,7 @@ function Row({
           />
         </TD>
       )}
-      <TD className="font-bold text-navy-700">{watch.stockNo}</TD>
+      <TD className="truncate font-bold text-navy-700" title={String(watch.stockNo)}>{watch.stockNo}</TD>
       <TD>
         {/* A link, not a button. It goes to a URL — `?watch=…` opens the
             drawer — so it should be middle-clickable and copyable like every
@@ -546,8 +587,8 @@ function Row({
           scroll={false}
           className="block text-left"
         >
-          <span className="block font-bold text-content-primary hover:underline">{watch.model}</span>
-          <span className="block text-caption text-content-secondary">
+          <span className="block truncate font-bold text-content-primary hover:underline" title={watch.model}>{watch.model}</span>
+          <span className="block truncate text-caption text-content-secondary">
             {watch.brandName}
             {/* Marked only when it is not a watch. Nearly every row is one, so
                 a type on every row would be a column of the same word — the
@@ -565,7 +606,11 @@ function Row({
           {watch.year ?? <span className="text-content-muted">—</span>}
         </TD>
       )}
-      {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
+      {show('serial') && (
+        <TD className="truncate text-content-secondary" title={watch.serial ?? undefined}>
+          {watch.serial ?? <span className="text-content-muted">—</span>}
+        </TD>
+      )}
       {show('supplier') && (
         <TD className="text-content-secondary">
           <span className="block truncate" title={watch.supplierName}>{watch.supplierName}</span>

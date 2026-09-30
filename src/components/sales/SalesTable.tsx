@@ -46,20 +46,26 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
 
   return (
     <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
-      <Table>
+      {/* Fixed, so the stated widths hold rather than being redistributed by
+          content — see the note on the Table component. */}
+      <Table
+        layout="fixed"
+        minWidth={`${844 + (showCost ? 350 : 0) + (canVoid ? 104 : 0)}px`}
+      >
         <THead>
           <TR>
             <TH width="110px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
-            <TH width="130px">Invoice</TH>
+            <TH width="124px">Invoice</TH>
             <TH width="80px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
-            <TH width="100%">Watch</TH>
+            {/* elastic: the only column without a width */}
+            <TH>Watch</TH>
             <TH width="120px">Customer</TH>
             <TH width="100px">Channel</TH>
             {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
             {showCost && <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>}
-            {showCost && <TH width="140px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
-            {canVoid && <TH width="90px" align="right"><span className="sr-only">Actions</span></TH>}
+            {showCost && <TH width="130px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
+            {canVoid && <TH width="104px" align="right"><span className="sr-only">Actions</span></TH>}
           </TR>
         </THead>
         <TBody>

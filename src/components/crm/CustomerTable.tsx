@@ -108,17 +108,18 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
           </ul>
 
           <div className="hidden sm:block">
-            <Table>
+            <Table layout="fixed" minWidth="1210px">
               <THead>
                 <TR>
-                  <TH width="100%">Customer</TH>
+                  {/* elastic: the only column without a width */}
+                  <TH>Customer</TH>
                   <TH width="90px">Side</TH>
                   <TH width="190px">Contact</TH>
                   <TH width="120px">Country</TH>
                   <TH width="120px">Owner</TH>
-                  <TH width="80px" align="right">Bought</TH>
+                  <TH width="88px" align="right">Bought</TH>
                   <TH width="120px" align="right">Lifetime</TH>
-                  <TH width="120px">Last contact</TH>
+                  <TH width="132px">Last contact</TH>
                   <TH width="150px" align="right">Open</TH>
                 </TR>
               </THead>

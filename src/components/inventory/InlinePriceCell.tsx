@@ -111,14 +111,27 @@ export function InlinePriceCell({ watchId, baseMinor, editable }: {
         : `Retail price ${money(baseMinor)}. Edit it.`}
       title="Click to set the retail price"
       className={cn(
-        'group/price inline-flex items-center justify-end gap-1.5 rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',
+        // The negative margin cancels the padding for layout while keeping it
+        // for the hover chip, so the figure's right edge is the cell's right
+        // edge and this column lines up with cost, trade and profit.
+        'group/price relative -mx-1 inline-flex items-center justify-end rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',
         baseMinor === null && 'text-content-secondary',
       )}
     >
       {baseMinor === null
         ? <span className="whitespace-nowrap text-caption font-semibold">Set price</span>
         : <span className="whitespace-nowrap">{money(baseMinor)}</span>}
-      <Pencil className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/price:opacity-60" aria-hidden />
+      {/* Out of flow, and to the left. In flow it held a permanent 18px of
+          space to the right of every figure in this column, so the retail
+          numbers sat short of the right edge that every other money column
+          lines up on — a column that looked indented against its own heading.
+          Left rather than right because the slack in a right-aligned money
+          column is all on that side: hung off the right it overflowed the
+          cell instead. */}
+      <Pencil
+        className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
+        aria-hidden
+      />
     </button>
   )
 }

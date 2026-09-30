@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '@/server/db/client'
 import { brands, watchImages, watches } from '@/server/db/schema'
 import { fromBase, type RateTable } from '@/lib/currency'
@@ -47,7 +47,6 @@ export interface CatalogueQuery {
   q?: string
   brand?: string
   /** Only pieces carrying a trade price. */
-  quotedOnly?: boolean
   sort?: CatalogueSort
   page?: number
   perPage?: number
@@ -74,7 +73,6 @@ export async function getCatalogue(
   // conversation nobody wants to have twice.
   const clauses = [isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')]
   if (query.brand) clauses.push(eq(brands.name, query.brand))
-  if (query.quotedOnly) clauses.push(isNotNull(watches.tradePriceGbp))
   if (query.q) {
     const needle = `%${query.q.trim()}%`
     const match = or(
