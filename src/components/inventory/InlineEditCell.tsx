@@ -69,7 +69,32 @@ export function InlineEditCell({
 
   if (editing) {
     return (
-      <span className={cn('flex items-center gap-1', align === 'right' ? 'justify-end' : 'justify-start')}>
+      <span
+        className={cn(
+          'relative inline-flex max-w-full items-center',
+          align === 'right' ? 'justify-end' : 'justify-start',
+        )}
+      >
+        {/* Holds the cell open at its resting size while the editor floats
+            above it, so opening a field does not shunt the row about. */}
+        <span className="invisible whitespace-nowrap" aria-hidden>{display ?? placeholder}</span>
+        {/*
+          The editor is taken out of the column and floated over the row.
+
+          In the flow it was bounded by the column, and a money column is
+          about ninety pixels wide: once the tick and the cross had taken
+          their share there were twenty or so left for the number, so
+          unlocking a cost produced a box too narrow to read what you were
+          typing. A field being edited is the only thing on that row that
+          matters for as long as it is open, so it is allowed the room.
+        */}
+        <span
+          className={cn(
+            'absolute top-1/2 z-20 flex w-[210px] -translate-y-1/2 items-center gap-1 rounded-sm',
+            'border border-teal-500 bg-surface-raised px-1.5 py-1 shadow-raised',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
+        >
         <input
           ref={input}
           value={draft}
@@ -84,7 +109,7 @@ export function InlineEditCell({
           // unlocked field without a decision has to mean "no change".
           onBlur={cancel}
           className={cn(
-            'w-full min-w-0 rounded-sm border border-teal-500 bg-surface-raised px-1.5 py-1 text-small text-content-primary outline-none',
+            'w-full min-w-0 bg-transparent text-small text-content-primary outline-none',
             kind !== 'text' && 'tabular-nums',
             align === 'right' && 'text-right',
           )}
@@ -111,6 +136,7 @@ export function InlineEditCell({
               </button>
             </>
           )}
+        </span>
       </span>
     )
   }
@@ -127,15 +153,37 @@ export function InlineEditCell({
         // The padding is cancelled by the margin so the figure keeps the
         // column's own edge: an editable cell must not sit a few pixels off
         // the ones beside it.
-        'group/cell relative -mx-1 inline-flex max-w-full items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:bg-surface-subtle',
+        // The cap is the column's content box plus the padding the negative
+        // margin gives back. `max-w-full` clamped the border box instead,
+        // which quietly handed the 8px of hover chip to the browser and took
+        // it out of the number — the column had room for "$155,000" and the
+        // cell showed "$155,...".
+        'group/cell relative -mx-1 inline-flex max-w-[calc(100%+0.5rem)] items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:bg-surface-subtle',
         align === 'right' ? 'justify-end' : 'justify-start',
         kind !== 'text' && 'tabular-nums',
         className,
       )}
     >
       {empty
-        ? <span className="whitespace-nowrap text-caption font-semibold text-content-secondary">{placeholder}</span>
-        : <span className="truncate">{display}</span>}
+        ? (
+          // An empty cell rests as the same quiet dash it always was, and
+          // offers itself only when the pointer is on the row. Printing
+          // "Add serial" down forty rows turns a column of missing values
+          // into a column of instructions, and the table is read far more
+          // often than it is filled in.
+          <>
+            <span className="text-content-muted group-hover:hidden">—</span>
+            <span className="hidden whitespace-nowrap text-caption font-semibold text-content-secondary group-hover:inline">
+              {placeholder}
+            </span>
+          </>
+        )
+        // A figure is never ellipsised. "$155,..." is not a shortened price,
+        // it is a different number, and the column is sized to hold the
+        // longest one rather than the value being cut to fit the column.
+        // Only free text, where the full value is on the cell's title,
+        // truncates.
+        : <span className={cn(kind === 'text' ? 'truncate' : 'whitespace-nowrap')}>{display}</span>}
       {/* Out of the flow and in the cell's own padding, so a column of
           figures still lines up on its right edge whether or not this one
           happens to be under the pointer. */}

@@ -68,8 +68,8 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
  * cannot drift apart.
  */
 const COL_WIDTH = {
-  select: 56, stockNo: 84, watch: 176, year: 72, serial: 96, supplier: 140,
-  purchased: 116, cost: 96, trade: 96, estSale: 104, profit: 116, location: 140,
+  select: 56, stockNo: 84, watch: 176, year: 72, serial: 116, supplier: 140,
+  purchased: 116, cost: 120, trade: 120, estSale: 120, profit: 128, location: 140,
   owner: 140, status: 118, checks: 92, actions: 104,
 } as const
 
@@ -94,6 +94,13 @@ const COL_WIDTH = {
  * padding, and the median at 85px; anything longer truncates with the full
  * value on hover. The first pass at this used 232px, which was 60px of empty
  * table on every row for no reason.
+ *
+ * The money columns are the exception to measuring against the stock on hand.
+ * They are sized to hold a seven-figure price, not the largest figure that
+ * happens to be in the list today, because a column that fits the current
+ * data is a column that clips the day something dearer is booked in — and a
+ * clipped price is not a shortened price, it is a different number. The
+ * table scrolls sideways before a figure is cut.
  */
 
 // Owner starts hidden like serial and supplier: it matters to whoever is
