@@ -22,12 +22,21 @@ import { useBrandAssets } from './BrandProvider'
  * The full lockup and the monogram are asked about separately, because they
  * arrive separately: having one and not the other is a supported state.
  *
- * `invert` in dark mode rather than a second file, which is why the artwork is
- * specified as one solid ink on transparent — see the README beside it.
+ * The supplied lockup is stacked — ONE STREET over WATCHES, 620×130 — so it
+ * is set at 34×162, which fits the 232px rail with its 20px gutters. At the
+ * 18px the typeset name wanted, the second line would have been four pixels
+ * tall. Both dimensions are stated; see the note on the class list.
  */
-export function Wordmark({ compact = false, className }: {
+export function Wordmark({ compact = false, onInverse = false, className }: {
   /** The collapsed rail: the monogram alone, or just "One Street" as text. */
   compact?: boolean
+  /**
+   * The mark is sitting on the inverse ground — the Obsidian panel on the
+   * sign-in screen. That ground flips with the theme (Ink in light, Ivory in
+   * dark), so the artwork has to flip the opposite way to the usual rule, and
+   * the typeset name takes the inverse ink.
+   */
+  onInverse?: boolean
   className?: string
 }) {
   const brand = useBrandAssets()
@@ -39,8 +48,16 @@ export function Wordmark({ compact = false, className }: {
         src={compact ? '/brand/monogram.svg' : '/brand/wordmark.svg'}
         alt="One Street Watches"
         className={cn(
-          'w-auto object-contain object-left dark:invert',
-          compact ? 'h-7' : 'h-[18px]',
+          'object-contain object-left',
+          // One ink on transparent, so the dark theme is a filter rather than
+          // a second file — see the README beside the artwork.
+          onInverse ? 'invert dark:invert-0' : 'dark:invert',
+          // Both dimensions, not `w-auto`. An image with `width: auto` in a
+          // column flex is stretched by `align-items: stretch` before the
+          // intrinsic ratio ever gets a say: on the sign-in panel the 620×130
+          // lockup came out 624×34, a letterboxed sliver in a box five times
+          // too wide. 162 is 34 at the artwork's own ratio.
+          compact ? 'h-7 w-7' : 'h-[34px] w-[162px]',
           className,
         )}
       />
@@ -50,7 +67,8 @@ export function Wordmark({ compact = false, className }: {
   return (
     <span
       className={cn(
-        'select-none whitespace-nowrap font-semibold uppercase leading-none text-content-primary',
+        'select-none whitespace-nowrap font-semibold uppercase leading-none',
+        onInverse ? 'text-content-inverse' : 'text-content-primary',
         compact ? 'text-[11px] tracking-[0.18em]' : 'text-[13px] tracking-[0.2em]',
         className,
       )}

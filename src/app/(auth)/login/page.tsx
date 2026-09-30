@@ -12,7 +12,7 @@ export default function LoginPage({ searchParams }: { searchParams: { next?: str
       {/* The Obsidian ground from the brand pack, which is where the mark is
           meant to sit when it is not on Ivory. */}
       <section className="relative hidden flex-col justify-between bg-surface-inverse p-12 lg:flex">
-        <Wordmark className="text-content-inverse" />
+        <Wordmark onInverse />
         <div className="max-w-md">
           <h1 className="text-display font-extrabold leading-tight text-content-inverse">
             Every watch, every location, one source of truth.
