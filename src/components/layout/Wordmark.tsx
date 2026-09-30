@@ -23,10 +23,10 @@ import { useBrandAssets } from './BrandProvider'
  * arrive separately: having one and not the other is a supported state.
  *
  * The supplied lockup is stacked — ONE STREET over WATCHES, 620×130 — so it
- * is set at 34×162, which fits the 232px rail with its 20px gutters. At the
+ * is set at 30×143, which fits the 232px rail with its 20px gutters. At the
  * 18px the typeset name wanted, the second line would have been four pixels
  * tall. The monogram is the interlocking OS, 216×250 and so taller than it is
- * wide, set at 32×28 for the 68px collapsed rail. Both dimensions are stated
+ * wide, set at 28×24 for the 68px collapsed rail. Both dimensions are stated
  * in each case; see the note on the class list.
  */
 export function Wordmark({ compact = false, onInverse = false, className }: {
@@ -59,7 +59,7 @@ export function Wordmark({ compact = false, onInverse = false, className }: {
           // intrinsic ratio ever gets a say: on the sign-in panel the 620×130
           // lockup came out 624×34, a letterboxed sliver in a box five times
           // too wide. 162 is 34 at the artwork's own ratio.
-          compact ? 'h-8 w-[28px]' : 'h-[34px] w-[162px]',
+          compact ? 'h-7 w-6' : 'h-[30px] w-[143px]',
           className,
         )}
       />

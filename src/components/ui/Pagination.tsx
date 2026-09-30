@@ -1,5 +1,5 @@
 'use client'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 export interface PaginationProps {
@@ -31,15 +31,28 @@ export function Pagination({ page, perPage, total, onPage, onPerPage, noun = 're
           {total === 0 ? `No ${plural}` : `Showing ${from}–${to} of ${total.toLocaleString()} ${plural}`}
         </p>
         {onPerPage && total > PER_PAGE_OPTIONS[0]! && (
-          <label className="hidden items-center gap-2 text-small text-content-secondary sm:flex">
+          <label className="relative hidden items-center text-small text-content-secondary sm:flex">
             <span className="sr-only">Results per page</span>
+            {/*
+              The platform's own arrow was still showing here — the last
+              select in the application that had not been brought onto the
+              house treatment. It is a different shape and weight on every
+              operating system, sits hard against the border, and leaves an
+              arbitrary gap after the label that no other control has. It is
+              suppressed, and the application's chevron drawn in its place
+              with the same 10px it keeps everywhere else.
+            */}
             <select
               value={perPage}
               onChange={(e) => onPerPage(Number(e.target.value))}
-              className="h-8 cursor-pointer rounded-sm border border-line-subtle bg-surface-raised px-2 text-small text-content-primary transition-colors hover:border-line-strong"
+              className="h-8 cursor-pointer appearance-none rounded-sm border border-line-subtle bg-surface-raised pl-2.5 pr-8 text-small text-content-primary outline-none transition-colors hover:border-line-strong focus:border-teal-500"
             >
               {PER_PAGE_OPTIONS.map((n) => <option key={n} value={n}>{n} per page</option>)}
             </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary"
+              aria-hidden
+            />
           </label>
         )}
       </div>
