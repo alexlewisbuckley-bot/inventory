@@ -163,3 +163,19 @@ export async function getCatalogue(
     brands: brandRows.map((b) => b.name),
   }
 }
+
+/**
+ * Just the brand names, for the filter that lives in the top bar.
+ *
+ * The bar is rendered by the layout, which has no page result to read them
+ * off, and one `select distinct` is cheaper than moving the filter back down
+ * into the page and losing the single bar it now sits in.
+ */
+export async function catalogueBrands(): Promise<string[]> {
+  const rows = await db.selectDistinct({ name: brands.name })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')))
+    .orderBy(asc(brands.name))
+  return rows.map((row) => row.name)
+}

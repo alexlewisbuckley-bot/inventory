@@ -3,7 +3,6 @@ import { requireCapability } from '@/server/auth/session'
 import { getCatalogue, type CatalogueSort } from '@/server/services/catalogue-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { PageHeader } from '@/components/layout/PageHeader'
 import { CatalogueGrid } from '@/components/catalogue/CatalogueGrid'
 import { isCurrency } from '@/lib/currency'
 import { DEFAULT_DISPLAY_CURRENCY, type CurrencyCode } from '@/lib/enums'
@@ -40,15 +39,5 @@ export default async function CataloguePage({ searchParams }: { searchParams: Se
     perPage: Number(one(searchParams.perPage) ?? 24),
   }, currency, rates)
 
-  return (
-    <>
-      <PageHeader
-        title="Inventory"
-        description={result.total > 0
-          ? `${result.total} ${result.total === 1 ? 'piece' : 'pieces'} available at trade.`
-          : 'Everything currently available to the trade.'}
-      />
-      <CatalogueGrid result={result} currency={currency} />
-    </>
-  )
+  return <CatalogueGrid result={result} currency={currency} />
 }

@@ -1,5 +1,5 @@
 'use client'
-import { LayoutGrid, PackageSearch, Rows3, Search, X } from 'lucide-react'
+import { PackageSearch } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
 import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH } from '@/components/ui'
 import { formatCurrency } from '@/lib/currency'
@@ -10,95 +10,18 @@ import {
 } from '@/lib/enums'
 import type { CataloguePage, CatalogueItem } from '@/server/services/catalogue-service'
 
-const SORTS = [
-  { value: 'brand', label: 'Brand, A–Z' },
-  { value: 'trade-desc', label: 'Trade, high to low' },
-  { value: 'trade-asc', label: 'Trade, low to high' },
-  { value: 'year-desc', label: 'Year, newest' },
-]
-
 export function CatalogueGrid({ result, currency }: {
   result: CataloguePage
   currency: CurrencyCode
 }) {
   const query = useListQuery()
-  const brand = query.get('brand') ?? ''
-  const sort = query.get('sort') ?? 'brand'
-  const q = query.get('q') ?? ''
-  const quotedOnly = query.get('quotedOnly') === 'true'
+  // The controls are in the bar; the state they write is still the URL, so
+  // this reads the same values from the same place without owning them.
   const view = query.get('view') === 'table' ? 'table' : 'gallery'
-  const filtering = Boolean(brand || q || quotedOnly)
+  const filtering = Boolean(query.get('q') || query.get('brand') || query.get('quotedOnly'))
 
   return (
     <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
-      <Card className="mb-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
-          <label className="relative min-w-[220px] flex-1">
-            <span className="sr-only">Search the inventory</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" aria-hidden />
-            <input
-              type="search"
-              defaultValue={q}
-              onChange={(event) => query.set('q', event.target.value || null)}
-              placeholder="Reference, model, dial, metal"
-              className="h-10 w-full rounded-md border border-line-subtle bg-surface-raised pl-9 pr-3 text-body outline-none focus:border-teal-500"
-            />
-          </label>
-
-          <label className="flex items-center gap-2">
-            <span className="text-caption font-semibold text-content-secondary">Brand</span>
-            <select
-              value={brand}
-              onChange={(event) => query.set('brand', event.target.value || null)}
-              className="h-10 rounded-md border border-line-subtle bg-surface-raised px-2 text-body outline-none focus:border-teal-500"
-            >
-              <option value="">All brands</option>
-              {result.brands.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2">
-            <span className="text-caption font-semibold text-content-secondary">Order</span>
-            <select
-              value={sort}
-              onChange={(event) => query.set('sort', event.target.value)}
-              className="h-10 rounded-md border border-line-subtle bg-surface-raised px-2 text-body outline-none focus:border-teal-500"
-            >
-              {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-body text-content-secondary">
-            <input
-              type="checkbox"
-              checked={quotedOnly}
-              onChange={(event) => query.set('quotedOnly', event.target.checked ? 'true' : null)}
-              className="h-4 w-4 accent-teal-600"
-            />
-            Trade priced only
-          </label>
-
-          {filtering && (
-            <button
-              type="button"
-              onClick={() => { query.set('q', null); query.set('brand', null); query.set('quotedOnly', null) }}
-              className="inline-flex items-center gap-1 text-caption text-content-secondary hover:text-content-primary"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden /> Clear
-            </button>
-          )}
-
-          {/* Two ways to read the same stock. A buyer choosing a piece wants
-              the photographs; a buyer pricing thirty of them wants the
-              numbers in a column they can run an eye down. The choice rides
-              in the URL, so it survives a reload and a shared link. */}
-          <div className="ml-auto flex items-center gap-0.5 rounded-md border border-line-subtle p-0.5" role="group" aria-label="View">
-            <ViewButton active={view === 'gallery'} onClick={() => query.set('view', null)} icon={<LayoutGrid className="h-4 w-4" aria-hidden />} label="Gallery" />
-            <ViewButton active={view === 'table'} onClick={() => query.set('view', 'table')} icon={<Rows3 className="h-4 w-4" aria-hidden />} label="Table" />
-          </div>
-        </div>
-      </Card>
-
       {result.items.length === 0 ? (
         <Card>
           <EmptyState
@@ -208,31 +131,6 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
         </div>
       </Card>
     </li>
-  )
-}
-
-function ViewButton({ active, onClick, icon, label }: {
-  active: boolean
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      title={`${label} view`}
-      className={cn(
-        'inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-caption font-semibold transition-colors',
-        active
-          ? 'bg-surface-subtle text-content-primary'
-          : 'text-content-secondary hover:text-content-primary',
-      )}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
   )
 }
 

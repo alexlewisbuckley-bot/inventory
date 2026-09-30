@@ -9,7 +9,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { BottomBar } from '@/components/layout/BottomBar'
 import { KeyboardShortcuts } from '@/components/layout/KeyboardShortcuts'
 import { PartnerTopBar } from '@/components/layout/PartnerTopBar'
-import { navGroups, flattenNav } from '@/components/layout/nav-model'
+import { catalogueBrands } from '@/server/services/catalogue-service'
 import { countUnpriced, findAgeingStock, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { sales } from '@/server/db/schema'
@@ -19,11 +19,6 @@ import { getPreferencesFor } from '@/server/services/settings-service'
 import { isCurrency } from '@/lib/currency'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, type Role } from '@/lib/enums'
 import { can, isExternalRole } from '@/lib/permissions'
-
-/** Badges nobody outside the business has a rail to read them on. */
-const EMPTY_COUNTS = {
-  inStock: 0, unpriced: 0, ageing: 0, sales: 0, openDeals: 0, tasksDue: 0, openRequests: 0,
-}
 
 /**
  * Authenticated shell. Every route in this group is guaranteed a session —
@@ -40,17 +35,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // exists only to fill badges on a rail they do not have. Counting it for
   // them would be six queries to render nothing.
   if (isExternalRole(user.role as Role)) {
-    const [rates, preferences] = await Promise.all([getRateTable(), getPreferencesFor(user.id)])
+    const [rates, preferences, partnerBrands] = await Promise.all([
+      getRateTable(), getPreferencesFor(user.id), catalogueBrands(),
+    ])
     const partnerCurrency = isCurrency(preferences?.displayCurrency)
       ? preferences.displayCurrency
       : DEFAULT_DISPLAY_CURRENCY
-    const links = flattenNav(navGroups(user.role as Role, EMPTY_COUNTS))
-      .map((item) => ({ href: item.href, label: item.label }))
 
     return (
       <CurrencyProvider initial={partnerCurrency} rates={rates}>
         <div className="flex min-h-screen flex-col bg-surface-subtle">
-          <PartnerTopBar user={user} links={links} />
+          <PartnerTopBar user={user} brands={partnerBrands} />
           <main
             id="main"
             tabIndex={-1}

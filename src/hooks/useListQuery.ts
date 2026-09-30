@@ -29,6 +29,25 @@ export function useListQuery() {
     push(next)
   }, [params, push])
 
+  /**
+   * Several changes, one URL write.
+   *
+   * Calling `set` three times in a handler does not do this: each call reads
+   * the same `params` from the closure — the render's snapshot, which no
+   * intervening call has updated — builds its own URL from it and replaces
+   * the last. Only the final key ever moved. A "clear filters" button written
+   * the obvious way cleared exactly one filter.
+   */
+  const setMany = useCallback((changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(params.toString())
+    for (const [key, value] of Object.entries(changes)) {
+      if (value === null || value === '') next.delete(key)
+      else next.set(key, value)
+    }
+    next.delete('page')
+    push(next)
+  }, [params, push])
+
   /** Add or remove one value from a repeated (multi-select) key. */
   const toggle = useCallback((key: string, value: string) => {
     const next = new URLSearchParams(params.toString())
@@ -57,6 +76,7 @@ export function useListQuery() {
     params,
     isPending,
     set,
+    setMany,
     toggle,
     sortBy,
     clearAll,
