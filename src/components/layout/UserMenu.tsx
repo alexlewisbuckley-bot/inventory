@@ -5,7 +5,7 @@ import { ChevronDown, LogOut, Settings, Shield, User as UserIcon, HelpCircle } f
 import { cn } from '@/lib/cn'
 import { Avatar } from '@/components/ui'
 import { logoutAction } from '@/app/actions/auth'
-import { can } from '@/lib/permissions'
+import { can, isExternalRole } from '@/lib/permissions'
 import { ROLE_LABELS, type Role } from '@/lib/enums'
 import type { SessionUser } from '@/server/auth/session'
 
@@ -32,7 +32,11 @@ export function UserMenu({ user }: { user: SessionUser }) {
     { href: '/settings/profile', label: 'Your profile', icon: UserIcon, show: true },
     { href: '/settings', label: 'Settings', icon: Settings, show: can(user.role, 'settings:read') },
     { href: '/settings/users', label: 'Users & permissions', icon: Shield, show: can(user.role, 'user:read') },
-    { href: '/help', label: 'Help & shortcuts', icon: HelpCircle, show: true },
+    // The shortcut sheet documents the command palette, the quick-sell
+    // modal and the rest of the staff application. An outside party has
+    // none of it, and a page explaining what they cannot reach is worse
+    // than no page at all.
+    { href: '/help', label: 'Help & shortcuts', icon: HelpCircle, show: !isExternalRole(user.role as Role) },
   ].filter((l) => l.show)
 
   return (

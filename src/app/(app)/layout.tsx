@@ -8,6 +8,8 @@ import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { BottomBar } from '@/components/layout/BottomBar'
 import { KeyboardShortcuts } from '@/components/layout/KeyboardShortcuts'
+import { PartnerTopBar } from '@/components/layout/PartnerTopBar'
+import { navGroups, flattenNav } from '@/components/layout/nav-model'
 import { countUnpriced, findAgeingStock, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { sales } from '@/server/db/schema'
@@ -16,7 +18,12 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { isCurrency } from '@/lib/currency'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, type Role } from '@/lib/enums'
-import { can } from '@/lib/permissions'
+import { can, isExternalRole } from '@/lib/permissions'
+
+/** Badges nobody outside the business has a rail to read them on. */
+const EMPTY_COUNTS = {
+  inStock: 0, unpriced: 0, ageing: 0, sales: 0, openDeals: 0, tasksDue: 0, openRequests: 0,
+}
 
 /**
  * Authenticated shell. Every route in this group is guaranteed a session —
@@ -26,6 +33,35 @@ import { can } from '@/lib/permissions'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser()
   if (!user) redirect('/login')
+
+  // An outside party gets its own shell, and gets it before any of the work
+  // below happens. Everything the staff layout loads — unread notifications,
+  // open deals, tasks due, ageing stock — is a fact about our operation that
+  // exists only to fill badges on a rail they do not have. Counting it for
+  // them would be six queries to render nothing.
+  if (isExternalRole(user.role as Role)) {
+    const [rates, preferences] = await Promise.all([getRateTable(), getPreferencesFor(user.id)])
+    const partnerCurrency = isCurrency(preferences?.displayCurrency)
+      ? preferences.displayCurrency
+      : DEFAULT_DISPLAY_CURRENCY
+    const links = flattenNav(navGroups(user.role as Role, EMPTY_COUNTS))
+      .map((item) => ({ href: item.href, label: item.label }))
+
+    return (
+      <CurrencyProvider initial={partnerCurrency} rates={rates}>
+        <div className="flex min-h-screen flex-col bg-surface-subtle">
+          <PartnerTopBar user={user} links={links} />
+          <main
+            id="main"
+            tabIndex={-1}
+            className="mx-auto w-full max-w-[1800px] flex-1 px-5 py-7 outline-none lg:px-8"
+          >
+            {children}
+          </main>
+        </div>
+      </CurrencyProvider>
+    )
+  }
 
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
 

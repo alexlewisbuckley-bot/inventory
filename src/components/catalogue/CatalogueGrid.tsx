@@ -1,7 +1,7 @@
 'use client'
-import { PackageSearch, Search, X } from 'lucide-react'
+import { LayoutGrid, PackageSearch, Rows3, Search, X } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
-import { Card, EmptyState, Pagination, Chip } from '@/components/ui'
+import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH } from '@/components/ui'
 import { formatCurrency } from '@/lib/currency'
 import { cn } from '@/lib/cn'
 import {
@@ -26,6 +26,7 @@ export function CatalogueGrid({ result, currency }: {
   const sort = query.get('sort') ?? 'brand'
   const q = query.get('q') ?? ''
   const quotedOnly = query.get('quotedOnly') === 'true'
+  const view = query.get('view') === 'table' ? 'table' : 'gallery'
   const filtering = Boolean(brand || q || quotedOnly)
 
   return (
@@ -86,6 +87,15 @@ export function CatalogueGrid({ result, currency }: {
               <X className="h-3.5 w-3.5" aria-hidden /> Clear
             </button>
           )}
+
+          {/* Two ways to read the same stock. A buyer choosing a piece wants
+              the photographs; a buyer pricing thirty of them wants the
+              numbers in a column they can run an eye down. The choice rides
+              in the URL, so it survives a reload and a shared link. */}
+          <div className="ml-auto flex items-center gap-0.5 rounded-md border border-line-subtle p-0.5" role="group" aria-label="View">
+            <ViewButton active={view === 'gallery'} onClick={() => query.set('view', null)} icon={<LayoutGrid className="h-4 w-4" aria-hidden />} label="Gallery" />
+            <ViewButton active={view === 'table'} onClick={() => query.set('view', 'table')} icon={<Rows3 className="h-4 w-4" aria-hidden />} label="Table" />
+          </div>
         </div>
       </Card>
 
@@ -100,9 +110,13 @@ export function CatalogueGrid({ result, currency }: {
           />
         </Card>
       ) : (
-        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {result.items.map((item) => <Tile key={item.id} item={item} currency={currency} />)}
-        </ul>
+        view === 'table' ? (
+          <CatalogueTable items={result.items} currency={currency} />
+        ) : (
+          <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {result.items.map((item) => <Tile key={item.id} item={item} currency={currency} />)}
+          </ul>
+        )
       )}
 
       <Pagination
@@ -130,7 +144,10 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
   return (
     <li>
       <Card className="flex h-full flex-col overflow-hidden">
-        <div className="aspect-[4/3] w-full bg-surface-subtle">
+        {/* Square, because the stock is photographed every which way and a
+            grid of five mixed ratios reads as a mistake. object-contain keeps
+            the whole watch in frame; the padding stops it touching the edge. */}
+        <div className="aspect-square w-full bg-surface-subtle">
           {item.imageId ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
@@ -191,5 +208,96 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
         </div>
       </Card>
     </li>
+  )
+}
+
+function ViewButton({ active, onClick, icon, label }: {
+  active: boolean
+  onClick: () => void
+  icon: React.ReactNode
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={`${label} view`}
+      className={cn(
+        'inline-flex h-8 items-center gap-1.5 rounded-sm px-2.5 text-caption font-semibold transition-colors',
+        active
+          ? 'bg-surface-subtle text-content-primary'
+          : 'text-content-secondary hover:text-content-primary',
+      )}
+    >
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  )
+}
+
+/**
+ * The same stock, priced in a column.
+ *
+ * A photograph each, kept small: without one every row is a reference number
+ * and a dealer scanning thirty of them has to open each to know what it is.
+ */
+function CatalogueTable({ items, currency }: { items: CatalogueItem[]; currency: CurrencyCode }) {
+  return (
+    <Card>
+      <Table>
+        <THead>
+          <TR>
+            <TH width="64px"><span className="sr-only">Photograph</span></TH>
+            <TH>Piece</TH>
+            <TH width="130px">Reference</TH>
+            <TH width="80px">Year</TH>
+            <TH width="130px">Accompanied by</TH>
+            <TH width="110px">Condition</TH>
+            <TH width="120px" align="right">Trade</TH>
+            <TH width="120px" align="right">Retail</TH>
+          </TR>
+        </THead>
+        <TBody>
+          {items.map((item) => {
+            const condition = item.condition === 'UNKNOWN' ? null : CONDITION_LABELS[item.condition as Condition]
+            const set = item.boxPapers === 'UNKNOWN' ? null : BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
+            return (
+              <TR key={item.id}>
+                <TD>
+                  <div className="h-11 w-11 overflow-hidden rounded-sm bg-surface-subtle">
+                    {item.imageId && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={`/api/images/${item.imageId}`}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    )}
+                  </div>
+                </TD>
+                <TD>
+                  <span className="block font-bold text-content-primary">{item.modelName ?? item.model}</span>
+                  <span className="block text-caption text-content-secondary">{item.brandName}</span>
+                </TD>
+                <TD className="tabular-nums text-content-secondary">{item.model}</TD>
+                <TD className="tabular-nums text-content-secondary">{item.year ?? '—'}</TD>
+                <TD className="text-content-secondary">{set ?? '—'}</TD>
+                <TD className="text-content-secondary">{condition ?? '—'}</TD>
+                <TD align="right" className="font-bold tabular-nums">
+                  {item.trade === null
+                    ? <span className="font-normal text-content-secondary">On request</span>
+                    : formatCurrency(item.trade, currency, { decimals: false })}
+                </TD>
+                <TD align="right" className="tabular-nums text-content-secondary">
+                  {item.retail === null ? 'On request' : formatCurrency(item.retail, currency, { decimals: false })}
+                </TD>
+              </TR>
+            )
+          })}
+        </TBody>
+      </Table>
+    </Card>
   )
 }
