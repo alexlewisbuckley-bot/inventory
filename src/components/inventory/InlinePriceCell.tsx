@@ -1,12 +1,8 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Check, Loader2, Lock, Pencil, X } from 'lucide-react'
-import { cn } from '@/lib/cn'
-import { useToast, useCurrency } from '@/components/ui'
+import { useCurrency } from '@/components/ui'
 import { setPriceAction } from '@/app/actions/watches'
-import { formatMoneyInput, parseMoneyInput } from '@/lib/money'
-import { toBase } from '@/lib/currency'
+import { parseMoneyInput } from '@/lib/money'
+import { InlineEditCell } from './InlineEditCell'
 
 /**
  * Editable retail price.
@@ -14,138 +10,39 @@ import { toBase } from '@/lib/currency'
  * Setting a price was the single most repeated task in the product and cost
  * six interactions: find the row, open the drawer, click edit, wait for a
  * form, change one number, save. It is now click, type, Enter — in the cell
- * the user is already looking at.
+ * the reader is already looking at.
  *
- * The value is entered in whatever currency is on display and converted to the
- * GBP base on save, so someone working in AED never has to convert by hand.
+ * It behaves exactly as cost, trade, year and serial do, because it is the
+ * same gesture on the same kind of thing and there is no reason for the price
+ * column to have manners of its own. What it keeps to itself is who may use
+ * it: `watch:price` rather than the owner-only `watch:amend`, because quoting
+ * is a salesperson's job.
+ *
+ * The value is entered in whatever currency is on display and converted to
+ * the base on save, so someone working in AED never converts by hand.
  */
 export function InlinePriceCell({ watchId, baseMinor, editable }: {
   watchId: string
   baseMinor: number | null
   editable: boolean
 }) {
-  const router = useRouter()
-  const toast = useToast()
-  const { money, currency, rates, convert } = useCurrency()
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
-  const [saving, setSaving] = useState(false)
-  const input = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!editing) return
-    requestAnimationFrame(() => { input.current?.focus(); input.current?.select() })
-  }, [editing])
-
-  const begin = () => {
-    setValue(baseMinor !== null ? formatMoneyInput(String(convert(baseMinor) / 100)) : '')
-    setEditing(true)
-  }
-
-  const cancel = () => { setEditing(false); setValue('') }
-
-  const save = async () => {
-    const entered = parseMoneyInput(value)
-    if (entered === null) { cancel(); return }
-    // The amount goes to the server in the currency it was typed in; the
-    // service does the single conversion to the reporting base.
-    setSaving(true)
-    const result = await setPriceAction(watchId, entered / 100, currency)
-    setSaving(false)
-    setEditing(false)
-
-    if (result.ok) {
-      toast.success('Price updated')
-      router.refresh()
-    } else {
-      toast.error('Could not update the price', result.message)
-    }
-  }
-
-  if (!editable) {
-    return <span className="tabular-nums">{money(baseMinor)}</span>
-  }
-
-  if (editing) {
-    return (
-      <span className="flex items-center justify-end gap-1">
-        <input
-          ref={input}
-          value={value}
-          inputMode="decimal"
-          aria-label="Retail price"
-          onChange={(event) => setValue(formatMoneyInput(event.target.value))}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') { event.preventDefault(); void save() }
-            if (event.key === 'Escape') { event.preventDefault(); cancel() }
-          }}
-          onBlur={() => { if (!saving) void save() }}
-          className="w-24 rounded-sm border border-teal-500 bg-surface-raised px-1.5 py-1 text-right text-small tabular-nums text-content-primary outline-none"
-        />
-        {saving
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin text-content-secondary" aria-hidden />
-          : (
-            <>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => void save()}
-                aria-label="Save price" className="rounded-sm p-0.5 text-content-accent hover:bg-teal-100">
-                <Check className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancel}
-                aria-label="Cancel" className="rounded-sm p-0.5 text-content-secondary hover:bg-surface-subtle">
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </>
-          )}
-      </span>
-    )
-  }
+  const { money, currency, convert } = useCurrency()
 
   return (
-    <button
-      type="button"
-      onClick={begin}
-      // The visible text is a number, so on its own the accessible name is
-      // "£14,980" — which says nothing about what pressing it does.
-      aria-label={baseMinor === null
-        ? 'Set the retail price'
-        : `Retail price ${money(baseMinor)}. Locked — press to unlock and change it.`}
-      title={baseMinor === null
-        ? 'Click to set the retail price'
-        : 'Unlock the retail price to change it'}
-      className={cn(
-        // The negative margin cancels the padding for layout while keeping it
-        // for the hover chip, so the figure's right edge is the cell's right
-        // edge and this column lines up with cost, trade and profit.
-        'group/price relative -mx-1 inline-flex items-center justify-end rounded-sm px-1 py-0.5 tabular-nums transition-colors hover:bg-surface-subtle',
-        baseMinor === null && 'text-content-secondary',
-      )}
-    >
-      {baseMinor === null
-        ? <span className="whitespace-nowrap text-caption font-semibold">Set price</span>
-        : <span className="whitespace-nowrap">{money(baseMinor)}</span>}
-      {/* Out of flow, and to the left. In flow it held a permanent 18px of
-          space to the right of every figure in this column, so the retail
-          numbers sat short of the right edge that every other money column
-          lines up on — a column that looked indented against its own heading.
-          Left rather than right because the slack in a right-aligned money
-          column is all on that side: hung off the right it overflowed the
-          cell instead. */}
-      {/* A price that is already set shows a lock rather than a pencil: the
-          same reading as cost, trade, year and serial, where the mark tells
-          you whether pressing will open a field or fill an empty one. */}
-      {baseMinor === null
-        ? (
-          <Pencil
-            className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
-            aria-hidden
-          />
-        )
-        : (
-          <Lock
-            className="pointer-events-none absolute right-full top-1/2 mr-1 h-3 w-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/price:opacity-60"
-            aria-hidden
-          />
-        )}
-    </button>
+    <InlineEditCell
+      label="retail price"
+      kind="money"
+      align="right"
+      editable={editable}
+      value={baseMinor === null ? '' : String(convert(baseMinor) / 100)}
+      display={baseMinor === null ? <span className="text-content-muted">—</span> : money(baseMinor)}
+      placeholder="Set price"
+      onSave={async (raw) => {
+        const entered = parseMoneyInput(raw)
+        if (entered === null) return 'Enter an amount.'
+        const result = await setPriceAction(watchId, entered / 100, currency)
+        return result.ok ? null : (result.message ?? 'The change was rejected.')
+      }}
+    />
   )
 }

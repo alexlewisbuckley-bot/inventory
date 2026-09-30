@@ -1,40 +1,50 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Loader2, Lock, Pencil, X } from 'lucide-react'
+import { Loader2, Lock, Pencil } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useToast } from '@/components/ui'
 
 /**
- * A value that can be corrected where it is read, behind a lock.
+ * A cell you can edit where you read it.
  *
- * Two states rather than one, because the risks are not the same. An empty
- * field is an invitation: there is nothing to lose, so one click opens it.
- * A field that already holds a figure is closed, and opening it is its own
- * deliberate act — the point is not to stop the owner changing a cost, it is
- * to stop a cost changing because a row was clicked on the way somewhere
- * else. A stray click in a table of a hundred rows is silent, and the number
- * it lands on is one the business is valued on.
+ * Built the way a data grid is built, because that is what this is and every
+ * tool the reader already uses — a spreadsheet, Airtable, a CRM table —
+ * behaves the same way:
  *
- * The lock is therefore momentary: unlock, change, save, and it closes again.
- * Nothing stays open behind you.
+ *   • the cell itself becomes the field, filling the cell exactly, keeping
+ *     the same type, alignment and position, so nothing moves when it opens;
+ *   • Enter and Tab commit, clicking away commits, Escape abandons;
+ *   • there are no buttons.
+ *
+ * The first attempt had a tick and a cross, and a money column is about a
+ * hundred pixels wide: the buttons took most of it and left a box too narrow
+ * to read what you were typing. Floating that panel over the row to make room
+ * only moved the problem — it covered the columns either side and was clipped
+ * by the cell it belonged to. The buttons were never the answer. A grid does
+ * not need them, because the keyboard and the pointer already say plainly
+ * enough when someone is finished.
+ *
+ * Committing on the way out rather than abandoning is the convention in all
+ * of those tools, and the reason it is safe here is the lock: a value cannot
+ * be opened by accident in the first place, so anything typed after opening
+ * one deliberately is meant.
  */
 export function InlineEditCell({
   value, display, placeholder, kind = 'text', align = 'left',
-  editable, onSave, className, label,
+  editable, onSave, label,
 }: {
-  /** The value as it should appear in the input when editing. */
+  /** The value as it should appear in the field when editing. */
   value: string
-  /** The value as it is read when not editing. `null` means empty. */
+  /** The value as it is read when not editing. */
   display: React.ReactNode
-  /** What an empty cell offers instead of a value, e.g. "Set price". */
+  /** What filling the cell is called, for the tooltip, e.g. "Set cost". */
   placeholder: string
   kind?: 'text' | 'number' | 'money'
   align?: 'left' | 'right'
   editable: boolean
   /** Returns an error message, or null when the save succeeded. */
   onSave: (raw: string) => Promise<string | null>
-  className?: string
   /** Names the field for assistive technology, e.g. "cost". */
   label: string
 }) {
@@ -44,6 +54,8 @@ export function InlineEditCell({
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const input = useRef<HTMLInputElement>(null)
+  // Enter commits and then the field loses focus, which would commit again.
+  const settling = useRef(false)
 
   useEffect(() => {
     if (!editing) return
@@ -51,152 +63,125 @@ export function InlineEditCell({
   }, [editing])
 
   const open = () => { setDraft(value); setEditing(true) }
-  const cancel = () => { setEditing(false); setDraft('') }
+
+  const close = () => { settling.current = false; setEditing(false); setDraft('') }
 
   const commit = async () => {
-    // Nothing typed, nothing changed: closing is not a write.
-    if (draft.trim() === value.trim()) { cancel(); return }
+    if (settling.current) return
+    settling.current = true
+    // Opened and closed without touching it: that is not a write.
+    if (draft.trim() === value.trim()) { close(); return }
+
     setSaving(true)
     const error = await onSave(draft)
     setSaving(false)
-    if (error) { toast.error(`Could not update the ${label}`, error); return }
-    setEditing(false)
-    toast.success('Saved')
+
+    if (error) {
+      // Stay open with what they typed still there. Closing on a rejection
+      // would throw the work away and leave the old value looking accepted.
+      settling.current = false
+      toast.error(`Could not update the ${label}`, error)
+      requestAnimationFrame(() => input.current?.focus())
+      return
+    }
+    close()
     router.refresh()
   }
 
-  if (!editable) return <span className={cn(kind !== 'text' && 'tabular-nums', className)}>{display ?? '—'}</span>
+  const alignment = align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
 
-  if (editing) {
-    return (
-      <span
-        className={cn(
-          'relative inline-flex max-w-full items-center',
-          align === 'right' ? 'justify-end' : 'justify-start',
-        )}
-      >
-        {/* Holds the cell open at its resting size while the editor floats
-            above it, so opening a field does not shunt the row about. */}
-        <span className="invisible whitespace-nowrap" aria-hidden>{display ?? placeholder}</span>
-        {/*
-          The editor is taken out of the column and floated over the row.
-
-          In the flow it was bounded by the column, and a money column is
-          about ninety pixels wide: once the tick and the cross had taken
-          their share there were twenty or so left for the number, so
-          unlocking a cost produced a box too narrow to read what you were
-          typing. A field being edited is the only thing on that row that
-          matters for as long as it is open, so it is allowed the room.
-        */}
-        <span
-          className={cn(
-            'absolute top-1/2 z-20 flex w-[210px] -translate-y-1/2 items-center gap-1 rounded-sm',
-            'border border-teal-500 bg-surface-raised px-1.5 py-1 shadow-raised',
-            align === 'right' ? 'right-0' : 'left-0',
-          )}
-        >
-        <input
-          ref={input}
-          value={draft}
-          inputMode={kind === 'text' ? undefined : 'decimal'}
-          aria-label={`Edit ${label}`}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); void commit() }
-            if (e.key === 'Escape') { e.preventDefault(); cancel() }
-          }}
-          // Saving on blur would make a click elsewhere a write. Closing an
-          // unlocked field without a decision has to mean "no change".
-          onBlur={cancel}
-          className={cn(
-            'w-full min-w-0 bg-transparent text-small text-content-primary outline-none',
-            kind !== 'text' && 'tabular-nums',
-            align === 'right' && 'text-right',
-          )}
-        />
-        {saving
-          ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-content-secondary" aria-hidden />
-          : (
-            <>
-              {/* onMouseDown, not onClick: the input's blur cancels first and
-                  the click would never land. */}
-              <button
-                type="button" onMouseDown={(e) => { e.preventDefault(); void commit() }}
-                aria-label={`Save ${label}`}
-                className="shrink-0 rounded-sm p-0.5 text-content-accent hover:bg-teal-100"
-              >
-                <Check className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              <button
-                type="button" onMouseDown={(e) => { e.preventDefault(); cancel() }}
-                aria-label={`Cancel editing ${label}`}
-                className="shrink-0 rounded-sm p-0.5 text-content-secondary hover:bg-surface-subtle"
-              >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
-            </>
-          )}
-        </span>
-      </span>
-    )
+  if (!editable) {
+    return <span className={cn(kind !== 'text' && 'tabular-nums')}>{display}</span>
   }
 
   const empty = value.trim() === ''
 
   return (
-    <button
-      type="button"
-      onClick={open}
-      title={empty ? `Set the ${label}` : `Unlock the ${label} to change it`}
-      aria-label={empty ? `Set the ${label}` : `Unlock the ${label} to change it. Currently locked.`}
-      className={cn(
-        // The padding is cancelled by the margin so the figure keeps the
-        // column's own edge: an editable cell must not sit a few pixels off
-        // the ones beside it.
-        // The cap is the column's content box plus the padding the negative
-        // margin gives back. `max-w-full` clamped the border box instead,
-        // which quietly handed the 8px of hover chip to the browser and took
-        // it out of the number — the column had room for "$155,000" and the
-        // cell showed "$155,...".
-        'group/cell relative -mx-1 inline-flex max-w-[calc(100%+0.5rem)] items-center gap-1 rounded-sm px-1 py-0.5 transition-colors hover:bg-surface-subtle',
-        align === 'right' ? 'justify-end' : 'justify-start',
-        kind !== 'text' && 'tabular-nums',
-        className,
-      )}
-    >
-      {empty
-        ? (
-          // An empty cell rests as the same quiet dash it always was, and
-          // offers itself only when the pointer is on the row. Printing
-          // "Add serial" down forty rows turns a column of missing values
-          // into a column of instructions, and the table is read far more
-          // often than it is filled in.
-          <>
-            <span className="text-content-muted group-hover:hidden">—</span>
-            <span className="hidden whitespace-nowrap text-caption font-semibold text-content-secondary group-hover:inline">
-              {placeholder}
+    // Fills the cell, so the pointer target is the cell and the field that
+    // replaces it lands in exactly the same place.
+    <span className="absolute inset-0 block">
+      {editing ? (
+        <>
+          <input
+            ref={input}
+            value={draft}
+            inputMode={kind === 'text' ? undefined : 'decimal'}
+            aria-label={`${label} — press Enter to save, Escape to cancel`}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); void commit() }
+              // Tab commits and moves on, as it does in a spreadsheet.
+              else if (e.key === 'Tab') void commit()
+              else if (e.key === 'Escape') { e.preventDefault(); close() }
+            }}
+            onBlur={() => { void commit() }}
+            className={cn(
+              // Inset by a pixel so the ring sits inside the cell rather than
+              // on the row's own rule.
+              'absolute inset-px z-20 w-[calc(100%-2px)] rounded-sm bg-surface-raised text-small text-content-primary',
+              'px-4 outline-none ring-2 ring-inset ring-teal-500',
+              align === 'right' && 'text-right',
+              kind !== 'text' && 'tabular-nums',
+            )}
+          />
+          {saving && (
+            <Loader2
+              className={cn(
+                'pointer-events-none absolute top-1/2 z-30 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-content-secondary',
+                align === 'right' ? 'left-1.5' : 'right-1.5',
+              )}
+              aria-hidden
+            />
+          )}
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={open}
+          title={empty ? placeholder : `Unlock the ${label} to change it`}
+          aria-label={empty
+            ? `Set the ${label}`
+            : `Unlock the ${label} to change it. Currently locked.`}
+          className={cn(
+            'flex h-full w-full items-center gap-1.5 px-4 text-inherit transition-colors hover:bg-surface-subtle',
+            alignment,
+            kind !== 'text' && 'tabular-nums',
+          )}
+        >
+          {/* The mark travels with the value rather than sitting at the far
+              edge of the column. Anchored to the cell it read as belonging to
+              the column next door — a lock at the left edge of the trade
+              column looks like it is guarding the cost beside it. It stays
+              out of the flow, so a column of figures keeps its edge whether
+              or not this row happens to be under the pointer. */}
+          <span className={cn('relative flex min-w-0 items-center', align === 'right' ? 'justify-end' : 'justify-start')}>
+            {empty
+              ? (
+                // An empty cell stays the quiet dash it always was, and says
+                // what it offers through the mark beside it and the tooltip,
+                // not in words. "Add serial" printed down forty rows turns a
+                // column of missing values into a column of instructions, and
+                // in a 72px year column it did not even fit — the label ran
+                // over its own pencil. A dash fits every column there is.
+                <span className="text-content-muted">—</span>
+              )
+              // A figure is never ellipsised: "$155,..." is not a shortened
+              // price, it is a different number. The column is sized to hold
+              // the longest one instead. Only free text truncates, and it
+              // carries its full value on the cell.
+              : <span className={cn('min-w-0', kind === 'text' ? 'truncate' : 'whitespace-nowrap')}>{display}</span>}
+            <span
+              className={cn(
+                'pointer-events-none absolute top-1/2 -translate-y-1/2 text-content-muted opacity-0 transition-opacity',
+                'group-hover:opacity-70 group-focus-within:opacity-70',
+                align === 'right' ? 'right-full mr-1.5' : 'left-full ml-1.5',
+              )}
+            >
+              {empty ? <Pencil className="h-3 w-3" aria-hidden /> : <Lock className="h-3 w-3" aria-hidden />}
             </span>
-          </>
-        )
-        // A figure is never ellipsised. "$155,..." is not a shortened price,
-        // it is a different number, and the column is sized to hold the
-        // longest one rather than the value being cut to fit the column.
-        // Only free text, where the full value is on the cell's title,
-        // truncates.
-        : <span className={cn(kind === 'text' ? 'truncate' : 'whitespace-nowrap')}>{display}</span>}
-      {/* Out of the flow and in the cell's own padding, so a column of
-          figures still lines up on its right edge whether or not this one
-          happens to be under the pointer. */}
-      <span
-        className={cn(
-          'pointer-events-none absolute top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/cell:opacity-60 group-focus-visible/cell:opacity-60',
-          align === 'right' ? 'right-full mr-1' : 'left-full ml-1',
-        )}
-      >
-        {empty
-          ? <Pencil className="h-3 w-3" aria-hidden />
-          : <Lock className="h-3 w-3" aria-hidden />}
-      </span>
-    </button>
+          </span>
+        </button>
+      )}
+    </span>
   )
 }

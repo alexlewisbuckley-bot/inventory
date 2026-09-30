@@ -642,7 +642,7 @@ function Row({
       {/* Tabular figures so the years line up as a column of digits rather
           than drifting against each other. */}
       {show('year') && (
-        <TD className="tabular-nums text-content-secondary">
+        <TD className="relative tabular-nums text-content-secondary">
           <InlineEditCell
             label="year" kind="number" editable={canAmend && !watch.deletedAt}
             value={watch.year === null ? '' : String(watch.year)}
@@ -659,7 +659,7 @@ function Row({
         </TD>
       )}
       {show('serial') && (
-        <TD className="truncate text-content-secondary" title={watch.serial ?? undefined}>
+        <TD className="relative text-content-secondary" title={watch.serial ?? undefined}>
           <InlineEditCell
             label="serial number" editable={canAmend && !watch.deletedAt}
             value={watch.serial ?? ''}
@@ -679,7 +679,7 @@ function Row({
       )}
       {show('purchased') && <TD className="text-content-secondary">{formatDate(watch.purchaseDate)}</TD>}
       {show('cost') && (
-        <TD align="right" className="font-bold">
+        <TD align="right" className="relative font-bold">
           <InlineEditCell
             label="cost" kind="money" align="right" editable={canAmend && !watch.deletedAt}
             value={asInput(watch.purchasePriceGbp)}
@@ -693,7 +693,7 @@ function Row({
           watch never offered to the trade says so rather than showing a
           zero. */}
       {show('trade') && (
-        <TD align="right" className="text-content-secondary">
+        <TD align="right" className="relative text-content-secondary">
           <InlineEditCell
             label="trade price" kind="money" align="right" editable={canAmend && !watch.deletedAt}
             value={asInput(watch.tradePriceGbp)}
@@ -706,7 +706,7 @@ function Row({
         </TD>
       )}
       {show('estSale') && (
-        <TD align="right">
+        <TD align="right" className="relative">
           {/* A sold watch shows what it actually made, not what somebody once
               hoped it would. */}
           {sold
