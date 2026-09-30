@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { LayoutGrid, Rows3, Search, X } from 'lucide-react'
+import { ChevronDown, LayoutGrid, Rows3, Search, X } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
 import { cn } from '@/lib/cn'
 
@@ -45,6 +45,11 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
   if (pathname !== '/catalogue') return null
 
   const field = 'h-9 rounded-md border border-line-subtle bg-surface-raised px-2 text-body text-content-primary outline-none transition-colors focus:border-teal-500'
+  // The platform's own arrow: a heavy grey wedge that is a different shape
+  // and a different weight on every operating system, and matches nothing
+  // else on the bar. Suppressed, and the application's chevron drawn over
+  // the top — the same one every other select in the app carries.
+  const selectField = cn(field, 'cursor-pointer appearance-none pr-9')
 
   return (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
@@ -63,19 +68,21 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
         />
       </label>
 
-      <label className="shrink-0">
+      <label className="relative shrink-0">
         <span className="sr-only">Brand</span>
-        <select value={brand} onChange={(e) => query.set('brand', e.target.value || null)} className={field}>
+        <select value={brand} onChange={(e) => query.set('brand', e.target.value || null)} className={selectField}>
           <option value="">All brands</option>
           {brands.map((name) => <option key={name} value={name}>{name}</option>)}
         </select>
+        <Chevron />
       </label>
 
-      <label className="shrink-0">
+      <label className="relative shrink-0">
         <span className="sr-only">Order</span>
-        <select value={sort} onChange={(e) => query.set('sort', e.target.value)} className={field}>
+        <select value={sort} onChange={(e) => query.set('sort', e.target.value)} className={selectField}>
           {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
+        <Chevron />
       </label>
 
       <label className="flex shrink-0 items-center gap-2 text-body text-content-secondary">
@@ -104,6 +111,15 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
         <ViewButton active={view === 'table'} onClick={() => query.set('view', 'table')} icon={<Rows3 className="h-4 w-4" aria-hidden />} label="Table" />
       </div>
     </div>
+  )
+}
+
+function Chevron() {
+  return (
+    <ChevronDown
+      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary"
+      aria-hidden
+    />
   )
 }
 
