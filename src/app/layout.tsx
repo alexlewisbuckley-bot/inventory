@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from 'next'
+import { hasBrandArtwork, hasBrandMonogram } from '@/lib/brand'
+import { BrandProvider } from '@/components/layout/BrandProvider'
 import { ThemeProvider, themeScript } from '@/components/ui/ThemeProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 /**
@@ -21,13 +23,14 @@ import '@/styles/globals.css'
 export const metadata: Metadata = {
   title: { default: 'One Street Watches', template: '%s · One Street Watches' },
   /*
-   * The OS symbol, from `public/brand/`. Declared rather than dropped in as
-   * `app/icon.svg` so the file is the artwork itself and not something this
-   * repository drew: until it is there the browser falls back to the default,
-   * which is the honest state of affairs.
+   * The OS symbol, from `public/brand/`, and only when it is actually there:
+   * a <link rel=icon> pointing at a 404 leaves some browsers showing nothing
+   * rather than falling back to their default.
    */
-  icons: { icon: [{ url: '/brand/monogram.svg', type: 'image/svg+xml' }] },
-  description: 'Internal luxury watch inventory management for Bluecroft.',
+  ...(hasBrandMonogram()
+    ? { icons: { icon: [{ url: '/brand/monogram.svg', type: 'image/svg+xml' }] } }
+    : {}),
+  description: 'Internal luxury watch inventory management for One Street Watches.',
   robots: { index: false, follow: false },
 }
 
@@ -54,9 +57,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to main content
         </a>
-        <ThemeProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </ThemeProvider>
+        {/* Looked up here, on the server, because the bars that draw the
+            mark are client components and cannot read the filesystem. */}
+        <BrandProvider value={{ wordmark: hasBrandArtwork(), monogram: hasBrandMonogram() }}>
+          <ThemeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
+        </BrandProvider>
       </body>
     </html>
   )

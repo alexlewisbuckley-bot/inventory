@@ -245,6 +245,12 @@ function buildOrder(query: WatchQuery): SQL {
     case 'tradePriceGbp': return query.dir === 'asc'
       ? sql`${watches.tradePriceGbp} ASC NULLS LAST`
       : sql`${watches.tradePriceGbp} DESC NULLS LAST`
+    // NULLS LAST both ways, as with trade: a piece whose year was never
+    // recorded is unknown, not old and not new, so it belongs at the end of
+    // the list either way rather than being sorted as year zero.
+    case 'year': return query.dir === 'asc'
+      ? sql`${watches.year} ASC NULLS LAST`
+      : sql`${watches.year} DESC NULLS LAST`
     case 'status': return direction(watches.status)
     case 'location': return direction(locations.name)
     case 'owner': return direction(owners.name)

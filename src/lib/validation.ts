@@ -466,7 +466,7 @@ export const settingsSchema = z.record(z.string().max(64), z.string().max(500))
 // --- List query ------------------------------------------------------------
 
 export const WATCH_SORT_FIELDS = [
-  'stockNo', 'model', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd', 'tradePriceGbp', 'status', 'location', 'owner', 'margin',
+  'stockNo', 'model', 'year', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd', 'tradePriceGbp', 'status', 'location', 'owner', 'margin',
 ] as const
 export type WatchSortField = (typeof WATCH_SORT_FIELDS)[number]
 

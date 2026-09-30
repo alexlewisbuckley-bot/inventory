@@ -41,6 +41,7 @@ import type { Capability } from '@/lib/permissions'
 export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
   { key: 'stockNo', label: 'Stock no', locked: true },
   { key: 'watch', label: 'Reference', locked: true },
+  { key: 'year', label: 'Year' },
   { key: 'serial', label: 'Serial' },
   { key: 'supplier', label: 'Supplier' },
   { key: 'purchased', label: 'Purchased' },
@@ -252,6 +253,7 @@ export function InventoryList({
                   without one column claiming the remainder the browser shares
                   it out evenly and hiding a column just pads the rest. */}
               <TH width="100%" sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
+              {show('year') && <TH width="72px" sortKey="year" sort={sort} onSort={query.sortBy}>Year</TH>}
               {show('serial') && <TH width="110px">Serial</TH>}
               {show('supplier') && <TH width="170px">Supplier</TH>}
               {show('purchased') && <TH width="120px" sortKey="purchaseDate" sort={sort} onSort={query.sortBy}>Purchased</TH>}
@@ -556,6 +558,13 @@ function Row({
           </span>
         </Link>
       </TD>
+      {/* Tabular figures so the years line up as a column of digits rather
+          than drifting against each other. */}
+      {show('year') && (
+        <TD className="tabular-nums text-content-secondary">
+          {watch.year ?? <span className="text-content-muted">—</span>}
+        </TD>
+      )}
       {show('serial') && <TD className="text-content-secondary">{watch.serial ?? '—'}</TD>}
       {show('supplier') && (
         <TD className="text-content-secondary">
