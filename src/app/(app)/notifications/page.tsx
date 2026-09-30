@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Bell } from 'lucide-react'
-import { requireUser } from '@/server/auth/session'
+import { requireStaff } from '@/server/auth/session'
 import { listNotifications, unreadCount } from '@/server/services/notification-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, EmptyState } from '@/components/ui'
@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'Notifications' }
 export const dynamic = 'force-dynamic'
 
 export default async function NotificationsPage() {
-  const user = await requireUser()
+  const user = await requireStaff()
   const [items, unread] = await Promise.all([listNotifications(user.id, 100), unreadCount(user.id)])
 
   return (

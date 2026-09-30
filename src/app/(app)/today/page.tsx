@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { ArrowRight } from 'lucide-react'
-import { requireUser } from '@/server/auth/session'
+import { requireStaff } from '@/server/auth/session'
 import { agendaFor } from '@/server/services/crm-service'
 import {
   pipelineSnapshot, quietDaySummary, stockSnapshot, waitingOnThem, worthKnowing,
@@ -15,7 +14,7 @@ import { Agenda } from '@/components/today/Agenda'
 import { WorthKnowing } from '@/components/today/WorthKnowing'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, DEAL_STAGE_LABELS, type DealStage, type Role } from '@/lib/enums'
-import { can, canSeeCost, isExternalRole } from '@/lib/permissions'
+import { can, canSeeCost } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Today' }
 export const dynamic = 'force-dynamic'
@@ -40,12 +39,12 @@ export const dynamic = 'force-dynamic'
  * front of it.
  */
 export default async function TodayPage() {
-  // A trade partner has no "today" here: the agenda, the pipeline and the
-  // stock figures are all reports on a business that is not theirs. Sent to
-  // their own front door instead of shown an empty one.
-  if (isExternalRole((await requireUser()).role as Role)) redirect('/catalogue')
+  // Staff only: the agenda, the pipeline and the stock figures are all
+  // reports on a business an outside party is not part of.
 
-  const user = await requireUser()
+  // Staff only: the agenda, the pipeline and the stock figures are all
+  // reports on a business an outside party is not part of.
+  const user = await requireStaff()
 
   const [agenda, waiting, notices, pipeline, stock, quiet, rates, preferences] =
     await Promise.all([

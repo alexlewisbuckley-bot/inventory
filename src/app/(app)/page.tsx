@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import { requireUser } from '@/server/auth/session'
+import { landingFor } from '@/lib/permissions'
 
 /**
  * The front door opens on the agenda, not on the inventory.
@@ -12,6 +14,9 @@ import { redirect } from 'next/navigation'
  * Everything it showed survives under /insights, where it is looked at
  * deliberately rather than skimmed daily until it stopped being read.
  */
-export default function Home() {
-  redirect('/today')
+export default async function Home() {
+  // Asked directly rather than bounced through /today, which then has to send
+  // an outside party somewhere else: one hop, and the rule lives in one place.
+  const user = await requireUser()
+  redirect(landingFor(user.role))
 }

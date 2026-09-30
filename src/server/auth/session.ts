@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { cookies, headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { SignJWT, jwtVerify } from 'jose'
 import { and, desc, eq, gt, inArray, isNull, lt, ne } from 'drizzle-orm'
 import { db } from '../db/client'
@@ -7,7 +8,7 @@ import { sessions, users, type User } from '../db/schema'
 import { newId } from '@/lib/ids'
 import { logger } from '@/lib/logger'
 import { UnauthorizedError, ForbiddenError } from '@/lib/errors'
-import { can, type Capability } from '@/lib/permissions'
+import { can, isExternalRole, landingFor, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
 
 /**
@@ -174,6 +175,27 @@ export async function requireUser(): Promise<SessionUser> {
 }
 
 /** Resolve the signed-in user and assert a capability, or throw 401/403. */
+/**
+ * A page that belongs to the business rather than to a capability.
+ *
+ * Some screens guard nothing in particular and so guarded nothing at all:
+ * Help, search, notifications. Help was the one that mattered — it describes
+ * booking stock in from a supplier invoice, moving it between stores, voiding
+ * a sale, and every keyboard shortcut for suppliers, locations and reports.
+ * None of it is reachable by a trade partner and all of it was readable by
+ * one, because "any signed-in user" quietly came to include people who are
+ * not us.
+ *
+ * Sent to their own front door rather than shown a refusal: they have not
+ * done anything wrong, and a page they were never meant to find should not
+ * greet them with an error.
+ */
+export async function requireStaff(): Promise<SessionUser> {
+  const user = await requireUser()
+  if (isExternalRole(user.role)) redirect(landingFor(user.role))
+  return user
+}
+
 export async function requireCapability(capability: Capability): Promise<SessionUser> {
   const user = await requireUser()
   if (!can(user.role, capability)) {

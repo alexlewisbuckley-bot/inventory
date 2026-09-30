@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { requireUser } from '@/server/auth/session'
+import { requireStaff } from '@/server/auth/session'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SearchScreen } from '@/components/search/SearchScreen'
 
@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic'
  * ranking; only the container differs.
  */
 export default async function SearchPage() {
-  await requireUser()
+  await requireStaff()
   return (
     <>
       <PageHeader

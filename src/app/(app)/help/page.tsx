@@ -4,8 +4,12 @@ import { BookOpen, Keyboard, LifeBuoy } from 'lucide-react'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody } from '@/components/ui'
 import { SHORTCUTS, SHORTCUT_GROUPS } from '@/lib/shortcuts'
+import { requireStaff } from '@/server/auth/session'
 
 export const metadata: Metadata = { title: 'Help' }
+// A session read makes it dynamic; it was static, which is how it came to be
+// served to everybody without anybody being asked who they were.
+export const dynamic = 'force-dynamic'
 
 
 const TASKS = [
@@ -18,7 +22,9 @@ const TASKS = [
   { title: 'Export for the accountant', body: 'Export on the inventory or sales page. You get a spreadsheet, honouring whatever filters you have applied.', href: '/sales' },
 ]
 
-export default function HelpPage() {
+export default async function HelpPage() {
+  await requireStaff()
+
   return (
     <>
       <PageHeader title="Help" description="How to get things done, and the shortcuts worth learning." />

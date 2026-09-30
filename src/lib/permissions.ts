@@ -177,3 +177,8 @@ export function canSeeCost(role: Role | null | undefined): boolean {
 export function isExternalRole(role: Role | null | undefined): boolean {
   return role === 'TRADER'
 }
+
+/** The page a role belongs on when it lands somewhere it should not be. */
+export function landingFor(role: Role | null | undefined): string {
+  return isExternalRole(role) ? '/catalogue' : '/today'
+}
