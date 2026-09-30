@@ -20,6 +20,13 @@ import '@/styles/globals.css'
 
 export const metadata: Metadata = {
   title: { default: 'One Street Watches', template: '%s · One Street Watches' },
+  /*
+   * The OS symbol, from `public/brand/`. Declared rather than dropped in as
+   * `app/icon.svg` so the file is the artwork itself and not something this
+   * repository drew: until it is there the browser falls back to the default,
+   * which is the honest state of affairs.
+   */
+  icons: { icon: [{ url: '/brand/monogram.svg', type: 'image/svg+xml' }] },
   description: 'Internal luxury watch inventory management for Bluecroft.',
   robots: { index: false, follow: false },
 }
