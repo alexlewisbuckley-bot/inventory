@@ -5,15 +5,21 @@ Two files, and the application picks them up with no code change.
 | File | What it is | Status | Where it appears |
 | --- | --- | --- | --- |
 | `wordmark.svg` | The stacked lockup — ONE STREET over WATCHES | **Supplied** | Sidebar, top bar, mobile sheet, sign-in panel, trade partner bar |
-| `monogram.svg` | The interlocking OS symbol | Still needed | Browser tab and bookmark, and the sidebar when it is collapsed |
+| `monogram.svg` | The interlocking OS symbol | **Supplied** | Browser tab and bookmark, and the sidebar when it is collapsed |
 
 Both are the supplied artwork from the brand guidelines. They are never
 retyped or redrawn — until one is here, the application typesets the name in
 the house manner instead, which is deliberately not a reproduction of the
 mark. The two are checked for independently, so having one and not the other
-is a supported state: the rail shows the real lockup today and falls back to
-the typeset name when collapsed, and the browser tab keeps its default icon
-rather than pointing at a file that is not there.
+is a supported state: whichever is missing falls back to the name, and the
+browser tab keeps its default icon rather than pointing at a file that is not
+there.
+
+That check happens **during the build**, in `next.config.mjs`, and is inlined
+into the bundle. It must not move back to request time: `public/` is served by
+the static layer and is not in the serverless bundle, so a runtime check
+answers "absent" in production no matter what is deployed. `tests/brand-assets.test.ts`
+holds that line.
 
 ## What they need to be
 
@@ -30,8 +36,9 @@ rather than pointing at a file that is not there.
 `width` and `height` on the root `<svg>` are fine — the component states both
 dimensions itself, because an image left to size itself is stretched by a
 column flex before its own proportions get a say. If the artwork's proportions
-change, the numbers in `Wordmark.tsx` change with it; the supplied wordmark is
-620×130 and is drawn at 162×34.
+change, the numbers in `Wordmark.tsx` change with it. The supplied wordmark is
+620×130, drawn at 162×34; the monogram is 216×250 — taller than it is wide —
+drawn at 28×32.
 
 Drop a file in this directory with exactly the name above. Nothing else to do:
 the `Wordmark` component swaps from the typeset name to the artwork on its

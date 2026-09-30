@@ -25,7 +25,9 @@ import { useBrandAssets } from './BrandProvider'
  * The supplied lockup is stacked — ONE STREET over WATCHES, 620×130 — so it
  * is set at 34×162, which fits the 232px rail with its 20px gutters. At the
  * 18px the typeset name wanted, the second line would have been four pixels
- * tall. Both dimensions are stated; see the note on the class list.
+ * tall. The monogram is the interlocking OS, 216×250 and so taller than it is
+ * wide, set at 32×28 for the 68px collapsed rail. Both dimensions are stated
+ * in each case; see the note on the class list.
  */
 export function Wordmark({ compact = false, onInverse = false, className }: {
   /** The collapsed rail: the monogram alone, or just "One Street" as text. */
@@ -57,7 +59,7 @@ export function Wordmark({ compact = false, onInverse = false, className }: {
           // intrinsic ratio ever gets a say: on the sign-in panel the 620×130
           // lockup came out 624×34, a letterboxed sliver in a box five times
           // too wide. 162 is 34 at the artwork's own ratio.
-          compact ? 'h-7 w-7' : 'h-[34px] w-[162px]',
+          compact ? 'h-8 w-[28px]' : 'h-[34px] w-[162px]',
           className,
         )}
       />
