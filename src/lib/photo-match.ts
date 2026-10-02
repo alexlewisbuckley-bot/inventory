@@ -33,6 +33,15 @@ export interface MatchCandidate {
   /** The reference — `126711CHNR`, `5167R`. Stored as the watch's model. */
   reference: string
   serial: string | null
+  /**
+   * What the watch is called in words — `Rolex Lady-Datejust`, `Audemars
+   * Piguet Royal Oak Concept`.
+   *
+   * Ranking only, never matching. Files do arrive called `Day-Date
+   * Masterpiece.png`, so a name has to count for something; but a brand is on
+   * forty watches at once, so it can never decide one.
+   */
+  name?: string | null
 }
 
 export type MatchReason = 'serial' | 'reference' | 'stock number' | 'closest reference'
@@ -260,4 +269,115 @@ export function guessKind(file: string): 'WATCH' | 'CARD' | 'DOCUMENT' {
     if (/^(doc|invoice|receipt|service|papers)/.test(word.toLowerCase())) return 'DOCUMENT'
   }
   return 'WATCH'
+}
+
+/* ------------------------------------------------------------------ *
+ * Ranking: what to offer when nothing matched.
+ *
+ * Refusing to guess is right, and on its own it is useless. A row that says
+ * "no match" and then hands over forty watches in stock-number order has
+ * moved the work rather than done it — the person still has to know which
+ * watch `336938.png` is, and the one piece of evidence they have, the
+ * filename, has been thrown away.
+ *
+ * So the filename is also used for a shortlist: not to decide, but to put the
+ * likely answers first. Nothing here is ever acted on automatically.
+ * ------------------------------------------------------------------ */
+
+/** Words in a filename that describe the photograph, not the watch. */
+const NOISE = new Set([
+  'IMG', 'IMAGE', 'PHOTO', 'PIC', 'PICTURE', 'DSC', 'DSCN', 'PXL', 'MVIMG',
+  'SCREENSHOT', 'SCAN', 'WHATSAPP', 'COPY', 'FINAL', 'EDIT', 'NEW',
+  'FRONT', 'BACK', 'SIDE', 'DIAL', 'CASE', 'CLASP', 'WRIST',
+  'CARD', 'WARRANTY', 'GUARANTEE', 'CERT', 'CERTIFICATE',
+  'DOC', 'DOCS', 'INVOICE', 'RECEIPT', 'SERVICE', 'PAPERS',
+  'JPG', 'JPEG', 'PNG', 'WEBP', 'HEIC', 'AT', 'AND', 'THE', 'OF',
+])
+
+function isNoise(word: string): boolean {
+  if (NOISE.has(word)) return true
+  // A year, which every camera and messaging app puts in a filename.
+  return /^(19|20)\d{2}$/.test(word)
+}
+
+/** How many characters two words open with in common. */
+function commonPrefix(a: string, b: string): number {
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i += 1
+  return i
+}
+
+/**
+ * How much one word in a filename looks like one way of naming a watch.
+ *
+ * Deliberately generous where guessing is free. The prefix term is what makes
+ * this useful on real references: `336938` and `336934` are the same watch in
+ * two metals, and somebody looking for the first will accept being shown the
+ * second — which is exactly the offer a shortlist is making.
+ */
+function affinity(token: string, key: string): number {
+  if (token.length < 3 || key.length < 3) return 0
+  if (token === key) return 100
+  const prefix = commonPrefix(token, key)
+  if (key.startsWith(token) || token.startsWith(key)) return 70 + Math.min(prefix, 12)
+  if (key.includes(token) || token.includes(key)) return 55
+  const gap = distance(token, key, 4)
+  if (gap <= 4) return Math.max(0, 50 - gap * 9 + prefix * 2)
+  return prefix >= 3 ? 10 + prefix * 3 : 0
+}
+
+/** Every way of naming one watch that somebody might have typed. */
+function searchKeys(candidate: MatchCandidate): string[] {
+  const keys = new Set<string>(referenceKeys(candidate.reference))
+  keys.add(flatten(candidate.stockNo))
+  if (candidate.serial) keys.add(flatten(candidate.serial))
+  for (const word of tokens(candidate.name ?? '')) {
+    if (word.length >= 3) keys.add(word)
+  }
+  return [...keys].filter(Boolean)
+}
+
+/**
+ * Below this a candidate is not worth offering. A shortlist of things that
+ * merely share a digit is a longer list, not a shorter one.
+ */
+const WORTH_OFFERING = 30
+
+export interface RankedCandidate<C extends MatchCandidate> {
+  candidate: C
+  score: number
+}
+
+/**
+ * The watches a piece of text most looks like it is talking about.
+ *
+ * Used twice: on a filename, to put a shortlist above the full list for a
+ * photograph nothing matched; and on whatever somebody types into the picker,
+ * so that searching finds a watch by reference, name, stock number or serial
+ * without caring which of those was typed.
+ */
+export function rankCandidates<C extends MatchCandidate>(
+  text: string,
+  candidates: readonly C[],
+  limit = 6,
+): RankedCandidate<C>[] {
+  const words = [...tokens(text)].filter((word) => !isNoise(word))
+  if (!words.length) return []
+
+  const ranked: RankedCandidate<C>[] = []
+  for (const candidate of candidates) {
+    const keys = searchKeys(candidate)
+    // The best a word does against any way of naming this watch.
+    const perWord = words
+      .map((word) => Math.max(0, ...keys.map((key) => affinity(word, key))))
+      .sort((a, b) => b - a)
+    if (!perWord.length || perWord[0]! < WORTH_OFFERING) continue
+    // Two words agreeing beats one word agreeing, which is what makes
+    // `Day-Date Masterpiece` land on the Day-Date Masterpiece.
+    const score = perWord[0]! + (perWord[1] ?? 0)
+    ranked.push({ candidate, score })
+  }
+
+  return ranked.sort((a, b) => b.score - a.score || String(a.candidate.stockNo).localeCompare(String(b.candidate.stockNo)))
+    .slice(0, limit)
 }

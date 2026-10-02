@@ -5,12 +5,12 @@ import { AlertTriangle, Check, ImagePlus, Loader2, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, Card, useToast } from '@/components/ui'
 import { downscaleImage } from '@/lib/downscale'
-import { guessKind, matchPhotos, type MatchCandidate } from '@/lib/photo-match'
+import { guessKind, matchPhoto, rankCandidates } from '@/lib/photo-match'
 import { IMAGE_KINDS, IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
+import { WatchPicker, type PickerWatch } from './WatchPicker'
 
-export interface PhotoCandidate extends MatchCandidate {
-  brandName: string
-}
+/** What the page hands over. The `name` used for ranking is built here. */
+export type PhotoCandidate = Omit<PickerWatch, 'name'>
 
 interface Pending {
   key: string
@@ -27,8 +27,15 @@ interface Pending {
    * from the certain ones, and sorted to where it will be looked at.
    */
   exact: boolean
-  /** The watches it was choosing between, when more than one answered. */
-  choices: string[]
+  /**
+   * The watches to put at the top of this row's picker.
+   *
+   * Either the ones that answered to the filename outright, or — when nothing
+   * did — the ones the filename most resembles. Refusing to guess is right;
+   * refusing to guess and then handing over forty watches in stock-number
+   * order has moved the work rather than done it.
+   */
+  suggested: string[]
   kind: ImageKind
   state: 'ready' | 'saving' | 'saved' | 'failed'
   error: string | null
@@ -55,27 +62,41 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
   const [pending, setPending] = useState<Pending[]>([])
   const [saving, setSaving] = useState(false)
   const [dragging, setDragging] = useState(false)
+  // Seventy-three photographs are rarely seventy-three different watches, so
+  // the last few chosen by hand stay one click away on every other row.
+  const [recent, setRecent] = useState<string[]>([])
 
-  const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates])
-  const label = (c: PhotoCandidate) =>
-    `${c.stockNo} · ${c.brandName} ${c.reference}${c.serial ? ` · ${c.serial}` : ''}`
+  // The pool the matcher and the picker both work from: the same watches,
+  // with a written name attached for ranking.
+  const pool = useMemo<PickerWatch[]>(
+    () => candidates.map((c) => ({ ...c, name: [c.brandName, c.nickname].filter(Boolean).join(' ') })),
+    [candidates],
+  )
 
   const accept = (files: FileList | null) => {
     const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'))
     if (!list.length) return
-    const matches = matchPhotos(list.map((f) => f.name), candidates)
     setPending((current) => [
       ...current,
       ...list.map((file, i) => {
-        const m = matches[i]!
+        const m = matchPhoto(file.name, pool)
+        // When it narrowed to a handful, those. Otherwise the shortlist it
+        // can infer from the filename, which is better than nothing and is
+        // all anybody has to go on.
+        const suggested = m.candidates.length > 1
+          ? m.candidates
+          : rankCandidates(file.name, pool).map((r) => r.candidate.id)
         return {
           key: `${file.name}-${file.size}-${Date.now()}-${i}`,
           file,
           preview: URL.createObjectURL(file),
           watchId: m.watchId,
-          note: m.note,
+          // Say where the answer is, not just that there isn't one.
+          note: m.watchId ? m.note : suggested.length
+            ? `${m.note} The likeliest are at the top of the list.`
+            : `${m.note} Search the list by reference or name.`,
           exact: m.exact,
-          choices: m.candidates,
+          suggested,
           // A guess from the filename, so that seventy-three of these are not
           // set one at a time. Changeable per row, and in bulk above.
           kind: guessKind(file.name),
@@ -222,10 +243,6 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
           <ul>
             {[...pending].sort((a, b) => TRIAGE(a) - TRIAGE(b)).map((p) => {
               const guess = Boolean(p.watchId) && !p.exact && p.state !== 'saved'
-              // When the filename named something real but several watches
-              // answered to it, the picker is narrowed to those. That turns
-              // "find it among forty" into "pick one of three".
-              const likely = p.choices.length > 1 ? p.choices : []
               return (
                 <li
                   key={p.key}
@@ -266,37 +283,21 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
                     {IMAGE_KINDS.map((k) => <option key={k} value={k}>{IMAGE_KIND_LABELS[k]}</option>)}
                   </select>
 
-                  <select
-                    value={p.watchId ?? ''}
-                    aria-label={`Watch for ${p.file.name}`}
-                    onChange={(e) => update(p.key, {
-                      watchId: e.target.value || null,
+                  <WatchPicker
+                    watches={pool}
+                    value={p.watchId}
+                    suggested={p.suggested}
+                    recent={recent}
+                    label={`Watch for ${p.file.name}`}
+                    flagged={!p.watchId || guess}
+                    disabled={p.state === 'saved'}
+                    onChange={(id) => {
                       // Chosen by hand is as exact as it gets, and it clears
                       // the flag the guess was carrying.
-                      exact: Boolean(e.target.value),
-                      note: e.target.value ? 'Chosen by hand' : 'No watch chosen.',
-                    })}
-                    disabled={p.state === 'saved'}
-                    className={cn(
-                      'h-9 w-[260px] shrink-0 cursor-pointer appearance-none rounded-sm border bg-surface-raised pl-2.5 pr-3 text-small text-content-primary outline-none focus:border-teal-500',
-                      p.watchId && !guess ? 'border-line-subtle' : 'border-state-warning',
-                    )}
-                  >
-                    <option value="">Choose a watch…</option>
-                    {likely.length > 0 && (
-                      <optgroup label="Matches the filename">
-                        {likely.map((id) => {
-                          const c = byId.get(id)
-                          return c ? <option key={id} value={id}>{label(c)}</option> : null
-                        })}
-                      </optgroup>
-                    )}
-                    <optgroup label={likely.length > 0 ? 'All stock' : 'Stock'}>
-                      {candidates.map((c) => (
-                        <option key={c.id} value={c.id}>{label(c)}</option>
-                      ))}
-                    </optgroup>
-                  </select>
+                      update(p.key, { watchId: id, exact: true, note: 'Chosen by hand' })
+                      setRecent((current) => [id, ...current.filter((x) => x !== id)].slice(0, 6))
+                    }}
+                  />
 
                   <div className="flex w-[90px] shrink-0 items-center justify-end gap-2">
                     {p.state === 'saving' && <Loader2 className="h-4 w-4 animate-spin text-content-secondary" aria-hidden />}

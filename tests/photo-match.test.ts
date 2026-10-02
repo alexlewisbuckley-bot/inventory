@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guessKind, matchPhoto, matchPhotos, type MatchCandidate } from '@/lib/photo-match'
+import { guessKind, matchPhoto, matchPhotos, rankCandidates, type MatchCandidate } from '@/lib/photo-match'
 
 /**
  * A warranty card attached to the wrong watch is a document asserting a
@@ -237,5 +237,57 @@ describe('guessing what an image is of', () => {
   it('assumes a photograph of the watch otherwise', () => {
     expect(guessKind('5167R.png')).toBe('WATCH')
     expect(guessKind('IMG_4821.jpeg')).toBe('WATCH')
+  })
+})
+
+/**
+ * Refusing to guess is right. Refusing to guess and then handing somebody
+ * forty watches in stock-number order has moved the work rather than done it,
+ * so the filename is used a second time — not to decide, but to order.
+ */
+describe('shortlisting what a filename probably means', () => {
+  const SHOP: MatchCandidate[] = [
+    { id: 'a', stockNo: '1405', reference: '326935', serial: null, name: 'Rolex Sky-Dweller' },
+    { id: 'b', stockNo: '1410', reference: '336934', serial: null, name: 'Rolex Sky-Dweller' },
+    { id: 'c', stockNo: '1411', reference: '128238', serial: '7416L8L7', name: 'Rolex Day-Date Masterpiece' },
+    { id: 'd', stockNo: '1412', reference: '26530ST', serial: null, name: 'Audemars Piguet Royal Oak Concept' },
+    { id: 'e', stockNo: '1429', reference: '179174', serial: null, name: 'Rolex Lady-Datejust' },
+  ]
+
+  it('puts the reference one character out at the top', () => {
+    const [first] = rankCandidates('336938.png', SHOP)
+    expect(first?.candidate.id).toBe('b')
+  })
+
+  it('shortlists on what the watch is called, not only its reference', () => {
+    expect(rankCandidates('Day-Date Masterpiece.png', SHOP)[0]?.candidate.id).toBe('c')
+    expect(rankCandidates('RO Concept.png', SHOP)[0]?.candidate.id).toBe('d')
+  })
+
+  /** Two words agreeing beats one word agreeing. */
+  it('prefers the watch that answers to more of the filename', () => {
+    const ranked = rankCandidates('Rolex Lady-Datejust.png', SHOP)
+    expect(ranked[0]?.candidate.id).toBe('e')
+  })
+
+  it('offers nothing for a filename that only describes the photograph', () => {
+    expect(rankCandidates('IMG_front.jpg', SHOP)).toEqual([])
+    expect(rankCandidates('WhatsApp Image 2026-09-30.jpeg', SHOP)).toEqual([])
+    expect(rankCandidates('warranty card back.png', SHOP)).toEqual([])
+  })
+
+  /** The same ranking powers the search box, so a serial has to work too. */
+  it('finds a watch by serial, by name and by stock number', () => {
+    expect(rankCandidates('7416L8L7', SHOP)[0]?.candidate.id).toBe('c')
+    expect(rankCandidates('lady', SHOP)[0]?.candidate.id).toBe('e')
+    expect(rankCandidates('1412', SHOP)[0]?.candidate.id).toBe('d')
+  })
+
+  it('keeps the shortlist short', () => {
+    expect(rankCandidates('Rolex', SHOP, 2).length).toBeLessThanOrEqual(2)
+  })
+
+  it('never offers a watch that resembles nothing in the name', () => {
+    expect(rankCandidates('ZZZZZZZZ.png', SHOP)).toEqual([])
   })
 })

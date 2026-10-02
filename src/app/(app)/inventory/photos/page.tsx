@@ -1,8 +1,8 @@
 import type { Metadata } from 'next'
-import { asc, eq, isNull } from 'drizzle-orm'
+import { asc, eq, isNull, sql } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
-import { brands, watches } from '@/server/db/schema'
+import { brands, watchImages, watches } from '@/server/db/schema'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PhotoIntake } from '@/components/inventory/PhotoIntake'
 
@@ -29,6 +29,14 @@ export default async function PhotoIntakePage() {
       // name photographs after, because it is what is written on the watch.
       reference: watches.model,
       brandName: brands.name,
+      // What it is called in words. Files do arrive named `Day-Date
+      // Masterpiece.png`, so the picker has to be able to rank on this.
+      nickname: watches.nickname,
+      // A watch with no photographs is the likeliest subject of a photograph
+      // somebody is uploading, which is how the picker orders its fallback.
+      photographs: sql<number>`(
+        select count(*)::int from ${watchImages} where ${watchImages.watchId} = ${watches.id}
+      )`,
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
