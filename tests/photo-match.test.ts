@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchPhoto, matchPhotos, type MatchCandidate } from '@/lib/photo-match'
+import { guessKind, matchPhoto, matchPhotos, type MatchCandidate } from '@/lib/photo-match'
 
 /**
  * A warranty card attached to the wrong watch is a document asserting a
@@ -8,11 +8,11 @@ import { matchPhoto, matchPhotos, type MatchCandidate } from '@/lib/photo-match'
  * Annoyed is acceptable. Alarmed is not.
  */
 const STOCK: MatchCandidate[] = [
-  { id: 'w1', stockNo: '1378', serial: '466787F0' },
-  { id: 'w2', stockNo: '1377', serial: '0964K236' },
-  { id: 'w3', stockNo: '1376', serial: 'G696036' },
-  { id: 'w4', stockNo: '1375', serial: null },      // booked in without one
-  { id: 'w5', stockNo: '20260213', serial: null },  // a stock number that looks like a date
+  { id: 'w1', stockNo: '1378', reference: '126711CHNR', serial: '466787F0' },
+  { id: 'w2', stockNo: '1377', reference: '179171', serial: '0964K236' },
+  { id: 'w3', stockNo: '1376', reference: '116244', serial: 'G696036' },
+  { id: 'w4', stockNo: '1375', reference: '5167R', serial: null },       // booked in without one
+  { id: 'w5', stockNo: '20260213', reference: '126284RBR', serial: null }, // stock number that looks like a date
 ]
 
 describe('matching a photograph to a watch', () => {
@@ -20,6 +20,7 @@ describe('matching a photograph to a watch', () => {
     const m = matchPhoto('466787F0.jpg', STOCK)
     expect(m.watchId).toBe('w1')
     expect(m.reason).toBe('serial')
+    expect(m.exact).toBe(true)
   })
 
   it('finds the serial appended to whatever the phone called it', () => {
@@ -30,6 +31,65 @@ describe('matching a photograph to a watch', () => {
   it('ignores case and separators in the serial', () => {
     expect(matchPhoto('466787-f0.jpg', STOCK).watchId).toBe('w1')
     expect(matchPhoto('g696036.JPG', STOCK).watchId).toBe('w3')
+  })
+
+  /**
+   * The case this was rebuilt for. Seventy-three photographs arrived named
+   * after the reference, because the reference is what is written on the
+   * watch and on the bag it came in — and every one of them went unmatched.
+   */
+  it('matches on the reference, which is what people actually name files after', () => {
+    const m = matchPhoto('5167R.png', STOCK)
+    expect(m.watchId).toBe('w4')
+    expect(m.reason).toBe('reference')
+    expect(m.exact).toBe(true)
+  })
+
+  it('finds the reference alongside anything else in the name', () => {
+    expect(matchPhoto('IMG_5167R-front.jpg', STOCK).watchId).toBe('w4')
+    expect(matchPhoto('126711CHNR (2).jpeg', STOCK).watchId).toBe('w1')
+  })
+
+  /** Several of one reference in stock is ordinary. Then this narrows only. */
+  it('refuses when more than one watch has that reference, and names them', () => {
+    const twins: MatchCandidate[] = [
+      { id: 'a', stockNo: '900', reference: '179383', serial: null },
+      { id: 'b', stockNo: '901', reference: '179383', serial: null },
+    ]
+    const m = matchPhoto('179383-1.jpg', twins)
+    expect(m.watchId).toBeNull()
+    expect(m.candidates).toEqual(['a', 'b'])
+    expect(m.note).toMatch(/900/)
+    expect(m.note).toMatch(/901/)
+  })
+
+  /**
+   * The reference field is free text and is not always only the reference:
+   * real records read `Explorer II 343591`, and nobody names the file that.
+   */
+  it('finds the reference inside a reference written as a phrase', () => {
+    const wordy: MatchCandidate[] = [
+      { id: 'a', stockNo: '800', reference: 'Explorer II 343591', serial: null },
+      { id: 'b', stockNo: '801', reference: 'Submariner 116610LV', serial: null },
+    ]
+    expect(matchPhoto('343591.jpg', wordy).watchId).toBe('a')
+    expect(matchPhoto('IMG_116610LV_2.jpg', wordy).watchId).toBe('b')
+  })
+
+  /** `II`, `GMT`, `LTD`: on half the stock, so worth nothing as a key. */
+  it('ignores the short words in a reference written as a phrase', () => {
+    const wordy: MatchCandidate[] = [
+      { id: 'a', stockNo: '800', reference: 'Explorer II 343591', serial: null },
+      { id: 'b', stockNo: '801', reference: 'GMT Master II 126711', serial: null },
+    ]
+    expect(matchPhoto('II.jpg', wordy).watchId).toBeNull()
+    expect(matchPhoto('GMT-front.jpg', wordy).watchId).toBeNull()
+  })
+
+  it('prefers the serial over the reference when the name carries both', () => {
+    const m = matchPhoto('126711CHNR_0964K236.jpg', STOCK)
+    expect(m.watchId).toBe('w2')
+    expect(m.reason).toBe('serial')
   })
 
   it('falls back to the stock number when there is no serial', () => {
@@ -46,7 +106,7 @@ describe('matching a photograph to a watch', () => {
   it('does not read a stock number out of the middle of a longer number', () => {
     const m = matchPhoto('IMG_20261378045.jpg', STOCK)
     expect(m.watchId).toBeNull()
-    expect(m.note).toMatch(/no serial or stock number/i)
+    expect(m.note).toMatch(/no serial, reference or stock number/i)
   })
 
   it('still matches a stock number that happens to look like a date', () => {
@@ -55,8 +115,8 @@ describe('matching a photograph to a watch', () => {
 
   it('refuses when one serial is on more than one watch', () => {
     const duplicated: MatchCandidate[] = [
-      { id: 'a', stockNo: '900', serial: 'SAME123' },
-      { id: 'b', stockNo: '901', serial: 'SAME123' },
+      { id: 'a', stockNo: '900', reference: '16610', serial: 'SAME123' },
+      { id: 'b', stockNo: '901', reference: '214270', serial: 'SAME123' },
     ]
     const m = matchPhoto('SAME123.jpg', duplicated)
     expect(m.watchId).toBeNull()
@@ -72,9 +132,9 @@ describe('matching a photograph to a watch', () => {
 
   it('never matches on a blank or very short serial', () => {
     const short: MatchCandidate[] = [
-      { id: 'a', stockNo: '900', serial: 'A1' },
-      { id: 'b', stockNo: '901', serial: '' },
-      { id: 'c', stockNo: '902', serial: null },
+      { id: 'a', stockNo: '900', reference: '16610', serial: 'A1' },
+      { id: 'b', stockNo: '901', reference: '214270', serial: '' },
+      { id: 'c', stockNo: '902', reference: '114060', serial: null },
     ]
     // "A1" appears inside this filename, and must still not be used.
     expect(matchPhoto('CARD-A1B2C3.jpg', short).watchId).toBeNull()
@@ -93,7 +153,7 @@ describe('matching a photograph to a watch', () => {
 
   /** The database stores the stock number as an integer, not a string. */
   it('matches a numeric stock number the same as a written one', () => {
-    const numeric: MatchCandidate[] = [{ id: 'n', stockNo: 1378, serial: null }]
+    const numeric: MatchCandidate[] = [{ id: 'n', stockNo: 1378, reference: '5167R', serial: null }]
     expect(matchPhoto('IMG_1378.jpg', numeric).watchId).toBe('n')
     expect(matchPhoto('IMG_20261378045.jpg', numeric).watchId).toBeNull()
   })
@@ -108,5 +168,74 @@ describe('matching a photograph to a watch', () => {
   it('allows two photographs to land on one watch', () => {
     const out = matchPhotos(['466787F0-front.jpg', '466787F0-back.jpg'], STOCK)
     expect(out.map((m) => m.watchId)).toEqual(['w1', 'w1'])
+  })
+})
+
+describe('offering the closest match', () => {
+  it('offers the nearest reference when nothing matches outright, and flags it', () => {
+    const m = matchPhoto('5167G.png', STOCK)
+    expect(m.watchId).toBe('w4')
+    expect(m.reason).toBe('closest reference')
+    expect(m.exact).toBe(false)
+    expect(m.note).toMatch(/closest match/i)
+  })
+
+  /**
+   * A reference buried inside a longer word is a coincidence as often as a
+   * typo, so it is offered but never claimed.
+   */
+  it('treats a reference inside a longer word as a guess, not a fact', () => {
+    const m = matchPhoto('IMG_5167RX.jpg', STOCK)
+    expect(m.watchId).toBe('w4')
+    expect(m.exact).toBe(false)
+  })
+
+  /** Equally near two watches is no answer at all. */
+  it('offers nothing when two references are equally close', () => {
+    const pair: MatchCandidate[] = [
+      { id: 'a', stockNo: '900', reference: '5167R', serial: null },
+      { id: 'b', stockNo: '901', reference: '5167G', serial: null },
+    ]
+    const m = matchPhoto('5167P.png', pair)
+    expect(m.watchId).toBeNull()
+  })
+
+  it('does not stretch to a reference that is simply different', () => {
+    expect(matchPhoto('ZZZZZZ.png', STOCK).watchId).toBeNull()
+    expect(matchPhoto('front.jpg', STOCK).watchId).toBeNull()
+  })
+
+  /** Camera noise is not a near miss for anything. */
+  it('never treats the camera prefix or a short word as a reference', () => {
+    const m = matchPhoto('IMG_01.jpg', STOCK)
+    expect(m.watchId).toBeNull()
+  })
+
+  /**
+   * The reason a run of digits is never offered as a near match. References
+   * here are six digits and so is the time in a phone's filename, so
+   * `IMG_20260213_112233` is one character away from reference 116233.
+   */
+  it('does not offer a watch because of what time the photograph was taken', () => {
+    const numeric: MatchCandidate[] = [{ id: 'a', stockNo: '800', reference: '116233', serial: null }]
+    expect(matchPhoto('IMG_20260213_112233.jpg', numeric).watchId).toBeNull()
+    expect(matchPhoto('IMG_20260213_112233.jpg', numeric).exact).toBe(false)
+    // The reference spelled correctly still matches, exactly.
+    expect(matchPhoto('IMG_20260213_116233.jpg', numeric).watchId).toBe('a')
+  })
+})
+
+describe('guessing what an image is of', () => {
+  it('reads the filename for a card or a document', () => {
+    expect(guessKind('5167R-warranty.jpg')).toBe('CARD')
+    expect(guessKind('IMG_01_card.png')).toBe('CARD')
+    expect(guessKind('5167R-guarantee-cert.jpg')).toBe('CARD')
+    expect(guessKind('5167R invoice.pdf.jpg')).toBe('DOCUMENT')
+    expect(guessKind('service-papers-5167R.png')).toBe('DOCUMENT')
+  })
+
+  it('assumes a photograph of the watch otherwise', () => {
+    expect(guessKind('5167R.png')).toBe('WATCH')
+    expect(guessKind('IMG_4821.jpeg')).toBe('WATCH')
   })
 })

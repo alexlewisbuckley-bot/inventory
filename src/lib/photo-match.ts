@@ -1,125 +1,263 @@
 /**
  * Matching a photograph to the watch it belongs to, by its filename.
  *
- * A warranty card is provenance. Attaching one to the wrong watch is not an
- * untidy gallery, it is a document asserting that this watch has a history it
- * does not have — so everything here is built to refuse rather than to guess.
- * A proposal is only ever a proposal: the caller shows it to somebody before
- * anything is written.
+ * A photograph on the wrong watch is a listing showing a buyer something
+ * they are not being sold, and on a warranty card it is a document asserting
+ * a history that watch does not have. So everything here is built to refuse
+ * rather than to guess, and a proposal is only ever a proposal: the caller
+ * shows it to somebody before anything is written.
  *
- * The rules, in order:
+ * Three keys, in order of how much they pin a watch down:
  *
- *   1. A serial found anywhere in the filename wins. Serials are long and
- *      distinctive, and phones name files `IMG_4821`, so the serial is
- *      usually appended rather than used alone.
- *   2. Otherwise a stock number, but only when it stands apart from the
- *      digits around it — `IMG_1378.jpg` means the stock number, `IMG_20260213.jpg`
- *      does not, and the difference matters when every phone photograph is a
- *      long run of digits.
- *   3. Anything ambiguous matches nothing. Two watches sharing a serial, or a
- *      filename naming two different watches, is a question for a person.
+ *   1. The serial, which identifies exactly one watch, found anywhere in the
+ *      name — phones produce `IMG_4821`, so a serial is usually appended
+ *      rather than used alone, and it may be written with separators.
+ *   2. The reference. This is what people actually name files after, because
+ *      it is what is written on the watch and on the bag it came in. It is
+ *      usually but not always unique: several of one reference in stock is
+ *      ordinary, and then this narrows rather than decides.
+ *   3. The stock number.
+ *
+ * Reference and stock number are matched as whole words rather than as
+ * substrings. `1378` inside `IMG_20261378045` is a coincidence, and every
+ * photograph off a phone is a long run of digits, so substring matching on a
+ * short number attaches pictures to watches at random. The serial is long
+ * and distinctive enough to be safe as a substring, which is what lets a
+ * hyphenated one still be found.
  */
 
 export interface MatchCandidate {
   id: string
   /** Numeric in the database, written as text in a filename. Both accepted. */
   stockNo: string | number
+  /** The reference — `126711CHNR`, `5167R`. Stored as the watch's model. */
+  reference: string
   serial: string | null
 }
 
-export type MatchReason = 'serial' | 'stock number'
+export type MatchReason = 'serial' | 'reference' | 'stock number' | 'closest reference'
 
 export interface PhotoMatch {
   file: string
+  /** Set only when exactly one watch answers. */
   watchId: string | null
   reason: MatchReason | null
-  /** Why nothing was proposed, in words a person can act on. */
+  /**
+   * Whether the filename actually said this watch, or merely came close.
+   *
+   * A near match is still proposed — a reference typed one character out is
+   * far more useful found than not — but it is never quietly treated as
+   * fact. The caller marks these for a second look.
+   */
+  exact: boolean
+  /** Why it decided what it did, in words somebody can act on. */
   note: string | null
+  /**
+   * The watches it was choosing between.
+   *
+   * Populated when the filename named something real but more than one watch
+   * answered to it. The caller narrows its picker to these, which turns
+   * "find it among forty" into "pick one of three".
+   */
+  candidates: string[]
 }
 
 /**
- * A serial shorter than this is not used for matching.
+ * A serial shorter than this is not used.
  *
- * Short serials appear by coincidence inside dates, phone counters and
- * reference numbers. Rolex serials are eight characters; anything much
- * shorter in the data is likely a partial record, and a partial record is not
- * worth a wrong attachment.
+ * Short ones appear by coincidence inside dates, phone counters and
+ * references. Rolex serials are eight characters; anything much shorter in
+ * the data is a partial record, and a partial record is not worth a wrong
+ * attachment.
  */
 const MIN_SERIAL_LENGTH = 5
 
-/** Upper-cased, with every separator removed, so `466787-F0` finds `466787F0`. */
+/** Upper-cased with every separator removed, so `466787-F0` finds `466787F0`. */
 function flatten(value: string | number): string {
   return String(value).toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
-function withoutExtension(file: string): string {
+/** The filename split into whole words: `IMG_5167R-front` → IMG, 5167R, FRONT. */
+function tokens(file: string): Set<string> {
   const cut = file.lastIndexOf('.')
-  return cut > 0 ? file.slice(0, cut) : file
+  const stem = cut > 0 ? file.slice(0, cut) : file
+  return new Set(stem.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean))
 }
 
 /**
- * Does this stock number stand on its own in the filename?
+ * The shortest word in a reference that is long enough to be the reference.
  *
- * `1378` inside `IMG_20260213` is a coincidence; inside `IMG_1378` it is the
- * stock number. The test is the characters either side: a digit next to it
- * means it is part of a longer number, so it does not count.
+ * Four, because references go down to five characters and a typed one can be
+ * a character out, while three-character words in this field are `II`, `GMT`
+ * and `LTD` — present on half the stock and therefore worth nothing.
  */
-function standsAlone(haystack: string, needle: string): boolean {
-  let from = 0
-  for (;;) {
-    const at = haystack.indexOf(needle, from)
-    if (at === -1) return false
-    const before = at === 0 ? '' : haystack[at - 1]!
-    const after = haystack[at + needle.length] ?? ''
-    if (!/\d/.test(before) && !/\d/.test(after)) return true
-    from = at + 1
+const MIN_REFERENCE_WORD = 4
+
+/**
+ * Every way one reference could legitimately be written in a filename.
+ *
+ * The field is free text and is not always only the reference: real records
+ * read `Explorer II 343591`, where the part anyone would name a file after is
+ * one word inside it. So the whole thing counts, and so does each word of it
+ * long enough to stand alone.
+ */
+function referenceKeys(reference: string): string[] {
+  const whole = flatten(reference)
+  if (!whole) return []
+  const keys = new Set<string>([whole])
+  for (const word of tokens(reference)) {
+    if (word.length >= MIN_REFERENCE_WORD) keys.add(word)
   }
+  return [...keys]
+}
+
+function decide(
+  file: string,
+  reason: MatchReason,
+  found: readonly MatchCandidate[],
+  describe: (found: readonly MatchCandidate[]) => string,
+): PhotoMatch | null {
+  if (found.length === 0) return null
+  if (found.length === 1) {
+    return {
+      file, watchId: found[0]!.id, reason, exact: true,
+      note: `Matched on ${reason}`, candidates: [found[0]!.id],
+    }
+  }
+  return { file, watchId: null, reason: null, exact: false, note: describe(found), candidates: found.map((c) => c.id) }
 }
 
 /** Propose a watch for one filename, or explain why it could not. */
 export function matchPhoto(file: string, candidates: readonly MatchCandidate[]): PhotoMatch {
-  const flat = flatten(withoutExtension(file))
-  if (!flat) return { file, watchId: null, reason: null, note: 'The filename has nothing to match on.' }
+  const flat = flatten(file.replace(/\.[^.]+$/, ''))
+  const words = tokens(file)
+  if (!flat) {
+    return {
+      file, watchId: null, reason: null, exact: false, candidates: [],
+      note: 'The filename has nothing to match on.',
+    }
+  }
 
-  // --- 1. Serial -----------------------------------------------------------
   const bySerial = candidates.filter((c) => {
     const serial = c.serial ? flatten(c.serial) : ''
     return serial.length >= MIN_SERIAL_LENGTH && flat.includes(serial)
   })
-  if (bySerial.length === 1) {
-    return { file, watchId: bySerial[0]!.id, reason: 'serial', note: null }
-  }
-  if (bySerial.length > 1) {
+  const serialMatch = decide(file, 'serial', bySerial, (found) =>
+    `That serial is on ${found.length} watches (${found.map((c) => c.stockNo).join(', ')}). Choose one.`)
+  if (serialMatch) return serialMatch
+
+  const byReference = candidates.filter((c) => referenceKeys(c.reference).some((key) => words.has(key)))
+  const referenceMatch = decide(file, 'reference', byReference, (found) =>
+    `${found.length} watches answer to that reference (${found.map((c) => c.stockNo).join(', ')}). Choose one.`)
+  if (referenceMatch) return referenceMatch
+
+  const byStock = candidates.filter((c) => words.has(flatten(c.stockNo)))
+  const stockMatch = decide(file, 'stock number', byStock, (found) =>
+    `The filename could mean stock ${found.map((c) => c.stockNo).join(' or ')}. Choose one.`)
+  if (stockMatch) return stockMatch
+
+  // Nothing matched outright. Rather than give up, offer the nearest
+  // reference — a filename a character out from the real thing is far more
+  // useful found than not — and say plainly that it is a guess.
+  const near = nearestReference(words, candidates)
+  if (near) {
     return {
-      file, watchId: null, reason: null,
-      note: `That serial is on ${bySerial.length} watches (${bySerial.map((c) => c.stockNo).join(', ')}). Choose one.`,
+      file, watchId: near.candidate.id, reason: 'closest reference', exact: false,
+      note: `Closest match to "${near.token}" — check this`,
+      candidates: [near.candidate.id],
     }
   }
 
-  // --- 2. Stock number -----------------------------------------------------
-  const byStock = candidates.filter((c) => standsAlone(flat, flatten(c.stockNo)))
-  if (byStock.length === 1) {
-    return { file, watchId: byStock[0]!.id, reason: 'stock number', note: null }
+  return {
+    file, watchId: null, reason: null, exact: false, candidates: [],
+    note: 'No serial, reference or stock number in the filename.',
   }
-  if (byStock.length > 1) {
-    return {
-      file, watchId: null, reason: null,
-      note: `The filename could mean stock ${byStock.map((c) => c.stockNo).join(' or ')}. Choose one.`,
-    }
-  }
+}
 
-  return { file, watchId: null, reason: null, note: 'No serial or stock number in the filename.' }
+/** Edit distance, capped: anything past the cap is simply "too far". */
+function distance(a: string, b: string, cap: number): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i]
+    let best = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      const value = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + cost)
+      row.push(value)
+      if (value < best) best = value
+    }
+    if (best > cap) return cap + 1
+    previous = row
+  }
+  return previous[b.length]!
 }
 
 /**
- * Match a batch, and refuse to put two photographs on the same watch by
- * accident.
+ * The nearest reference to any word in the filename, when one is close enough
+ * to be worth offering.
  *
- * Several cards legitimately belong to one watch — front and back — so this
- * does not forbid it. It is the caller's grid that shows the duplication,
- * which is the only place a person can tell "front and back" from "I have
- * named two different cards after the same serial".
+ * How close is "close enough" scales with length, because one wrong character
+ * in a five-character reference is a fifth of it and could as easily be a
+ * different watch, while two in a ten-character one is plainly a typo. A tie
+ * is no answer at all: if two references are equally near, neither is
+ * offered.
  */
+function nearestReference(
+  words: Set<string>,
+  candidates: readonly MatchCandidate[],
+): { candidate: MatchCandidate; token: string } | null {
+  let best: { candidate: MatchCandidate; token: string; score: number } | null = null
+  let tied = false
+
+  for (const token of words) {
+    // Words too short to be a reference, or obvious camera noise, are skipped.
+    if (token.length < MIN_REFERENCE_WORD || token === 'IMG' || token === 'PHOTO') continue
+    // A near match is only ever offered for a word with a letter in it, and
+    // this is the rule that earns its keep. References here are six digits —
+    // 116233, 179383 — and so is the time in every filename a phone
+    // produces: `IMG_20260213_112233` is one character from 116233. There is
+    // no way to tell that apart from a typed reference, so a run of digits is
+    // matched exactly or not at all. The cost is a mistyped numeric reference
+    // going unfound; the alternative is attaching photographs to watches
+    // because of what time they were taken.
+    if (!/[A-Z]/.test(token)) continue
+    for (const candidate of candidates) {
+      for (const reference of referenceKeys(candidate.reference)) {
+        const cap = Math.max(1, Math.floor(Math.max(reference.length, token.length) / 3))
+        const score = distance(token, reference, cap)
+        if (score > cap || score === 0) continue
+        if (!best || score < best.score) { best = { candidate, token, score }; tied = false }
+        else if (score === best.score && candidate.id !== best.candidate.id) tied = true
+      }
+    }
+  }
+  if (!best || tied) return null
+  return { candidate: best.candidate, token: best.token }
+}
+
+/** Match a batch, keeping the order it was given. */
 export function matchPhotos(files: readonly string[], candidates: readonly MatchCandidate[]): PhotoMatch[] {
   return files.map((file) => matchPhoto(file, candidates))
+}
+
+/**
+ * What kind of image a filename is announcing itself to be.
+ *
+ * A guess, and a weak one, but the alternative is making somebody set the
+ * same value seventy-three times. Anything that does not say otherwise is
+ * taken to be a photograph of the watch, which is what most of them are.
+ */
+export function guessKind(file: string): 'WATCH' | 'CARD' | 'DOCUMENT' {
+  // Whole words, not substrings: `IMG_01_card` has no word boundary before
+  // `card` as a regular expression counts one, because an underscore is a
+  // word character — and an underscore is how most cameras separate things.
+  const words = tokens(file)
+  for (const word of words) {
+    if (/^(card|warranty|guarantee|cert)/.test(word.toLowerCase())) return 'CARD'
+  }
+  for (const word of words) {
+    if (/^(doc|invoice|receipt|service|papers)/.test(word.toLowerCase())) return 'DOCUMENT'
+  }
+  return 'WATCH'
 }

@@ -25,7 +25,9 @@ export default async function PhotoIntakePage() {
       id: watches.id,
       stockNo: watches.stockNo,
       serial: watches.serial,
-      model: watches.model,
+      // `model` is the reference — 126711CHNR, 5167R — and it is what people
+      // name photographs after, because it is what is written on the watch.
+      reference: watches.model,
       brandName: brands.name,
     })
     .from(watches)
