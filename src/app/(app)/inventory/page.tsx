@@ -167,6 +167,11 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                   Import
                 </LinkButton>
               )}
+              {capabilities['watch:update'] && (
+                <LinkButton href="/inventory/photos" variant="ghost" icon={<ImagePlus className="h-4 w-4" />}>
+                  Photographs
+                </LinkButton>
+              )}
               {capabilities['report:export'] && (
                 <LinkButton href={exportHref} variant="secondary" icon={<Download className="h-4 w-4" />}>
                   Export
