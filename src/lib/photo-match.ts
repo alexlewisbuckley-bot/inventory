@@ -48,27 +48,35 @@ export type MatchReason = 'serial' | 'reference' | 'stock number' | 'closest ref
 
 export interface PhotoMatch {
   file: string
-  /** Set only when exactly one watch answers. */
-  watchId: string | null
+  /**
+   * The watches this photograph is proposed for. Nought, one, or several.
+   *
+   * Several is not a failure and never was. A reference is a model, not a
+   * watch: three Lady-Datejust 179383 in stock is ordinary, and one
+   * photograph called `179383.png` is a photograph of all three as often as
+   * it is of one. Refusing to decide and handing back a single-choice picker
+   * made the common case impossible to express, so the proposal is a set.
+   */
+  watchIds: string[]
   reason: MatchReason | null
   /**
-   * Whether the filename actually said this watch, or merely came close.
+   * Whether the filename actually said these watches, or merely came close.
    *
    * A near match is still proposed — a reference typed one character out is
    * far more useful found than not — but it is never quietly treated as
-   * fact. The caller marks these for a second look.
+   * fact. So is a reference shared by several watches: all of them are
+   * proposed, and all of them are flagged for a second look.
    */
   exact: boolean
   /** Why it decided what it did, in words somebody can act on. */
   note: string | null
   /**
-   * The watches it was choosing between.
+   * Ranked watches to offer when the filename did not name one.
    *
-   * Populated when the filename named something real but more than one watch
-   * answered to it. The caller narrows its picker to these, which turns
-   * "find it among forty" into "pick one of three".
+   * Refusing to guess is right; refusing to guess and then handing over forty
+   * watches in stock-number order has moved the work rather than done it.
    */
-  candidates: string[]
+  shortlist: string[]
 }
 
 /**
@@ -120,20 +128,33 @@ function referenceKeys(reference: string): string[] {
   return [...keys]
 }
 
+/**
+ * Turn a set of watches that answered to one key into a proposal.
+ *
+ * `fanOut` says what several of them means. For a reference it means all of
+ * them, because a reference names a model: a photograph of a 179383 is a
+ * photograph of every 179383 in stock, and making somebody attach it three
+ * times — or pick one and be wrong — is the thing that did not work. For a
+ * serial it means neither: a serial identifies one watch, so two watches
+ * sharing one is bad data, and guessing between them is how a warranty card
+ * ends up asserting a history the watch does not have.
+ */
 function decide(
   file: string,
   reason: MatchReason,
   found: readonly MatchCandidate[],
+  fanOut: boolean,
   describe: (found: readonly MatchCandidate[]) => string,
 ): PhotoMatch | null {
   if (found.length === 0) return null
+  const ids = found.map((c) => c.id)
   if (found.length === 1) {
-    return {
-      file, watchId: found[0]!.id, reason, exact: true,
-      note: `Matched on ${reason}`, candidates: [found[0]!.id],
-    }
+    return { file, watchIds: ids, reason, exact: true, note: `Matched on ${reason}`, shortlist: ids }
   }
-  return { file, watchId: null, reason: null, exact: false, note: describe(found), candidates: found.map((c) => c.id) }
+  if (fanOut) {
+    return { file, watchIds: ids, reason, exact: false, note: describe(found), shortlist: ids }
+  }
+  return { file, watchIds: [], reason: null, exact: false, note: describe(found), shortlist: ids }
 }
 
 /** Propose a watch for one filename, or explain why it could not. */
@@ -142,7 +163,7 @@ export function matchPhoto(file: string, candidates: readonly MatchCandidate[]):
   const words = tokens(file)
   if (!flat) {
     return {
-      file, watchId: null, reason: null, exact: false, candidates: [],
+      file, watchIds: [], reason: null, exact: false, shortlist: [],
       note: 'The filename has nothing to match on.',
     }
   }
@@ -151,17 +172,19 @@ export function matchPhoto(file: string, candidates: readonly MatchCandidate[]):
     const serial = c.serial ? flatten(c.serial) : ''
     return serial.length >= MIN_SERIAL_LENGTH && flat.includes(serial)
   })
-  const serialMatch = decide(file, 'serial', bySerial, (found) =>
+  const serialMatch = decide(file, 'serial', bySerial, false, (found) =>
     `That serial is on ${found.length} watches (${found.map((c) => c.stockNo).join(', ')}). Choose one.`)
   if (serialMatch) return serialMatch
 
   const byReference = candidates.filter((c) => referenceKeys(c.reference).some((key) => words.has(key)))
-  const referenceMatch = decide(file, 'reference', byReference, (found) =>
-    `${found.length} watches answer to that reference (${found.map((c) => c.stockNo).join(', ')}). Choose one.`)
+  const referenceMatch = decide(file, 'reference', byReference, true, (found) =>
+    found.length === 2
+      ? 'Both watches with this reference — untick either it is not of'
+      : `All ${found.length} watches with this reference — untick any it is not of`)
   if (referenceMatch) return referenceMatch
 
   const byStock = candidates.filter((c) => words.has(flatten(c.stockNo)))
-  const stockMatch = decide(file, 'stock number', byStock, (found) =>
+  const stockMatch = decide(file, 'stock number', byStock, false, (found) =>
     `The filename could mean stock ${found.map((c) => c.stockNo).join(' or ')}. Choose one.`)
   if (stockMatch) return stockMatch
 
@@ -171,14 +194,15 @@ export function matchPhoto(file: string, candidates: readonly MatchCandidate[]):
   const near = nearestReference(words, candidates)
   if (near) {
     return {
-      file, watchId: near.candidate.id, reason: 'closest reference', exact: false,
+      file, watchIds: [near.candidate.id], reason: 'closest reference', exact: false,
       note: `Closest match to "${near.token}" — check this`,
-      candidates: [near.candidate.id],
+      shortlist: [near.candidate.id],
     }
   }
 
   return {
-    file, watchId: null, reason: null, exact: false, candidates: [],
+    file, watchIds: [], reason: null, exact: false,
+    shortlist: rankCandidates(file, candidates).map((r) => r.candidate.id),
     note: 'No serial, reference or stock number in the filename.',
   }
 }

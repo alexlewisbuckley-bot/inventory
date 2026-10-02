@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, ChevronsUpDown, Search } from 'lucide-react'
+import { Camera, Check, ChevronsUpDown, Plus, Search } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { rankCandidates, type MatchCandidate } from '@/lib/photo-match'
 
@@ -49,10 +49,11 @@ const PANEL_MIN_HEIGHT = 180
  * reference, a name, a stock number or a serial.
  */
 export function WatchPicker({
-  watches, value, onChange, suggested, recent, label, flagged, disabled,
+  watches, assigned, onChange, suggested, recent, label, flagged, disabled, variant = 'field',
 }: {
   watches: PickerWatch[]
-  value: string | null
+  /** Every watch this photograph already goes to. Ticked in the list. */
+  assigned: string[]
   onChange: (id: string) => void
   /** Ids the filename points at, best first. */
   suggested: string[]
@@ -62,6 +63,12 @@ export function WatchPicker({
   /** Draw the control as needing attention. */
   flagged?: boolean
   disabled?: boolean
+  /**
+   * `field` is a control showing its value. `add` is a button that adds
+   * another watch to a photograph that may already have several — the shape
+   * the list needed once one photograph could belong to more than one watch.
+   */
+  variant?: 'field' | 'add'
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -72,7 +79,8 @@ export function WatchPicker({
   const list = useRef<HTMLUListElement>(null)
 
   const byId = useMemo(() => new Map(watches.map((w) => [w.id, w])), [watches])
-  const selected = value ? byId.get(value) ?? null : null
+  const chosen = useMemo(() => new Set(assigned), [assigned])
+  const selected = assigned.length === 1 ? byId.get(assigned[0]!) ?? null : null
 
   const groups = useMemo<Group[]>(() => {
     const term = query.trim()
@@ -169,7 +177,13 @@ export function WatchPicker({
     list.current?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [active, open])
 
-  const choose = (id: string) => { onChange(id); setOpen(false) }
+  const choose = (id: string) => {
+    onChange(id)
+    // A photograph can belong to several watches, so the list stays up for
+    // the second and third: closing it would make the common case — all
+    // three of one reference — three round trips.
+    if (variant !== 'add') setOpen(false)
+  }
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -190,25 +204,46 @@ export function WatchPicker({
 
   return (
     <div ref={container} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={label}
-        className={cn(
-          'flex h-9 w-[280px] items-center justify-between gap-2 rounded-sm border bg-surface-raised pl-2.5 pr-2 text-left text-small outline-none transition-colors',
-          'focus-visible:border-teal-500 disabled:cursor-default disabled:opacity-70',
-          flagged ? 'border-state-warning' : 'border-line-subtle hover:border-line-strong',
-          selected ? 'text-content-primary' : 'text-content-secondary',
-        )}
-      >
-        <span className="truncate">
-          {selected ? <WatchLine watch={selected} /> : 'Choose a watch…'}
-        </span>
-        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden />
-      </button>
+      {variant === 'add' ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={label}
+          className={cn(
+            'inline-flex h-6 items-center gap-1 rounded-full border border-dashed px-2 text-caption transition-colors',
+            'focus-visible:border-teal-500 disabled:cursor-default disabled:opacity-60',
+            flagged
+              ? 'border-state-warning text-state-warning hover:bg-state-warning/10'
+              : 'border-line-strong text-content-secondary hover:border-teal-500 hover:text-content-accent',
+          )}
+        >
+          <Plus className="h-3 w-3" aria-hidden />
+          {assigned.length === 0 ? 'Choose a watch' : 'Add another'}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={label}
+          className={cn(
+            'flex h-9 w-[280px] items-center justify-between gap-2 rounded-sm border bg-surface-raised pl-2.5 pr-2 text-left text-small outline-none transition-colors',
+            'focus-visible:border-teal-500 disabled:cursor-default disabled:opacity-70',
+            flagged ? 'border-state-warning' : 'border-line-subtle hover:border-line-strong',
+            selected ? 'text-content-primary' : 'text-content-secondary',
+          )}
+        >
+          <span className="truncate">
+            {selected ? <WatchLine watch={selected} /> : 'Choose a watch…'}
+          </span>
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-content-muted" aria-hidden />
+        </button>
+      )}
 
       {open && (
         <div
@@ -244,7 +279,7 @@ export function WatchPicker({
                   {group.items.map((watch) => {
                     const index = flat.indexOf(watch)
                     return (
-                      <li key={watch.id} role="option" aria-selected={watch.id === value}>
+                      <li key={watch.id} role="option" aria-selected={chosen.has(watch.id)}>
                         <button
                           type="button"
                           data-active={index === active}
@@ -269,7 +304,7 @@ export function WatchPicker({
                               {watch.photographs}
                             </span>
                           )}
-                          {watch.id === value && <Check className="h-4 w-4 shrink-0 text-content-accent" aria-hidden />}
+                          {chosen.has(watch.id) && <Check className="h-4 w-4 shrink-0 text-content-accent" aria-hidden />}
                         </button>
                       </li>
                     )
