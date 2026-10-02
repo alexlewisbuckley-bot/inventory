@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { asc, eq, isNull } from 'drizzle-orm'
-import { Download, FileText, Plus, Upload } from 'lucide-react'
+import { Download, FileText, ImagePlus, Plus, Upload } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, owners, suppliers } from '@/server/db/schema'
@@ -180,6 +180,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                     { id: 'invoice', label: 'Book in from an invoice', href: '/inventory/invoice', icon: <FileText className="h-3.5 w-3.5" /> },
                     { id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> },
                   ]
+                  : []),
+                // Photographs are a separate errand from the spreadsheet —
+                // the sheet cannot carry bytes — and a separate capability:
+                // attaching an image edits the watch, it does not import it.
+                ...(capabilities['watch:update']
+                  ? [{ id: 'photos', label: 'Add photographs in bulk', href: '/inventory/photos', icon: <ImagePlus className="h-3.5 w-3.5" /> }]
                   : []),
               ]}
               primary={capabilities['watch:create']
