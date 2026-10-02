@@ -10,7 +10,22 @@ import { IMAGE_KINDS, IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
 import { WatchPicker, type PickerWatch } from './WatchPicker'
 
 /** What the page hands over. The `name` used for ranking is built here. */
-export type PhotoCandidate = Omit<PickerWatch, 'name'>
+export interface PhotoCandidate extends Omit<PickerWatch, 'name'> {
+  /** Photographs already held, counted by kind. */
+  photographsByKind: Record<string, number>
+}
+
+/**
+ * What to do about a watch that already has a photograph of this kind.
+ *
+ * Added photographs sort after the ones already there, and everything that
+ * shows one watch shows the first — so adding to a watch that already has one
+ * changes nothing anybody can see. That is right when you are building up a
+ * gallery and wrong when you have just taken a better picture, and only the
+ * person holding the photographs knows which. Never assumed: the other
+ * reading deletes their work.
+ */
+export type ExistingMode = 'add' | 'replace'
 
 interface Pending {
   key: string
@@ -37,6 +52,8 @@ interface Pending {
    */
   suggested: string[]
   kind: ImageKind
+  /** Per row, so one watch in a batch can be treated differently. */
+  mode: ExistingMode
   state: 'ready' | 'saving' | 'saved' | 'failed'
   error: string | null
 }
@@ -72,6 +89,11 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
     () => candidates.map((c) => ({ ...c, name: [c.brandName, c.nickname].filter(Boolean).join(' ') })),
     [candidates],
   )
+  const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates])
+
+  /** How many photographs of this kind the chosen watch already holds. */
+  const held = (p: Pick<Pending, 'watchId' | 'kind'>) =>
+    (p.watchId && byId.get(p.watchId)?.photographsByKind[p.kind]) || 0
 
   const accept = (files: FileList | null) => {
     const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'))
@@ -100,6 +122,7 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
           // A guess from the filename, so that seventy-three of these are not
           // set one at a time. Changeable per row, and in bulk above.
           kind: guessKind(file.name),
+          mode: 'add' as ExistingMode,
           state: 'ready' as const,
           error: null,
         }
@@ -121,10 +144,39 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
   const setAllKinds = (kind: ImageKind) =>
     setPending((current) => current.map((p) => (p.state === 'saved' ? p : { ...p, kind })))
 
+  const setAllModes = (mode: ExistingMode) =>
+    setPending((current) => current.map((p) => (p.state === 'saved' ? p : { ...p, mode })))
+
   const open = pending.filter((p) => p.state !== 'saved')
   const unplaced = open.filter((p) => !p.watchId).length
   const guessed = open.filter((p) => p.watchId && !p.exact).length
   const ready = open.filter((p) => p.watchId)
+  const occupied = open.filter((p) => held(p) > 0)
+  const replacing = occupied.filter((p) => p.mode === 'replace')
+
+  /*
+   * Which rows actually clear what is already there.
+   *
+   * Replacing is a decision about a watch, not about a file: two photographs
+   * of one card are the front and the back, and "replace" means this batch
+   * stands in for what was there, not that the back deletes the front. So the
+   * first file for a watch and kind clears the slot and the rest join it —
+   * and because the rows say what will happen, that has to be worked out
+   * here, once, rather than in the save loop where nobody can see it.
+   */
+  const clears = useMemo(() => {
+    const claimed = new Set<string>()
+    const keys = new Set<string>()
+    for (const p of pending) {
+      if (p.state === 'saved' || !p.watchId || p.mode !== 'replace') continue
+      if (!((byId.get(p.watchId)?.photographsByKind[p.kind]) || 0)) continue
+      const slot = `${p.watchId}:${p.kind}`
+      if (claimed.has(slot)) continue
+      claimed.add(slot)
+      keys.add(p.key)
+    }
+    return keys
+  }, [pending, byId])
 
   const save = async () => {
     setSaving(true)
@@ -137,6 +189,7 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
         body.set('file', file)
         body.set('watchId', item.watchId!)
         body.set('kind', item.kind)
+        if (clears.has(item.key)) body.set('replace', 'true')
         body.set('width', String(width))
         body.set('height', String(height))
         const response = await fetch('/api/images/upload', { method: 'POST', body })
@@ -214,6 +267,14 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
                   <span className="font-semibold text-state-warning">{guessed} to check</span>
                 </>
               )}
+              {replacing.length > 0 && (
+                <>
+                  {' · '}
+                  <span className="font-semibold text-content-primary">
+                    {replacing.length} replacing
+                  </span>
+                </>
+              )}
             </p>
             <div className="flex items-center gap-2">
               {/* Setting the kind seventy-three times is the thing that makes a
@@ -235,6 +296,50 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
             </div>
           </div>
 
+          {/*
+            The watches that already have one.
+
+            Added photographs sort after the ones already there, and the table,
+            the gallery and the shop all show the first — so adding to a watch
+            that already has a photograph changes nothing anybody can see. That
+            is right when you are building a gallery and wrong when you have
+            just taken a better picture, so the batch is asked rather than
+            assumed, here, once, before anything is written.
+          */}
+          {occupied.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle bg-surface-subtle px-5 py-3">
+              <p className="text-small text-content-secondary">
+                <span className="font-semibold text-content-primary">{occupied.length}</span>
+                {occupied.length === 1 ? ' of these goes' : ' of these go'} to a watch that already has a
+                photograph of that kind.
+              </p>
+              <div className="flex items-center gap-1 rounded-sm border border-line-subtle bg-surface-raised p-0.5">
+                {([
+                  ['add', 'Keep both'],
+                  ['replace', 'Replace the old one'],
+                ] as const).map(([mode, text]) => {
+                  const on = occupied.every((p) => p.mode === mode)
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setAllModes(mode)}
+                      aria-pressed={on}
+                      className={cn(
+                        'rounded-[3px] px-3 py-1.5 text-caption font-semibold transition-colors',
+                        on
+                          ? 'bg-teal-500 text-white'
+                          : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
+                      )}
+                    >
+                      {text}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* The rules between rows are drawn per row rather than with
               `divide-y`, because `divide-{color}` sets border-color on every
               side at a specificity the row's own left-edge accent cannot
@@ -243,6 +348,7 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
           <ul>
             {[...pending].sort((a, b) => TRIAGE(a) - TRIAGE(b)).map((p) => {
               const guess = Boolean(p.watchId) && !p.exact && p.state !== 'saved'
+              const already = held(p)
               return (
                 <li
                   key={p.key}
@@ -270,6 +376,21 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
                       )}
                     >
                       {p.state === 'failed' ? p.error : p.note}
+                      {/* Said on the row as well as in the bar above, because
+                          the bar speaks for the batch and this is the watch
+                          whose photograph is about to go. */}
+                      {p.state !== 'saved' && already > 0 && (
+                        <>
+                          {' · '}
+                          <span className={p.mode === 'replace' ? 'font-semibold text-content-primary' : undefined}>
+                            {p.mode !== 'replace'
+                              ? `${already} already there`
+                              : clears.has(p.key)
+                                ? `replacing ${already} already there`
+                                : 'also replacing'}
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
 
@@ -282,6 +403,23 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
                   >
                     {IMAGE_KINDS.map((k) => <option key={k} value={k}>{IMAGE_KIND_LABELS[k]}</option>)}
                   </select>
+
+                  {p.state !== 'saved' && already > 0 && (
+                    <select
+                      value={p.mode}
+                      aria-label={`What to do about the photographs ${p.file.name} would join`}
+                      onChange={(e) => update(p.key, { mode: e.target.value as ExistingMode })}
+                      className={cn(
+                        'h-9 shrink-0 cursor-pointer appearance-none rounded-sm border bg-surface-raised pl-2.5 pr-3 text-small outline-none focus:border-teal-500',
+                        p.mode === 'replace'
+                          ? 'border-line-strong font-semibold text-content-primary'
+                          : 'border-line-subtle text-content-secondary',
+                      )}
+                    >
+                      <option value="add">Keep both</option>
+                      <option value="replace">Replace</option>
+                    </select>
+                  )}
 
                   <WatchPicker
                     watches={pool}

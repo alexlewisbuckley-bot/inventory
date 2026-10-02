@@ -55,6 +55,11 @@ export const LIMITS = {
   mutation: { limit: 120, windowMs: 60_000 },
   import: { limit: 5, windowMs: 60_000 },
   export: { limit: 20, windowMs: 60_000 },
+  // Photographs arrive in batches — seventy-three warranty cards from one
+  // sitting is the job the intake page exists for — and a per-minute ceiling
+  // turns the tail of such a batch into failures. Counted over ten minutes so
+  // a long batch passes and a runaway client still meets a wall.
+  upload: { limit: 400, windowMs: 10 * 60_000 },
   // Public: reachable by anybody holding a shop link, so the ceiling is what
   // keeps one of them from filling the enquiries table overnight. Generous
   // enough that a genuine customer asking about three watches never meets it.

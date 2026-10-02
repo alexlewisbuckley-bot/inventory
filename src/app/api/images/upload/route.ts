@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: NextRequest) {
   try {
     const actor = await requireCapability('watch:update')
-    rateLimit({ key: `upload:${actor.id}`, limit: 60, windowMs: 60_000 })
+    rateLimit({ key: `upload:${actor.id}`, ...LIMITS.upload })
 
     const form = await request.formData()
     const file = form.get('file')
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     const image = await addImage({
       watchId,
       kind,
+      // Explicit, never inferred: the other reading deletes photographs.
+      replace: form.get('replace') === 'true',
       mimeType: file.type,
       data: Buffer.from(await file.arrayBuffer()),
       width: Number(form.get('width')) || undefined,

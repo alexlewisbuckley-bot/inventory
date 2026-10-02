@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm'
-import { db } from '../db/client'
+import { db, withTransaction } from '../db/client'
 import { watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { newId } from '@/lib/ids'
@@ -29,6 +29,8 @@ export interface ImageSummary {
   caption: string | null
   sortOrder: number
   createdAt: Date
+  /** How many photographs this one stood in for. Nought unless replacing. */
+  replaced?: number
 }
 
 /** Metadata only — the bytes are fetched separately so lists stay light. */
@@ -55,7 +57,23 @@ export async function getImageBytes(id: string) {
 }
 
 export async function addImage(
-  input: { watchId: string; kind: ImageKind; mimeType: string; data: Buffer; width?: number; height?: number; caption?: string | null },
+  input: {
+    watchId: string; kind: ImageKind; mimeType: string; data: Buffer
+    width?: number; height?: number; caption?: string | null
+    /**
+     * Stand in for the photographs this watch already has of this kind,
+     * rather than joining them.
+     *
+     * Added photographs sort after the ones already there, and everything
+     * that shows one watch — the table, the gallery, the shop — shows the
+     * first. So adding to a watch that already has a photograph changes
+     * nothing anybody can see, which is right when you are building up a
+     * gallery and wrong when you have just taken a better picture. The
+     * caller has to say which it is; it is never assumed, because the
+     * other reading deletes somebody's photographs.
+     */
+    replace?: boolean
+  },
   actor: SessionUser,
 ): Promise<ImageSummary> {
   if (!(ALLOWED_TYPES as readonly string[]).includes(input.mimeType)) {
@@ -77,30 +95,43 @@ export async function addImage(
   const existing = await db.select({ id: watchImages.id }).from(watchImages)
     .where(and(eq(watchImages.watchId, input.watchId), eq(watchImages.kind, input.kind)))
 
+  const replacing = input.replace ? existing.length : 0
+  const sortOrder = input.replace ? 0 : existing.length
   const id = newId('img')
-  await db.insert(watchImages).values({
-    id,
-    watchId: input.watchId,
-    kind: input.kind,
-    mimeType: input.mimeType,
-    byteSize: input.data.byteLength,
-    width: input.width ?? null,
-    height: input.height ?? null,
-    data: input.data,
-    caption: input.caption ?? null,
-    sortOrder: existing.length,
-    createdById: actor.id,
+
+  // One transaction: a removal that commits without its replacement would
+  // leave the watch with no photograph at all.
+  await withTransaction(async () => {
+    if (replacing > 0) {
+      await db.delete(watchImages)
+        .where(and(eq(watchImages.watchId, input.watchId), eq(watchImages.kind, input.kind)))
+    }
+    await db.insert(watchImages).values({
+      id,
+      watchId: input.watchId,
+      kind: input.kind,
+      mimeType: input.mimeType,
+      byteSize: input.data.byteLength,
+      width: input.width ?? null,
+      height: input.height ?? null,
+      data: input.data,
+      caption: input.caption ?? null,
+      sortOrder,
+      createdById: actor.id,
+    })
   })
 
   await recordAudit({
     entityType: 'Watch', entityId: input.watchId, action: 'UPDATE', actorId: actor.id,
-    summary: `Image added to stock ${watch[0].stockNo}`,
+    summary: replacing > 0
+      ? `Image replaced on stock ${watch[0].stockNo} (${replacing} removed)`
+      : `Image added to stock ${watch[0].stockNo}`,
   })
 
   return {
     id, kind: input.kind, mimeType: input.mimeType, byteSize: input.data.byteLength,
     width: input.width ?? null, height: input.height ?? null,
-    caption: input.caption ?? null, sortOrder: existing.length, createdAt: new Date(),
+    caption: input.caption ?? null, sortOrder, createdAt: new Date(), replaced: replacing,
   }
 }
 
