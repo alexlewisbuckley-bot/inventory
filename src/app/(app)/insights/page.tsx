@@ -86,8 +86,10 @@ export default async function InsightsPage() {
   const money = (base: number | null) => formatBase(base, currency, rates)
   const signed = (base: number | null) => formatBaseSigned(base, currency, rates)
 
-  const marginOnPriced = summary.totalCostGbp > 0
-    ? (summary.estProfitGbp / summary.totalCostGbp) * 100
+  // Over what the priced stock cost, not what all of it cost — the caption
+  // says "on N priced" and now the arithmetic agrees with it.
+  const marginOnPriced = summary.pricedCostGbp > 0
+    ? (summary.estProfitGbp / summary.pricedCostGbp) * 100
     : null
   const realisedMargin = trading.revenueGbp > 0 ? (trading.profitGbp / trading.revenueGbp) * 100 : null
   const activeLocations = byLocation.filter((l) => l.count > 0).length

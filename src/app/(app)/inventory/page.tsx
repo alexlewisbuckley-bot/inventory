@@ -141,7 +141,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     CAPABILITIES.map((c) => [c, can(user.role, c)]),
   ) as Record<Capability, boolean>
 
-  const margin = summary.totalCostGbp > 0 ? (summary.estProfitGbp / summary.totalCostGbp) * 100 : null
+  // A margin is profit over the cost of the stock that earned it, which is
+  // the priced stock — not the whole book. Dividing by the whole book makes
+  // the figure drop every time somebody books in a watch they have not priced
+  // yet, which is not a change in margin.
+  const margin = summary.pricedCostGbp > 0 ? (summary.estProfitGbp / summary.pricedCostGbp) * 100 : null
+  const tradeMargin = summary.tradeCostGbp > 0 ? (summary.tradeProfitGbp / summary.tradeCostGbp) * 100 : null
   const watchId = typeof searchParams.watch === 'string' ? searchParams.watch : null
 
   return (
@@ -201,19 +206,43 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         }
       />
 
-      <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
+      {/*
+        Two books, not one.
+
+        Retail and the trade are different prices to different buyers, so the
+        same stock has two margins — and the question "what does this look
+        like if it all goes to the trade" was being answered by discounting
+        the retail figure in somebody's head. Each channel's value and its
+        profit sit next to each other, with what the stock cost beside them.
+      */}
+      <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-3">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
-        {showCost && (
-          <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
-        )}
         {showRevenue && (
           <StatCard label="Retail value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
         )}
         {showCost && (
           <StatCard
-            label="Est. profit"
+            label="Est. profit · Retail"
             value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
-            caption={margin !== null ? `${formatPct(margin)} on priced stock` : '—'}
+            caption={margin !== null ? `${formatPct(margin)} on priced stock` : 'Nothing priced'}
+            tone="accent"
+          />
+        )}
+        {showCost && (
+          <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
+        )}
+        {showRevenue && (
+          <StatCard
+            label="Trade value"
+            value={money(summary.tradeValueGbp)}
+            caption={`${summary.tradePricedCount} quoted to the trade`}
+          />
+        )}
+        {showCost && (
+          <StatCard
+            label="Est. profit · Trade"
+            value={formatBaseSigned(summary.tradeProfitGbp, currency, rates)}
+            caption={tradeMargin !== null ? `${formatPct(tradeMargin)} on trade-priced stock` : 'No trade prices yet'}
             tone="accent"
           />
         )}

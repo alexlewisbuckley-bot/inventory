@@ -321,6 +321,28 @@ export interface InventorySummary {
   pricedCount: number
   unpricedCount: number
   avgCostGbp: number
+  /**
+   * The same three figures for the trade.
+   *
+   * A different price to a different buyer, so a different margin: the number
+   * that matters when the question is "what does this book look like if it
+   * all goes to the trade" is not the retail one discounted in somebody's
+   * head.
+   */
+  tradeValueGbp: number
+  tradeProfitGbp: number
+  tradePricedCount: number
+  /**
+   * What the priced stock cost, as against what all the stock cost.
+   *
+   * A margin is profit over the cost of the stock that earned it. Dividing by
+   * the whole book understates it by however much unpriced stock is sitting
+   * there, which is the difference between a true figure and one that moves
+   * every time somebody books in a watch they have not priced yet — and the
+   * caption has always said "on priced stock".
+   */
+  pricedCostGbp: number
+  tradeCostGbp: number
 }
 
 export async function summariseInventory(query: WatchQuery): Promise<InventorySummary> {
@@ -339,6 +361,16 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
       // figure silently understates by counting unpriced stock as zero revenue.
       profit: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null
         then ${watches.estSaleGbp} - coalesce(${watches.purchasePriceGbp}, 0) else 0 end), 0)`,
+      pricedCost: sql<number>`coalesce(sum(case when ${watches.estSaleGbp} is not null
+        then coalesce(${watches.purchasePriceGbp}, 0) else 0 end), 0)`,
+      // The trade book: only rows actually quoted to the trade count, for the
+      // same reason unpriced stock cannot count as zero revenue.
+      tradeValue: sql<number>`coalesce(sum(${watches.tradePriceGbp}), 0)`,
+      tradeProfit: sql<number>`coalesce(sum(case when ${watches.tradePriceGbp} is not null
+        then ${watches.tradePriceGbp} - coalesce(${watches.purchasePriceGbp}, 0) else 0 end), 0)`,
+      tradeCost: sql<number>`coalesce(sum(case when ${watches.tradePriceGbp} is not null
+        then coalesce(${watches.purchasePriceGbp}, 0) else 0 end), 0)`,
+      tradePriced: sql<number>`coalesce(sum(case when ${watches.tradePriceGbp} is not null then 1 else 0 end), 0)`,
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
@@ -360,6 +392,11 @@ export async function summariseInventory(query: WatchQuery): Promise<InventorySu
     pricedCount: priced,
     unpricedCount: total - priced,
     avgCostGbp: total > 0 ? Math.round(cost / total) : 0,
+    tradeValueGbp: Number(row?.tradeValue ?? 0),
+    tradeProfitGbp: Number(row?.tradeProfit ?? 0),
+    tradePricedCount: Number(row?.tradePriced ?? 0),
+    pricedCostGbp: Number(row?.pricedCost ?? 0),
+    tradeCostGbp: Number(row?.tradeCost ?? 0),
   }
 }
 
