@@ -173,7 +173,7 @@ describe('description', () => {
       { field: 'status', operator: 'is', values: ['IN_STOCK', 'RESERVED', 'SOLD'] },
       WATCH_FIELDS,
     )
-    expect(said).toBe('Status is any of In stock, Reserved or Sold')
+    expect(said).toBe('Status is any of In stock, Hold or Sold')
   })
 
   it('resolves reference values through the caller', () => {

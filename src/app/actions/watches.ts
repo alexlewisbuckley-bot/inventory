@@ -341,6 +341,52 @@ export async function setStatusAction(id: string, status: string): Promise<Actio
 }
 
 /**
+ * Put a watch on hold, or take a deposit, and open the deal that records it.
+ *
+ * Two capabilities, because it is two writes: the status is an inventory edit
+ * and the deal is a CRM one, and somebody who may do only the first should
+ * not reach this door at all — a hold with no record of who it is for is the
+ * thing this exists to stop.
+ */
+export async function holdOrDepositAction(input: {
+  watchId: string
+  status: 'RESERVED' | 'SALE_AGREED'
+  customerId: string
+  valueGbp: number | null
+  depositGbp: number | null
+  expectedClose: string | null
+  notes: string | null
+}): Promise<ActionState> {
+  await requireCapability('watch:update')
+  const actor = await requireCapability('deal:create')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  if (!input.customerId) {
+    return { ok: false, message: 'Choose who it is for — a hold with no name on it is a watch nobody can sell.' }
+  }
+  if (input.status === 'SALE_AGREED' && !input.depositGbp) {
+    return { ok: false, message: 'Enter the deposit taken.' }
+  }
+
+  try {
+    const { holdOrDeposit } = await import('@/server/services/crm-service')
+    const { dealId, created } = await holdOrDeposit(input, actor)
+    refreshInventory()
+    revalidatePath('/deals')
+    revalidatePath(`/deals/${dealId}`)
+    return {
+      ok: true,
+      id: dealId,
+      message: input.status === 'SALE_AGREED'
+        ? `Deposit recorded and the deal ${created ? 'opened' : 'updated'}.`
+        : `On hold, and the deal ${created ? 'opened' : 'updated'}.`,
+    }
+  } catch (error) {
+    return toState(error, 'Could not record that.')
+  }
+}
+
+/**
  * Void a sale and return the watch to stock.
  *
  * Gated on sale:delete rather than watch:update — reversing an invoice is a

@@ -236,10 +236,18 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   TRADER: 'A dealer you sell to. Sees the catalogue with trade and retail prices, and nothing else — no cost, no supplier, no serial, and no way to change anything.',
 }
 
+/*
+ * The words the business uses, not the words the schema was written in.
+ *
+ * A watch on its way out goes on hold, then a deposit is taken, then it is
+ * sold — three steps of commitment, each one harder to walk away from. The
+ * stored values stay as they were, because renaming a thing is not a reason
+ * to rewrite every row that mentions it.
+ */
 export const WATCH_STATUS_LABELS: Record<WatchStatus, string> = {
   IN_STOCK: 'In stock',
-  RESERVED: 'Reserved',
-  SALE_AGREED: 'Sale agreed',
+  RESERVED: 'Hold',
+  SALE_AGREED: 'Deposit taken',
   SOLD: 'Sold',
   RETURNED: 'Returned',
   WRITTEN_OFF: 'Written off',

@@ -630,6 +630,7 @@ export const dealSchema = z.object({
   watchId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   stage: z.enum(DEAL_STAGES).default('ENQUIRY'),
   valueGbp: moneyFromText,
+  depositGbp: moneyFromText,
   probability: z.coerce.number().int().min(0).max(100).optional(),
   expectedClose: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   ownerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),

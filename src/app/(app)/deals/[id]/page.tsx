@@ -115,6 +115,15 @@ export default async function DealPage({ params }: { params: { id: string } }) {
               </Link>
             )}
             <span className="tabular-nums">{money(deal.valueGbp)}</span>
+            {/* What is still owed, which is the question asked at the counter
+                and was previously worked out on paper or not at all. */}
+            {deal.depositGbp !== null && deal.valueGbp !== null && (
+              <span className="tabular-nums">
+                {money(deal.depositGbp)} paid · <strong className="text-content-primary">
+                  {money(deal.valueGbp - deal.depositGbp)} outstanding
+                </strong>
+              </span>
+            )}
             <span className="tabular-nums">{deal.probability}% likely</span>
             {deal.expectedClose && <span>closes {formatDate(new Date(deal.expectedClose))}</span>}
             {ownerName && <span>{ownerName}</span>}

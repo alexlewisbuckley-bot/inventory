@@ -1018,6 +1018,15 @@ export const deals = pgTable(
     watchId: text('watch_id').references(() => watches.id),
     stage: text('stage', { enum: DEAL_STAGES }).notNull().default('ENQUIRY'),
     valueGbp: integer('value_gbp'),
+    /**
+     * What has been paid so far, against `valueGbp` which is what was agreed.
+     *
+     * The balance is the difference, and it is the figure somebody actually
+     * asks for at the counter. Nullable because nothing paid is the normal
+     * state of a deal, and a zero would read as "they paid nothing" rather
+     * than "nobody has asked them to yet".
+     */
+    depositGbp: integer('deposit_gbp'),
     probability: integer('probability').notNull().default(20),
     expectedClose: date('expected_close'),
     ownerId: text('owner_id').references(() => users.id),

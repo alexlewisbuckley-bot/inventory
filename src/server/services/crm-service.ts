@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
   activities, brands, customers, customerBrands, deals, dealStageEvents, notifications,
   offers, requestEnquiries, tasks, users, watches, watchRequests,
 } from '../db/schema'
 import { recordAudit } from './audit'
+import { setWatchStatus } from './watch-service'
 import { diff } from '@/lib/diff'
 import { newId } from '@/lib/ids'
 import { NotFoundError, ValidationError } from '@/lib/errors'
@@ -309,6 +310,7 @@ export async function createDeal(input: DealInput, actor: SessionUser): Promise<
       watchId: input.watchId,
       stage,
       valueGbp: input.valueGbp ?? await defaultValueFor(input.watchId),
+      depositGbp: input.depositGbp,
       probability: input.probability ?? DEAL_STAGE_PROBABILITY[stage],
       expectedClose: input.expectedClose,
       ownerId: input.ownerId ?? actor.id,
@@ -352,6 +354,7 @@ export async function updateDeal(id: string, input: DealInput, actor: SessionUse
       customerId: input.customerId,
       watchId: input.watchId,
       valueGbp: input.valueGbp,
+      depositGbp: input.depositGbp,
       probability: input.probability ?? existing.probability,
       expectedClose: input.expectedClose,
       ownerId: input.ownerId,
@@ -363,7 +366,7 @@ export async function updateDeal(id: string, input: DealInput, actor: SessionUse
     await recordAudit({
       entityType: 'Deal', entityId: id, action: 'UPDATE', actorId: actor.id,
       summary: `${input.title} updated`,
-      changes: diff(existing, input, ['title', 'valueGbp', 'expectedClose', 'ownerId', 'customerId', 'watchId']),
+      changes: diff(existing, input, ['title', 'valueGbp', 'depositGbp', 'expectedClose', 'ownerId', 'customerId', 'watchId']),
     })
   })
 }
@@ -1000,4 +1003,93 @@ export async function assignableUsers() {
     .from(users)
     .where(and(eq(users.isActive, true), isNull(users.deletedAt)))
     .orderBy(users.name)
+}
+
+/**
+ * Put a watch on hold, or take a deposit on it, and open the deal that says so.
+ *
+ * These were two separate acts: change a status on the inventory row, and —
+ * later, elsewhere, if anybody remembered — open a deal. So the watch said
+ * "reserved" and nothing said who for, what was agreed, what had been paid or
+ * who took the call. The status and the deal are one event here, written
+ * together or not at all.
+ *
+ * A watch already carrying an open deal keeps it. Somebody moving a watch from
+ * hold to deposit taken is progressing one negotiation, not starting a second,
+ * and two deals against one watch is how a pipeline stops being worth reading.
+ */
+export async function holdOrDeposit(
+  input: {
+    watchId: string
+    status: 'RESERVED' | 'SALE_AGREED'
+    customerId: string
+    valueGbp: number | null
+    depositGbp: number | null
+    expectedClose: string | null
+    notes: string | null
+  },
+  actor: SessionUser,
+): Promise<{ dealId: string; created: boolean }> {
+  return withTransaction(async () => {
+    const [watch] = await db
+      .select({ id: watches.id, stockNo: watches.stockNo, model: watches.model, brandId: watches.brandId })
+      .from(watches).where(and(eq(watches.id, input.watchId), isNull(watches.deletedAt))).limit(1)
+    if (!watch) throw new NotFoundError('Watch')
+
+    const [brand] = await db.select({ name: brands.name }).from(brands)
+      .where(eq(brands.id, watch.brandId)).limit(1)
+
+    await setWatchStatus(input.watchId, input.status, actor)
+
+    const stage = input.status === 'SALE_AGREED' ? 'DEPOSIT_TAKEN' : 'NEGOTIATION'
+    const title = `${brand?.name ?? ''} ${watch.model}`.trim() + ` · stock ${watch.stockNo}`
+
+    const [open] = await db.select({ id: deals.id, stage: deals.stage })
+      .from(deals)
+      .where(and(
+        eq(deals.watchId, input.watchId),
+        isNull(deals.deletedAt),
+        notInArray(deals.stage, ['WON', 'LOST']),
+      ))
+      .limit(1)
+
+    if (open) {
+      await db.update(deals).set({
+        customerId: input.customerId,
+        stage,
+        valueGbp: input.valueGbp,
+        depositGbp: input.depositGbp,
+        probability: DEAL_STAGE_PROBABILITY[stage],
+        expectedClose: input.expectedClose,
+        notes: input.notes,
+        stageChangedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(deals.id, open.id))
+
+      if (open.stage !== stage) {
+        await db.insert(dealStageEvents).values({
+          id: newId('dse'), dealId: open.id, fromStage: open.stage, toStage: stage, actorId: actor.id,
+        })
+      }
+      await recordAudit({
+        entityType: 'Deal', entityId: open.id, action: 'UPDATE', actorId: actor.id,
+        summary: `${title} moved to ${DEAL_STAGE_LABELS[stage].toLowerCase()}`,
+      })
+      return { dealId: open.id, created: false }
+    }
+
+    const dealId = await createDeal({
+      title,
+      customerId: input.customerId,
+      watchId: input.watchId,
+      stage,
+      valueGbp: input.valueGbp,
+      depositGbp: input.depositGbp,
+      expectedClose: input.expectedClose,
+      ownerId: actor.id,
+      source: 'UNKNOWN',
+      notes: input.notes,
+    }, actor)
+    return { dealId, created: true }
+  })
 }

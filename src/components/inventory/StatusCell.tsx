@@ -35,7 +35,9 @@ const TRANSITIONS: Record<WatchStatus, WatchStatus[]> = {
  * agreed an hour later, back in stock when the buyer goes quiet — and every one
  * of those used to mean opening the edit form. It is one click in the row.
  */
-export function StatusCell({ watchId, status, editable, onSell, canSell, onVoid, canVoid }: {
+export function StatusCell({
+  watchId, status, editable, onSell, canSell, onVoid, canVoid, onHold, canHold,
+}: {
   watchId: string
   status: WatchStatus
   editable: boolean
@@ -43,6 +45,14 @@ export function StatusCell({ watchId, status, editable, onSell, canSell, onVoid,
   onSell: () => void
   canVoid: boolean
   onVoid: () => void
+  /**
+   * Hold and deposit taken ask who it is for before they change anything, so
+   * they are handed up rather than written from here — the same way selling
+   * has always been, and for the same reason: a status nobody can explain
+   * afterwards is worse than no status.
+   */
+  canHold: boolean
+  onHold: (next: 'RESERVED' | 'SALE_AGREED') => void
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -67,11 +77,19 @@ export function StatusCell({ watchId, status, editable, onSell, canSell, onVoid,
   }
 
   const items: MenuItem[] = [
-    ...transitions.map((option) => ({
-      id: option,
-      label: WATCH_STATUS_LABELS[option],
-      onSelect: () => { void change(option) },
-    })),
+    ...transitions.map((option) => {
+      const asks = canHold && (option === 'RESERVED' || option === 'SALE_AGREED')
+      return {
+        id: option,
+        // The ellipsis is the promise that something will be asked before
+        // anything is written, which is the same promise "Mark as sold…"
+        // makes two lines below.
+        label: asks ? `${WATCH_STATUS_LABELS[option]}…` : WATCH_STATUS_LABELS[option],
+        onSelect: asks
+          ? () => onHold(option as 'RESERVED' | 'SALE_AGREED')
+          : () => { void change(option) },
+      }
+    }),
     ...(canSellFromHere ? [{
       id: 'sell',
       label: 'Mark as sold…',

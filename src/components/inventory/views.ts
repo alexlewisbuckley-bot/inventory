@@ -45,7 +45,7 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
   },
   {
     id: 'agreed',
-    label: 'Sale agreed',
+    label: 'Deposit taken',
     query: 'f=status%3Ais%3ASALE_AGREED',
     description: 'Committed but not yet completed',
   },

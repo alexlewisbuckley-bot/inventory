@@ -21,6 +21,7 @@ import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
 import {
   QuickSellModal, type QuickSellTarget, type SellCustomerOption, type SellDealOption,
 } from './QuickSellModal'
+import { HoldModal, type HoldTarget } from './HoldModal'
 import { InlinePriceCell } from './InlinePriceCell'
 import { InlineEditCell } from './InlineEditCell'
 import { amendWatchAction } from '@/app/actions/watches'
@@ -142,6 +143,10 @@ export function InventoryList({
   // now be acted on at all.
   const selection = useSelection(result.total)
   const [sellTarget, setSellTarget] = useState<QuickSellTarget | null>(null)
+  // Hold and deposit ask who it is for before anything is written, so they
+  // carry which of the two was chosen alongside the watch.
+  const [holdTarget, setHoldTarget] = useState<{ watch: HoldTarget; status: 'RESERVED' | 'SALE_AGREED' } | null>(null)
+  const canHold = capabilities['deal:create'] && capabilities['watch:update']
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
 
   // Money columns the role may not see are not columns at all here — not
@@ -291,6 +296,17 @@ export function InventoryList({
                 purchasePriceGbp: watch.purchasePriceGbp,
                 estSaleGbp: watch.estSaleGbp,
               })}
+              canHold={canHold}
+              onHold={(next) => setHoldTarget({
+                status: next,
+                watch: {
+                  id: watch.id,
+                  stockNo: watch.stockNo,
+                  model: watch.model,
+                  brandName: watch.brandName,
+                  estSaleGbp: watch.estSaleGbp,
+                },
+              })}
             />
           ))}
         </ul>
@@ -360,6 +376,17 @@ export function InventoryList({
                   purchasePriceGbp: watch.purchasePriceGbp,
                   estSaleGbp: watch.estSaleGbp,
                 })}
+                canHold={canHold}
+                onHold={(next) => setHoldTarget({
+                  status: next,
+                  watch: {
+                    id: watch.id,
+                    stockNo: watch.stockNo,
+                    model: watch.model,
+                    brandName: watch.brandName,
+                    estSaleGbp: watch.estSaleGbp,
+                  },
+                })}
               />
             ))}
           </TBody>
@@ -399,6 +426,15 @@ export function InventoryList({
         />
       )}
 
+      <HoldModal
+        open={holdTarget !== null}
+        watch={holdTarget?.watch ?? null}
+        status={holdTarget?.status ?? 'RESERVED'}
+        customers={customers}
+        onClose={() => setHoldTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
       <QuickSellModal
         open={sellTarget !== null}
         watch={sellTarget}
@@ -426,13 +462,15 @@ export function InventoryList({
  * reason anyone opens this list — is off-screen. The card keeps the identity,
  * both figures and the status visible, and the whole card opens the record.
  */
-function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
+function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid, canHold, onHold }: {
   watch: WatchListItem
   canEditStatus: boolean
   canSell: boolean
   canVoid: boolean
   onSell: () => void
   onVoid: () => void
+  canHold: boolean
+  onHold: (next: 'RESERVED' | 'SALE_AGREED') => void
 }) {
   const query = useListQuery()
   const pathname = usePathname()
@@ -465,6 +503,8 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid }: {
           onSell={onSell}
           canVoid={canVoid}
           onVoid={onVoid}
+          canHold={canHold}
+          onHold={onHold}
         />
       </div>
 
@@ -547,7 +587,7 @@ function DisplaySwitch({ mode, onChange }: { mode: DisplayMode; onChange: (mode:
 
 function Row({
   watch, show, selectable, selected, onToggle,
-  canSell, canPrice, canAmend, canEditStatus, canVoid, onSell, onVoid,
+  canSell, canPrice, canAmend, canEditStatus, canVoid, onSell, onVoid, canHold, onHold,
 }: {
   watch: WatchListItem
   show: (key: string) => boolean
@@ -562,6 +602,8 @@ function Row({
   canVoid: boolean
   onSell: () => void
   onVoid: () => void
+  canHold: boolean
+  onHold: (next: 'RESERVED' | 'SALE_AGREED') => void
 }) {
   const query = useListQuery()
   const pathname = usePathname()
@@ -743,6 +785,8 @@ function Row({
             onSell={onSell}
             canVoid={canVoid}
             onVoid={onVoid}
+            canHold={canHold}
+            onHold={onHold}
           />
         </TD>
       )}
