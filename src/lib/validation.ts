@@ -3,7 +3,8 @@ import type { FilterClause } from './filters'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DEFAULT_PRODUCT_TYPE,
-  DELIVERY_STATUSES, DENSITIES, ENTITY_TYPES, LEAD_SOURCES, LOCATION_TYPES, OWNER_TYPES, PAYMENT_STATUSES,
+  DELIVERY_STATUSES, DENSITIES, ENTITY_TYPES, ID_DOCUMENT_KINDS, LEAD_SOURCES, LOCATION_TYPES,
+  OWNER_TYPES, PAYMENT_STATUSES,
   PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_STATUSES, ROLES, SALE_CHANNELS, TASK_KINDS, TASK_STATUSES, THEMES, WATCH_STATUSES,
 } from './enums'
@@ -282,6 +283,18 @@ export const saleCreateSchema = z.object({
   buyerFirstName: optionalText(80),
   buyerLastName: optionalText(80),
   buyerCountry: optionalText(60),
+  buyerAddressLine1: optionalText(120),
+  buyerAddressLine2: optionalText(120),
+  buyerCity: optionalText(80),
+  buyerPostcode: optionalText(20),
+  /**
+   * Identification taken at the point of sale, which is the point at which it
+   * is actually obtainable: the document is in the room.
+   */
+  buyerIdKind: z.enum(ID_DOCUMENT_KINDS).optional().or(z.literal('')).transform((v) => v || null),
+  buyerIdNumber: optionalText(60),
+  buyerIdExpiresOn: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  buyerIdIssuer: optionalText(60),
   buyerTier: z.enum(CUSTOMER_TIERS).default('STANDARD'),
   buyerType: z.enum(CUSTOMER_TYPES).default('RETAIL'),
   buyerLeadSource: z.enum(LEAD_SOURCES).default('UNKNOWN'),
@@ -598,6 +611,15 @@ export const customerSchema = z.object({
   birthday: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   notes: optionalText(4000),
   riskNotes: optionalText(2000),
+  /**
+   * Identification. Optional on the record and asked for where it matters —
+   * a watch leaving the building against a name typed into a box is a note of
+   * what somebody said, not a record of who they are.
+   */
+  idKind: z.enum(ID_DOCUMENT_KINDS).optional().or(z.literal('')).transform((v) => v || null),
+  idNumber: optionalText(60),
+  idExpiresOn: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  idIssuer: optionalText(60),
   marketingConsent: z.coerce.boolean().default(false),
   ownerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   brandIds: z.array(z.string()).optional().default([]),

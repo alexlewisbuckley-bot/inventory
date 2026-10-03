@@ -13,6 +13,7 @@ import { UserPlus } from 'lucide-react'
 import {
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_DESCRIPTIONS,
   CUSTOMER_TYPE_LABELS, DELIVERY_STATUSES, DELIVERY_STATUS_LABELS,
+  ID_DOCUMENT_KINDS, ID_DOCUMENT_KIND_LABELS,
   LEAD_SOURCES, LEAD_SOURCE_LABELS, PAYMENT_STATUSES, PAYMENT_STATUS_LABELS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS, type CurrencyCode, type CustomerType,
 } from '@/lib/enums'
@@ -69,6 +70,17 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
   const [buyerFirst, setBuyerFirst] = useState('')
   const [buyerLast, setBuyerLast] = useState('')
   const [buyerCountry, setBuyerCountry] = useState('')
+  const [buyerLine1, setBuyerLine1] = useState('')
+  const [buyerLine2, setBuyerLine2] = useState('')
+  const [buyerCity, setBuyerCity] = useState('')
+  const [buyerPostcode, setBuyerPostcode] = useState('')
+  // Identification, taken where it is actually obtainable: the document is in
+  // the room. Asked for later, it is asked of somebody who has already left
+  // with the watch.
+  const [idKind, setIdKind] = useState('')
+  const [idNumber, setIdNumber] = useState('')
+  const [idIssuer, setIdIssuer] = useState('')
+  const [idExpires, setIdExpires] = useState('')
   const [buyerTier, setBuyerTier] = useState('STANDARD')
   const [buyerType, setBuyerType] = useState<CustomerType>('RETAIL')
   const [buyerSource, setBuyerSource] = useState('UNKNOWN')
@@ -107,6 +119,14 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     setBuyerFirst('')
     setBuyerLast('')
     setBuyerCountry('')
+    setBuyerLine1('')
+    setBuyerLine2('')
+    setBuyerCity('')
+    setBuyerPostcode('')
+    setIdKind('')
+    setIdNumber('')
+    setIdIssuer('')
+    setIdExpires('')
     setBuyerTier('STANDARD')
     setBuyerType('RETAIL')
     setBuyerSource('UNKNOWN')
@@ -169,6 +189,14 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     data.set('buyerFirstName', buyerFirst)
     data.set('buyerLastName', buyerLast)
     data.set('buyerCountry', buyerCountry)
+    data.set('buyerAddressLine1', buyerLine1)
+    data.set('buyerAddressLine2', buyerLine2)
+    data.set('buyerCity', buyerCity)
+    data.set('buyerPostcode', buyerPostcode)
+    data.set('buyerIdKind', idKind)
+    data.set('buyerIdNumber', idNumber)
+    data.set('buyerIdIssuer', idIssuer)
+    data.set('buyerIdExpiresOn', idExpires)
     data.set('buyerTier', buyerTier)
     data.set('buyerType', buyerType)
     data.set('buyerLeadSource', buyerSource)
@@ -382,6 +410,46 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
                 onChange={(e) => setBuyerSource(e.target.value)}
                 options={LEAD_SOURCES.map((source) => ({ value: source, label: LEAD_SOURCE_LABELS[source] }))}
               />
+            </div>
+
+            {/* Where they live and who they are.
+
+                A watch leaves the building against a name typed into a box,
+                and for a five-figure sale that is a note of what somebody
+                said rather than a record of who they are. Both are asked for
+                here because here is where they can be got: the person is in
+                front of you and the document is in their hand. */}
+            <p className="mb-3 mt-5 border-t border-line-subtle pt-4 text-caption font-semibold text-content-primary">
+              Where they are
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField label="Address"
+                value={buyerLine1} onChange={(e) => setBuyerLine1(e.target.value)} placeholder="Optional" />
+              <TextField label="Address line 2"
+                value={buyerLine2} onChange={(e) => setBuyerLine2(e.target.value)} placeholder="Optional" />
+              <TextField label="City"
+                value={buyerCity} onChange={(e) => setBuyerCity(e.target.value)} placeholder="Optional" />
+              <TextField label="Postcode"
+                value={buyerPostcode} onChange={(e) => setBuyerPostcode(e.target.value)} placeholder="Optional" />
+            </div>
+
+            <p className="mb-1 mt-5 border-t border-line-subtle pt-4 text-caption font-semibold text-content-primary">
+              Identification
+            </p>
+            <p className="mb-3 text-caption text-content-secondary">
+              Recorded against the customer with today&rsquo;s date and your name.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField label="Document" value={idKind}
+                onChange={(e) => setIdKind(e.target.value)}
+                placeholder="None seen"
+                options={ID_DOCUMENT_KINDS.map((k) => ({ value: k, label: ID_DOCUMENT_KIND_LABELS[k] }))} />
+              <TextField label="Number" autoComplete="off"
+                value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="Optional" />
+              <TextField label="Issued by"
+                value={idIssuer} onChange={(e) => setIdIssuer(e.target.value)} placeholder="Country or authority" />
+              <TextField label="Expires" type="date"
+                value={idExpires} onChange={(e) => setIdExpires(e.target.value)} />
             </div>
 
             <p className="mt-3 text-caption text-content-secondary">

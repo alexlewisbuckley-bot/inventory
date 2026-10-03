@@ -167,6 +167,14 @@ export async function createCustomer(input: CustomerInput, actor: SessionUser): 
       birthday: input.birthday,
       notes: input.notes,
       riskNotes: input.riskNotes,
+      idKind: input.idKind,
+      idNumber: input.idNumber,
+      idExpiresOn: input.idExpiresOn,
+      idIssuer: input.idIssuer,
+      // Stamped with whoever recorded it, because a number nobody confirmed
+      // against the document is a number somebody read out over the phone.
+      idCheckedAt: input.idNumber ? new Date() : null,
+      idCheckedById: input.idNumber ? actor.id : null,
       marketingConsent: input.marketingConsent,
       // Consent is only meaningful with a date against it.
       consentRecordedAt: input.marketingConsent ? new Date() : null,
@@ -229,6 +237,25 @@ export async function updateCustomer(id: string, input: CustomerInput, actor: Se
       birthday: input.birthday,
       notes: input.notes,
       riskNotes: input.riskNotes,
+      idKind: input.idKind,
+      idNumber: input.idNumber,
+      idExpiresOn: input.idExpiresOn,
+      idIssuer: input.idIssuer,
+      /*
+       * Re-stamped only when the document itself changes.
+       *
+       * Saving an unrelated edit should not re-date a check nobody has
+       * repeated — that is how a two-year-old passport check comes to look
+       * like this morning's.
+       */
+      idCheckedAt: !input.idNumber ? null
+        : input.idNumber === existing.idNumber && input.idKind === existing.idKind
+          ? existing.idCheckedAt ?? new Date()
+          : new Date(),
+      idCheckedById: !input.idNumber ? null
+        : input.idNumber === existing.idNumber && input.idKind === existing.idKind
+          ? existing.idCheckedById ?? actor.id
+          : actor.id,
       marketingConsent: input.marketingConsent,
       consentRecordedAt: input.marketingConsent
         ? existing.consentRecordedAt ?? new Date()

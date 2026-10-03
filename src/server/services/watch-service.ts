@@ -443,10 +443,10 @@ async function resolveBuyer(input: SaleCreateInput, actor: SessionUser): Promise
     phone: input.customerPhone ?? null,
     altPhone: null,
     country: input.buyerCountry ?? input.customerCountry ?? null,
-    city: null,
-    addressLine1: null,
-    addressLine2: null,
-    postcode: null,
+    city: input.buyerCity ?? null,
+    addressLine1: input.buyerAddressLine1 ?? null,
+    addressLine2: input.buyerAddressLine2 ?? null,
+    postcode: input.buyerPostcode ?? null,
     preferredChannel: 'EMAIL',
     tier: input.buyerTier,
     customerType: input.buyerType,
@@ -462,6 +462,13 @@ async function resolveBuyer(input: SaleCreateInput, actor: SessionUser): Promise
     budgetMinGbp: null,
     budgetMaxGbp: null,
     birthday: null,
+    // Identification taken at the till, which is where it is obtainable: the
+    // document is in the room. Asking for it later means asking somebody who
+    // has already left with the watch.
+    idKind: input.buyerIdKind,
+    idNumber: input.buyerIdNumber ?? null,
+    idExpiresOn: input.buyerIdExpiresOn,
+    idIssuer: input.buyerIdIssuer ?? null,
     notes: null,
     riskNotes: null,
     marketingConsent: false,

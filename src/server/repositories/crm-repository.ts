@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
@@ -171,10 +172,14 @@ export async function findCustomers(query: CustomerQuery): Promise<CustomerListR
 }
 
 export async function getCustomer(id: string) {
+  // A second handle on `users`, for whoever looked at the identification.
+  // "Checked" with no name against it is a date, not a check.
+  const checker = alias(users, 'id_checker')
   const [row] = await db
-    .select({ customer: customers, ownerName: users.name })
+    .select({ customer: customers, ownerName: users.name, idCheckedByName: checker.name })
     .from(customers)
     .leftJoin(users, eq(users.id, customers.ownerId))
+    .leftJoin(checker, eq(checker.id, customers.idCheckedById))
     .where(and(eq(customers.id, id), isNull(customers.deletedAt)))
     .limit(1)
   return row ?? null

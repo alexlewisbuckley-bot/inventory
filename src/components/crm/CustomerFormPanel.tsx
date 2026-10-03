@@ -13,7 +13,8 @@ import { useCreateFlag } from '@/components/ui/CreateAction'
 import {
   CONTACT_CHANNELS, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_DESCRIPTIONS,
-  CUSTOMER_TYPE_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS, PAYMENT_TERMS, PAYMENT_TERMS_LABELS,
+  CUSTOMER_TYPE_LABELS, ID_DOCUMENT_KINDS, ID_DOCUMENT_KIND_LABELS,
+  LEAD_SOURCES, LEAD_SOURCE_LABELS, PAYMENT_TERMS, PAYMENT_TERMS_LABELS,
   type CustomerType,
 } from '@/lib/enums'
 import { toMajor } from '@/lib/money'
@@ -51,8 +52,8 @@ const STEPS = [
   {
     id: 'rest',
     label: 'Everything else',
-    blurb: 'Address, who looks after them, and anything worth remembering.',
-    fields: ['addressLine1', 'postcode', 'birthday'],
+    blurb: 'Address, identification, and anything worth remembering.',
+    fields: ['addressLine1', 'postcode', 'birthday', 'idNumber', 'idExpiresOn'],
   },
 ] as const
 
@@ -82,6 +83,12 @@ export interface CustomerFormValues {
   budgetMinGbp: number | null
   budgetMaxGbp: number | null
   birthday: string | null
+  idKind: string | null
+  idNumber: string | null
+  idExpiresOn: string | null
+  idIssuer: string | null
+  idCheckedAt: string | null
+  idCheckedByName: string | null
   notes: string | null
   riskNotes: string | null
   marketingConsent: boolean
@@ -317,6 +324,26 @@ export function CustomerFormPanel({
               <TextField name="postcode" label="Postcode" defaultValue={customer?.postcode ?? ''} />
               <TextField name="country" label="Country" className="sm:col-span-2"
                 defaultValue={customer?.country ?? ''} />
+            </div>
+          </Fieldset>
+
+          <Fieldset legend="Identification">
+            <p className="mb-3 text-caption text-content-secondary">
+              {customer?.idCheckedAt
+                ? `Checked ${new Date(customer.idCheckedAt).toLocaleDateString()}${customer.idCheckedByName ? ` by ${customer.idCheckedByName}` : ''}.`
+                : 'Taken from the document itself. Recorded with the date and whoever saw it.'}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SelectField name="idKind" label="Document" placeholder="None recorded"
+                defaultValue={customer?.idKind ?? ''}
+                options={ID_DOCUMENT_KINDS.map((k) => ({ value: k, label: ID_DOCUMENT_KIND_LABELS[k] }))} />
+              <TextField name="idNumber" label="Number" autoComplete="off"
+                defaultValue={customer?.idNumber ?? ''} error={state.errors?.idNumber} />
+              <TextField name="idIssuer" label="Issued by" placeholder="Country or authority"
+                defaultValue={customer?.idIssuer ?? ''} />
+              <TextField name="idExpiresOn" type="date" label="Expires"
+                hint="An in-date check against a lapsed document is not a check."
+                defaultValue={customer?.idExpiresOn ?? ''} />
             </div>
           </Fieldset>
 

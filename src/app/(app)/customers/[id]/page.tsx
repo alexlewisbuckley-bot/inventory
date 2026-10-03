@@ -52,7 +52,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
   const row = await getCustomer(params.id)
   if (!row) notFound()
 
-  const { customer, ownerName } = row
+  const { customer, ownerName, idCheckedByName } = row
 
   const [
     context, timeline, owners, brandRows, rates, preferences, taste, suggested,
@@ -142,6 +142,12 @@ export default async function CustomerPage({ params }: { params: { id: string } 
               birthday: customer.birthday,
               notes: customer.notes,
               riskNotes: customer.riskNotes,
+              idKind: customer.idKind,
+              idNumber: customer.idNumber,
+              idExpiresOn: customer.idExpiresOn,
+              idIssuer: customer.idIssuer,
+              idCheckedAt: customer.idCheckedAt?.toISOString() ?? null,
+              idCheckedByName,
               marketingConsent: customer.marketingConsent,
               ownerId: customer.ownerId,
               brandIds: context.favouriteBrands.map((brand) => brand.id),

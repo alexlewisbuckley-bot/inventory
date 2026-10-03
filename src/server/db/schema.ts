@@ -928,6 +928,21 @@ export const customers = pgTable(
     birthday: date('birthday'),
     notes: text('notes'),
     riskNotes: text('risk_notes'),
+    /**
+     * Identification, in the same shape `supplierDocuments` uses for a
+     * director's passport.
+     *
+     * `idCheckedAt` and `idCheckedById` are what make this a check rather
+     * than a field: a number nobody confirmed against the document is a
+     * number somebody read out over the phone.
+     */
+    idKind: text('id_kind', { enum: ID_DOCUMENT_KINDS }),
+    idNumber: text('id_number'),
+    /** As printed on it — an in-date check against a lapsed passport is not one. */
+    idExpiresOn: date('id_expires_on'),
+    idIssuer: text('id_issuer'),
+    idCheckedAt: timestamp('id_checked_at', { withTimezone: true }),
+    idCheckedById: text('id_checked_by_id').references(() => users.id, { onDelete: 'set null' }),
     marketingConsent: boolean('marketing_consent').notNull().default(false),
     consentRecordedAt: timestamp('consent_recorded_at', { withTimezone: true }),
     ownerId: text('owner_id').references(() => users.id),
