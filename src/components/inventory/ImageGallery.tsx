@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CreditCard, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, ConfirmDialog, Modal, useToast } from '@/components/ui'
@@ -48,17 +48,37 @@ export function ImageGallery({ watchId, initial, canEdit }: {
   const [browsing, setBrowsing] = useState(false)
   const [taking, setTaking] = useState<string | null>(null)
 
-  const browse = async () => {
-    setBrowsing(true)
-    if (library) return
+  const loadLibrary = useCallback(async () => {
     try {
       const response = await fetch(`/api/reference-images?watchId=${watchId}`)
       const payload = await response.json()
       if (response.ok) setLibrary(payload)
-      else toast.error('Could not open the library', payload.error)
+      return response.ok ? null : (payload.error as string)
     } catch {
-      toast.error('Could not open the library')
+      return 'Something went wrong.'
     }
+  }, [watchId])
+
+  /*
+   * A watch with no photograph asks the library on sight.
+   *
+   * It was behind a button, and a button is the wrong shape for this: the
+   * person looking at an empty gallery does not know whether anything is on
+   * the shelf, so "Use a stock photograph" reads as a chore to be gone
+   * through rather than an answer waiting. Shown instead, with the pictures
+   * themselves, the empty state answers the question it raises.
+   */
+  const needsPhotographs = canEdit && !images.some((image) => image.kind === 'WATCH')
+  useEffect(() => {
+    if (!needsPhotographs || library) return
+    void loadLibrary()
+  }, [needsPhotographs, library, loadLibrary])
+
+  const browse = async () => {
+    setBrowsing(true)
+    if (library) return
+    const error = await loadLibrary()
+    if (error) toast.error('Could not open the library', error)
   }
 
   const take = async (referenceImageId: string) => {
@@ -192,23 +212,68 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                   {canEdit && !busy && (
                     <>
                       <p className="max-w-xs text-caption text-content-secondary">{hint}</p>
-                      <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+
+                      {/* The matches, shown rather than mentioned.
+
+                          Only photographs of the watch: a warranty card
+                          carries a serial, a date and a dealer's stamp, so it
+                          belongs to the one watch it was issued for and there
+                          is no library door on that section at all. */}
+                      {kind === 'WATCH' && library && library.images.length > 0 && (
+                        <div className="mt-2 w-full max-w-md">
+                          <p className="mb-2 text-caption font-semibold text-content-primary">
+                            {library.images.length} photograph{library.images.length === 1 ? '' : 's'} of{' '}
+                            {library.reference} already — use one?
+                          </p>
+                          <ul className="flex flex-wrap justify-center gap-2">
+                            {library.images.slice(0, 4).map((image) => (
+                              <li key={image.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => take(image.id)}
+                                  disabled={taking !== null}
+                                  title={`Use this photograph of ${library.reference}`}
+                                  className="relative block h-20 w-20 overflow-hidden rounded-md border border-line-subtle bg-surface-raised outline-none transition-colors hover:border-teal-500 focus-visible:border-teal-500 disabled:opacity-60"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={`/api/reference-images/${image.id}`}
+                                    alt={`${image.label} stock photograph`}
+                                    loading="lazy"
+                                    className="h-full w-full object-cover"
+                                  />
+                                  {taking === image.id && (
+                                    <span className="absolute inset-0 flex items-center justify-center bg-surface-overlay/70">
+                                      <Loader2 className="h-4 w-4 animate-spin text-content-secondary" aria-hidden />
+                                    </span>
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                            {library.images.length > 4 && (
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={browse}
+                                  className="h-20 w-20 rounded-md border border-dashed border-line-subtle text-caption font-semibold text-content-secondary hover:border-teal-500 hover:text-content-accent"
+                                >
+                                  +{library.images.length - 4} more
+                                </button>
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                         <Button size="sm" variant="secondary"
                           onClick={() => inputs.current[kind]?.click()}>
                           Choose or drag files
                         </Button>
-                        {/* Only photographs of the watch. A warranty card
-                            carries a serial, a date and a dealer's stamp: it
-                            belongs to one watch, and putting a copy of one on
-                            another asserts a history that watch does not
-                            have. So there is no library door on that
-                            section at all, rather than a discouraged one. */}
-                        {kind === 'WATCH' && (
-                          <Button size="sm" variant="ghost"
-                            icon={<Library className="h-3.5 w-3.5" />}
-                            onClick={browse}>
-                            Use a stock photograph
-                          </Button>
+                        {kind === 'WATCH' && library && library.images.length === 0 && (
+                          <span className="text-caption text-content-muted">
+                            Nothing photographed for {library.reference} yet
+                          </span>
                         )}
                       </div>
                     </>
