@@ -155,6 +155,31 @@ export async function amendWatchAction(input: WatchAmendInput): Promise<ActionSt
   }
 }
 
+/**
+ * Take a copy of a banked photograph for this watch.
+ *
+ * The library is kept against the reference, so this is only ever "use the
+ * picture of this model we already have" — the service checks the brand and
+ * reference match before it copies anything, which is what stops it becoming
+ * a way to put one watch's photograph on another.
+ */
+export async function useLibraryImageAction(
+  input: { watchId: string; referenceImageId: string },
+): Promise<ActionState> {
+  const actor = await requireCapability('watch:update')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  try {
+    const { useLibraryImage } = await import('@/server/services/image-service')
+    const image = await useLibraryImage(input, actor)
+    refreshInventory()
+    revalidatePath(`/inventory/${input.watchId}`)
+    return { ok: true, message: 'Photograph added.', id: image.id }
+  } catch (error) {
+    return toState(error, 'Could not use that photograph.')
+  }
+}
+
 export async function moveWatchesAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('watch:move')
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
@@ -274,7 +299,7 @@ export async function commitImportAction(
 
   try {
     const { commitImport } = await import('@/server/services/import-service')
-    const { created, updated, skipped } = await commitImport(rows, actor)
+    const { created, updated, skipped, photographs } = await commitImport(rows, actor)
     refreshInventory()
     // Says what actually happened rather than one total. "28 watches imported"
     // when twenty-seven were left alone is the sentence that makes somebody
@@ -283,6 +308,9 @@ export async function commitImportAction(
       created > 0 ? `${created} booked in` : null,
       updated > 0 ? `${updated} updated` : null,
       skipped > 0 ? `${skipped} unchanged` : null,
+      // Worth saying out loud: a watch arriving with a photograph nobody took
+      // today looks like a mistake until you know where it came from.
+      photographs > 0 ? `${photographs} dressed from the photograph library` : null,
     ].filter(Boolean)
     return { ok: true, message: parts.length > 0 ? `Import complete — ${parts.join(', ')}.` : 'Nothing to change.' }
   } catch (error) {

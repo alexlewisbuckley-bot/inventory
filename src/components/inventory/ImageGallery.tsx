@@ -1,10 +1,18 @@
 'use client'
 import { useCallback, useRef, useState } from 'react'
-import { Camera, CreditCard, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Camera, CreditCard, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { Button, ConfirmDialog, useToast } from '@/components/ui'
+import { Button, ConfirmDialog, Modal, useToast } from '@/components/ui'
 import { downscaleImage } from '@/lib/downscale'
+import { useLibraryImageAction } from '@/app/actions/watches'
 import { IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
+
+/** One photograph on the shelf for this watch's reference. */
+interface LibraryImage {
+  id: string
+  label: string
+  byteSize: number
+}
 
 export interface GalleryImage {
   id: string
@@ -32,6 +40,40 @@ export function ImageGallery({ watchId, initial, canEdit }: {
   const [dragging, setDragging] = useState<ImageKind | null>(null)
   const [deleting, setDeleting] = useState<GalleryImage | null>(null)
   const inputs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  // The reference library: every photograph banked against this watch's
+  // model, whichever watch it was taken for. Fetched when the picker opens
+  // rather than with the page, because most visits never ask for it.
+  const [library, setLibrary] = useState<{ reference: string; images: LibraryImage[] } | null>(null)
+  const [browsing, setBrowsing] = useState(false)
+  const [taking, setTaking] = useState<string | null>(null)
+
+  const browse = async () => {
+    setBrowsing(true)
+    if (library) return
+    try {
+      const response = await fetch(`/api/reference-images?watchId=${watchId}`)
+      const payload = await response.json()
+      if (response.ok) setLibrary(payload)
+      else toast.error('Could not open the library', payload.error)
+    } catch {
+      toast.error('Could not open the library')
+    }
+  }
+
+  const take = async (referenceImageId: string) => {
+    setTaking(referenceImageId)
+    const result = await useLibraryImageAction({ watchId, referenceImageId })
+    setTaking(null)
+    if (!result.ok) { toast.error('Could not add that photograph', result.message); return }
+    // Added the way an upload is added, because to this watch it is simply
+    // its photograph: nothing in the gallery says where it came from.
+    setImages((current) => [...current, {
+      id: result.id!, kind: 'WATCH' as ImageKind, caption: null, byteSize: 0,
+    }])
+    setBrowsing(false)
+    toast.success('Photograph added')
+  }
 
   const upload = useCallback(async (files: FileList | File[], kind: ImageKind) => {
     const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
@@ -94,13 +136,24 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                   {forKind.length > 0 && <span className="ml-1.5 text-content-primary">({forKind.length})</span>}
                 </h3>
                 {canEdit && forKind.length > 0 && (
-                  <Button
-                    size="sm" variant="ghost" loading={busy}
-                    icon={<Upload className="h-3.5 w-3.5" />}
-                    onClick={() => inputs.current[kind]?.click()}
-                  >
-                    Add
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {kind === 'WATCH' && (
+                      <Button
+                        size="sm" variant="ghost"
+                        icon={<Library className="h-3.5 w-3.5" />}
+                        onClick={browse}
+                      >
+                        Library
+                      </Button>
+                    )}
+                    <Button
+                      size="sm" variant="ghost" loading={busy}
+                      icon={<Upload className="h-3.5 w-3.5" />}
+                      onClick={() => inputs.current[kind]?.click()}
+                    >
+                      Add
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -139,10 +192,25 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                   {canEdit && !busy && (
                     <>
                       <p className="max-w-xs text-caption text-content-secondary">{hint}</p>
-                      <Button size="sm" variant="secondary" className="mt-1"
-                        onClick={() => inputs.current[kind]?.click()}>
-                        Choose or drag files
-                      </Button>
+                      <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                        <Button size="sm" variant="secondary"
+                          onClick={() => inputs.current[kind]?.click()}>
+                          Choose or drag files
+                        </Button>
+                        {/* Only photographs of the watch. A warranty card
+                            carries a serial, a date and a dealer's stamp: it
+                            belongs to one watch, and putting a copy of one on
+                            another asserts a history that watch does not
+                            have. So there is no library door on that
+                            section at all, rather than a discouraged one. */}
+                        {kind === 'WATCH' && (
+                          <Button size="sm" variant="ghost"
+                            icon={<Library className="h-3.5 w-3.5" />}
+                            onClick={browse}>
+                            Use a stock photograph
+                          </Button>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
@@ -182,6 +250,51 @@ export function ImageGallery({ watchId, initial, canEdit }: {
           )
         })}
       </div>
+
+      <Modal
+        open={browsing}
+        onClose={() => setBrowsing(false)}
+        title={library ? `Photographs of ${library.reference}` : 'Photograph library'}
+        description="Taken for this model before, on this watch or another. Choosing one puts a copy on this watch."
+        size="lg"
+      >
+        {!library ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-content-secondary" aria-hidden />
+          </div>
+        ) : library.images.length === 0 ? (
+          <p className="py-10 text-center text-small text-content-secondary">
+            Nothing has been photographed for this reference yet. Upload one and it goes on the shelf for
+            the next watch of this model.
+          </p>
+        ) : (
+          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {library.images.map((image) => (
+              <li key={image.id}>
+                <button
+                  type="button"
+                  onClick={() => take(image.id)}
+                  disabled={taking !== null}
+                  className="group relative block aspect-square w-full overflow-hidden rounded-md border border-line-subtle bg-surface-subtle outline-none transition-colors hover:border-teal-500 focus-visible:border-teal-500 disabled:opacity-60"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/reference-images/${image.id}`}
+                    alt={`${image.label} stock photograph`}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                  {taking === image.id && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-surface-overlay/70">
+                      <Loader2 className="h-5 w-5 animate-spin text-content-secondary" aria-hidden />
+                    </span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
 
       <ConfirmDialog
         open={deleting !== null}

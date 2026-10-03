@@ -616,6 +616,46 @@ export const watchImages = pgTable(
   (t) => ({ watchIdx: index('watch_images_watch_idx').on(t.watchId, t.kind, t.sortOrder) }),
 )
 
+/**
+ * A bank of photographs kept against the reference rather than the watch.
+ *
+ * A photograph of a 179383 is a photograph of every 179383. Kept only on the
+ * watch it was uploaded to, it left with that watch when it sold, and the
+ * next one of the same model started from nothing. Banked here, any watch of
+ * that reference can take a copy — a copy, so the watch still owns its own
+ * row in `watchImages` and one selling cannot pull a picture out from under
+ * another listing.
+ *
+ * Photographs of the watch only. A warranty card carries a serial, a date and
+ * a dealer's stamp; it belongs to one watch, and copying it onto another
+ * asserts a history that watch does not have.
+ */
+export const referenceImages = pgTable(
+  'reference_images',
+  {
+    id: text('id').primaryKey(),
+    brandId: text('brand_id').notNull().references(() => brands.id, { onDelete: 'cascade' }),
+    /** Upper-cased with every separator removed, so one reference is one shelf. */
+    reference: text('reference').notNull(),
+    /** The reference as somebody wrote it, for showing back to them. */
+    label: text('label').notNull(),
+    mimeType: text('mime_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    width: integer('width'),
+    height: integer('height'),
+    data: bytea('data').notNull(),
+    /** SHA-256 of the bytes, so one photograph is banked once however many
+        watches of that reference it was uploaded to. */
+    digest: text('digest').notNull(),
+    createdAt: createdAt(),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    unique: uniqueIndex('reference_images_unique_idx').on(t.brandId, t.reference, t.digest),
+    lookup: index('reference_images_lookup_idx').on(t.brandId, t.reference, t.createdAt),
+  }),
+)
+
 // ---------------------------------------------------------------------------
 // Stock checks
 // ---------------------------------------------------------------------------

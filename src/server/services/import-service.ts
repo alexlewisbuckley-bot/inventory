@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { brands, locations, owners, suppliers, watches, stockMovements } from '../db/schema'
 import { recordAudit } from './audit'
+import { dressFromLibrary } from './image-service'
 import { newId, slugify } from '@/lib/ids'
 import { toMinor } from '@/lib/money'
 import { logger } from '@/lib/logger'
@@ -628,6 +629,8 @@ export interface ImportResult {
   created: number
   updated: number
   skipped: number
+  /** Newly booked watches given a photograph from the reference library. */
+  photographs: number
 }
 
 /**
@@ -644,7 +647,7 @@ export interface ImportResult {
  * become something two people do at once.
  */
 export async function commitImport(rows: ImportRow[], actor: SessionUser): Promise<ImportResult> {
-  if (rows.length === 0) return { created: 0, updated: 0, skipped: 0 }
+  if (rows.length === 0) return { created: 0, updated: 0, skipped: 0, photographs: 0 }
 
   return withTransaction(async () => {
     const brandIds = new Map<string, string>()
@@ -698,6 +701,11 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
 
     let created = 0
     let updated = 0
+    // Newly booked watches, so the photograph library can dress the ones whose
+    // reference has been through here before. Collected rather than done in
+    // the loop: one pass over the shelf at the end reads better than a
+    // round trip per row.
+    const booked: Array<{ id: string; brandId: string; reference: string }> = []
 
     for (const row of writing) {
       const priceMinor = toMinor(row.purchasePriceGbp!)
@@ -824,17 +832,25 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         id: newId('mov'), watchId: id, fromLocationId: null,
         toLocationId: locationId, reason: 'Imported from CSV', movedById: actor.id,
       })
+      booked.push({ id, brandId: brandIds.get(row.brand.toLowerCase())!, reference: row.model })
       created += 1
       nextStock += 1
     }
 
+    // Dress what the library can. Twenty watches booked in from a sheet,
+    // fourteen of them references photographed before, and those fourteen
+    // arrive with a picture instead of a grey box — which is the whole point
+    // of keeping photographs against the reference rather than the watch.
+    const photographs = await dressFromLibrary(booked, actor.id)
+
     const skipped = rows.length - writing.length
     await recordAudit({
       entityType: 'Watch', entityId: 'bulk', action: 'IMPORT', actorId: actor.id,
-      summary: `Import: ${created} booked in, ${updated} updated, ${skipped} unchanged`,
+      summary: `Import: ${created} booked in, ${updated} updated, ${skipped} unchanged`
+        + (photographs > 0 ? `, ${photographs} dressed from the photograph library` : ''),
     })
-    logger.info('import committed', { created, updated, skipped, actorId: actor.id })
-    return { created, updated, skipped }
+    logger.info('import committed', { created, updated, skipped, photographs, actorId: actor.id })
+    return { created, updated, skipped, photographs }
   })
 }
 
