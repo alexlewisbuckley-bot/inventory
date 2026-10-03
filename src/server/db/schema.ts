@@ -6,7 +6,7 @@ import {
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
-  ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS,
+  ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
   ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
   OFFER_STATUSES, OWNER_TYPES,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
@@ -854,6 +854,62 @@ export const notifications = pgTable(
     userReadIdx: index('notifications_user_read_idx').on(t.userId, t.readAt),
     createdIdx: index('notifications_created_idx').on(t.createdAt),
   }),
+)
+
+/**
+ * A dealer saying "I want that", and the conversation that follows.
+ *
+ * Deliberately not a deal: a deal is something we have decided to pursue, and
+ * anybody with a login being able to put one on the board makes the board
+ * worthless. An enquiry becomes one when somebody approves it, and `dealId`
+ * keeps the board row and the conversation that produced it joined.
+ */
+export const tradeEnquiries = pgTable(
+  'trade_enquiries',
+  {
+    id: text('id').primaryKey(),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    /** What the piece was called at the time, so this still reads if it goes. */
+    subject: text('subject').notNull(),
+    traderId: text('trader_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: TRADE_ENQUIRY_KINDS }).notNull().default('INTEREST'),
+    /** What they offered, where they named a figure. A zero would read as nothing. */
+    offerGbp: integer('offer_gbp'),
+    status: text('status', { enum: TRADE_ENQUIRY_STATUSES }).notNull().default('OPEN'),
+    dealId: text('deal_id').references((): AnyPgColumn => deals.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedById: text('decided_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /** One per side: "has the dealer seen my reply" is all anybody asks of it. */
+    traderReadAt: timestamp('trader_read_at', { withTimezone: true }),
+    staffReadAt: timestamp('staff_read_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    statusIdx: index('trade_enquiries_status_idx').on(t.status, t.createdAt),
+    traderIdx: index('trade_enquiries_trader_idx').on(t.traderId, t.createdAt),
+    watchIdx: index('trade_enquiries_watch_idx').on(t.watchId),
+  }),
+)
+
+/**
+ * The thread.
+ *
+ * Both sides write here and who wrote it is the only distinction — a
+ * conversation split into "theirs" and "ours" is two tables that have to be
+ * read back in order anyway.
+ */
+export const tradeMessages = pgTable(
+  'trade_messages',
+  {
+    id: text('id').primaryKey(),
+    enquiryId: text('enquiry_id').notNull()
+      .references(() => tradeEnquiries.id, { onDelete: 'cascade' }),
+    authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => ({ enquiryIdx: index('trade_messages_enquiry_idx').on(t.enquiryId, t.createdAt) }),
 )
 
 /**

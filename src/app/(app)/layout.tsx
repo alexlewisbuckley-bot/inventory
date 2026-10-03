@@ -1,9 +1,11 @@
 import { redirect } from 'next/navigation'
-import { and, count, eq, inArray, isNull, lte, not, or } from 'drizzle-orm'
+import { and, count, eq, inArray, isNull, lte, not, or, sql } from 'drizzle-orm'
 import { getSessionUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { liveSale } from '@/server/db/predicates'
-import { deals, notifications, tasks, watchRequests } from '@/server/db/schema'
+import {
+  deals, notifications, tasks, tradeEnquiries as tradeEnquiries_, watchRequests,
+} from '@/server/db/schema'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { BottomBar } from '@/components/layout/BottomBar'
@@ -44,8 +46,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // exists only to fill badges on a rail they do not have. Counting it for
   // them would be six queries to render nothing.
   if (isExternalRole(user.role as Role)) {
-    const [rates, preferences, partnerBrands] = await Promise.all([
+    const [rates, preferences, partnerBrands, waiting] = await Promise.all([
       getRateTable(), getPreferencesFor(user.id), catalogueBrands(),
+      // The one badge an outside party gets, and the only one that is about
+      // them: an answer to something they asked.
+      db.select({ value: count() }).from(notifications)
+        .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt))),
     ])
     const partnerCurrency = isCurrency(preferences?.displayCurrency)
       ? preferences.displayCurrency
@@ -55,7 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <CurrencyProvider initial={partnerCurrency} rates={rates}>
         <DensityProvider value={densityOf(preferences?.density)}>
         <div className="flex min-h-screen flex-col bg-surface-subtle">
-          <PartnerTopBar user={user} brands={partnerBrands} />
+          <PartnerTopBar user={user} brands={partnerBrands} enquiries={Number(waiting[0]?.value ?? 0)} />
           <main
             id="main"
             tabIndex={-1}
@@ -79,7 +85,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const [
     unread, rates, preferences, stock, unpriced, ageing, saleCount,
-    openDeals, tasksDue, openRequests,
+    openDeals, tasksDue, openRequests, tradeEnquiries,
   ] = await Promise.all([
     db.select({ value: count() }).from(notifications)
       .where(and(eq(notifications.userId, user.id), isNull(notifications.readAt))),
@@ -98,6 +104,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       )),
     db.select({ value: count() }).from(watchRequests)
       .where(and(isNull(watchRequests.deletedAt), inArray(watchRequests.status, ['OPEN', 'SOURCING', 'MATCHED']))),
+    // Open, and with something said since anybody here last looked.
+    db.select({ value: count() }).from(tradeEnquiries_)
+      .where(and(
+        eq(tradeEnquiries_.status, 'OPEN'),
+        or(
+          isNull(tradeEnquiries_.staffReadAt),
+          sql`${tradeEnquiries_.updatedAt} > ${tradeEnquiries_.staffReadAt}`,
+        ),
+      )),
   ])
 
   const displayCurrency = isCurrency(preferences?.displayCurrency)
@@ -112,6 +127,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     openDeals: Number(openDeals[0]?.value ?? 0),
     tasksDue: Number(tasksDue[0]?.value ?? 0),
     openRequests: Number(openRequests[0]?.value ?? 0),
+    tradeEnquiries: Number(tradeEnquiries[0]?.value ?? 0),
   }
 
   return (

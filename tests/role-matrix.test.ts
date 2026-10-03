@@ -31,6 +31,22 @@ describe('the role matrix', () => {
    * but the cells are not the control — the server action asserts this, and
    * this asserts who the server action lets through.
    */
+  /**
+   * Approving an enquiry opens a deal on the board, so it is the owner's
+   * alone — a board anybody can write to is a board nobody reads.
+   */
+  it('lets only the Owner answer a trade enquiry', () => {
+    for (const role of ROLES) {
+      expect(can(role, 'trade:respond'), role).toBe(role === 'OWNER')
+    }
+  })
+
+  it('lets only a trade partner raise one', () => {
+    for (const role of ROLES) {
+      expect(can(role, 'trade:enquire'), role).toBe(role === 'TRADER')
+    }
+  })
+
   it('lets only the Owner amend a booked-in figure in place', () => {
     for (const role of ROLES) {
       expect(can(role, 'watch:amend'), role).toBe(role === 'OWNER')
@@ -128,14 +144,20 @@ describe('the role matrix', () => {
     expect(assignableRoles('TRADER' as Role)).toEqual([])
   })
 
-  it('gives a trade partner the catalogue and nothing else', () => {
+  it('gives a trade partner the catalogue, a way to ask about it, and nothing else', () => {
     // Written as a whole-set assertion rather than a handful of nots: a
     // capability added to the list later is granted to nobody by accident,
     // and this is the role where an accident is an outside party reading
     // what a watch cost.
-    expect([...ROLE_CAPABILITIES.TRADER]).toEqual(['catalogue:read'])
+    //
+    // `trade:enquire` is the second one and it is deliberately narrow: it
+    // raises an enquiry and writes a message on one, which is a dealer
+    // saying "I want that". It is not `trade:respond`, so it cannot approve
+    // anything, and approving is what puts a deal on the board.
+    const ALLOWED = ['catalogue:read', 'trade:enquire']
+    expect([...ROLE_CAPABILITIES.TRADER]).toEqual(ALLOWED)
     for (const capability of CAPABILITIES) {
-      if (capability === 'catalogue:read') continue
+      if (ALLOWED.includes(capability)) continue
       expect(can('TRADER', capability), `TRADER must not hold ${capability}`).toBe(false)
     }
     // The inventory list, the sales ledger and the customer book are the

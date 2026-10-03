@@ -1,6 +1,6 @@
 import {
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
-  Landmark, LayoutDashboard, MapPin, Package, Receipt, Search, Store, Users2,
+  Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
 } from 'lucide-react'
 import { can, isExternalRole, type Capability } from '@/lib/permissions'
@@ -14,6 +14,8 @@ export interface SidebarCounts {
   openDeals: number
   tasksDue: number
   openRequests: number
+  /** Trade enquiries with something nobody here has read. */
+  tradeEnquiries: number
 }
 
 export interface NavItem {
@@ -69,6 +71,10 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/deals', label: 'Deals', icon: KanbanSquare, capability: 'deal:read', match: '/deals', count: counts.openDeals },
         { href: '/customers', label: 'Customers', icon: Users2, capability: 'customer:read', match: '/customers' },
         { href: '/requests', label: 'Wanted', icon: Search, capability: 'request:read', match: '/requests', count: counts.openRequests },
+        // The trade's own door. Under Sell because answering one is selling,
+        // and it carries an attention badge: a dealer waiting on an answer is
+        // the one queue here where the clock is somebody else's.
+        { href: '/enquiries', label: 'Enquiries', icon: MessageSquare, capability: 'trade:respond', match: '/enquiries', count: counts.tradeEnquiries, attention: counts.tradeEnquiries > 0 },
         { href: '/tasks', label: 'Tasks', icon: CheckSquare, capability: 'task:read', match: '/tasks', count: counts.tasksDue, attention: counts.tasksDue > 0 },
       ],
     },

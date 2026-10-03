@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowRightLeft, Bell, CheckCheck, PackagePlus, Receipt } from 'lucide-react'
+import { AlertTriangle, ArrowRightLeft, Bell, CheckCheck, PackagePlus, Receipt , MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, useToast } from '@/components/ui'
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/actions/admin'
@@ -26,6 +26,7 @@ const ICONS: Record<NotificationType, typeof Bell> = {
   WATCH_MOVED: ArrowRightLeft,
   PRICE_MISSING: AlertTriangle,
   AGEING_STOCK: AlertTriangle,
+  TRADE_ENQUIRY: MessageSquare,
   SYSTEM: Bell,
 }
 

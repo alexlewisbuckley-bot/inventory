@@ -205,6 +205,26 @@ export async function requireCapability(capability: Capability): Promise<Session
   return user
 }
 
+/**
+ * A page with two legitimate doors onto it.
+ *
+ * Written for the trade enquiry screens, where a dealer holds
+ * `trade:enquire` and the owner holds `trade:respond` and neither implies the
+ * other — so neither can be the single door, and `requireUser` plus a check
+ * in the page body would be a page that names no reader at all.
+ *
+ * Still a capability assertion, not a relaxation: what each of them may then
+ * see is narrowed by the service, which scopes a trade partner to their own.
+ */
+export async function requireAnyCapability(...capabilities: Capability[]): Promise<SessionUser> {
+  const user = await requireUser()
+  if (!capabilities.some((capability) => can(user.role, capability))) {
+    logger.warn('capability denied', { userId: user.id, role: user.role, capabilities })
+    throw new ForbiddenError(`Your role (${user.role.toLowerCase()}) cannot perform this action.`)
+  }
+  return user
+}
+
 /** Revoke the current session and clear the cookie. */
 export async function destroySession(): Promise<void> {
   const cookie = cookies().get(COOKIE)?.value

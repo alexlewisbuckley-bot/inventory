@@ -18,9 +18,11 @@ const SORTS: CatalogueSort[] = ['brand', 'trade-desc', 'trade-asc', 'year-desc']
 /**
  * What a trade partner sees when they sign in.
  *
- * The whole page is a read. There is no edit control to hide and no action to
- * forbid, because none is rendered — the only mutation a dealer could want is
- * to buy something, and that is a conversation rather than a button.
+ * Almost the whole page is a read: there is no edit control to hide, because
+ * none is rendered. The one thing a dealer can do is say they want something,
+ * and that opens a conversation rather than a sale — an enquiry, which an
+ * owner answers and may turn into a deal. The distinction is the point: a
+ * board anybody can write to is a board nobody reads.
  */
 export default async function CataloguePage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('catalogue:read')

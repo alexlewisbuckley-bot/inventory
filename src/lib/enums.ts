@@ -141,7 +141,8 @@ export const AUDIT_ACTIONS = [
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]
 
 export const NOTIFICATION_TYPES = [
-  'STOCK_ADDED', 'SALE_RECORDED', 'WATCH_MOVED', 'PRICE_MISSING', 'AGEING_STOCK', 'SYSTEM',
+  'STOCK_ADDED', 'SALE_RECORDED', 'WATCH_MOVED', 'PRICE_MISSING', 'AGEING_STOCK',
+  'TRADE_ENQUIRY', 'SYSTEM',
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
@@ -151,6 +152,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   WATCH_MOVED: 'Watch moved',
   PRICE_MISSING: 'Price missing',
   AGEING_STOCK: 'Ageing stock',
+  TRADE_ENQUIRY: 'Trade enquiry',
   SYSTEM: 'System',
 }
 
@@ -799,4 +801,38 @@ export const STOCK_CHECK_LINE_TONE: Record<StockCheckLineStatus, 'neutral' | 'go
   FOUND: 'good',
   MISSING: 'critical',
   FOUND_ELSEWHERE: 'warning',
+}
+
+/* ------------------------------------------------------------------ *
+ * Trade enquiries.
+ *
+ * A dealer looking at the trade list, saying so, and the conversation that
+ * follows. Deliberately not a deal: a deal is a thing we have decided to
+ * pursue, and anybody with a login being able to put one on the board makes
+ * the board worthless. An enquiry becomes a deal when somebody approves it.
+ * ------------------------------------------------------------------ */
+
+export const TRADE_ENQUIRY_KINDS = ['INTEREST', 'OFFER'] as const
+export type TradeEnquiryKind = (typeof TRADE_ENQUIRY_KINDS)[number]
+
+export const TRADE_ENQUIRY_KIND_LABELS: Record<TradeEnquiryKind, string> = {
+  INTEREST: 'Asking about it',
+  OFFER: 'Offering to buy',
+}
+
+export const TRADE_ENQUIRY_STATUSES = ['OPEN', 'APPROVED', 'DECLINED', 'WITHDRAWN'] as const
+export type TradeEnquiryStatus = (typeof TRADE_ENQUIRY_STATUSES)[number]
+
+export const TRADE_ENQUIRY_STATUS_LABELS: Record<TradeEnquiryStatus, string> = {
+  OPEN: 'Open',
+  APPROVED: 'Approved',
+  DECLINED: 'Declined',
+  WITHDRAWN: 'Withdrawn',
+}
+
+export const TRADE_ENQUIRY_STATUS_TONE: Record<TradeEnquiryStatus, 'accent' | 'gold' | 'neutral' | 'danger'> = {
+  OPEN: 'gold',
+  APPROVED: 'accent',
+  DECLINED: 'danger',
+  WITHDRAWN: 'neutral',
 }

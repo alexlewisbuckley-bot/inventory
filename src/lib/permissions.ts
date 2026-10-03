@@ -58,6 +58,15 @@ export const CAPABILITIES = [
    * amounts and pipeline values.
    */
   'cost:read', 'revenue:read',
+  /**
+   * The trade's own door, and the one person who answers it.
+   *
+   * `trade:enquire` is a dealer on the catalogue saying they want something.
+   * `trade:respond` is replying, approving or declining — the owner's alone,
+   * because approving turns an enquiry into a deal on the board and a board
+   * anybody can write to is a board nobody reads.
+   */
+  'trade:enquire', 'trade:respond',
 ] as const
 
 export type Capability = (typeof CAPABILITIES)[number]
@@ -123,7 +132,7 @@ const MANAGER: Capability[] = [
   'customer:delete', 'deal:delete',
 ]
 
-const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage', 'watch:amend']
+const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage', 'watch:amend', 'trade:respond']
 
 /**
  * A dealer we sell to. One capability, and it is a read.
@@ -135,7 +144,7 @@ const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage', 'watc
  * partner is entitled to, so there is no redaction to get wrong and no
  * mutation to forbid, because the page offers none.
  */
-const TRADER: Capability[] = ['catalogue:read']
+const TRADER: Capability[] = ['catalogue:read', 'trade:enquire']
 
 export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
   VIEWER: VIEWER,

@@ -4,6 +4,7 @@ import { useListQuery } from '@/hooks/useListQuery'
 import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH } from '@/components/ui'
 import { formatCurrency } from '@/lib/currency'
 import { cn } from '@/lib/cn'
+import { EnquireButton } from './EnquireButton'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS,
   type BoxPapers, type Condition, type CurrencyCode,
@@ -128,6 +129,17 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
               </dd>
             </div>
           </dl>
+
+          {/* The one thing a dealer can do here. It opens a conversation
+              rather than a deal — whether it becomes one is somebody else's
+              decision, and a button that promised otherwise would fill the
+              board with other people's intentions. */}
+          <div className="mt-3">
+            <EnquireButton
+              watchId={item.id}
+              label={`${item.brandName} ${item.modelName ?? item.model}`}
+            />
+          </div>
         </div>
       </Card>
     </li>

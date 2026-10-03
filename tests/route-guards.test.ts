@@ -39,7 +39,7 @@ describe('authenticated routes', () => {
     const unguarded = found
       .filter((file) => {
         const source = readFileSync(file, 'utf8')
-        return !/requireCapability\(|requireStaff\(|requireUser\(/.test(source)
+        return !/requireCapability\(|requireAnyCapability\(|requireStaff\(|requireUser\(/.test(source)
       })
       .map((file) => file.slice(APP.length))
     expect(unguarded, 'these pages let anybody with a session in').toEqual([])
@@ -49,12 +49,16 @@ describe('authenticated routes', () => {
     // `requireUser` only proves somebody is signed in, which a trade partner
     // is. The three places it is still right are their own account, their own
     // notifications, and the page that decides where to send them.
+    //
+    // `requireAnyCapability` counts as naming a reader: it asserts one of a
+    // stated set, for the pages a dealer and the owner both reach by
+    // different doors.
     const BARE_USER_IS_FINE = ['/settings/profile/page.tsx', '/page.tsx']
     const bare = found
       .filter((file) => {
         const source = readFileSync(file, 'utf8')
         return /requireUser\(/.test(source)
-          && !/requireCapability\(|requireStaff\(/.test(source)
+          && !/requireCapability\(|requireAnyCapability\(|requireStaff\(/.test(source)
       })
       .map((file) => file.slice(APP.length))
       .filter((path) => !BARE_USER_IS_FINE.includes(path))
