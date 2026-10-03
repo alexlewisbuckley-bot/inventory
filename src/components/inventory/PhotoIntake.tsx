@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Check, ImagePlus, Loader2, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -74,7 +74,11 @@ const TRIAGE = (p: Pending) => (p.watchIds.length === 0 ? 0 : p.exact ? 2 : 1)
  * one photograph onto three watches and it goes to all three. Every drag has
  * a button that does the same thing, so none of it needs a mouse.
  */
-export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
+export function PhotoIntake({ candidates, initialFiles }: {
+  candidates: PhotoCandidate[]
+  /** Handed over by the intake page, which already took the drop. */
+  initialFiles?: File[] | null
+}) {
   const router = useRouter()
   const toast = useToast()
   const input = useRef<HTMLInputElement | null>(null)
@@ -127,6 +131,20 @@ export function PhotoIntake({ candidates }: { candidates: PhotoCandidate[] }) {
       }),
     ])
   }
+
+  // Photographs the intake page already caught are matched on arrival, so
+  // landing here is not a second drop of the same batch.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (!initialFiles?.length || seeded.current) return
+    seeded.current = true
+    const transfer = new DataTransfer()
+    for (const file of initialFiles) transfer.items.add(file)
+    accept(transfer.files)
+    // `accept` is recreated each render and is safe to call once; the guard
+    // above is what makes this run a single time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiles])
 
   const update = (key: string, patch: Partial<Pending>) =>
     setPending((current) => current.map((p) => (p.key === key ? { ...p, ...patch } : p)))

@@ -44,6 +44,13 @@ const nextConfig = {
     return [
       { source: '/pipeline', destination: '/deals', permanent: true },
       { source: '/pipeline/:id', destination: '/deals/:id', permanent: true },
+      // Booking in an invoice, importing a spreadsheet and attaching
+      // photographs were three front doors onto one errand — here are some
+      // files, put them where they go. The flows are unchanged behind the
+      // single drop; only the question at the front is.
+      { source: '/inventory/invoice', destination: '/inventory/add', permanent: true },
+      { source: '/inventory/import', destination: '/inventory/add', permanent: true },
+      { source: '/inventory/photos', destination: '/inventory/add', permanent: true },
     ]
   },
   async headers() {

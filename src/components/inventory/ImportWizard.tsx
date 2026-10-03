@@ -1,5 +1,5 @@
 'use client'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
@@ -28,7 +28,11 @@ const INITIAL: ImportPreviewState = { ok: false }
  * and this installation's own location names makes the first attempt the
  * successful one.
  */
-export function ImportWizard({ locationNames }: { locationNames: string[] }) {
+export function ImportWizard({ locationNames, initialFile }: {
+  locationNames: string[]
+  /** Handed over by the intake page, which already took the drop. */
+  initialFile?: File | null
+}) {
   const router = useRouter()
   const toast = useToast()
   const { money, currency } = useCurrency()
@@ -38,6 +42,18 @@ export function ImportWizard({ locationNames }: { locationNames: string[] }) {
   const [showPaste, setShowPaste] = useState(false)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  // A sheet the intake page already caught is put into the form input here,
+  // so the only thing left to do is press the button that checks it.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (!initialFile || seeded.current || !fileInput.current) return
+    seeded.current = true
+    const transfer = new DataTransfer()
+    transfer.items.add(initialFile)
+    fileInput.current.files = transfer.files
+    setFileName(initialFile.name)
+  }, [initialFile])
 
   const preview = state.preview
   // Something to do, not merely something to read. A file whose every row

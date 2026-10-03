@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { asc, eq, isNull } from 'drizzle-orm'
-import { Download, FileText, ImagePlus, Plus, Upload } from 'lucide-react'
+import { Download, Inbox, Plus } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, owners, suppliers } from '@/server/db/schema'
@@ -162,19 +162,13 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                 menu so the primary action is not buried under two lines of
                 secondary buttons. */}
             <span className="hidden sm:contents">
-              {capabilities['data:import'] && (
-                <LinkButton href="/inventory/invoice" variant="secondary" icon={<FileText className="h-4 w-4" />}>
-                  Book in invoice
-                </LinkButton>
-              )}
-              {capabilities['data:import'] && (
-                <LinkButton href="/inventory/import" variant="ghost" icon={<Upload className="h-4 w-4" />}>
-                  Import
-                </LinkButton>
-              )}
-              {capabilities['watch:update'] && (
-                <LinkButton href="/inventory/photos" variant="ghost" icon={<ImagePlus className="h-4 w-4" />}>
-                  Photographs
+              {/* One button, because from where somebody stands an invoice, a
+                  spreadsheet and a batch of photographs are one errand: here
+                  are some files, put them where they go. Three buttons was
+                  the filing cabinet showing through. */}
+              {(capabilities['data:import'] || capabilities['watch:update']) && (
+                <LinkButton href="/inventory/add" variant="secondary" icon={<Inbox className="h-4 w-4" />}>
+                  Bring stock in
                 </LinkButton>
               )}
               {capabilities['report:export'] && (
@@ -185,18 +179,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
             </span>
             <PageActions
               secondary={[
-                ...(capabilities['data:import']
-                  ? [
-                    { id: 'invoice', label: 'Book in from an invoice', href: '/inventory/invoice', icon: <FileText className="h-3.5 w-3.5" /> },
-                    { id: 'import', label: 'Import from a spreadsheet', href: '/inventory/import', icon: <Upload className="h-3.5 w-3.5" /> },
-                  ]
+                ...(capabilities['data:import'] || capabilities['watch:update']
+                  ? [{ id: 'add', label: 'Bring stock in', href: '/inventory/add', icon: <Inbox className="h-3.5 w-3.5" /> }]
                   : []),
-                // Photographs are a separate errand from the spreadsheet —
-                // the sheet cannot carry bytes — and a separate capability:
-                // attaching an image edits the watch, it does not import it.
-                ...(capabilities['watch:update']
-                  ? [{ id: 'photos', label: 'Add photographs in bulk', href: '/inventory/photos', icon: <ImagePlus className="h-3.5 w-3.5" /> }]
-                  : []),
+
               ]}
               primary={capabilities['watch:create']
                 ? <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add item</LinkButton>

@@ -21,7 +21,11 @@ import { cn } from '@/lib/cn'
  * whether it was matched or newly created, and anything unreadable is named
  * rather than quietly dropped.
  */
-export function InvoiceDropZone({ aiEnabled }: { aiEnabled: boolean }) {
+export function InvoiceDropZone({ aiEnabled, initialFile }: {
+  aiEnabled: boolean
+  /** Handed over by the intake page, which already took the drop. */
+  initialFile?: File | null
+}) {
   const router = useRouter()
   const toast = useToast()
   const input = useRef<HTMLInputElement>(null)
@@ -46,6 +50,15 @@ export function InvoiceDropZone({ aiEnabled }: { aiEnabled: boolean }) {
       }
     })
   }, [router, toast])
+
+  // A file the intake page already caught starts reading itself, so arriving
+  // here is not a second drop of the same document.
+  const started = useRef(false)
+  useEffect(() => {
+    if (!initialFile || started.current) return
+    started.current = true
+    submit(initialFile)
+  }, [initialFile, submit])
 
   // Bound to the window, not to the card: a file dropped anywhere on this page
   // was meant for the only thing on it.
