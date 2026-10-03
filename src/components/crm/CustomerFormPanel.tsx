@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Pencil, Plus } from 'lucide-react'
+import { Check, Pencil, Plus } from 'lucide-react'
 import {
   Button, Checkbox, Drawer, SegmentedField, SelectField, TextField, useToast,
 } from '@/components/ui'
+import { cn } from '@/lib/cn'
 import { saveCustomerAction } from '@/app/actions/crm'
 import { useCreateFlag } from '@/components/ui/CreateAction'
 import {
@@ -19,6 +20,41 @@ import { toMajor } from '@/lib/money'
 import type { ActionState } from '@/app/actions/auth'
 
 const INITIAL: ActionState = { ok: false }
+
+/**
+ * Three steps, and the first one is enough.
+ *
+ * This was one scroll of twenty-five fields, most of which nobody has the
+ * answer to while a customer is standing in front of them — a form that long
+ * teaches people to skip it, and a customer book with nothing in it is worse
+ * than a short record. So the only things asked for before it can be saved
+ * are a name and a way of reaching them. Everything else is where it would be
+ * looked for later.
+ *
+ * `fields` is what sends somebody back here when the server rejects
+ * something: an error on a step nobody is looking at is an error nobody can
+ * fix.
+ */
+const STEPS = [
+  {
+    id: 'who',
+    label: 'Who they are',
+    blurb: 'A name and a way of reaching them is a customer. The rest can wait.',
+    fields: ['firstName', 'lastName', 'company', 'email', 'phone'],
+  },
+  {
+    id: 'buying',
+    label: 'How they buy',
+    blurb: 'What they are after, and on what terms.',
+    fields: ['budgetMaxGbp', 'creditLimitGbp'],
+  },
+  {
+    id: 'rest',
+    label: 'Everything else',
+    blurb: 'Address, who looks after them, and anything worth remembering.',
+    fields: ['addressLine1', 'postcode', 'birthday'],
+  },
+] as const
 
 export interface CustomerFormValues {
   id: string
@@ -79,18 +115,32 @@ export function CustomerFormPanel({
   )
   const trade = customerType === 'TRADE'
   const [state, action] = useFormState(saveCustomerAction, INITIAL)
+  const [step, setStep] = useState(0)
 
   const open = customer ? editing : create.open
   const close = () => (customer ? setEditing(false) : create.close())
 
   useEffect(() => {
-    if (!state.ok) return
+    if (!state.ok) {
+      // An error on a step nobody is looking at is an error nobody can fix.
+      const bad = Object.keys(state.errors ?? {})
+      if (bad.length) {
+        const found = STEPS.findIndex((s) => s.fields.some((f) => bad.includes(f)))
+        if (found >= 0) setStep(found)
+      }
+      return
+    }
     close()
     toast.success(state.message ?? 'Saved')
     // A newly created customer is almost always the thing you want next.
     if (state.id && !customer) router.push(`/customers/${state.id}`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state])
+
+  // Opening it fresh starts at the beginning; editing an existing record
+  // keeps whichever step was last looked at, because editing is usually
+  // going back to one particular thing.
+  useEffect(() => { if (open && !customer) setStep(0) }, [open, customer])
 
   return (
     <>
@@ -106,13 +156,44 @@ export function CustomerFormPanel({
         open={open}
         onClose={close}
         title={customer ? `Edit ${customer.firstName} ${customer.lastName}` : 'Add a customer'}
-        subtitle={customer
-          ? undefined
-          : 'Only a name is required. Everything else can be filled in as you learn it.'}
+        subtitle={STEPS[step]!.blurb}
       >
         <form action={action} className="flex flex-col gap-5">
           {customer && <input type="hidden" name="id" value={customer.id} />}
 
+          {/* Every field stays in the form whichever step is showing, so a
+              record saved from the first step still carries anything already
+              typed into the others — and the server action never has to know
+              this is a wizard at all. */}
+          <ol className="flex items-center gap-1">
+            {STEPS.map((s, index) => (
+              <li key={s.id} className="flex flex-1 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setStep(index)}
+                  aria-current={index === step ? 'step' : undefined}
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-caption transition-colors',
+                    index === step
+                      ? 'bg-surface-subtle font-semibold text-content-primary'
+                      : 'text-content-secondary hover:text-content-primary',
+                  )}
+                >
+                  <span className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold',
+                    index < step ? 'bg-teal-500 text-white'
+                      : index === step ? 'bg-content-primary text-surface-raised'
+                        : 'border border-line-subtle text-content-muted',
+                  )}>
+                    {index < step ? <Check className="h-3 w-3" aria-hidden /> : index + 1}
+                  </span>
+                  <span className="truncate">{s.label}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <div className={cn('flex flex-col gap-5', step !== 0 && 'hidden')}>
           {/* First, because it changes what the rest of the record means: a
               dealer is quoted differently, invoiced differently and spoken to
               differently from a private buyer. */}
@@ -133,8 +214,15 @@ export function CustomerFormPanel({
               defaultValue={customer?.firstName} error={state.errors?.firstName} />
             <TextField name="lastName" label="Surname" required
               defaultValue={customer?.lastName} error={state.errors?.lastName} />
-            <TextField name="company" label="Company" className="sm:col-span-2"
-              defaultValue={customer?.company ?? ''} />
+            {/* A dealer is the company; a private buyer is a person who may
+                happen to have one. So it is asked for here only on the trade
+                side, and sits with the rest of the optional detail
+                otherwise. */}
+            {trade && (
+              <TextField name="company" label="Company" className="sm:col-span-2"
+                hint="How they will appear on an invoice."
+                defaultValue={customer?.company ?? ''} />
+            )}
             <TextField name="email" type="email" label="Email" autoComplete="off"
               defaultValue={customer?.email ?? ''} error={state.errors?.email} />
             <TextField name="phone" label="Phone" defaultValue={customer?.phone ?? ''} />
@@ -146,18 +234,9 @@ export function CustomerFormPanel({
             />
             <TextField name="altPhone" label="Alternative number" defaultValue={customer?.altPhone ?? ''} />
           </div>
+          </div>
 
-          <Fieldset legend="Where they are">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <TextField name="addressLine1" label="Address" defaultValue={customer?.addressLine1 ?? ''} />
-              <TextField name="addressLine2" label="Address line 2" defaultValue={customer?.addressLine2 ?? ''} />
-              <TextField name="city" label="City" defaultValue={customer?.city ?? ''} />
-              <TextField name="postcode" label="Postcode" defaultValue={customer?.postcode ?? ''} />
-              <TextField name="country" label="Country" className="sm:col-span-2"
-                defaultValue={customer?.country ?? ''} />
-            </div>
-          </Fieldset>
-
+          <div className={cn('flex flex-col gap-5', step !== 1 && 'hidden')}>
           <Fieldset legend={trade ? 'How we trade with them' : 'How they buy'}>
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField name="tier" label="Tier" defaultValue={customer?.tier ?? 'STANDARD'}
@@ -220,6 +299,26 @@ export function CustomerFormPanel({
               </fieldset>
             </div>
           </Fieldset>
+          </div>
+
+          <div className={cn('flex flex-col gap-5', step !== 2 && 'hidden')}>
+          <Fieldset legend="Where they are">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {/* A private buyer's company lives here, with the rest of the
+                  things worth having and not worth stopping for. */}
+              {!trade && (
+                <TextField name="company" label="Company" className="sm:col-span-2"
+                  hint="If they buy through one."
+                  defaultValue={customer?.company ?? ''} />
+              )}
+              <TextField name="addressLine1" label="Address" defaultValue={customer?.addressLine1 ?? ''} />
+              <TextField name="addressLine2" label="Address line 2" defaultValue={customer?.addressLine2 ?? ''} />
+              <TextField name="city" label="City" defaultValue={customer?.city ?? ''} />
+              <TextField name="postcode" label="Postcode" defaultValue={customer?.postcode ?? ''} />
+              <TextField name="country" label="Country" className="sm:col-span-2"
+                defaultValue={customer?.country ?? ''} />
+            </div>
+          </Fieldset>
 
           <Fieldset legend="Relationship">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -252,13 +351,35 @@ export function CustomerFormPanel({
             </div>
           </Fieldset>
 
+          </div>
+
           {state.message && !state.ok && (
             <p role="alert" className="text-small text-state-danger">{state.message}</p>
           )}
 
-          <div className="flex items-center justify-end gap-2 border-t border-line-subtle pt-4">
-            <Button variant="ghost" type="button" onClick={close}>Cancel</Button>
-            <SaveButton label={customer ? 'Save changes' : 'Add customer'} />
+          {/*
+            Saving is available on every step, not only the last.
+            A record with a name and a phone number is a real customer, and a
+            form that will not let go of one until an address has been typed
+            is a form people stop using.
+          */}
+          <div className="flex items-center justify-between gap-2 border-t border-line-subtle pt-4">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => (step === 0 ? close() : setStep(step - 1))}
+            >
+              {step === 0 ? 'Cancel' : 'Back'}
+            </Button>
+            <div className="flex items-center gap-2">
+              <SaveButton
+                label={customer ? 'Save changes' : 'Add customer'}
+                variant={step === STEPS.length - 1 ? 'primary' : 'secondary'}
+              />
+              {step < STEPS.length - 1 && (
+                <Button type="button" onClick={() => setStep(step + 1)}>Next</Button>
+              )}
+            </div>
           </div>
         </form>
       </Drawer>
@@ -293,7 +414,7 @@ function Note({ name, label, placeholder, defaultValue }: {
   )
 }
 
-function SaveButton({ label }: { label: string }) {
+function SaveButton({ label, variant = 'primary' }: { label: string; variant?: 'primary' | 'secondary' }) {
   const { pending } = useFormStatus()
-  return <Button type="submit" loading={pending}>{label}</Button>
+  return <Button type="submit" variant={variant} loading={pending}>{label}</Button>
 }
