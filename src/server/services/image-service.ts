@@ -364,3 +364,22 @@ export async function dressFromLibrary(
   }
   return dressed
 }
+
+/**
+ * Take a photograph off the shelf.
+ *
+ * Only the library copy. Watches that already took one hold their own row and
+ * keep it — the whole reason this is a copy and not a share is that a watch's
+ * gallery should not change because something happened somewhere else.
+ */
+export async function removeLibraryImage(id: string, actor: SessionUser): Promise<void> {
+  const rows = await db.select({ label: referenceImages.label }).from(referenceImages)
+    .where(eq(referenceImages.id, id)).limit(1)
+  if (!rows[0]) throw new NotFoundError('Photograph')
+
+  await db.delete(referenceImages).where(eq(referenceImages.id, id))
+  await recordAudit({
+    entityType: 'Watch', entityId: 'library', action: 'UPDATE', actorId: actor.id,
+    summary: `Photograph removed from the ${rows[0].label} library`,
+  })
+}

@@ -47,6 +47,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
   const [library, setLibrary] = useState<{ reference: string; images: LibraryImage[] } | null>(null)
   const [browsing, setBrowsing] = useState(false)
   const [taking, setTaking] = useState<string | null>(null)
+  const [shelving, setShelving] = useState<LibraryImage | null>(null)
 
   const loadLibrary = useCallback(async () => {
     try {
@@ -73,6 +74,21 @@ export function ImageGallery({ watchId, initial, canEdit }: {
     if (!needsPhotographs || library) return
     void loadLibrary()
   }, [needsPhotographs, library, loadLibrary])
+
+  const removeFromLibrary = async () => {
+    if (!shelving) return
+    const response = await fetch(`/api/reference-images/${shelving.id}`, { method: 'DELETE' })
+    if (response.ok) {
+      setLibrary((current) => current && {
+        ...current,
+        images: current.images.filter((image) => image.id !== shelving.id),
+      })
+      toast.success('Taken off the shelf', 'Watches that already use it keep their copy.')
+    } else {
+      toast.error('Could not remove that photograph')
+    }
+    setShelving(null)
+  }
 
   const browse = async () => {
     setBrowsing(true)
@@ -335,12 +351,12 @@ export function ImageGallery({ watchId, initial, canEdit }: {
         ) : (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {library.images.map((image) => (
-              <li key={image.id}>
+              <li key={image.id} className="group relative">
                 <button
                   type="button"
                   onClick={() => take(image.id)}
                   disabled={taking !== null}
-                  className="group relative block aspect-square w-full overflow-hidden rounded-md border border-line-subtle bg-surface-subtle outline-none transition-colors hover:border-teal-500 focus-visible:border-teal-500 disabled:opacity-60"
+                  className="relative block aspect-square w-full overflow-hidden rounded-md border border-line-subtle bg-surface-subtle outline-none transition-colors hover:border-teal-500 focus-visible:border-teal-500 disabled:opacity-60"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -355,11 +371,31 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                     </span>
                   )}
                 </button>
+                {/* The shelf is shared, so it has to be tidyable from here —
+                    otherwise a batch shot on the wrong background goes on
+                    being offered to every watch of the reference forever. */}
+                <button
+                  type="button"
+                  onClick={() => setShelving(image)}
+                  aria-label={`Take this ${image.label} photograph off the shelf`}
+                  className="absolute right-1 top-1 rounded-sm bg-navy-900/70 p-1.5 text-white opacity-0 transition-opacity hover:bg-state-danger focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                </button>
               </li>
             ))}
           </ul>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={shelving !== null}
+        onCancel={() => setShelving(null)}
+        onConfirm={removeFromLibrary}
+        title="Take this off the shelf?"
+        message={`It will stop being offered to watches with reference ${library?.reference ?? ''}. Watches already using it keep their own copy — nothing in a gallery changes.`}
+        confirmLabel="Remove"
+      />
 
       <ConfirmDialog
         open={deleting !== null}
