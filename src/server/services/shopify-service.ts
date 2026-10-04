@@ -28,7 +28,6 @@ const API_VERSION = '2025-01'
 
 interface ShopifyConfig {
   domain: string
-  token: string
   locationId: string
   currency: CurrencyCode
   /** Where Shopify fetches photographs from, which must be reachable publicly. */
@@ -36,22 +35,83 @@ interface ShopifyConfig {
 }
 
 export function shopifyIsConfigured(): boolean {
-  return Boolean(process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_ADMIN_TOKEN)
+  if (!process.env.SHOPIFY_STORE_DOMAIN) return false
+  return Boolean(
+    process.env.SHOPIFY_ADMIN_TOKEN
+    || (process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET),
+  )
+}
+
+/**
+ * The access token, fetched rather than pasted.
+ *
+ * Shopify retired the custom app that handed over a permanent token at the
+ * start of 2026. What a store app is given now is a client id and a secret,
+ * which are exchanged for a token that expires — so the exchange belongs in
+ * the application, where it can be repeated, rather than in somebody's
+ * terminal history and then in an environment variable nobody can re-read.
+ *
+ * Cached in module memory and refreshed a minute before it lapses. A serverless
+ * instance that is recycled simply fetches another; the exchange is one request
+ * and costs nothing worth optimising.
+ */
+let cachedToken: { value: string; expiresAt: number } | null = null
+
+async function accessToken(domain: string): Promise<string> {
+  const direct = process.env.SHOPIFY_ADMIN_TOKEN
+  if (direct) return direct
+
+  const clientId = process.env.SHOPIFY_CLIENT_ID
+  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET
+  if (!clientId || !clientSecret) {
+    throw new ValidationError('The shop is not connected. Set SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET.')
+  }
+
+  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken.value
+
+  const response = await fetch(`https://${domain}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'client_credentials',
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(
+      `The shop refused the credentials (${response.status}). `
+      + `Check the client id and secret, and that the app is installed on ${domain}. ${body.slice(0, 200)}`,
+    )
+  }
+
+  const payload = await response.json() as { access_token?: string; expires_in?: number }
+  if (!payload.access_token) throw new Error('The shop returned no access token.')
+
+  cachedToken = {
+    value: payload.access_token,
+    // A minute's margin, so a token is never used in the second it lapses.
+    expiresAt: Date.now() + Math.max(60, (payload.expires_in ?? 3600) - 60) * 1000,
+  }
+  return cachedToken.value
 }
 
 function config(): ShopifyConfig {
   const domain = process.env.SHOPIFY_STORE_DOMAIN
-  const token = process.env.SHOPIFY_ADMIN_TOKEN
   const locationId = process.env.SHOPIFY_LOCATION_ID
-  if (!domain || !token) {
-    throw new ValidationError('The storefront is not connected. Set SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_TOKEN.')
+  if (!domain || !shopifyIsConfigured()) {
+    throw new ValidationError(
+      'The shop is not connected. Set SHOPIFY_STORE_DOMAIN, and either SHOPIFY_ADMIN_TOKEN '
+      + 'or the pair SHOPIFY_CLIENT_ID and SHOPIFY_CLIENT_SECRET.',
+    )
   }
   if (!locationId) {
     throw new ValidationError('No storefront location is set. SHOPIFY_LOCATION_ID names the one stock sits at.')
   }
   return {
     domain,
-    token,
     locationId,
     currency: (process.env.SHOPIFY_CURRENCY ?? 'AED') as CurrencyCode,
     // Where Shopify will come to collect photographs. Falls back to the
@@ -74,7 +134,8 @@ function config(): ShopifyConfig {
  * run, and `userErrors` for one it ran and declined.
  */
 async function admin<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-  const { domain, token } = config()
+  const { domain } = config()
+  const token = await accessToken(domain)
   const response = await fetch(`https://${domain}/admin/api/${API_VERSION}/graphql.json`, {
     method: 'POST',
     headers: {

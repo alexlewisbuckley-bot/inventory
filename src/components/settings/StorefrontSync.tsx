@@ -80,9 +80,11 @@ export function StorefrontSync({ health }: {
         <CardBody>
           {!health.configured ? (
             <p className="text-small text-content-secondary">
-              Not connected. Set <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_STORE_DOMAIN</code>,{' '}
-              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_ADMIN_TOKEN</code> and{' '}
-              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_LOCATION_ID</code> and reload.
+              Not connected. Set{' '}
+              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_STORE_DOMAIN</code>,{' '}
+              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_CLIENT_ID</code>,{' '}
+              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_CLIENT_SECRET</code> and{' '}
+              <code className="rounded-xs bg-surface-subtle px-1 font-mono text-caption">SHOPIFY_LOCATION_ID</code>, then redeploy.
             </p>
           ) : (
             <div className="flex flex-wrap items-center gap-6">
