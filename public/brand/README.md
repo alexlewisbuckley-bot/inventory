@@ -43,3 +43,15 @@ drawn at 28×32.
 Drop a file in this directory with exactly the name above. Nothing else to do:
 the `Wordmark` component swaps from the typeset name to the artwork on its
 own, and the favicon starts resolving.
+
+## wordmark-line.svg
+
+The one-line lockup, 560 × 37, drawn in house olive (#454830). The guidelines
+give this one website navigation and the business-card web line; the stacked
+`wordmark.svg` above is a different lockup and is not a substitute for it.
+
+It is in this repository for a reason that has nothing to do with the
+application: Shopify theme files are hand-transcribed through the API from a
+machine with no network, and 16KB of path coordinates does not survive that
+trip. Served from here over HTTP, Shopify fetches the file itself and nothing
+is retyped. `assets/osw-logo.svg` in the theme is a copy taken that way.
