@@ -8,6 +8,7 @@ import {
 } from '@/server/db/schema'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
+import { LiveNotifications } from '@/components/layout/LiveNotifications'
 import { BottomBar } from '@/components/layout/BottomBar'
 import { KeyboardShortcuts } from '@/components/layout/KeyboardShortcuts'
 import { PartnerTopBar } from '@/components/layout/PartnerTopBar'
@@ -60,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return (
       <CurrencyProvider initial={partnerCurrency} rates={rates}>
         <DensityProvider value={densityOf(preferences?.density)}>
+        <LiveNotifications initialUnread={Number(waiting[0]?.value ?? 0)}>
         <div className="flex min-h-screen flex-col bg-surface-subtle">
           <PartnerTopBar user={user} brands={partnerBrands} enquiries={Number(waiting[0]?.value ?? 0)} />
           <main
@@ -70,6 +72,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {children}
           </main>
         </div>
+        </LiveNotifications>
         </DensityProvider>
       </CurrencyProvider>
     )
@@ -133,6 +136,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <CurrencyProvider initial={displayCurrency} rates={rates}>
       <DensityProvider value={densityOf(preferences?.density)}>
+      {/* Above the shell, so the bell, the rail and whatever page is open all
+          see the same count and the same arrival. */}
+      <LiveNotifications initialUnread={Number(unread[0]?.value ?? 0)}>
       <div className="flex min-h-screen bg-surface-subtle">
         <AppSidebar role={user.role as Role} counts={counts} />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -151,6 +157,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <BottomBar />
       <KeyboardShortcuts canCreate={can(user.role, 'watch:create')} />
+      </LiveNotifications>
       </DensityProvider>
     </CurrencyProvider>
   )

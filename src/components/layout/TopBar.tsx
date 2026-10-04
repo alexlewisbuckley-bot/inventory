@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Wordmark } from './Wordmark'
+import { NotificationBell } from './NotificationBell'
 import { Bell } from 'lucide-react'
 import { UserMenu } from './UserMenu'
 import { CommandTrigger } from './CommandTrigger'
@@ -35,18 +36,7 @@ export function TopBar({ user, unreadCount, counts }: {
         <div className="ml-auto flex items-center gap-2">
           <CommandTrigger />
           <CurrencySwitcher />
-          <Link
-            href="/notifications"
-            className="relative flex h-9 w-9 items-center justify-center rounded-md text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary"
-            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-          >
-            <Bell className="h-[18px] w-[18px]" aria-hidden />
-            {unreadCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-pill bg-state-danger px-1 text-micro font-bold text-content-on-status">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </Link>
+          <NotificationBell initial={unreadCount} />
           <div className="hidden xl:block"><ThemeToggle compact /></div>
           <UserMenu user={user} />
         </div>
