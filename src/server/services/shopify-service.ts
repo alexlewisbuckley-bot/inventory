@@ -739,6 +739,22 @@ export interface SyncOutcome {
    * really a watch's own problem.
    */
   denied: string[]
+  /**
+   * The stock number to carry on after, or null when there is none left.
+   *
+   * A hundred and thirty-one watches is several minutes of somebody else's
+   * API, which is longer than a web request is allowed to live. Run whole, it
+   * reached the platform's ceiling and was killed — leaving a button that span
+   * for five minutes and then said nothing at all, which is worse than a
+   * failure, because a failure can be read.
+   *
+   * So the run is taken in batches, and this is where the next one starts.
+   */
+  nextCursor: number | null
+  /** How many watches were pushed in this batch. */
+  pushed: number
+  /** How many were left to push when this batch began. */
+  total: number
 }
 
 /**
@@ -754,7 +770,13 @@ export interface SyncOutcome {
  * product pages, and the shape of that should be read by a person before it
  * happens.
  */
-export async function runSync({ apply = false }: { apply?: boolean } = {}): Promise<{
+export async function runSync({ apply = false, after = null, limit }: {
+  apply?: boolean
+  /** The stock number the last batch finished on. Null starts from the top. */
+  after?: number | null
+  /** How many watches to push before handing control back to the caller. */
+  limit?: number
+} = {}): Promise<{
   plan: SyncPlan
   outcome: SyncOutcome | null
 }> {
@@ -768,6 +790,7 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   const outcome: SyncOutcome = {
     created: 0, updated: 0, archived: 0, removed: 0,
     failed: [], unmatched: [], added: [], denied: [],
+    nextCursor: null, pushed: 0, total: 0,
   }
   // The same refusal arrives once per watch; it is worth saying once.
   const refused = new Set<string>()
@@ -790,10 +813,22 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
     }
   }
 
-  const pushes: Array<{ watch: SyncWatch; productId: string | null; title?: string }> = [
-    ...computed.create.map((watch) => ({ watch, productId: null })),
-    ...computed.update.map((u) => ({ watch: u.watch, productId: u.productId, title: u.title })),
-  ]
+  // Ordered by stock number so that "carry on after 1143" means the same thing
+  // on every batch. The plan is recomputed each time — the store may have moved
+  // under us — and a stable order is what makes that safe.
+  const everything: Array<{ watch: SyncWatch; productId: string | null; title?: string }> = [
+    ...computed.create.map((watch) => ({ watch, productId: null as string | null })),
+    ...computed.update.map((u) => ({
+      watch: u.watch, productId: u.productId as string | null, title: u.title,
+    })),
+  ].sort((a, b) => a.watch.stockNo - b.watch.stockNo)
+
+  const left = after === null
+    ? everything
+    : everything.filter((p) => p.watch.stockNo > after)
+  const pushes = limit ? left.slice(0, limit) : left
+  outcome.total = left.length
+  outcome.pushed = pushes.length
 
   for (const { watch, productId: existing, title } of pushes) {
     try {
@@ -816,24 +851,30 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
     }
   }
 
-  for (const item of computed.archive) {
-    try {
-      await archiveProduct(item.productId)
-      outcome.archived += 1
-    } catch (error) {
-      outcome.failed.push({ what: item.title, error: (error as Error).message.slice(0, 500) })
+  // Hiding and deleting happen once, at the start of the run, rather than once
+  // per batch. They are the irreversible half and they are small.
+  if (after === null) {
+    for (const item of computed.archive) {
+      try {
+        await archiveProduct(item.productId)
+        outcome.archived += 1
+      } catch (error) {
+        outcome.failed.push({ what: item.title, error: (error as Error).message.slice(0, 500) })
+      }
+    }
+
+    for (const item of computed.remove) {
+      try {
+        await removeProduct(item.productId)
+        outcome.removed += 1
+      } catch (error) {
+        outcome.failed.push({ what: item.title, error: (error as Error).message.slice(0, 500) })
+      }
     }
   }
 
-  for (const item of computed.remove) {
-    try {
-      await removeProduct(item.productId)
-      outcome.removed += 1
-    } catch (error) {
-      outcome.failed.push({ what: item.title, error: (error as Error).message.slice(0, 500) })
-    }
-  }
-
+  const last = pushes[pushes.length - 1]
+  outcome.nextCursor = last && left.length > pushes.length ? last.watch.stockNo : null
   outcome.denied = [...refused]
   logger.info('storefront synced', { ...outcome, failed: outcome.failed.length })
   return { plan: computed, outcome }

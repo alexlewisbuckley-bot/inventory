@@ -48,28 +48,63 @@ export async function previewSyncAction(): Promise<ActionState & { plan?: PlanSu
 }
 
 /**
- * Make the storefront match the book.
+ * How many watches one press of Apply pushes before reporting back.
+ *
+ * Each watch is two or three round trips to somebody else's API, and a hundred
+ * and thirty-one of them is minutes — far longer than a request is allowed to
+ * live. Run whole, it was killed by the platform part-way through and the
+ * button span until the person gave up, having been told nothing.
+ *
+ * Twenty is small enough to finish well inside the limit on a slow day, and
+ * large enough that the whole book is half a dozen rounds. The caller presses
+ * on until there is no cursor left.
+ */
+const BATCH = 20
+
+export interface ApplyResult extends ActionState {
+  /** Where the next press should carry on from, or null when it is finished. */
+  nextCursor: number | null
+  pushed: number
+  total: number
+  created: number
+  updated: number
+  archived: number
+  removed: number
+  failed: number
+}
+
+const nothingApplied: Omit<ApplyResult, 'ok' | 'message'> = {
+  nextCursor: null, pushed: 0, total: 0,
+  created: 0, updated: 0, archived: 0, removed: 0, failed: 0,
+}
+
+/**
+ * Make the storefront match the book — a batch at a time.
  *
  * Owner-only and audited, because it is the one button in the application that
- * permanently destroys something outside it.
+ * permanently destroys something outside it. The audit is written on the first
+ * batch, which is where the deleting happens.
  */
-export async function applySyncAction(): Promise<ActionState> {
+export async function applySyncAction(after: number | null = null): Promise<ApplyResult> {
   try {
     const actor = await requireCapability('watch:delete')
-    const { plan, outcome } = await runSync({ apply: true })
-    if (!outcome) return { ok: false, message: 'Nothing was applied.' }
+    const { plan, outcome } = await runSync({ apply: true, after, limit: BATCH })
+    if (!outcome) return { ok: false, message: 'Nothing was applied.', ...nothingApplied }
 
-    await recordAudit({
-      entityType: 'Watch',
-      entityId: 'storefront',
-      action: 'UPDATE',
-      actorId: actor.id,
-      summary: `Storefront synced — ${outcome.created} created, ${outcome.updated} updated, `
-        + `${outcome.archived} archived, ${outcome.removed} deleted`,
-      changes: {
-        removed: { from: plan.remove.map((r) => r.title).join(', ') || null, to: null },
-      },
-    })
+    if (after === null) {
+      await recordAudit({
+        entityType: 'Watch',
+        entityId: 'storefront',
+        action: 'UPDATE',
+        actorId: actor.id,
+        summary: `Storefront sync started — ${plan.create.length} to add, `
+          + `${plan.update.length} to update, ${plan.archive.length} to archive, `
+          + `${plan.remove.length} to delete`,
+        changes: {
+          removed: { from: plan.remove.map((r) => r.title).join(', ') || null, to: null },
+        },
+      })
+    }
 
     revalidatePath('/settings/storefront')
     const failed = outcome.failed.length
@@ -84,10 +119,22 @@ export async function applySyncAction(): Promise<ActionState> {
       ? `${addedNote} ${gaps.length} value${gaps.length === 1 ? '' : 's'} the shop has no entry for: ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? '…' : ''}.`
       : addedNote
 
+    const counts = {
+      nextCursor: outcome.nextCursor,
+      pushed: outcome.pushed,
+      total: outcome.total,
+      created: outcome.created,
+      updated: outcome.updated,
+      archived: outcome.archived,
+      removed: outcome.removed,
+      failed,
+    }
+
     if (failed > 0) {
       return {
         ok: false,
         message: `${failed} of them failed. ${outcome.failed[0]?.what}: ${outcome.failed[0]?.error}`,
+        ...counts,
       }
     }
 
@@ -100,13 +147,21 @@ export async function applySyncAction(): Promise<ActionState> {
       ? ` The shop refused one thing, which needs a permission adding to the app: ${outcome.denied[0]}`
       : ''
 
+    // Only the last batch gets to say "done"; the ones before it are reporting
+    // progress, and a toast per batch saying "done" six times is a lie told
+    // five times.
+    if (outcome.nextCursor !== null) {
+      return { ok: true, message: `${outcome.pushed} pushed.`, ...counts }
+    }
+
     return {
       ok: outcome.denied.length === 0,
       message: `Done — ${outcome.created} added, ${outcome.updated} updated, `
         + `${outcome.archived} archived, ${outcome.removed} deleted.${note}${refused}`,
+      ...counts,
     }
   } catch (error) {
-    return toState(error, 'Could not sync the storefront.')
+    return { ...toState(error, 'Could not sync the storefront.'), ...nothingApplied }
   }
 }
 

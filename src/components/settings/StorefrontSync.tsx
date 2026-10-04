@@ -28,6 +28,7 @@ export function StorefrontSync({ health }: {
   const [plan, setPlan] = useState<PlanSummary | null>(null)
   const [busy, setBusy] = useState<'preview' | 'apply' | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
 
   const check = async () => {
     setBusy('preview')
@@ -40,13 +41,46 @@ export function StorefrontSync({ health }: {
     setPlan(result.plan)
   }
 
+  /**
+   * Apply, a batch at a time, saying where it has got to.
+   *
+   * One press used to mean one request carrying all hundred and thirty-one
+   * watches — minutes of somebody else's API inside a request that is not
+   * allowed to take minutes. It was killed part-way through every time, and
+   * because it never returned, this button simply span. The work was half
+   * done and the screen said nothing at all.
+   *
+   * Now each press pushes twenty and hands back a cursor, and this loop keeps
+   * pressing until there is no cursor left. Every batch that finishes is
+   * already saved, so a closed laptop costs the rest of the run and none of
+   * what it had already done.
+   */
   const apply = async () => {
     setConfirming(false)
     setBusy('apply')
-    const result = await applySyncAction()
+    setProgress(null)
+
+    let cursor: number | null = null
+    let done = 0
+    let total = 0
+    let failures = 0
+    let last: Awaited<ReturnType<typeof applySyncAction>> | null = null
+
+    do {
+      const result = await applySyncAction(cursor)
+      last = result
+      done += result.pushed
+      failures += result.failed
+      // The first batch is the one that knows how many there are in all.
+      if (!total) total = result.total
+      setProgress({ done, total })
+      cursor = result.nextCursor
+    } while (cursor !== null)
+
     setBusy(null)
-    if (result.ok) toast.success('Storefront updated', result.message)
-    else toast.error('Finished with problems', result.message)
+    setProgress(null)
+    if (last?.ok && failures === 0) toast.success('Storefront updated', last.message)
+    else toast.error('Finished with problems', last?.message ?? 'The run stopped early.')
     setPlan(null)
     router.refresh()
   }
@@ -105,6 +139,23 @@ export function StorefrontSync({ health }: {
                 label="Last pushed"
                 value={formatWhen(health.lastSyncedAt)}
               />
+            </div>
+          )}
+
+          {busy === 'apply' && (
+            <div className="mt-4">
+              <p className="text-small text-content-secondary">
+                Pushing to the shop —{' '}
+                <b className="tabular-nums text-content-primary">{progress?.done ?? 0}</b>
+                {progress?.total ? <> of <span className="tabular-nums">{progress.total}</span></> : null}
+                . This takes a few minutes; leave the page open.
+              </p>
+              <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-surface-subtle">
+                <div
+                  className="h-full rounded-full bg-state-success transition-all duration-500"
+                  style={{ width: `${progress?.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                />
+              </div>
             </div>
           )}
 
