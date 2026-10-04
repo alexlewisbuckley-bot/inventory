@@ -8,6 +8,9 @@ import {
   descriptionHtmlFor, planSync, priceFor, quantityFor, skuFor, statusFor, titleFor,
   type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
+import {
+  indexMetaobjects, resolveMetafields, type MetaobjectIndex,
+} from '@/lib/shopify-metafields'
 import type { CurrencyCode } from '@/lib/enums'
 
 /**
@@ -246,6 +249,48 @@ export async function storeProducts(): Promise<SyncProduct[]> {
   return found
 }
 
+/** The metaobject types the shop's product fields point at. */
+const METAOBJECT_TYPES = [
+  'brand', 'dial', 'bracelet', 'material', 'case_size', 'year', 'condition', 'box_papers',
+]
+
+/**
+ * The shop's own taxonomy, read once.
+ *
+ * Fetched per run rather than cached between them: these lists are edited by
+ * hand in Shopify, and a sync holding a stale copy would silently stop filling
+ * in a dial colour somebody added that morning.
+ */
+export async function loadMetaobjects(): Promise<MetaobjectIndex> {
+  const entries: Array<{ type: string; displayName: string; id: string }> = []
+
+  for (const type of METAOBJECT_TYPES) {
+    let cursor: string | null = null
+    do {
+      const data: {
+        metaobjects: {
+          edges: Array<{ node: { id: string; displayName: string } }>
+          pageInfo: { hasNextPage: boolean; endCursor: string | null }
+        }
+      } = await admin(`
+        query Entries($type: String!, $cursor: String) {
+          metaobjects(type: $type, first: 100, after: $cursor) {
+            edges { node { id displayName } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `, { type, cursor })
+
+      for (const edge of data.metaobjects.edges) {
+        entries.push({ type, id: edge.node.id, displayName: edge.node.displayName })
+      }
+      cursor = data.metaobjects.pageInfo.hasNextPage ? data.metaobjects.pageInfo.endCursor : null
+    } while (cursor)
+  }
+
+  return indexMetaobjects(entries)
+}
+
 /** What it would take to make the store match the book. */
 export async function plan(): Promise<SyncPlan> {
   const [stock, products] = await Promise.all([syncableWatches(), storeProducts()])
@@ -279,7 +324,11 @@ const PRODUCT_DELETE = `
  * product somebody made by hand with the right stock number is adopted rather
  * than duplicated.
  */
-export async function pushWatch(watch: SyncWatch, rates: Record<string, number>): Promise<string> {
+export async function pushWatch(
+  watch: SyncWatch,
+  rates: Record<string, number>,
+  taxonomy?: MetaobjectIndex,
+): Promise<string> {
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
   const price = priceFor(watch.estSaleGbp, currency, rates)
@@ -333,6 +382,11 @@ export async function pushWatch(watch: SyncWatch, rates: Record<string, number>)
         ...(watch.serial
           ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
           : []),
+        // The structured fields the theme filters on, but only on a page being
+        // created. An existing product's were chosen by somebody who was
+        // looking at the watch, and this system's text is not a better answer
+        // than theirs.
+        ...(isNew && taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
       ],
       ...(files.length ? { files } : {}),
       productOptions: [{ name: 'Title', values: [{ name: 'Default Title' }] }],
@@ -382,6 +436,15 @@ export interface SyncOutcome {
   archived: number
   removed: number
   failed: Array<{ what: string; error: string }>
+  /**
+   * Structured fields the shop has no entry for.
+   *
+   * Not a failure — the product is live and correct without them — but the
+   * theme filters on these, so a watch missing one is a watch that will not
+   * appear when somebody browses by dial colour. Worth saying out loud rather
+   * than leaving to be noticed.
+   */
+  unmatched: Array<{ stockNo: number; field: string; value: string }>
 }
 
 /**
@@ -405,7 +468,19 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   if (!apply) return { plan: computed, outcome: null }
 
   const rates = await getRateTable()
-  const outcome: SyncOutcome = { created: 0, updated: 0, archived: 0, removed: 0, failed: [] }
+  // Only needed when something is being created, and it is several queries.
+  const taxonomy = computed.create.length > 0 ? await loadMetaobjects() : undefined
+  const outcome: SyncOutcome = {
+    created: 0, updated: 0, archived: 0, removed: 0, failed: [], unmatched: [],
+  }
+
+  if (taxonomy) {
+    for (const watch of computed.create) {
+      for (const miss of resolveMetafields(watch, taxonomy).unmatched) {
+        outcome.unmatched.push({ stockNo: watch.stockNo, field: miss.type, value: miss.name })
+      }
+    }
+  }
 
   const pushes: Array<{ watch: SyncWatch; productId: string | null }> = [
     ...computed.create.map((watch) => ({ watch, productId: null })),
@@ -417,7 +492,7 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
       // at a page somebody deleted by hand.
-      const productId = await pushWatch({ ...watch, shopifyProductId: existing }, rates)
+      const productId = await pushWatch({ ...watch, shopifyProductId: existing }, rates, taxonomy)
       await db.update(watches)
         .set({ shopifyProductId: productId, shopifySyncedAt: new Date(), shopifyError: null })
         .where(eq(watches.id, watch.id))

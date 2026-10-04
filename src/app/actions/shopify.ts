@@ -73,10 +73,18 @@ export async function applySyncAction(): Promise<ActionState> {
 
     revalidatePath('/settings/storefront')
     const failed = outcome.failed.length
+    // Fields the shop has no entry for. Not a failure — the page is live and
+    // correct — but the theme filters on them, so a watch missing one will not
+    // appear when somebody browses by dial colour.
+    const gaps = [...new Set(outcome.unmatched.map((u) => `${u.field} "${u.value}"`))]
+    const note = gaps.length
+      ? ` ${outcome.unmatched.length} field${outcome.unmatched.length === 1 ? '' : 's'} had no match in the shop: ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? '…' : ''}. Add them by hand.`
+      : ''
+
     return {
       ok: failed === 0,
       message: failed === 0
-        ? `Done — ${outcome.created} added, ${outcome.updated} updated, ${outcome.archived} archived, ${outcome.removed} deleted.`
+        ? `Done — ${outcome.created} added, ${outcome.updated} updated, ${outcome.archived} archived, ${outcome.removed} deleted.${note}`
         : `${failed} of them failed. ${outcome.failed[0]?.what}: ${outcome.failed[0]?.error}`,
     }
   } catch (error) {
