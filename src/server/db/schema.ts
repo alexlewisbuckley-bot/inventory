@@ -387,7 +387,17 @@ export const supplierDocuments = pgTable(
   'supplier_documents',
   {
     id: text('id').primaryKey(),
-    supplierId: text('supplier_id').notNull().references(() => suppliers.id),
+    /**
+     * Whose document it is: a supplier's director, or a customer. Exactly one,
+     * enforced by a check constraint.
+     *
+     * One table because the one thing that must not happen to a passport scan
+     * is two code paths handling it, one of which gets the security fix. The
+     * table's name is now narrower than its contents; renaming it is cosmetic
+     * and left for a quieter day.
+     */
+    supplierId: text('supplier_id').references(() => suppliers.id),
+    customerId: text('customer_id').references((): AnyPgColumn => customers.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: ID_DOCUMENT_KINDS }).notNull().default('PASSPORT'),
     /** The name printed on the document — the thing that has to match the director. */
     holderName: text('holder_name'),
@@ -405,6 +415,7 @@ export const supplierDocuments = pgTable(
   },
   (t) => ({
     supplierIdx: index('supplier_documents_supplier_idx').on(t.supplierId),
+    customerIdx: index('supplier_documents_customer_idx').on(t.customerId),
   }),
 )
 

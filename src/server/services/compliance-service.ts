@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db/client'
-import { supplierDocuments, suppliers, users, watches } from '../db/schema'
+import { customers, supplierDocuments, suppliers, users, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { checkVatNumber, hmrcConfigured } from './vat-check-service'
 import { NotFoundError, ValidationError } from '@/lib/errors'
@@ -286,7 +286,7 @@ const ALLOWED_ID_TYPES = new Set([
 
 export interface SupplierDocumentRow {
   id: string
-  supplierId: string
+  supplierId: string | null
   kind: IdDocumentKind
   holderName: string | null
   expiresOn: string | null
@@ -331,7 +331,9 @@ export async function listSupplierDocuments(supplierId?: string): Promise<Suppli
 }
 
 export interface IdDocumentInput {
-  supplierId: string
+  /** Exactly one of these. The database enforces it too. */
+  supplierId?: string | null
+  customerId?: string | null
   kind: IdDocumentKind
   holderName?: string | null
   /** The document's own expiry, as printed on it. */
@@ -341,15 +343,37 @@ export interface IdDocumentInput {
   buffer: ArrayBuffer
 }
 
-/** Attach an identity document to a supplier. */
+/**
+ * Attach an identity document to a supplier's director, or to a customer.
+ *
+ * One function because the one thing that must not happen to a passport scan
+ * is two code paths handling it — the size cap, the type check and the audit
+ * line are the same obligation whichever side of the counter it came from.
+ */
 export async function addSupplierDocument(
   input: IdDocumentInput,
   actor: SessionUser,
 ): Promise<string> {
-  const rows = await db.select({ id: suppliers.id, name: suppliers.name, deletedAt: suppliers.deletedAt })
-    .from(suppliers).where(eq(suppliers.id, input.supplierId)).limit(1)
-  const supplier = rows[0]
-  if (!supplier || supplier.deletedAt) throw new NotFoundError('Supplier')
+  if (Boolean(input.supplierId) === Boolean(input.customerId)) {
+    throw new ValidationError('A document belongs to exactly one supplier or customer.')
+  }
+
+  let subjectName = ''
+  if (input.supplierId) {
+    const rows = await db.select({ id: suppliers.id, name: suppliers.name, deletedAt: suppliers.deletedAt })
+      .from(suppliers).where(eq(suppliers.id, input.supplierId)).limit(1)
+    const supplier = rows[0]
+    if (!supplier || supplier.deletedAt) throw new NotFoundError('Supplier')
+    subjectName = supplier.name
+  } else {
+    const rows = await db.select({
+      id: customers.id, firstName: customers.firstName, lastName: customers.lastName,
+      deletedAt: customers.deletedAt,
+    }).from(customers).where(eq(customers.id, input.customerId!)).limit(1)
+    const customer = rows[0]
+    if (!customer || customer.deletedAt) throw new NotFoundError('Customer')
+    subjectName = `${customer.firstName} ${customer.lastName}`.trim()
+  }
 
   if (input.buffer.byteLength === 0) throw new ValidationError('That file is empty.')
   if (input.buffer.byteLength > MAX_ID_BYTES) {
@@ -362,9 +386,13 @@ export async function addSupplierDocument(
   const id = newId('sdo')
   await db.insert(supplierDocuments).values({
     id,
-    supplierId: input.supplierId,
+    supplierId: input.supplierId ?? null,
+    customerId: input.customerId ?? null,
     kind: input.kind,
-    holderName: input.holderName?.trim() || null,
+    // A supplier's document belongs to a named director, who is not the
+    // company; a customer's belongs to the customer, so there is nothing to
+    // ask for and leaving it blank only loses the name off the row.
+    holderName: input.holderName?.trim() || (input.customerId ? subjectName : null) || null,
     expiresOn: input.expiresOn || null,
     fileName: input.fileName.slice(0, 200),
     mimeType: input.mimeType,
@@ -374,13 +402,13 @@ export async function addSupplierDocument(
   })
 
   await recordAudit({
-    entityType: 'Supplier',
-    entityId: input.supplierId,
+    entityType: input.supplierId ? 'Supplier' : 'Customer',
+    entityId: (input.supplierId ?? input.customerId)!,
     action: 'UPDATE',
     actorId: actor.id,
     // Names the document but not its contents: an audit summary is read by
     // more people than the document is.
-    summary: `Identity document attached to ${supplier.name} (${input.kind.toLowerCase().replace('_', ' ')})`,
+    summary: `Identity document attached to ${subjectName} (${input.kind.toLowerCase().replace('_', ' ')})`,
   })
 
   return id
@@ -399,8 +427,8 @@ export async function deleteSupplierDocument(id: string, actor: SessionUser): Pr
 
   await db.update(supplierDocuments).set({ deletedAt: new Date() }).where(eq(supplierDocuments.id, id))
   await recordAudit({
-    entityType: 'Supplier',
-    entityId: document.supplierId,
+    entityType: document.supplierId ? 'Supplier' : 'Customer',
+    entityId: (document.supplierId ?? document.customerId)!,
     action: 'DELETE',
     actorId: actor.id,
     summary: `Identity document ${document.fileName} removed`,
@@ -502,4 +530,26 @@ export async function findDueIdChecks(limit = 100) {
     ))
     .orderBy(sql`${suppliers.idCheckedAt} asc nulls first`)
     .limit(limit)
+}
+
+/** What is on file for one customer, without the bytes. */
+export async function listCustomerDocuments(customerId: string): Promise<SupplierDocumentRow[]> {
+  const uploader = alias(users, 'customer_document_uploader')
+  return db
+    .select({
+      id: supplierDocuments.id,
+      supplierId: supplierDocuments.supplierId,
+      kind: supplierDocuments.kind,
+      holderName: supplierDocuments.holderName,
+      expiresOn: supplierDocuments.expiresOn,
+      fileName: supplierDocuments.fileName,
+      mimeType: supplierDocuments.mimeType,
+      byteSize: supplierDocuments.byteSize,
+      uploadedByName: uploader.name,
+      createdAt: supplierDocuments.createdAt,
+    })
+    .from(supplierDocuments)
+    .leftJoin(uploader, eq(uploader.id, supplierDocuments.uploadedById))
+    .where(and(eq(supplierDocuments.customerId, customerId), isNull(supplierDocuments.deletedAt)))
+    .orderBy(desc(supplierDocuments.createdAt))
 }

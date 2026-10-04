@@ -285,8 +285,14 @@ export async function moveWatches(
  *
  * Writes the sale, flips the watch to SOLD and appends the audit entry in one
  * transaction — a half-applied sale would corrupt every profit report.
+ *
+ * It hands back the buyer as well as the sale, because the form may be holding
+ * a photograph of their passport with nowhere to put it until the customer
+ * record it belongs to exists.
  */
-export async function recordSale(input: SaleCreateInput, actor: SessionUser): Promise<string> {
+export async function recordSale(
+  input: SaleCreateInput, actor: SessionUser,
+): Promise<{ id: string; customerId: string | null }> {
   const rates = await getRateTable()
 
   return withTransaction(async () => {
@@ -401,7 +407,7 @@ export async function recordSale(input: SaleCreateInput, actor: SessionUser): Pr
     }
 
     logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
-    return id
+    return { id, customerId }
   })
 }
 

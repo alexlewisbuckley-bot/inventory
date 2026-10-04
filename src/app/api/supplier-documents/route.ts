@@ -11,30 +11,34 @@ import { logger } from '@/lib/logger'
 export const dynamic = 'force-dynamic'
 
 /**
- * Attach an identity document to a supplier.
+ * Attach an identity document to a supplier's director, or to a customer.
  *
  * A route handler rather than a server action: server actions serialise their
  * payload as JSON, which would base64 the bytes and inflate a passport
  * photograph by a third for no reason.
  *
- * `supplier:manage`, not `supplier:read`. Everyone who can see the supplier
+ * The capability follows the subject — `supplier:manage` for a director's
+ * passport, `customer:update` for a buyer's. Everyone who can see the supplier
  * book can see who you buy from; far fewer people should be able to put a
  * passport into it.
  */
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireCapability('supplier:manage')
-    rateLimit({ key: `supplier-doc:${actor.id}`, limit: 30, windowMs: 60_000 })
-
     const form = await request.formData()
     const file = form.get('file')
     const supplierId = String(form.get('supplierId') ?? '')
+    const customerId = String(form.get('customerId') ?? '')
     const rawKind = String(form.get('kind') ?? 'PASSPORT')
     const kind: IdDocumentKind = (ID_DOCUMENT_KINDS as readonly string[]).includes(rawKind)
       ? (rawKind as IdDocumentKind)
       : 'PASSPORT'
 
-    if (!supplierId) return NextResponse.json({ error: 'No supplier specified.' }, { status: 400 })
+    if (Boolean(supplierId) === Boolean(customerId)) {
+      return NextResponse.json({ error: 'Name exactly one supplier or customer.' }, { status: 400 })
+    }
+    const actor = await requireCapability(supplierId ? 'supplier:manage' : 'customer:update')
+    rateLimit({ key: `supplier-doc:${actor.id}`, limit: 30, windowMs: 60_000 })
+
     if (!(file instanceof File) || file.size === 0) {
       return NextResponse.json({ error: 'No file received.' }, { status: 400 })
     }
@@ -45,7 +49,8 @@ export async function POST(request: NextRequest) {
     const expiresOn = String(form.get('expiresOn') ?? '').trim()
 
     const id = await addSupplierDocument({
-      supplierId,
+      supplierId: supplierId || null,
+      customerId: customerId || null,
       kind,
       holderName: String(form.get('holderName') ?? '') || null,
       // A date input sends '' when left blank, and '' is not a date.
@@ -66,7 +71,9 @@ export async function POST(request: NextRequest) {
 /** Remove a document. Soft — see the service. */
 export async function DELETE(request: NextRequest) {
   try {
+    // Either door opens this; the service refuses a document that is neither.
     const actor = await requireCapability('supplier:manage')
+      .catch(() => requireCapability('customer:update'))
     const id = request.nextUrl.searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'No document specified.' }, { status: 400 })
     await deleteSupplierDocument(id, actor)

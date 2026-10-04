@@ -17,6 +17,12 @@ export interface ActionState {
    * small tax that makes people avoid the system.
    */
   id?: string
+  /**
+   * The customer the action resolved, where that is a different record from
+   * the one just created — a sale creating its buyer, for instance. A form
+   * holding a file for that customer needs somewhere to send it.
+   */
+  customerId?: string
 }
 
 /**

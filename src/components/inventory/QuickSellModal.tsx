@@ -6,6 +6,7 @@ import {
 } from '@/components/ui'
 import { recordSaleAction } from '@/app/actions/watches'
 import { quickCreateCustomerAction } from '@/app/actions/crm'
+import { IdDocumentUpload, uploadIdDocument } from '@/components/crm/IdDocumentUpload'
 import { formatMoneyInput, formatPct, parseMoneyInput } from '@/lib/money'
 import { fromBase, toBase } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
@@ -81,6 +82,9 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
   const [idNumber, setIdNumber] = useState('')
   const [idIssuer, setIdIssuer] = useState('')
   const [idExpires, setIdExpires] = useState('')
+  // The document itself. There is no customer to attach it to while the sale
+  // is being typed, so it is held and sent the moment the record exists.
+  const [idFile, setIdFile] = useState<File | null>(null)
   const [buyerTier, setBuyerTier] = useState('STANDARD')
   const [buyerType, setBuyerType] = useState<CustomerType>('RETAIL')
   const [buyerSource, setBuyerSource] = useState('UNKNOWN')
@@ -127,6 +131,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     setIdNumber('')
     setIdIssuer('')
     setIdExpires('')
+    setIdFile(null)
     setBuyerTier('STANDARD')
     setBuyerType('RETAIL')
     setBuyerSource('UNKNOWN')
@@ -207,6 +212,16 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     const result = await recordSaleAction({ ok: false }, data)
     setBusy(false)
     if (result.ok) {
+      // The scan goes to whichever customer the sale landed on — the one
+      // picked from the book, or the one it has just created.
+      const buyer = customerId || result.customerId
+      if (idFile && buyer) {
+        const attached = await uploadIdDocument(idFile, buyer, idKind || 'PASSPORT')
+        if (!attached.ok) {
+          toast.error('Sale recorded, but the document did not attach', attached.error)
+        }
+      }
+      setIdFile(null)
       toast.success('Sale recorded', `Stock ${watch.stockNo} moved to Sold.`)
       onClose()
       onSold()
@@ -450,6 +465,13 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
                 value={idIssuer} onChange={(e) => setIdIssuer(e.target.value)} placeholder="Country or authority" />
               <TextField label="Expires" type="date"
                 value={idExpires} onChange={(e) => setIdExpires(e.target.value)} />
+
+              <IdDocumentUpload
+                customerId={customerId || null}
+                kind={idKind || 'PASSPORT'}
+                staged={idFile}
+                onStage={setIdFile}
+              />
             </div>
 
             <p className="mt-3 text-caption text-content-secondary">

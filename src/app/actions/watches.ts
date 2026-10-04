@@ -213,10 +213,15 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 
   try {
-    await recordSale(parsed.data, actor)
+    const sale = await recordSale(parsed.data, actor)
     refreshInventory()
     revalidatePath('/sales')
-    return { ok: true, message: 'Sale recorded and the watch moved to Sold.' }
+    return {
+      ok: true,
+      message: 'Sale recorded and the watch moved to Sold.',
+      id: sale.id,
+      customerId: sale.customerId ?? undefined,
+    }
   } catch (error) {
     return toState(error, 'Could not record the sale.')
   }

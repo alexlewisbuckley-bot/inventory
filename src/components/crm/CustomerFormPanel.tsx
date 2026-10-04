@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/cn'
 import { saveCustomerAction } from '@/app/actions/crm'
 import { useCreateFlag } from '@/components/ui/CreateAction'
+import { IdDocumentUpload, uploadIdDocument, type HeldDocument } from '@/components/crm/IdDocumentUpload'
 import {
   CONTACT_CHANNELS, CONTACT_CHANNEL_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_DESCRIPTIONS,
@@ -104,12 +105,14 @@ export interface CustomerFormValues {
  * context to fill in a form is the tax that stops people recording anything.
  */
 export function CustomerFormPanel({
-  owners, brands, suppliers = [], customer, triggerLabel, variant = 'primary',
+  owners, brands, suppliers = [], customer, documents = [], triggerLabel, variant = 'primary',
 }: {
   owners: Array<{ id: string; name: string }>
   brands: Array<{ id: string; name: string }>
   suppliers?: Array<{ id: string; name: string }>
   customer?: CustomerFormValues
+  /** Identification already attached to this customer, when editing one. */
+  documents?: HeldDocument[]
   triggerLabel: string
   variant?: 'primary' | 'secondary'
 }) {
@@ -123,6 +126,12 @@ export function CustomerFormPanel({
   const trade = customerType === 'TRADE'
   const [state, action] = useFormState(saveCustomerAction, INITIAL)
   const [step, setStep] = useState(0)
+  // The kind is controlled only so a held file can be labelled correctly when
+  // it is sent after the save.
+  const [idKind, setIdKind] = useState(customer?.idKind ?? '')
+  // A customer being created has nothing to attach a scan to yet, so it waits
+  // here until the save comes back with an id.
+  const [stagedId, setStagedId] = useState<File | null>(null)
 
   const open = customer ? editing : create.open
   const close = () => (customer ? setEditing(false) : create.close())
@@ -136,6 +145,14 @@ export function CustomerFormPanel({
         if (found >= 0) setStep(found)
       }
       return
+    }
+    const target = customer?.id ?? state.id ?? null
+    if (stagedId && target) {
+      const file = stagedId
+      setStagedId(null)
+      void uploadIdDocument(file, target, idKind || 'PASSPORT').then((result) => {
+        if (!result.ok) toast.error('Saved, but the document did not attach', result.error)
+      })
     }
     close()
     toast.success(state.message ?? 'Saved')
@@ -335,7 +352,7 @@ export function CustomerFormPanel({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <SelectField name="idKind" label="Document" placeholder="None recorded"
-                defaultValue={customer?.idKind ?? ''}
+                value={idKind} onChange={(e) => setIdKind(e.target.value)}
                 options={ID_DOCUMENT_KINDS.map((k) => ({ value: k, label: ID_DOCUMENT_KIND_LABELS[k] }))} />
               <TextField name="idNumber" label="Number" autoComplete="off"
                 defaultValue={customer?.idNumber ?? ''} error={state.errors?.idNumber} />
@@ -344,6 +361,14 @@ export function CustomerFormPanel({
               <TextField name="idExpiresOn" type="date" label="Expires"
                 hint="An in-date check against a lapsed document is not a check."
                 defaultValue={customer?.idExpiresOn ?? ''} />
+
+              <IdDocumentUpload
+                customerId={customer?.id ?? null}
+                kind={idKind || 'PASSPORT'}
+                held={documents}
+                staged={stagedId}
+                onStage={setStagedId}
+              />
             </div>
           </Fieldset>
 

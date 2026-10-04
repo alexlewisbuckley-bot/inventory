@@ -39,7 +39,10 @@ export default async function SuppliersPage() {
 
   const documentsBySupplier: Record<string, IdDocument[]> = {}
   for (const document of documents) {
-    (documentsBySupplier[document.supplierId] ??= []).push({
+    // The table now also holds customers' documents; this page is only ever
+    // asking about suppliers.
+    if (!document.supplierId) continue
+    ;(documentsBySupplier[document.supplierId] ??= []).push({
       id: document.id,
       kind: document.kind,
       holderName: document.holderName,

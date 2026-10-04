@@ -11,6 +11,7 @@ import {
   tasteProfile, timelineFor,
 } from '@/server/repositories/crm-repository'
 import { assignableUsers } from '@/server/services/crm-service'
+import { listCustomerDocuments } from '@/server/services/compliance-service'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -56,7 +57,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
 
   const [
     context, timeline, owners, brandRows, rates, preferences, taste, suggested,
-    supplierRows, sellable,
+    supplierRows, sellable, idDocuments,
   ] = await Promise.all([
     getCustomerContext(customer.id),
     timelineFor({ customerId: customer.id }, 40),
@@ -69,6 +70,7 @@ export default async function CustomerPage({ params }: { params: { id: string } 
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
       .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
     sellableStockOptions(),
+    listCustomerDocuments(customer.id),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -114,6 +116,14 @@ export default async function CustomerPage({ params }: { params: { id: string } 
             suppliers={supplierRows}
             triggerLabel="Edit"
             variant="secondary"
+            documents={idDocuments.map((document) => ({
+              id: document.id,
+              kind: document.kind,
+              fileName: document.fileName,
+              byteSize: document.byteSize,
+              expiresOn: document.expiresOn,
+              uploadedByName: document.uploadedByName,
+            }))}
             customer={{
               id: customer.id,
               firstName: customer.firstName,
