@@ -34,6 +34,8 @@ export function normalise(value: string): string {
  * similarity score inside a loop.
  */
 const ALIASES: Record<string, string> = {
+  // Rolex's own name for the Daytona family, where the shop files it short.
+  'cosmograph daytona': 'Daytona',
   // The inventory system's way of saying a watch has its box and its papers.
   'full set': 'Box & papers',
   'watch only': 'Neither',
@@ -50,6 +52,36 @@ function alias(value: string): string {
   return ALIASES[value.trim().toLowerCase()] ?? value
 }
 
+/**
+ * The family a watch belongs to — Datejust, GMT-Master II, Day-Date.
+ *
+ * The shop groups its brand menu by this, and it is the one field the record
+ * does not hold directly: `model` here is the reference number, which is what
+ * a dealer files by, while a shop window is browsed by name. The nickname is
+ * where the name actually lives — "Sky-Dweller", "Datejust 41" — so the family
+ * is that with the case size taken off the end, since a 41 and a 31 are the
+ * same family in two sizes and splitting them makes a menu of one-offs.
+ *
+ * Returns null rather than guessing from the reference. A reference prefix
+ * implies a family only if you already know Rolex's numbering, and a menu
+ * confidently filed under the wrong name is worse than one with a gap in it.
+ */
+export function familyOf(watch: SyncWatch): string | null {
+  const name = watch.nickname?.trim()
+  if (!name) return null
+  // "Datejust 41" -> "Datejust"; "Lady-Datejust 28" -> "Lady-Datejust".
+  //
+  // Only a plausible case size comes off, between 20 and 60 millimetres. A
+  // bare "trailing number" rule reads "RM 011" as an RM in 11mm and files a
+  // Richard Mille under "RM", and leaves "Nautilus 5711" alone only by
+  // accident. Roman numerals are left where they are: the II in Datejust II
+  // is part of the name.
+  const family = name.replace(/\s+(\d{2})(\s*mm)?$/i, (whole, size: string) => (
+    Number(size) >= 20 && Number(size) <= 60 ? '' : whole
+  )).trim()
+  return family || null
+}
+
 /** One structured field the shop could hold for this watch. */
 export interface DesiredMetaobject {
   /** The metaobject type, which is also the metafield key. */
@@ -61,10 +93,10 @@ export interface DesiredMetaobject {
 /**
  * What the shop should say about this watch.
  *
- * Only fields the record actually holds. `model` is left out on purpose: the
- * shop's model entries are families — "Datejust II" — and this system's model
- * column holds the reference number, so matching them would pair a 116334 with
- * whatever family happened to normalise the same way.
+ * Only fields the record actually holds. The family is derived rather than
+ * taken from the `model` column, which holds the reference number: the shop's
+ * model entries are names — "Datejust II" — and pairing a 116334 with whatever
+ * name happened to normalise the same way would be worse than leaving it.
  */
 export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
   const wanted: Array<DesiredMetaobject | null> = [
@@ -80,6 +112,13 @@ export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
     watch.boxPapers && watch.boxPapers !== 'UNKNOWN'
       ? { type: 'box_papers', name: alias(BOX_PAPERS_LABELS[watch.boxPapers as BoxPapers]) }
       : null,
+    // The family, which is what the shop's brand menu groups by. Without it
+    // the shop falls back to the product's whole title, and a menu of a
+    // hundred families is a menu of none.
+    (() => {
+      const family = familyOf(watch)
+      return family ? { type: 'model', name: alias(family) } : null
+    })(),
   ]
   return wanted.filter((item): item is DesiredMetaobject => item !== null)
 }

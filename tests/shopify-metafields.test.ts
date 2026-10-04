@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  desiredMetaobjects, indexMetaobjects, normalise, resolveMetafields,
+  desiredMetaobjects, familyOf, indexMetaobjects, normalise, resolveMetafields,
 } from '@/lib/shopify-metafields'
 import type { SyncWatch } from '@/lib/shopify-map'
 
@@ -123,5 +123,60 @@ describe('resolving against the shop', () => {
       { type: 'dial', name: 'Tapestry' },
       { type: 'bracelet', name: 'President' },
     ])
+  })
+})
+
+/**
+ * The family a watch belongs to.
+ *
+ * The shop's brand menu and its Model filter both group by this. It is the one
+ * field the record does not hold directly — `model` here is the reference
+ * number, which is what a dealer files by, while a shop window is browsed by
+ * name — so it comes from the nickname, which is where the name actually sits.
+ */
+describe('the model family', () => {
+  it('takes the case size off, because a 41 and a 31 are one family', () => {
+    expect(familyOf(watch({ nickname: 'Datejust 41' }))).toBe('Datejust')
+    expect(familyOf(watch({ nickname: 'Lady-Datejust 28' }))).toBe('Lady-Datejust')
+    expect(familyOf(watch({ nickname: 'Day-Date 40' }))).toBe('Day-Date')
+  })
+
+  it('leaves a name that has no size on it alone', () => {
+    expect(familyOf(watch({ nickname: 'Sky-Dweller' }))).toBe('Sky-Dweller')
+    expect(familyOf(watch({ nickname: 'Datejust II' }))).toBe('Datejust II')
+    expect(familyOf(watch({ nickname: 'GMT-Master II' }))).toBe('GMT-Master II')
+  })
+
+  it('does not mistake part of a name for a measurement', () => {
+    // "RM 011" is a Richard Mille, not an RM in 11mm. "Nautilus 5711" is a
+    // reference, not a case size.
+    expect(familyOf(watch({ nickname: 'RM 011' }))).toBe('RM 011')
+    expect(familyOf(watch({ nickname: 'Nautilus 5711' }))).toBe('Nautilus 5711')
+    expect(familyOf(watch({ nickname: 'Royal Oak' }))).toBe('Royal Oak')
+  })
+
+  it('says nothing rather than guessing from the reference', () => {
+    // A reference prefix implies a family only to somebody who already knows
+    // the numbering, and a menu confidently filed under the wrong name is
+    // worse than one with a gap in it.
+    expect(familyOf(watch({ nickname: null }))).toBeNull()
+    expect(familyOf(watch({ nickname: '   ' }))).toBeNull()
+  })
+
+  it('matches the shop’s entry across its own spelling', () => {
+    // The shop files these without hyphens; Rolex writes them with. That is a
+    // spelling difference, not a different watch.
+    const index = indexMetaobjects([
+      { type: 'model', displayName: 'GMT Master II', id: 'gid://mo/1' },
+      { type: 'model', displayName: 'Sky Dweller', id: 'gid://mo/2' },
+      { type: 'model', displayName: 'Daytona', id: 'gid://mo/3' },
+    ])
+    const of = (nickname: string) =>
+      resolveMetafields(watch({ nickname }), index).metafields.find((m) => m.key === 'model')?.value
+
+    expect(of('GMT-Master II')).toBe('gid://mo/1')
+    expect(of('Sky-Dweller')).toBe('gid://mo/2')
+    // Rolex's full name for the family the shop files as "Daytona".
+    expect(of('Cosmograph Daytona')).toBe('gid://mo/3')
   })
 })
