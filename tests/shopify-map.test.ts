@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, skuFor, statusFor,
-  titleFor, titleIsOurs, type SyncProduct, type SyncWatch,
+  descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, seoDescriptionFor,
+  seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
+  type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import type { RateTable } from '@/lib/currency'
 
@@ -26,7 +27,10 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   movement: null,
   waterResistanceM: null,
   condition: 'EXCELLENT',
-  boxPapers: 'BOX_AND_PAPERS',
+  // FULL_SET, not the BOX_AND_PAPERS this fixture used to carry: that is not
+  // one of the five values BoxPapers has, so every test reading it was reading
+  // a watch that could not exist.
+  boxPapers: 'FULL_SET',
   description: null,
   imageIds: [],
   shopifyProductId: null,
@@ -38,6 +42,7 @@ const product = (over: Partial<SyncProduct> = {}): SyncProduct => ({
   sku: '1143',
   title: 'Datejust II Fluted 41',
   status: 'ACTIVE',
+  seoTitle: null,
   ...over,
 })
 
@@ -146,6 +151,7 @@ describe('planning the sync', () => {
     const plan = planSync([watch()], [product()])
     expect(plan.update).toEqual([{
       watch: watch(), productId: 'gid://shopify/Product/1', title: 'Datejust II Fluted 41',
+      seoTitle: null,
     }])
     expect(plan.create).toEqual([])
     expect(plan.remove).toEqual([])
@@ -277,5 +283,102 @@ describe('whose title is it', () => {
   it('lets go once somebody has edited it into the shop’s convention', () => {
     // Which is exactly when this system should stop touching it.
     expect(titleIsOurs(titleFor(watch({ nickname: 'Explorer II' })), watch())).toBe(false)
+  })
+})
+
+/**
+ * What a search engine is shown.
+ *
+ * Every product page in the store had an empty search title and an empty
+ * description, so Google fell back to the product title: "Datejust II Fluted
+ * 41" — no maison, no reference, nothing to match what anybody types.
+ */
+describe('the search title', () => {
+  it('leads with the maison and carries the reference', () => {
+    expect(seoTitleFor(watch({ nickname: 'Datejust II' })))
+      .toBe('Rolex Datejust II 116334 | One Street Watches')
+  })
+
+  it('works with no nickname at all', () => {
+    expect(seoTitleFor(watch())).toBe('Rolex 116334 | One Street Watches')
+  })
+
+  it('says nothing twice', () => {
+    // The nickname sometimes carries the brand, and the family sometimes
+    // carries the size the reference already implies.
+    expect(seoTitleFor(watch({ nickname: 'Rolex Submariner Date', model: '116610LV' })))
+      .toBe('Rolex Submariner Date 116610LV | One Street Watches')
+  })
+
+  it('always ends with the shop, however long the piece is called', () => {
+    const long = seoTitleFor(watch({
+      brandName: 'Vacheron Constantin',
+      nickname: 'Overseas Perpetual Calendar Ultra-Thin Skeleton',
+      model: '4300V/120G-B946',
+    }))
+    expect(long.endsWith('| One Street Watches')).toBe(true)
+    expect(long.length).toBeLessThanOrEqual(65)
+  })
+})
+
+describe('the search description', () => {
+  it('reads as sentences about the actual watch', () => {
+    expect(seoDescriptionFor(watch({ nickname: 'Datejust II', caseMaterial: 'Oystersteel' })))
+      .toBe('2023 Rolex Datejust II 116334 in Oystersteel, 41mm. Excellent condition, '
+        + 'with box and papers. Authenticated at our own bench and held in Dubai.')
+  })
+
+  it('does not say "Unworn condition"', () => {
+    const text = seoDescriptionFor(watch({ condition: 'UNWORN' }))
+    expect(text).toContain('Unworn, with box and papers.')
+    expect(text).not.toContain('Unworn condition')
+  })
+
+  it('leaves out what is not recorded rather than saying it is unknown', () => {
+    const text = seoDescriptionFor(watch({
+      year: null, caseMaterial: null, caseSizeMm: null,
+      condition: 'UNKNOWN', boxPapers: 'UNKNOWN', locationName: null,
+    }))
+    expect(text).toBe('Rolex 116334. Authenticated at our own bench.')
+    expect(text).not.toMatch(/unknown|not recorded|null/i)
+  })
+
+  it('never runs past what a search result will show', () => {
+    const text = seoDescriptionFor(watch({
+      brandName: 'Vacheron Constantin',
+      nickname: 'Overseas Perpetual Calendar Ultra-Thin Skeleton',
+      model: '4300V/120G-B946',
+      caseMaterial: 'Stainless Steel and 18k White Gold with a sapphire caseback',
+      locationName: 'United Kingdom',
+    }))
+    expect(text.length).toBeLessThanOrEqual(155)
+    // Stopped between sentences, never cut mid-word.
+    expect(text.endsWith('.')).toBe(true)
+  })
+
+  it('leaves the price out, because it is the one fact that goes stale', () => {
+    expect(seoDescriptionFor(watch())).not.toMatch(/\d{2,}[,.]\d|Dhs|£|\$/)
+  })
+})
+
+/**
+ * Whose search title is it.
+ *
+ * The same bargain the product title strikes: this system writes the ones
+ * nobody has touched, and lets go the moment somebody writes their own.
+ */
+describe('whose search title is it', () => {
+  it('claims an empty one, because there is nothing to protect', () => {
+    for (const value of [null, undefined, '', '   ']) {
+      expect(seoIsOurs(value), String(value)).toBe(true)
+    }
+  })
+
+  it('claims the ones this system wrote', () => {
+    expect(seoIsOurs(seoTitleFor(watch()))).toBe(true)
+  })
+
+  it('leaves alone one somebody wrote themselves', () => {
+    expect(seoIsOurs('Buy a pre-owned Rolex Datejust in Dubai')).toBe(false)
   })
 })

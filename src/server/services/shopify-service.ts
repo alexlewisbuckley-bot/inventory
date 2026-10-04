@@ -5,8 +5,9 @@ import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
 import { ValidationError } from '@/lib/errors'
 import {
-  descriptionHtmlFor, planSync, priceFor, quantityFor, skuFor, statusFor, titleFor,
-  titleIsOurs, type SyncPlan, type SyncProduct, type SyncWatch,
+  descriptionHtmlFor, planSync, priceFor, quantityFor, seoDescriptionFor, seoIsOurs,
+  seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
+  type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import {
   desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
@@ -225,6 +226,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
           id: string
           title: string
           status: string
+          seo: { title: string | null }
           variants: { edges: Array<{ node: { sku: string | null } }> }
         } }>
         pageInfo: { hasNextPage: boolean; endCursor: string | null }
@@ -232,7 +234,13 @@ export async function storeProducts(): Promise<SyncProduct[]> {
     } = await admin(`
       query Products($cursor: String) {
         products(first: 100, after: $cursor) {
-          edges { node { id title status variants(first: 1) { edges { node { sku } } } } }
+          edges {
+            node {
+              id title status
+              seo { title }
+              variants(first: 1) { edges { node { sku } } }
+            }
+          }
           pageInfo { hasNextPage endCursor }
         }
       }
@@ -243,6 +251,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
         id: edge.node.id,
         title: edge.node.title,
         status: edge.node.status,
+        seoTitle: edge.node.seo?.title ?? null,
         sku: edge.node.variants.edges[0]?.node.sku ?? null,
       })
     }
@@ -403,6 +412,8 @@ export async function pushWatch(
   taxonomy?: MetaobjectIndex,
   /** The title the shop has now, so one somebody wrote is never overwritten. */
   existingTitle?: string,
+  /** And the search title, which is protected on exactly the same terms. */
+  existingSeoTitle?: string | null,
 ): Promise<{ productId: string; warning: string | null }> {
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
@@ -412,6 +423,11 @@ export async function pushWatch(
   // system wrote before it knew the shop's convention. Anything somebody chose
   // is left exactly as they chose it.
   const setTitle = isNew || (existingTitle ? titleIsOurs(existingTitle, watch) : false)
+  // The search title and description are derived facts — the maison, the
+  // reference, the metal, the grade — so they are rewritten on every push and
+  // stay true as the record changes. Unless somebody has written their own, in
+  // which case they are never touched again.
+  const setSeo = isNew || seoIsOurs(existingSeoTitle)
 
   // Photographs, for a page being created. An existing page's media was very
   // likely arranged by hand — and in this store some of it is shared between
@@ -450,6 +466,9 @@ export async function pushWatch(
       // the page should be up at all, and the reference and serial that
       // identify the piece.
       ...(setTitle ? { title: titleFor(watch) } : {}),
+      ...(setSeo ? {
+        seo: { title: seoTitleFor(watch), description: seoDescriptionFor(watch) },
+      } : {}),
       ...(isNew ? {
         descriptionHtml: descriptionHtmlFor(watch),
         vendor: watch.brandName,
@@ -816,10 +835,16 @@ export async function runSync({ apply = false, after = null, limit }: {
   // Ordered by stock number so that "carry on after 1143" means the same thing
   // on every batch. The plan is recomputed each time — the store may have moved
   // under us — and a stable order is what makes that safe.
-  const everything: Array<{ watch: SyncWatch; productId: string | null; title?: string }> = [
+  const everything: Array<{
+    watch: SyncWatch
+    productId: string | null
+    title?: string
+    seoTitle?: string | null
+  }> = [
     ...computed.create.map((watch) => ({ watch, productId: null as string | null })),
     ...computed.update.map((u) => ({
       watch: u.watch, productId: u.productId as string | null, title: u.title,
+      seoTitle: u.seoTitle,
     })),
   ].sort((a, b) => a.watch.stockNo - b.watch.stockNo)
 
@@ -830,13 +855,13 @@ export async function runSync({ apply = false, after = null, limit }: {
   outcome.total = left.length
   outcome.pushed = pushes.length
 
-  for (const { watch, productId: existing, title } of pushes) {
+  for (const { watch, productId: existing, title, seoTitle } of pushes) {
     try {
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
       // at a page somebody deleted by hand.
       const { productId, warning } = await pushWatch(
-        { ...watch, shopifyProductId: existing }, rates, taxonomy, title,
+        { ...watch, shopifyProductId: existing }, rates, taxonomy, title, seoTitle,
       )
       if (warning) refused.add(warning)
       await db.update(watches)

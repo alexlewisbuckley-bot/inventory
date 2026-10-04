@@ -1,5 +1,5 @@
 import { fromBase, type RateTable } from './currency'
-import type { CurrencyCode } from './enums'
+import { CONDITION_LABELS, type Condition, type CurrencyCode } from './enums'
 
 /**
  * What a watch looks like as a Shopify product, and what has to change.
@@ -64,6 +64,11 @@ export interface SyncProduct {
   sku: string | null
   title: string
   status: string
+  /**
+   * What the page tells Google it is called, which is not the same thing as
+   * the title. Carried so that one somebody wrote by hand is never overwritten.
+   */
+  seoTitle: string | null
 }
 
 export type ShopifyStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
@@ -177,6 +182,185 @@ export function familyOf(watch: SyncWatch): string | null {
   return family || null
 }
 
+/* ================= what a search engine is shown =================
+   A product page had no search title and no description at all — every one of
+   the hundred and thirty-one. Shopify falls back to the product title when
+   those are empty, so the result read "Datejust II Fluted 41", with no maison,
+   no reference and nothing about the piece.
+
+   Nobody searches for that. They search "Rolex Datejust 116334", or
+   "pre-owned Submariner Dubai", and the two things that decide whether this
+   shop is in the answer — the brand and the reference — were the two things
+   the page never said.
+
+   Both are derived rather than written, which is the only way this stays true
+   of stock nobody has got to yet: every watch added from here gets the same
+   treatment on its first push.
+   ============================================================= */
+
+/** The shop, as the end of a search result. */
+const SHOP = 'One Street Watches'
+
+/**
+ * Where Google stops reading.
+ *
+ * Neither is a hard limit — the tag may be any length — but past these it
+ * truncates, and a sentence cut mid-word is worse than a shorter one that
+ * finishes. The title is held to the width rather than the pixel count, which
+ * is the usual approximation and good enough for stock numbers and metals.
+ */
+const SEO_TITLE_MAX = 65
+const SEO_DESCRIPTION_MAX = 155
+
+/** Two spellings of one thing, for deciding whether it has been said already. */
+const flat = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+
+/**
+ * A last resort, for a piece whose name alone fills the whole description.
+ *
+ * Cut at the last space rather than at the character, so the sentence ends on
+ * a word and then a full stop — a description that stops mid-word reads as a
+ * fault in the page rather than as an abbreviation.
+ */
+function clamp(text: string): string {
+  if (text.length <= SEO_DESCRIPTION_MAX) return text
+  const cut = text.slice(0, SEO_DESCRIPTION_MAX - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}.`
+}
+
+/**
+ * The piece, named the way somebody would type it into a search box.
+ *
+ * Maison, family, reference — in that order, and each only if the ones before
+ * it have not already said it. "Rolex Submariner Date 116610LV", but not
+ * "Rolex Rolex Submariner" when the nickname carries the brand, and not
+ * "Datejust 41 116334 41" when the family already holds the size.
+ */
+function subjectPartsOf(watch: SyncWatch): string[] {
+  const parts: string[] = []
+  for (const part of [watch.brandName, familyOf(watch), watch.model?.trim()]) {
+    if (!part) continue
+    const said = flat(parts.join(' '))
+    const next = flat(part)
+    // Already said: "Datejust 41" after a family that is "Datejust 41".
+    if (said.includes(next)) continue
+    // Says it all and more: a nickname of "Rolex Submariner Date" after the
+    // maison "Rolex" is not a second thing to add, it is a better way of
+    // saying the first. Testing only one of these two directions is how the
+    // title came out as "Rolex Rolex Submariner Date".
+    if (parts.length > 0 && next.includes(said)) parts.length = 0
+    parts.push(part)
+  }
+  return parts
+}
+
+function subjectOf(watch: SyncWatch): string {
+  return subjectPartsOf(watch).join(' ')
+}
+
+/**
+ * The title a search result carries.
+ *
+ * Always ends with the shop, and that is load-bearing in two ways: it is what
+ * makes the result recognisable in a list of ten, and it is how this system
+ * later recognises its own work. Somebody who writes their own search title
+ * will not end it this way, and `seoIsOurs` leaves theirs alone.
+ */
+export function seoTitleFor(watch: SyncWatch): string {
+  const suffix = ` | ${SHOP}`
+  const parts = subjectPartsOf(watch)
+
+  // Too long is answered by dropping the family, never by cutting characters.
+  // An Audemars reference is twenty characters — 15500ST.OO.1220ST.01 — and
+  // trimming the line to fit left "15500ST.OO.1220ST." on the end of it: a
+  // reference that matches nothing, in the one place a search would have
+  // matched on it. The maison and the reference are what people type; the
+  // family is the part a result can do without.
+  while (parts.length > 2 && `${parts.join(' ')}${suffix}`.length > SEO_TITLE_MAX) {
+    parts.splice(1, 1)
+  }
+
+  // And if even that is long, it stays long. The width is where a search
+  // result stops showing the title, not where the tag has to end, and a
+  // complete name past the fold beats a truncated one inside it.
+  return `${parts.join(' ')}${suffix}`
+}
+
+/** How a watch's kit reads in a sentence. Silence where nothing is recorded. */
+const KIT_PHRASE: Record<string, string> = {
+  FULL_SET: 'with box and papers',
+  BOX_ONLY: 'with its box',
+  PAPERS_ONLY: 'with its papers',
+  WATCH_ONLY: 'watch only',
+}
+
+/**
+ * The paragraph under the result.
+ *
+ * Three sentences, in the order somebody reading a list of search results
+ * cares about them: what it is, what condition it is in, and why to buy it
+ * here. Built up one sentence at a time and stopped before the limit rather
+ * than cut at it, so the description always ends on a full stop.
+ *
+ * No price. It is the one fact here that moves weekly, and a search engine
+ * will go on showing a figure months after it changed — which is a worse
+ * first impression than no figure at all.
+ */
+export function seoDescriptionFor(watch: SyncWatch): string {
+  const opening = [watch.year ? String(watch.year) : null, subjectOf(watch)]
+    .filter(Boolean).join(' ')
+  const material = watch.caseMaterial?.trim()
+  const size = watch.caseSizeMm ? `, ${watch.caseSizeMm}mm` : ''
+
+  // The opening sentence, then the same sentence with less in it. A long
+  // enough name and a typed-out metal can fill the whole budget between them
+  // — and a loop that only ever adds sentences while they fit answered that
+  // by returning nothing at all, which is what the store had already.
+  const sentences = [[
+    `${opening}${material ? ` in ${material}` : ''}${size}.`,
+    `${opening}${size}.`,
+    `${opening}.`,
+  ].find((line) => line.length <= SEO_DESCRIPTION_MAX) ?? clamp(`${opening}.`)]
+
+  const grade = watch.condition && watch.condition !== 'UNKNOWN'
+    ? CONDITION_LABELS[watch.condition as Condition]
+    : null
+  // "Unworn condition" is not how anybody says it.
+  const condition = grade === 'Unworn' ? 'Unworn' : grade ? `${grade} condition` : null
+  const kit = KIT_PHRASE[watch.boxPapers] ?? null
+  if (condition && kit) sentences.push(`${condition}, ${kit}.`)
+  else if (condition) sentences.push(`${condition}.`)
+  else if (kit) sentences.push(`${kit[0]!.toUpperCase()}${kit.slice(1)}.`)
+
+  const where = watch.locationName?.trim()
+  sentences.push(where
+    ? `Authenticated at our own bench and held in ${where}.`
+    : 'Authenticated at our own bench.')
+
+  let out = ''
+  for (const sentence of sentences) {
+    const next = out ? `${out} ${sentence}` : sentence
+    if (next.length > SEO_DESCRIPTION_MAX) break
+    out = next
+  }
+  return out
+}
+
+/**
+ * Whether the search title on the page is this system's to rewrite.
+ *
+ * Empty counts as ours: there is nothing to protect. Anything else is only
+ * ours if it ends the way `seoTitleFor` ends them, which is the same test
+ * `titleIsOurs` makes for the product title and for the same reason — the
+ * moment somebody writes their own, this stops touching it.
+ */
+export function seoIsOurs(title: string | null | undefined): boolean {
+  const current = title?.trim()
+  if (!current) return true
+  return current.endsWith(SHOP)
+}
+
 const SPEC_LABELS: Array<[keyof SyncWatch, string, (v: never) => string]> = [
   ['year', 'Year', (v: number) => String(v)],
   ['caseSizeMm', 'Case', (v: number) => `${v}mm`],
@@ -224,7 +408,12 @@ export interface SyncPlan {
   /** Watches with no product yet. */
   create: SyncWatch[]
   /** Watches whose product exists and must be brought into line. */
-  update: Array<{ watch: SyncWatch; productId: string; title: string }>
+  update: Array<{
+    watch: SyncWatch
+    productId: string
+    title: string
+    seoTitle: string | null
+  }>
   /** Products for stock we no longer hold. */
   archive: Array<{ productId: string; sku: string | null; title: string }>
   /** Products that answer to no watch at all. */
@@ -264,7 +453,11 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
     const sku = skuFor(watch.stockNo)
     seen.add(sku)
     const existing = bySku.get(sku)
-    if (existing) plan.update.push({ watch, productId: existing.id, title: existing.title })
+    if (existing) {
+      plan.update.push({
+        watch, productId: existing.id, title: existing.title, seoTitle: existing.seoTitle,
+      })
+    }
     else if (HELD.has(watch.status)) plan.create.push(watch)
     // A sold watch with no product never needs one.
   }
