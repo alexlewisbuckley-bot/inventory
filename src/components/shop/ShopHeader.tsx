@@ -12,6 +12,11 @@ import type { NavLink } from '@/lib/validation'
  * the fold but a title. This is the thing every commerce site has: logo on the
  * left, their own navigation on the right, and the way back to their site.
  *
+ * 56px on a phone and 72px from md. On a phone it is the only thing that
+ * stays put; at 72px with the filter rail pinned under it, the two used to
+ * cover a quarter of the screen. The same 1760px measure as the rail and the
+ * grid, so the name lines up with the first photograph on a wide screen.
+ *
  * Their links are theirs, so they open in a new tab with `noopener`: this page
  * is not the destination, and a customer who clicks About should not lose the
  * stock list they were looking at.
@@ -28,13 +33,13 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur-md">
-      <div className="mx-auto flex h-[72px] max-w-[1400px] items-center gap-6 px-6 sm:px-10">
+      <div className="mx-auto flex h-14 max-w-[1760px] items-center gap-6 px-6 sm:px-10 md:h-[72px]">
         <a href={website ?? undefined} className="flex min-w-0 items-center gap-3" target={website ? '_blank' : undefined} rel="noreferrer noopener">
           {hasLogo ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={`/s/${token}/logo`} alt={name} className="h-10 w-auto max-w-[200px] object-contain" />
+            <img src={`/s/${token}/logo`} alt={name} className="h-8 w-auto max-w-[160px] object-contain md:h-10 md:max-w-[200px]" />
           ) : (
-            <span className="shop-serif truncate text-[26px] font-medium leading-none">{name}</span>
+            <span className="shop-serif truncate text-[22px] font-medium leading-none md:text-[26px]">{name}</span>
           )}
         </a>
 
@@ -70,7 +75,7 @@ export function ShopHeader({ name, token, hasLogo, links, website }: {
               onClick={() => setOpen((on) => !on)}
               aria-expanded={open}
               aria-label={open ? 'Close the menu' : 'Open the menu'}
-              className="ml-auto inline-flex h-10 w-10 items-center justify-center border border-[color:var(--hair)] text-[color:var(--ink-soft)] md:hidden"
+              className="-mr-2 ml-auto inline-flex h-10 w-10 shrink-0 items-center justify-center text-[color:var(--ink-soft)] md:hidden"
             >
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>

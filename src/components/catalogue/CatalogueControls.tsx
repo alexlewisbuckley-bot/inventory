@@ -21,11 +21,14 @@ const SORTS = [
  * controls. For an application with one page, that is two bands of furniture
  * and one of content.
  *
- * Rendered by the layout so the bar is the same object on every page, and
+ * Rendered by the layout so the bar is the same object on every page — twice,
+ * in fact: inside the pinned bar at xl, and in a band under it below that, so
+ * a phone does not carry the filters down the page. Each copy reads and
+ * writes the same URL, so they never disagree. It
  * returns nothing anywhere but the catalogue — a search box for stock has no
  * business sitting above somebody's profile.
  */
-export function CatalogueControls({ brands }: { brands: string[] }) {
+export function CatalogueControls({ brands, className }: { brands: string[]; className?: string }) {
   const pathname = usePathname()
   const query = useListQuery()
 
@@ -43,16 +46,29 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
   // between routes and React tears the tree down.
   if (pathname !== '/catalogue') return null
 
-  const field = 'h-9 rounded-md border border-line-subtle bg-surface-raised px-2 text-body text-content-primary outline-none transition-colors focus:border-teal-500'
+  const clear = () => { setText(''); query.setMany({ q: null, brand: null }) }
+
+  // 16px on a phone and a tablet, not 14: iOS zooms the whole page into any
+  // field set smaller than 16px the moment it is tapped, and leaves it
+  // zoomed and panned sideways after the keyboard goes. 40px tall there too,
+  // which is a target a thumb can hit; the desktop bar keeps its 36px.
+  const field = 'h-10 w-full min-w-0 rounded-md border border-line-subtle bg-surface-raised px-2.5 text-body-lg text-content-primary outline-none transition-colors focus:border-teal-500 md:h-9 md:px-2 md:text-body'
   // The platform's own arrow: a heavy grey wedge that is a different shape
   // and a different weight on every operating system, and matches nothing
   // else on the bar. Suppressed, and the application's chevron drawn over
   // the top — the same one every other select in the app carries.
-  const selectField = cn(field, 'cursor-pointer appearance-none pr-9')
+  //
+  // Each select has a set width rather than its content's. A select is as
+  // wide as its longest option, so one long brand name in the stock pushed
+  // the whole bar off the side of a phone.
+  const selectField = cn(field, 'cursor-pointer appearance-none truncate pr-7 md:pr-9')
 
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
-      <label className="relative min-w-[150px] flex-1 lg:max-w-[340px]">
+    // Below md this is two rows — the search across the full width, then
+    // brand, order and the view switch sharing the row under it. From md the
+    // wrapper dissolves (`contents`) and everything sits on one line.
+    <div className={cn('flex w-full min-w-0 flex-col gap-2 md:flex-row md:items-center md:gap-3 xl:w-auto xl:flex-1', className)}>
+      <label className="relative min-w-0 md:flex-1 xl:max-w-[340px]">
         <span className="sr-only">Search the inventory</span>
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" aria-hidden />
         {/* Held locally as well as in the URL: typing must not wait on a
@@ -63,41 +79,62 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
           value={text}
           onChange={(event) => { setText(event.target.value); query.set('q', event.target.value || null) }}
           placeholder="Reference, model, dial, metal"
-          className={cn(field, 'w-full pl-8')}
+          // `md:pl-8` because the field's own `md:px-2` would otherwise take
+          // the left side back from the icon at that width.
+          className={cn(field, 'pl-8 md:pl-8')}
         />
       </label>
 
-      <label className="relative shrink-0">
-        <span className="sr-only">Brand</span>
-        <select value={brand} onChange={(e) => query.set('brand', e.target.value || null)} className={selectField}>
-          <option value="">All brands</option>
-          {brands.map((name) => <option key={name} value={name}>{name}</option>)}
-        </select>
-        <Chevron />
-      </label>
+      <div className="flex min-w-0 items-center gap-2 md:contents">
+        <label className="relative min-w-0 flex-1 md:w-48 md:flex-none">
+          <span className="sr-only">Brand</span>
+          <select value={brand} onChange={(e) => query.set('brand', e.target.value || null)} className={selectField}>
+            <option value="">All brands</option>
+            {brands.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <Chevron />
+        </label>
 
-      <label className="relative shrink-0">
-        <span className="sr-only">Order</span>
-        <select value={sort} onChange={(e) => query.set('sort', e.target.value)} className={selectField}>
-          {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <Chevron />
-      </label>
+        <label className="relative min-w-0 flex-1 md:w-44 md:flex-none">
+          <span className="sr-only">Order</span>
+          <select value={sort} onChange={(e) => query.set('sort', e.target.value)} className={selectField}>
+            {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+          <Chevron />
+        </label>
 
+        {filtering && (
+          <button
+            type="button"
+            onClick={clear}
+            className="hidden h-9 shrink-0 items-center gap-1 rounded-md px-1.5 text-caption text-content-secondary transition-colors hover:bg-surface-subtle hover:text-content-primary md:inline-flex"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden /> Clear
+          </button>
+        )}
+
+        <div
+          className="flex h-10 shrink-0 items-stretch gap-0.5 rounded-md border border-line-subtle p-0.5 md:h-9"
+          role="group"
+          aria-label="View"
+        >
+          <ViewButton active={view === 'gallery'} onClick={() => query.set('view', null)} icon={<LayoutGrid className="h-4 w-4" aria-hidden />} label="Gallery" />
+          <ViewButton active={view === 'table'} onClick={() => query.set('view', 'table')} icon={<Rows3 className="h-4 w-4" aria-hidden />} label="Table" />
+        </div>
+      </div>
+
+      {/* On a phone, its own line under the selects rather than a fourth
+          thing squeezed in beside them: there it cost the brand name its
+          last half. Only there while something is filtered. */}
       {filtering && (
         <button
           type="button"
-          onClick={() => { setText(''); query.setMany({ q: null, brand: null }) }}
-          className="inline-flex shrink-0 items-center gap-1 text-caption text-content-secondary hover:text-content-primary"
+          onClick={clear}
+          className="inline-flex items-center gap-1.5 self-start py-1 text-small text-content-secondary hover:text-content-primary md:hidden"
         >
-          <X className="h-3.5 w-3.5" aria-hidden /> Clear
+          <X className="h-4 w-4" aria-hidden /> Clear filters
         </button>
       )}
-
-      <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-line-subtle p-0.5" role="group" aria-label="View">
-        <ViewButton active={view === 'gallery'} onClick={() => query.set('view', null)} icon={<LayoutGrid className="h-4 w-4" aria-hidden />} label="Gallery" />
-        <ViewButton active={view === 'table'} onClick={() => query.set('view', 'table')} icon={<Rows3 className="h-4 w-4" aria-hidden />} label="Table" />
-      </div>
     </div>
   )
 }
@@ -105,7 +142,7 @@ export function CatalogueControls({ brands }: { brands: string[] }) {
 function Chevron() {
   return (
     <ChevronDown
-      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary"
+      className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary md:right-3"
       aria-hidden
     />
   )
@@ -121,7 +158,7 @@ function ViewButton({ active, onClick, icon, label }: {
       aria-pressed={active}
       title={`${label} view`}
       className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-sm px-2 text-caption font-semibold transition-colors',
+        'inline-flex items-center gap-1.5 rounded-sm px-1.5 text-caption font-semibold transition-colors sm:px-2',
         active ? 'bg-surface-subtle text-content-primary' : 'text-content-secondary hover:text-content-primary',
       )}
     >

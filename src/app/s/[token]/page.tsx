@@ -81,7 +81,7 @@ export default async function ShopWindowPage({ params }: { params: { token: stri
       />
 
       <footer className="border-t border-[color:var(--hair)]">
-        <div className="mx-auto max-w-[1400px] px-6 py-14 sm:px-10">
+        <div className="mx-auto max-w-[1760px] px-6 py-14 sm:px-10">
           <div className="flex flex-wrap justify-between gap-10">
             <div className="max-w-sm">
               <span className="block h-px w-10" style={{ backgroundColor: 'var(--accent)' }} aria-hidden />

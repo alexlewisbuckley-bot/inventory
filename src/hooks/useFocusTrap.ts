@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
 const FOCUSABLE = [
   'a[href]', 'button:not([disabled])', 'input:not([disabled]):not([type="hidden"])',
@@ -12,6 +12,17 @@ const FOCUSABLE = [
  * modal or drawer.
  */
 export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean, onEscape?: () => void): void {
+  // Held in a ref rather than listed as a dependency. Callers pass an inline
+  // `() => setOpen(false)`, which is a new function on every render — so with
+  // it in the dependency list, every keystroke in a controlled field inside
+  // the dialog re-rendered the parent, tore this effect down (focus back to
+  // whatever opened the dialog) and set it up again (focus to the first
+  // control, the close button). Typing one character threw you out of the
+  // box, and on a phone that also dropped the keyboard. The trap now sets up
+  // once per opening and always calls the latest handler.
+  const escape = useRef(onEscape)
+  useEffect(() => { escape.current = onEscape })
+
   useEffect(() => {
     if (!active) return
     const container = ref.current
@@ -26,9 +37,9 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean, onEsc
     requestAnimationFrame(() => initial.focus())
 
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && onEscape) {
+      if (event.key === 'Escape' && escape.current) {
         event.stopPropagation()
-        onEscape()
+        escape.current()
         return
       }
       if (event.key !== 'Tab') return
@@ -50,7 +61,7 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean, onEsc
       document.removeEventListener('keydown', onKeyDown, true)
       previous?.focus?.()
     }
-  }, [ref, active, onEscape])
+  }, [ref, active])
 }
 
 /** Prevent background scroll while an overlay is open, without layout shift. */

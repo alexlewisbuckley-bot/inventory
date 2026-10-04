@@ -133,15 +133,19 @@ export function ShopWindow({
         with a hairline under them, and only assert themselves when in use.
       */}
       {/*
-        Sticky on its own page, where there is a masthead to sit under and a
-        long grid to scroll past. Not in an embed: the frame is the height of
-        its contents and never scrolls, so sticking does nothing except hold
-        the rail 72px down the page over the first row of watches.
+        Pinned under the header only from lg, where it is one line. On a
+        phone it stacks into three, and pinning that as well left the header
+        and the rail covering the top third of the screen for the whole
+        scroll — so below lg it stays at the top of the page and scrolls away.
+
+        Never pinned in an embed, at any width: the frame is the height of its
+        contents and so never scrolls, which leaves sticking with nothing to do
+        except hold the rail 72px down over the first row of watches.
       */}
       <div className={embedded
         ? 'border-b border-[color:var(--hair)] bg-white'
-        : 'sticky top-[72px] z-20 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur'}>
-        <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-6 py-4 sm:px-10 md:flex-row md:items-center md:gap-x-8">
+        : 'border-b border-[color:var(--hair)] bg-white lg:sticky lg:top-[72px] lg:z-20 lg:bg-white/92 lg:backdrop-blur'}>
+        <div className="mx-auto flex max-w-[1760px] flex-col gap-2 px-6 py-3 sm:px-10 md:flex-row md:items-center md:gap-x-8 md:py-4">
           <label className="relative w-full md:w-[240px] md:shrink-0 lg:w-[280px]">
             <span className="sr-only">Search the collection</span>
             <Search className="pointer-events-none absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--ink-mute)]" aria-hidden />
@@ -150,11 +154,13 @@ export function ShopWindow({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search reference, dial, metal"
-              className="h-9 w-full border-b border-[color:var(--hair)] bg-transparent pl-6 text-sm outline-none transition placeholder:text-[color:var(--ink-mute)] focus:border-[color:var(--accent)]"
+              // 16px on a phone: iOS zooms the page into any field set
+              // smaller the moment it is tapped, and leaves it zoomed.
+              className="h-10 w-full rounded-none border-b border-[color:var(--hair)] bg-transparent pl-6 text-base outline-none transition placeholder:text-[color:var(--ink-mute)] focus:border-[color:var(--accent)] md:h-9 md:text-sm"
             />
           </label>
 
-          <div className="flex flex-wrap items-center gap-x-7 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 md:gap-x-7">
             <Choice
               label="Brand" value={brand} onChange={setBrand}
               options={[{ value: '', label: 'All brands' }, ...brands.map((b) => ({ value: b, label: b }))]}
@@ -208,7 +214,7 @@ export function ShopWindow({
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1760px] px-6 py-12 sm:px-10">
+      <div className="mx-auto max-w-[1760px] px-6 py-8 sm:px-10 md:py-12">
         {shown.length === 0 ? (
           <div className="py-28 text-center">
             <p className="shop-serif text-[28px] text-[color:var(--ink-soft)]">
@@ -230,7 +236,7 @@ export function ShopWindow({
             )}
           </div>
         ) : (
-          <ul className="grid grid-cols-2 gap-x-6 gap-y-12 sm:gap-x-8 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-8 sm:gap-y-12 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {shown.map((item) => (
               <ShopCard key={item.id} item={item} token={token} currency={currency} onOpen={() => setViewing(item)} />
             ))}
@@ -290,7 +296,9 @@ function Choice({ label, value, onChange, options }: {
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        // Invisible, but 16px all the same: the size is what iOS checks
+        // before zooming the page in on a tap.
+        className="absolute inset-0 h-full w-full cursor-pointer text-base opacity-0"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
@@ -381,7 +389,7 @@ function ShopCard({ item, token, currency, onOpen }: {
               src={`/s/${token}/image/${item.imageId}`}
               alt={`${item.brandName} ${item.nickname || item.model}`}
               loading="lazy"
-              className="h-full w-full object-contain p-6 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06] sm:p-8"
+              className="h-full w-full object-contain p-4 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06] sm:p-8"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
@@ -412,27 +420,27 @@ function ShopCard({ item, token, currency, onOpen }: {
           the third thing on the card announcing the same hover, after the
           photograph lifting and the button filling. Two is already plenty.
         */}
-        <div className="flex flex-1 flex-col pt-6">
+        <div className="flex flex-1 flex-col pt-4 sm:pt-6">
           <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
 
-          <h2 className="shop-serif shop-num mt-2 text-[24px] font-medium leading-[1.15] sm:text-[26px]">
+          <h2 className="shop-serif shop-num mt-1.5 text-[20px] font-medium leading-[1.15] sm:mt-2 sm:text-[26px]">
             {item.nickname || item.model}
           </h2>
 
           {/* leading-[1.1] rather than none: a currency prefix and lining
               figures both sit tall, and a zero line-height clips them. */}
           {item.price === null ? (
-            <p className="shop-serif mt-2 text-[18px] italic leading-[1.1] text-[color:var(--ink-soft)]">
+            <p className="shop-serif mt-1.5 text-[16px] italic leading-[1.1] text-[color:var(--ink-soft)] sm:mt-2 sm:text-[18px]">
               Price on request
             </p>
           ) : (
-            <p className="shop-serif shop-num mt-2 text-[20px] font-medium leading-[1.1]">
+            <p className="shop-serif shop-num mt-1.5 text-[18px] font-medium leading-[1.1] sm:mt-2 sm:text-[20px]">
               {formatCurrency(item.price, currency, { decimals: false })}
             </p>
           )}
 
           {provenance && (
-            <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:mt-5">
               <Provenance label="Box" has={provenance.box} />
               <Provenance label="Papers" has={provenance.papers} />
             </div>
@@ -463,7 +471,10 @@ function ShopCard({ item, token, currency, onOpen }: {
             </div>
           )}
 
-          <span className="mt-auto pt-6">
+          {/* Not on a phone. The whole card is the target, so on a column
+              150px wide the button was a 64px repeat of what a tap anywhere
+              already does, on every card, down the whole page. */}
+          <span className="mt-auto hidden pt-6 sm:block">
             <span className="shop-cta flex h-10 w-full items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]">
               Find out more
               <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-1" aria-hidden />

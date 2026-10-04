@@ -186,7 +186,29 @@
 
   * { @apply border-line-subtle; }
 
-  html { -webkit-text-size-adjust: 100%; }
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* No double-tap-to-zoom: two quick taps on a card or a button zoomed
+       the page on a phone. Pinch-zoom is untouched — this only removes the
+       double-tap gesture, so nobody loses the ability to enlarge the page. */
+    touch-action: manipulation;
+  }
+
+  /* iOS zooms the whole page into any form field whose text is under 16px
+     the moment it is tapped, and leaves it zoomed after the keyboard goes —
+     the enquiry box, the search, every select. So on iOS, and only there
+     (`-webkit-touch-callout` exists nowhere else), every field is set at
+     16px. `!important` because the size is otherwise a utility class on each
+     field; no field in the application is set larger than 16px, so this
+     only ever raises one. Done here once rather than field by field, so a
+     field added next month cannot bring the zoom back. */
+  @supports (-webkit-touch-callout: none) {
+    input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
 
   body {
     @apply bg-surface-subtle text-content-primary font-sans antialiased;

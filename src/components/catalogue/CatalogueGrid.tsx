@@ -37,7 +37,7 @@ export function CatalogueGrid({ result, currency }: {
         view === 'table' ? (
           <CatalogueTable items={result.items} currency={currency} />
         ) : (
-          <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <ul className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {result.items.map((item) => <Tile key={item.id} item={item} currency={currency} />)}
           </ul>
         )
@@ -78,7 +78,7 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
               src={`/api/images/${item.imageId}`}
               alt={`${item.brandName} ${item.modelName ?? item.model}`}
               loading="lazy"
-              className="h-full w-full object-contain p-4"
+              className="h-full w-full object-contain p-3 sm:p-4"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-caption text-content-muted">
@@ -87,7 +87,7 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
           )}
         </div>
 
-        <div className="flex flex-1 flex-col gap-1 p-4">
+        <div className="flex flex-1 flex-col gap-1 p-3 sm:p-4">
           <p className="text-caption font-semibold uppercase tracking-wide text-content-secondary">
             {item.brandName}
           </p>
@@ -112,17 +112,24 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
             piece reads as an invitation rather than an omission.
           */}
           <dl className="mt-auto space-y-1 border-t border-line-subtle pt-3">
-            <div className="flex items-baseline justify-between gap-3">
+            {/* Label left, figure right, one line each, so Trade and Retail
+                read as two rows of the same table. Two across on a phone
+                leaves a tile about 150px inside, so the trade figure is a
+                size smaller there — enough for a seven-figure dirham price
+                to share the line with its label on any current iPhone. If a
+                screen is narrower still it drops under the label rather than
+                breaking in two or being cut off. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 sm:gap-x-3">
               <dt className="text-caption font-semibold text-content-secondary">Trade</dt>
-              <dd className="text-body font-bold tabular-nums text-content-primary">
+              <dd className="ml-auto whitespace-nowrap text-small font-bold tabular-nums text-content-primary sm:text-body">
                 {item.trade === null
                   ? <span className="font-normal text-content-secondary">On request</span>
                   : formatCurrency(item.trade, currency, { decimals: false })}
               </dd>
             </div>
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 sm:gap-x-3">
               <dt className="text-caption text-content-secondary">Retail</dt>
-              <dd className="text-caption tabular-nums text-content-secondary">
+              <dd className="ml-auto whitespace-nowrap text-caption tabular-nums text-content-secondary">
                 {item.retail === null
                   ? 'On request'
                   : formatCurrency(item.retail, currency, { decimals: false })}
