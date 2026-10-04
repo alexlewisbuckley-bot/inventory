@@ -15,6 +15,7 @@ import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { BASE_CURRENCY, WATCH_STATUSES, WATCH_STATUS_LABELS, type CurrencyCode, type WatchStatus } from '@/lib/enums'
 import { completeSourcing } from '@/server/services/sourcing-service'
+import { pushWatchById } from '@/server/services/shopify-service'
 import type { ActionState } from './auth'
 
 /** Convert a thrown error into the serialisable shape forms expect. */
@@ -29,6 +30,24 @@ function toState(error: unknown, fallback: string): ActionState {
 function refreshInventory(): void {
   revalidatePath('/inventory')
   revalidatePath('/')
+}
+
+/**
+ * Tell the storefront, now rather than on a schedule.
+ *
+ * The point of the mirror is that marking a watch sold takes it off the
+ * website — and "within the hour" is not that. So the push rides on the
+ * mutation that caused it.
+ *
+ * Awaited rather than left dangling: a serverless function is killed once it
+ * has answered, and a promise still in flight at that moment simply does not
+ * happen. `pushWatchById` never throws and writes its own failures to the
+ * watch, so awaiting it costs a few hundred milliseconds and cannot turn a
+ * recorded sale into an error.
+ */
+async function mirror(watchId: string | null | undefined): Promise<void> {
+  if (!watchId) return
+  await pushWatchById(watchId)
 }
 
 export async function createWatchAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -59,6 +78,7 @@ export async function createWatchAction(_prev: ActionState, formData: FormData):
     }
 
     refreshInventory()
+    await mirror(id)
     return { ok: true, message: 'Watch added to stock.', errors: { id } }
   } catch (error) {
     return toState(error, 'Could not add the watch.')
@@ -76,6 +96,7 @@ export async function updateWatchAction(_prev: ActionState, formData: FormData):
     await updateWatch(parsed.data, actor)
     refreshInventory()
     revalidatePath(`/inventory/${parsed.data.id}`)
+    await mirror(parsed.data.id)
     return { ok: true, message: 'Changes saved.' }
   } catch (error) {
     return toState(error, 'Could not save your changes.')
@@ -111,6 +132,7 @@ export async function setPriceAction(
       actor,
     )
     refreshInventory()
+    await mirror(parsed.data.id)
     return { ok: true, message: 'Price updated.' }
   } catch (error) {
     return toState(error, 'Could not update the price.')
@@ -216,6 +238,8 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
     const sale = await recordSale(parsed.data, actor)
     refreshInventory()
     revalidatePath('/sales')
+    // The watch has left the building; it should leave the website too.
+    await mirror(parsed.data.watchId)
     return {
       ok: true,
       message: 'Sale recorded and the watch moved to Sold.',
@@ -232,6 +256,7 @@ export async function deleteWatchAction(id: string): Promise<ActionState> {
   try {
     await deleteWatch(id, actor)
     refreshInventory()
+    await mirror(id)
     return { ok: true, message: 'Watch deleted. It can be restored from the deleted filter.' }
   } catch (error) {
     return toState(error, 'Could not delete the watch.')
@@ -339,6 +364,7 @@ export async function setStatusAction(id: string, status: string): Promise<Actio
   try {
     await setWatchStatus(id, status as WatchStatus, actor)
     refreshInventory()
+    await mirror(id)
     return { ok: true, message: `Marked ${WATCH_STATUS_LABELS[status as WatchStatus].toLowerCase()}.` }
   } catch (error) {
     return toState(error, 'Could not change the status.')
@@ -379,6 +405,8 @@ export async function holdOrDepositAction(input: {
     refreshInventory()
     revalidatePath('/deals')
     revalidatePath(`/deals/${dealId}`)
+    // A hold is still listed, but it is no longer buyable.
+    await mirror(input.watchId)
     return {
       ok: true,
       id: dealId,
@@ -403,6 +431,8 @@ export async function voidSaleAction(watchId: string, reason: string): Promise<A
   try {
     await voidSale(watchId, reason.trim() || null, actor)
     refreshInventory()
+    // Back in stock here means back on the website.
+    await mirror(watchId)
     revalidatePath('/sales')
     return { ok: true, message: 'Sale voided. The watch is back in stock.' }
   } catch (error) {

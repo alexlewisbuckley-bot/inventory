@@ -550,6 +550,18 @@ export const watches = pgTable(
     deletedAt: deletedAt(),
     /** Optimistic-concurrency guard, incremented on every write. */
     version: integer('version').notNull().default(1),
+
+    /**
+     * The product on the storefront, where there is one.
+     *
+     * A cache of what the last sync found rather than the thing that makes the
+     * match: the store already keys on the stock number as its SKU, so losing
+     * this costs one reconcile and not the mapping itself.
+     */
+    shopifyProductId: text('shopify_product_id'),
+    shopifySyncedAt: timestamp('shopify_synced_at', { withTimezone: true }),
+    /** Why the last push failed, where somebody looking at the watch will see it. */
+    shopifyError: text('shopify_error'),
   },
   (t) => ({
     stockNoIdx: uniqueIndex('watches_stock_no_idx').on(t.stockNo),
@@ -633,6 +645,8 @@ export const watchImages = pgTable(
     data: bytea('data').notNull(),
     caption: text('caption'),
     sortOrder: integer('sort_order').notNull().default(0),
+    /** The copy the storefront holds, so an unchanged photograph is not re-sent. */
+    shopifyMediaId: text('shopify_media_id'),
     createdAt: createdAt(),
     createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   },
