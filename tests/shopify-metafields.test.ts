@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  desiredMetaobjects, familyOf, indexMetaobjects, METAOBJECT_TYPES, normalise, resolveMetafields,
+  desiredMetaobjects, familyOf, indexMetaobjects, METAOBJECT_TYPES, normalise, resolveFamily, resolveMetafields,
 } from '@/lib/shopify-metafields'
 import type { SyncWatch } from '@/lib/shopify-map'
 
@@ -216,5 +216,59 @@ describe('what is asked for and what is loaded', () => {
     for (const type of asked) {
       expect(METAOBJECT_TYPES, `${type} is asked for but never loaded`).toContain(type)
     }
+  })
+})
+
+/**
+ * The family, found by the shop's own vocabulary.
+ *
+ * Deriving a name and hoping the shop used the same one produced a Model
+ * filter with six kinds of Submariner in it, each holding one watch:
+ * "Submariner Date 41", "Submariner Date Green Hulk 41", 'Submariner Date
+ * "Starbucks" 41'. No amount of trimming the end of a nickname reliably
+ * yields "Submariner". The list already knew the answer.
+ */
+describe('finding the family in the shop’s list', () => {
+  const FAMILIES = indexMetaobjects([
+    { type: 'model', displayName: 'Submariner', id: 'gid://f/sub' },
+    { type: 'model', displayName: 'Datejust', id: 'gid://f/dj' },
+    { type: 'model', displayName: 'Datejust II', id: 'gid://f/dj2' },
+    { type: 'model', displayName: 'GMT Master II', id: 'gid://f/gmt' },
+    { type: 'model', displayName: 'Daytona', id: 'gid://f/dayt' },
+    // The stray entry really in the shop's list.
+    { type: 'model', displayName: 'A', id: 'gid://f/junk' },
+  ])
+  const family = (nickname: string) => resolveFamily(watch({ nickname }), FAMILIES).id
+
+  it('files every Submariner under Submariner', () => {
+    for (const nickname of [
+      'Submariner Date 41', 'Submariner Date 40', 'Submariner Date Green Hulk 41',
+      'Submariner Date "Hulk" 40', 'Submariner Date "Starbucks" 41', 'Submariner Date Starbucks 41',
+    ]) {
+      expect(family(nickname), nickname).toBe('gid://f/sub')
+    }
+  })
+
+  it('prefers the longer, more specific name', () => {
+    // A Datejust II is a Datejust, but it is a Datejust II first.
+    expect(family('Datejust II Fluted 41')).toBe('gid://f/dj2')
+    expect(family('Datejust 41')).toBe('gid://f/dj')
+  })
+
+  it('matches across the shop’s own spelling', () => {
+    expect(family('GMT-Master II Pepsi 40')).toBe('gid://f/gmt')
+    expect(family('Cosmograph Daytona')).toBe('gid://f/dayt')
+  })
+
+  it('ignores an entry too short to mean anything', () => {
+    // "A" is contained in almost every name there is. Left in, it would
+    // quietly become the family of half the book.
+    expect(family('Yacht-Master 40')).toBeNull()
+  })
+
+  it('reports a family the shop does not have, rather than inventing one', () => {
+    const { id, name } = resolveFamily(watch({ nickname: 'Day-Date 40' }), FAMILIES)
+    expect(id).toBeNull()
+    expect(name).toBe('Day-Date')
   })
 })

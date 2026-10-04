@@ -76,6 +76,12 @@ export const METAOBJECT_TYPES = [
  * is a gap, not a disagreement, and filling it cannot produce two entries
  * meaning the same thing.
  *
+ * A model family is not on the list either, and for a sharper reason: the name
+ * this system can offer is the whole variant — "Submariner Date Green Hulk" —
+ * and creating that would give the shop a family of one watch, six times over,
+ * where it wanted Submariner. A family it does not already have is reported so
+ * somebody can name it properly.
+ *
  * Everything else is a curated vocabulary and is deliberately left alone. The
  * shop calls a material "Two-tone Everose Rolesor"; this system calls the same
  * metal "Oystersteel and Everose gold". Creating the second would not fill a
@@ -83,7 +89,7 @@ export const METAOBJECT_TYPES = [
  * watches, and nobody would notice until a customer did. Those are reported
  * instead, so somebody who knows which is which decides.
  */
-export const CREATABLE_TYPES = ['model', 'year', 'case_size'] as const
+export const CREATABLE_TYPES = ['year', 'case_size'] as const
 
 /** The field each type keeps its name in. */
 export const NAME_FIELD: Record<string, string> = {
@@ -180,6 +186,44 @@ export function indexMetaobjects(
   return index
 }
 
+/**
+ * The shop's family for a watch, found by its own vocabulary.
+ *
+ * Not computed and then matched, which is how this went wrong: a nickname is
+ * the whole variant — "Submariner Date Green Hulk 41" — and no amount of
+ * trimming the end of it reliably yields "Submariner". Deriving a name and
+ * hoping the shop uses the same one produced a Model filter with six kinds of
+ * Submariner in it, each holding one watch.
+ *
+ * So the shop's list is the authority. The family is the longest entry in it
+ * that the nickname contains: "Submariner Date Green Hulk" gives Submariner,
+ * "Datejust II Fluted" gives Datejust II rather than Datejust, because the
+ * longer name is the more specific true one.
+ *
+ * Entries shorter than three characters are ignored. The list currently holds
+ * one called "A", and a single letter is contained in almost every name there
+ * is — it would quietly become the family of half the book.
+ */
+export function resolveFamily(
+  watch: SyncWatch,
+  index: MetaobjectIndex,
+): { id: string | null; name: string | null } {
+  const nickname = watch.nickname?.trim()
+  if (!nickname) return { id: null, name: null }
+
+  const haystack = normalise(nickname)
+  const families = index.get('model')
+  if (!families) return { id: null, name: familyOf(watch) }
+
+  let best: { id: string; length: number } | null = null
+  for (const [name, id] of families) {
+    if (name.length < 3 || !haystack.includes(name)) continue
+    if (!best || name.length > best.length) best = { id, length: name.length }
+  }
+
+  return best ? { id: best.id, name: nickname } : { id: null, name: familyOf(watch) }
+}
+
 export interface ResolvedMetafields {
   metafields: Array<{ namespace: string; key: string; type: string; value: string }>
   /** What the shop has no entry for, so somebody can be told rather than left to notice. */
@@ -201,7 +245,11 @@ export function resolveMetafields(
   const unmatched: DesiredMetaobject[] = []
 
   for (const want of desiredMetaobjects(watch)) {
-    const id = index.get(want.type)?.get(normalise(want.name))
+    // The family is the one field found by what the shop already calls things
+    // rather than by matching a name this system made up.
+    const id = want.type === 'model'
+      ? resolveFamily(watch, index).id
+      : index.get(want.type)?.get(normalise(want.name))
     if (!id) { unmatched.push(want); continue }
     metafields.push({
       namespace: 'custom',
