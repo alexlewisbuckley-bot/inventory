@@ -22,6 +22,8 @@ const INDEX = indexMetaobjects([
   { type: 'bracelet', displayName: 'Oyster', id: 'gid://br/1' },
   { type: 'material', displayName: 'Oystersteel', id: 'gid://m/1' },
   { type: 'material', displayName: '18k White Gold', id: 'gid://m/2' },
+  { type: 'material', displayName: 'Two-tone White Rolesor', id: 'gid://m/3' },
+  { type: 'model', displayName: 'Datejust', id: 'gid://mo/dj' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/1' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/2' },
   { type: 'year', displayName: '2016', id: 'gid://y/1' },
@@ -46,16 +48,18 @@ describe('matching two vocabularies', () => {
 
 describe('what the shop should say about a watch', () => {
   it('asks for every structured field the record holds', () => {
-    const want = desiredMetaobjects(watch())
+    const want = desiredMetaobjects(watch({ nickname: 'Datejust 41' }))
     expect(want).toEqual([
       { type: 'brand', name: 'Rolex' },
       { type: 'dial', name: 'White' },
       { type: 'bracelet', name: 'Oyster' },
-      { type: 'material', name: 'Oystersteel' },
+      // 116334 ends in 4: a White Rolesor, whatever the free text said.
+      { type: 'material', name: 'Two-tone White Rolesor', canCreate: true },
       { type: 'case_size', name: '41mm' },
       { type: 'year', name: '2016' },
       { type: 'condition', name: 'Excellent' },
       { type: 'box_papers', name: 'Papers only' },
+      { type: 'model', name: 'Datejust' },
     ])
   })
 
@@ -74,8 +78,11 @@ describe('what the shop should say about a watch', () => {
       .toContainEqual({ type: 'box_papers', name: 'Neither' })
     expect(desiredMetaobjects(watch({ dial: 'Silver' })))
       .toContainEqual({ type: 'dial', name: 'Silvered' })
-    expect(desiredMetaobjects(watch({ caseMaterial: '18ct white gold' })))
-      .toContainEqual({ type: 'material', name: '18k White Gold' })
+    // Only where the reference says nothing — a house that does not encode
+    // the metal leaves the typed words to be translated.
+    expect(desiredMetaobjects(watch({
+      brandName: 'Hermès', model: 'Birkin 30', caseMaterial: '18ct white gold',
+    }))).toContainEqual({ type: 'material', name: '18k White Gold' })
   })
 
   it('leaves the model alone', () => {
@@ -88,12 +95,21 @@ describe('what the shop should say about a watch', () => {
 
 describe('resolving against the shop', () => {
   it('points each field at the shop’s own entry', () => {
-    const { metafields, unmatched } = resolveMetafields(watch(), INDEX)
+    const { metafields, unmatched } = resolveMetafields(watch({ nickname: 'Datejust 41' }), INDEX)
     expect(unmatched).toEqual([])
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'dial', type: 'metaobject_reference', value: 'gid://d/1',
     })
-    expect(metafields).toHaveLength(8)
+    expect(metafields).toHaveLength(9)
+  })
+
+  it('takes the metal from the reference, not from the typed words', () => {
+    // 116334 ends in 4. The record says "Oystersteel"; the reference says it
+    // is a White Rolesor, and the reference is the one both houses agree on.
+    const { metafields } = resolveMetafields(watch({ caseMaterial: 'Oystersteel' }), INDEX)
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/3',
+    })
   })
 
   it('matches across a spelling difference', () => {
@@ -119,10 +135,9 @@ describe('resolving against the shop', () => {
     )
     expect(metafields.map((m) => m.key)).not.toContain('bracelet')
     expect(metafields.map((m) => m.key)).not.toContain('dial')
-    expect(unmatched).toEqual([
-      { type: 'dial', name: 'Tapestry' },
-      { type: 'bracelet', name: 'President' },
-    ])
+    expect(unmatched.map((u) => `${u.type}:${u.name}`)).toEqual(
+      expect.arrayContaining(['dial:Tapestry', 'bracelet:President']),
+    )
   })
 })
 

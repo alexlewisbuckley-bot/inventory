@@ -1,6 +1,7 @@
 export { familyOf }
 import { BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition } from './enums'
 import { familyOf, type SyncWatch } from './shopify-map'
+import { materialFromReference } from './rolex-reference'
 
 /**
  * The shop's structured fields, filled from the record where they can be.
@@ -94,8 +95,8 @@ export function nameFieldFor(type: string): string {
   return NAME_FIELD[type] ?? 'label'
 }
 
-export function isCreatable(type: string): boolean {
-  return (CREATABLE_TYPES as readonly string[]).includes(type)
+export function isCreatable(want: DesiredMetaobject): boolean {
+  return want.canCreate === true || (CREATABLE_TYPES as readonly string[]).includes(want.type)
 }
 
 /** One structured field the shop could hold for this watch. */
@@ -104,6 +105,16 @@ export interface DesiredMetaobject {
   type: string
   /** The entry's display name, as the shop spells it. */
   name: string
+  /**
+   * Safe to add to the shop's list if it is not there.
+   *
+   * True only for a name that came from a closed, canonical table rather than
+   * from somebody typing. "Two-tone Everose Rolesor" read off a reference is
+   * one of ten possible answers and cannot duplicate an existing entry by
+   * saying the same thing differently; "Oystersteel and Everose gold" typed
+   * into a record is exactly that risk.
+   */
+  canCreate?: boolean
 }
 
 /**
@@ -115,11 +126,22 @@ export interface DesiredMetaobject {
  * name happened to normalise the same way would be worse than leaving it.
  */
 export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
+  const derivedMaterial = materialFromReference(watch.brandName, watch.model)
+
   const wanted: Array<DesiredMetaobject | null> = [
     { type: 'brand', name: watch.brandName },
     watch.dial ? { type: 'dial', name: alias(watch.dial) } : null,
     watch.bracelet ? { type: 'bracelet', name: alias(watch.bracelet) } : null,
-    watch.caseMaterial ? { type: 'material', name: alias(watch.caseMaterial) } : null,
+    // The reference first, where the house encodes it. Rolex, Patek and
+    // Audemars all put the case metal in the reference, and that is the one
+    // description both systems can agree on without either giving way: the
+    // record says "Oystersteel and Everose gold", the shop says "Two-tone
+    // Everose Rolesor", and 126711 says which metal without an opinion.
+    derivedMaterial
+      ? { type: 'material', name: derivedMaterial, canCreate: true }
+      : watch.caseMaterial
+        ? { type: 'material', name: alias(watch.caseMaterial) }
+        : null,
     watch.caseSizeMm ? { type: 'case_size', name: `${watch.caseSizeMm}mm` } : null,
     watch.year ? { type: 'year', name: String(watch.year) } : null,
     watch.condition && watch.condition !== 'UNKNOWN'

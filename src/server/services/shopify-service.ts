@@ -310,7 +310,7 @@ export async function createMissing(
 
   for (const watch of watches) {
     for (const want of desiredMetaobjects(watch)) {
-      if (!isCreatable(want.type)) continue
+      if (!isCreatable(want)) continue
       if (index.get(want.type)?.has(normalise(want.name))) continue
       // One entry per distinct name, however many watches want it.
       wanted.set(`${want.type}:${normalise(want.name)}`, want)
