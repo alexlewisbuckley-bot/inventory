@@ -65,6 +65,28 @@ function alias(value: string): string {
 }
 
 /**
+ * The thing itself, without the sentence about it.
+ *
+ * A dial is recorded as "Pink, diamond-set" or "Black with grey subdials", and
+ * a bracelet as "Oyster (72419)". The shop's lists hold the thing — Pink,
+ * Black, Oyster — and the rest is a description of this particular watch,
+ * which belongs in the copy and not in a filter.
+ *
+ * Trimming is what makes creating safe. An untrimmed value added to the shop's
+ * own list gives it a dial called "Black with grey subdials" holding exactly
+ * one watch, and a Black filter that no longer finds that watch — the same
+ * splitting that turned the model menu into a hundred families of one. Cut at
+ * the comma, the bracket or the "with", and the worst this can add is a colour.
+ */
+export function withoutDescription(value: string): string {
+  const cut = value.split(/,|\(| with /i)[0] ?? value
+  const head = cut.trim()
+  // Never trim something away to nothing: a value that is all description is
+  // better reported whole than reported as an empty string.
+  return head.length >= 2 ? head : value.trim()
+}
+
+/**
  * Every metaobject type this system can fill in.
  *
  * Declared once, beside the function that asks for them, because the loader
@@ -91,6 +113,10 @@ export const METAOBJECT_TYPES = [
  * and creating that would give the shop a family of one watch, six times over,
  * where it wanted Submariner. A family it does not already have is reported so
  * somebody can name it properly.
+ *
+ * Dials and bracelets join them, but only because they are trimmed to the
+ * thing itself first — see `withoutDescription`. "Pink" is a colour and can
+ * be added; "Pink, diamond-set" is a sentence and would split the filter.
  *
  * Everything else is a curated vocabulary and is deliberately left alone. The
  * shop calls a material "Two-tone Everose Rolesor"; this system calls the same
@@ -146,8 +172,15 @@ export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
 
   const wanted: Array<DesiredMetaobject | null> = [
     { type: 'brand', name: watch.brandName },
-    watch.dial ? { type: 'dial', name: alias(watch.dial) } : null,
-    watch.bracelet ? { type: 'bracelet', name: alias(watch.bracelet) } : null,
+    // Both are trimmed to the thing itself before being looked up, so
+    // "Pink, diamond-set" finds the shop's Pink rather than reporting a gap,
+    // and — because what is left can only be a name — may be created.
+    watch.dial
+      ? { type: 'dial', name: alias(withoutDescription(watch.dial)), canCreate: true }
+      : null,
+    watch.bracelet
+      ? { type: 'bracelet', name: alias(withoutDescription(watch.bracelet)), canCreate: true }
+      : null,
     // The reference first, where the house encodes it. Rolex, Patek and
     // Audemars all put the case metal in the reference, and that is the one
     // description both systems can agree on without either giving way: the

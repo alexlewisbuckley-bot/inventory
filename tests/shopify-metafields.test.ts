@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  desiredMetaobjects, familyOf, indexMetaobjects, METAOBJECT_TYPES, normalise, resolveFamily, resolveMetafields,
+  desiredMetaobjects, familyOf, indexMetaobjects, isCreatable, METAOBJECT_TYPES, normalise,
+  resolveFamily, resolveMetafields, withoutDescription,
 } from '@/lib/shopify-metafields'
 import type { SyncWatch } from '@/lib/shopify-map'
 
@@ -19,6 +20,7 @@ const INDEX = indexMetaobjects([
   { type: 'dial', displayName: 'White', id: 'gid://d/1' },
   { type: 'dial', displayName: 'Mother of Pearl', id: 'gid://d/2' },
   { type: 'dial', displayName: 'Silvered', id: 'gid://d/3' },
+  { type: 'dial', displayName: 'Pink', id: 'gid://d/4' },
   { type: 'bracelet', displayName: 'Oyster', id: 'gid://br/1' },
   { type: 'material', displayName: 'Oystersteel', id: 'gid://m/1' },
   { type: 'material', displayName: '18k White Gold', id: 'gid://m/2' },
@@ -58,13 +60,66 @@ describe('matching two vocabularies', () => {
   })
 })
 
+/**
+ * The thing, and the sentence about the thing.
+ *
+ * A dial written as "Black with grey subdials" is a black dial with something
+ * worth saying about it. The shop's filter wants the colour; the rest is copy.
+ */
+describe('trimming a description down to a name', () => {
+  it('cuts at the comma', () => {
+    expect(withoutDescription('Pink, diamond-set')).toBe('Pink')
+    expect(withoutDescription('Olive green, Roman numerals')).toBe('Olive green')
+  })
+
+  it('cuts at a bracketed reference', () => {
+    expect(withoutDescription('Oyster (72419)')).toBe('Oyster')
+    expect(withoutDescription('Oyster (17934)')).toBe('Oyster')
+  })
+
+  it('cuts at "with"', () => {
+    expect(withoutDescription('Black with grey subdials')).toBe('Black')
+    expect(withoutDescription('Champagne with Factory Diamond Hour Markers')).toBe('Champagne')
+  })
+
+  it('leaves a plain name alone', () => {
+    for (const name of ['Black', 'Mother of Pearl', 'President', 'Oyster']) {
+      expect(withoutDescription(name), name).toBe(name)
+    }
+  })
+
+  it('never trims a value away to nothing', () => {
+    // Better to report an odd value whole than to report an empty one.
+    expect(withoutDescription(', diamond-set')).toBe(', diamond-set')
+  })
+
+  it('finds the colour the shop already has', () => {
+    const { metafields, unmatched } = resolveMetafields(watch({ dial: 'Pink, diamond-set' }), INDEX)
+    expect(unmatched.map((u) => u.type)).not.toContain('dial')
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'dial', type: 'metaobject_reference', value: 'gid://d/4',
+    })
+  })
+
+  it('lets a trimmed colour be added, but never a sentence', () => {
+    // The whole reason trimming comes first: what is left can only be a name,
+    // so adding it cannot split one filter into two.
+    const [dial] = desiredMetaobjects(watch({ dial: 'Olive green, Roman numerals' }))
+      .filter((d) => d.type === 'dial')
+    expect(dial?.name).toBe('Olive green')
+    expect(isCreatable(dial!)).toBe(true)
+  })
+})
+
 describe('what the shop should say about a watch', () => {
   it('asks for every structured field the record holds', () => {
     const want = desiredMetaobjects(watch({ nickname: 'Datejust 41' }))
     expect(want).toEqual([
       { type: 'brand', name: 'Rolex' },
-      { type: 'dial', name: 'White' },
-      { type: 'bracelet', name: 'Oyster' },
+      // Dial and bracelet are trimmed to a name before being asked for, which
+      // is what makes them safe to add to the shop's lists.
+      { type: 'dial', name: 'White', canCreate: true },
+      { type: 'bracelet', name: 'Oyster', canCreate: true },
       // 116334 ends in 4: a White Rolesor, whatever the free text said.
       { type: 'material', name: 'Two-tone White Rolesor', canCreate: true },
       { type: 'case_size', name: '41mm' },
@@ -89,7 +144,7 @@ describe('what the shop should say about a watch', () => {
     expect(desiredMetaobjects(watch({ boxPapers: 'WATCH_ONLY' })))
       .toContainEqual({ type: 'box_papers', name: 'Neither' })
     expect(desiredMetaobjects(watch({ dial: 'Silver' })))
-      .toContainEqual({ type: 'dial', name: 'Silvered' })
+      .toContainEqual({ type: 'dial', name: 'Silvered', canCreate: true })
     // Only where the reference says nothing — a house that does not encode
     // the metal leaves the typed words to be translated.
     expect(desiredMetaobjects(watch({
