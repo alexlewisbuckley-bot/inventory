@@ -407,6 +407,12 @@ export async function pushWatch(
   assertNoUserErrors(data.productSet.userErrors)
   const id = data.productSet.product?.id
   if (!id) throw new Error('Shopify accepted the product but returned no id.')
+
+  // Live means visible. A product that is ACTIVE but attached to no sales
+  // channel is in the admin and nowhere else, which looks from the outside
+  // exactly like the sync having silently failed.
+  if (statusFor(watch) === 'ACTIVE') await publishToOnlineStore(id)
+
   return id
 }
 
@@ -428,6 +434,54 @@ export async function archiveProduct(productId: string): Promise<void> {
     }
   `, { product: { id: productId, status: 'ARCHIVED' } })
   assertNoUserErrors(data.productUpdate.userErrors)
+}
+
+/**
+ * Put the product in the shop window.
+ *
+ * A product created through the API exists and is not for sale. It has to be
+ * attached to a sales channel as a separate act, which is why a first sync
+ * leaves a hundred correct products that nobody browsing the site can see —
+ * they are in the admin, and only in the admin.
+ *
+ * Found by name rather than configured, because "Online Store" is the channel
+ * on every shop that has one and an id in an environment variable is one more
+ * thing to get wrong. Cached for the run; a shop does not gain a storefront
+ * halfway through a sync.
+ */
+let cachedPublication: string | null = null
+
+async function onlineStorePublication(): Promise<string | null> {
+  if (cachedPublication) return cachedPublication
+  const data = await admin<{
+    publications: { edges: Array<{ node: { id: string; name: string } }> }
+  }>(`{ publications(first: 20) { edges { node { id name } } } }`, {})
+
+  const found = data.publications.edges.find((e) => e.node.name === 'Online Store')
+  cachedPublication = found?.node.id ?? null
+  return cachedPublication
+}
+
+/**
+ * Publish, idempotently.
+ *
+ * Publishing something already published is not an error, so this is safe to
+ * repeat — which matters, because the commonest way to reach this code is a
+ * second run after the first was cut short.
+ */
+export async function publishToOnlineStore(productId: string): Promise<void> {
+  const publicationId = await onlineStorePublication()
+  if (!publicationId) return
+
+  const data = await admin<{
+    publishablePublish: { userErrors: Array<{ field?: string[] | null; message: string }> }
+  }>(`
+    mutation Publish($id: ID!, $input: [PublicationInput!]!) {
+      publishablePublish(id: $id, input: $input) { userErrors { field message } }
+    }
+  `, { id: productId, input: [{ publicationId }] })
+
+  assertNoUserErrors(data.publishablePublish.userErrors)
 }
 
 export interface SyncOutcome {
