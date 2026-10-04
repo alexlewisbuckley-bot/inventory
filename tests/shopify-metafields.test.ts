@@ -72,6 +72,15 @@ describe('trimming a description down to a name', () => {
     expect(withoutDescription('Olive green, Roman numerals')).toBe('Olive green')
   })
 
+  it('then calls the colour what it is', () => {
+    // Trimming leaves "Olive green"; the alias table has the last word, and
+    // the colour is Olive. "Green" is the shade of it, not a second colour,
+    // and left on it would sit in the filter beside the shop's own Green.
+    const [dial] = desiredMetaobjects(watch({ dial: 'Olive green, Roman numerals' }))
+      .filter((d) => d.type === 'dial')
+    expect(dial?.name).toBe('Olive')
+  })
+
   it('cuts at a bracketed reference', () => {
     expect(withoutDescription('Oyster (72419)')).toBe('Oyster')
     expect(withoutDescription('Oyster (17934)')).toBe('Oyster')
@@ -106,7 +115,7 @@ describe('trimming a description down to a name', () => {
     // so adding it cannot split one filter into two.
     const [dial] = desiredMetaobjects(watch({ dial: 'Olive green, Roman numerals' }))
       .filter((d) => d.type === 'dial')
-    expect(dial?.name).toBe('Olive green')
+    expect(dial?.name).toBe('Olive')
     expect(isCreatable(dial!)).toBe(true)
   })
 })

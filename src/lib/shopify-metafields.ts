@@ -49,6 +49,10 @@ const ALIASES: Record<string, string> = {
   'watch only': 'Neither',
   // A silver dial and a silvered dial are the same dial.
   silver: 'Silvered',
+  // The colour is olive. "Green" after it is the shade of olive, not a second
+  // colour — and left on, it would sit in the filter beside the shop's own
+  // Green as though they were two unrelated dials.
+  'olive green': 'Olive',
   // Spelled out once and then abbreviated, in the same breath. The shop keeps
   // one entry called "Mother of Pearl"; a second one carrying the initials
   // would split the dial between two filters.
