@@ -13,6 +13,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   stockNo: 1143,
   brandName: 'Rolex',
   model: '116334',
+  serial: '0SQ84951',
   nickname: null,
   year: 2023,
   status: 'IN_STOCK',
@@ -190,5 +191,27 @@ describe('planning the sync', () => {
     const plan = planSync([watch({ status: 'SOLD' })], [product()])
     expect(plan.update).toHaveLength(1)
     expect(statusFor(plan.update[0]!.watch)).toBe('ARCHIVED')
+  })
+})
+
+/**
+ * What the sync owns, and what it leaves alone.
+ *
+ * The store's product pages are editorial: "Datejust II Fluted 41" is a better
+ * title than "Rolex 116334", and the paragraph under it was written to sell the
+ * watch. Neither is a fact this system holds a better version of. A mirror that
+ * overwrote them on every price change would quietly undo the shop's own work,
+ * which is the surest way to get itself switched off.
+ *
+ * These assertions are about the seed values only — what a page is given when
+ * it is first created, and nobody has written anything yet.
+ */
+describe('seeding a page that does not exist yet', () => {
+  it('names it well enough to be found and then improved', () => {
+    expect(titleFor(watch())).toBe('Rolex 116334')
+  })
+
+  it('gives it the specification, since there is no copy yet', () => {
+    expect(descriptionHtmlFor(watch())).toContain('2023')
   })
 })

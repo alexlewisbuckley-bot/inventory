@@ -176,6 +176,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       stockNo: watches.stockNo,
       brandName: brands.name,
       model: watches.model,
+      serial: watches.serial,
       nickname: watches.nickname,
       year: watches.year,
       status: watches.status,
@@ -282,8 +283,13 @@ export async function pushWatch(watch: SyncWatch, rates: Record<string, number>)
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
   const price = priceFor(watch.estSaleGbp, currency, rates)
+  const isNew = !watch.shopifyProductId
 
-  const files = origin
+  // Photographs, for a page being created. An existing page's media was very
+  // likely arranged by hand — and in this store some of it is shared between
+  // products — so a push that re-sent images on every price change would
+  // reshuffle a gallery nobody asked it to touch.
+  const files = origin && isNew
     ? watch.imageIds.map((id) => ({
       originalSource: `${origin}/api/storefront-image/${id}`,
       contentType: 'IMAGE' as const,
@@ -302,11 +308,32 @@ export async function pushWatch(watch: SyncWatch, rates: Record<string, number>)
     // way to write "no handle, no custom id" and fails every single call.
     ...(watch.shopifyProductId ? { identifier: { id: watch.shopifyProductId } } : {}),
     input: {
-      title: titleFor(watch),
-      descriptionHtml: descriptionHtmlFor(watch),
+      // Title and description are written ONCE, when the page is created, and
+      // never touched again.
+      //
+      // They are editorial. "Datejust II Fluted 41" is better than "Rolex
+      // 116334", and the paragraph underneath it was written to sell the watch
+      // — neither is a fact this system holds a better version of. A mirror
+      // that overwrites them every time somebody edits a price would quietly
+      // undo the shop's own work, which is the surest way to have the sync
+      // turned off.
+      //
+      // What this system does own is stock: the price, the quantity, whether
+      // the page should be up at all, and the reference and serial that
+      // identify the piece.
+      ...(isNew ? {
+        title: titleFor(watch),
+        descriptionHtml: descriptionHtmlFor(watch),
+        vendor: watch.brandName,
+        productType: 'Watch',
+      } : {}),
       status: statusFor(watch),
-      vendor: watch.brandName,
-      productType: 'Watch',
+      metafields: [
+        { namespace: 'custom', key: 'reference', type: 'single_line_text_field', value: watch.model },
+        ...(watch.serial
+          ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
+          : []),
+      ],
       ...(files.length ? { files } : {}),
       productOptions: [{ name: 'Title', values: [{ name: 'Default Title' }] }],
       variants: [{

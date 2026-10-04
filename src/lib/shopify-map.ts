@@ -38,6 +38,7 @@ export interface SyncWatch {
   stockNo: number
   brandName: string
   model: string
+  serial: string | null
   nickname: string | null
   year: number | null
   status: string
