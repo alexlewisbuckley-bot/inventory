@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, Copy, ExternalLink, Pencil, RefreshCw, Store, Trash2, Upload } from 'lucide-react'
+import { Check, Copy, ExternalLink, Globe, Pencil, RefreshCw, Store, Trash2, Upload } from 'lucide-react'
 import {
   Card, Button, Modal, TextField, TextareaField, SelectField, Checkbox,
   Chip, ConfirmDialog, EmptyState, useToast, useCreateFlag,
@@ -13,6 +13,7 @@ import {
 import type { ActionState } from '@/app/actions/auth'
 import { CURRENCIES } from '@/lib/enums'
 import { parseNavLinks } from '@/lib/validation'
+import { ResellerReach } from './ResellerReach'
 
 export interface ResellerRow {
   id: string
@@ -28,6 +29,8 @@ export interface ResellerRow {
   accentColor: string
   displayCurrency: string
   publicToken: string
+  customDomain: string | null
+  customDomainSeenAt: string | null
   isActive: boolean
   notes: string | null
   navLinks: string | null
@@ -47,14 +50,25 @@ export function ResellerManager({ resellers, canManage, origin }: {
   const [editing, setEditing] = useState<ResellerRow | null>(null)
   const [deleting, setDeleting] = useState<ResellerRow | null>(null)
   const [rotating, setRotating] = useState<ResellerRow | null>(null)
+  const [reaching, setReaching] = useState<ResellerRow | null>(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
 
   const linkFor = (token: string) => `${origin}/s/${token}`
 
+  /**
+   * What to put in front of them.
+   *
+   * Once a shop answers on the reseller's own hostname, that is the link worth
+   * copying — showing the token one beside it would be showing the thing this
+   * page exists to stop anybody sending to a customer.
+   */
+  const publicLinkFor = (row: ResellerRow) =>
+    row.customDomain && row.customDomainSeenAt ? `https://${row.customDomain}` : linkFor(row.publicToken)
+
   const copy = async (row: ResellerRow) => {
     try {
-      await navigator.clipboard.writeText(linkFor(row.publicToken))
+      await navigator.clipboard.writeText(publicLinkFor(row))
       setCopied(row.id)
       setTimeout(() => setCopied(null), 2000)
     } catch {
@@ -141,7 +155,7 @@ export function ResellerManager({ resellers, canManage, origin }: {
                 <p className="text-caption font-semibold text-content-secondary">Their shop link</p>
                 <div className="mt-1.5 flex items-center gap-2">
                   <code className="min-w-0 flex-1 truncate rounded-sm bg-surface-subtle px-2.5 py-2 font-mono text-caption text-content-primary">
-                    {linkFor(reseller.publicToken)}
+                    {publicLinkFor(reseller)}
                   </code>
                   <button
                     type="button" onClick={() => copy(reseller)}
@@ -151,7 +165,7 @@ export function ResellerManager({ resellers, canManage, origin }: {
                     {copied === reseller.id ? <Check className="h-4 w-4 text-state-success" /> : <Copy className="h-4 w-4" />}
                   </button>
                   <a
-                    href={linkFor(reseller.publicToken)} target="_blank" rel="noreferrer noopener"
+                    href={publicLinkFor(reseller)} target="_blank" rel="noreferrer noopener"
                     aria-label={`Open the shop for ${reseller.name}`}
                     className="flex h-8 w-8 items-center justify-center rounded-sm text-content-secondary hover:bg-surface-subtle hover:text-content-primary"
                   >
@@ -159,7 +173,11 @@ export function ResellerManager({ resellers, canManage, origin }: {
                   </a>
                 </div>
                 <p className="mt-1.5 text-micro text-content-secondary">
-                  Anyone holding this link can see it. Reissue to revoke it.
+                  {reseller.customDomain && reseller.customDomainSeenAt
+                    ? 'Their own domain, so this one is public. The token link still works.'
+                    : reseller.customDomain
+                      ? `Waiting for ${reseller.customDomain} to start answering. Until then this is the link.`
+                      : 'Anyone holding this link can see it. Reissue to revoke it.'}
                 </p>
               </div>
 
@@ -169,6 +187,9 @@ export function ResellerManager({ resellers, canManage, origin }: {
                     Branding
                   </Button>
                   <LogoButton reseller={reseller} onDone={(m) => toast.success(m)} onFail={(m) => toast.error('Could not save that logo', m)} />
+                  <Button variant="ghost" onClick={() => setReaching(reseller)} icon={<Globe className="h-3.5 w-3.5" />}>
+                    Domain &amp; embed
+                  </Button>
                   <Button variant="ghost" onClick={() => setRotating(reseller)} icon={<RefreshCw className="h-3.5 w-3.5" />}>
                     Reissue link
                   </Button>
@@ -191,6 +212,15 @@ export function ResellerManager({ resellers, canManage, origin }: {
         onClose={() => { create.close(); setEditing(null) }}
         onSaved={(message) => { toast.success(message); create.close(); setEditing(null) }}
       />
+
+      {reaching && (
+        <ResellerReach
+          reseller={reaching}
+          origin={origin}
+          canManage={canManage}
+          onClose={() => setReaching(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={rotating !== null}

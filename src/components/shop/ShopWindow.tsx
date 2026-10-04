@@ -70,13 +70,17 @@ function specOf(item: ShopItem): Array<[string, string]> {
  * narrowing to one house should not wait for a round trip, and this page has no
  * session to hang a server-side query state off.
  */
-export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shopName }: {
+export function ShopWindow({
+  items, token, currency, contactEmail, hasLogo, shopName, embedded = false,
+}: {
   items: ShopItem[]
   token: string
   currency: CurrencyCode
   contactEmail: string | null
   hasLogo: boolean
   shopName: string
+  /** Inside somebody else's page, where this is a block and not a page. */
+  embedded?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [brand, setBrand] = useState('')
@@ -128,7 +132,15 @@ export function ShopWindow({ items, token, currency, contactEmail, hasLogo, shop
         language of an admin panel; here the controls sit on the page as text
         with a hairline under them, and only assert themselves when in use.
       */}
-      <div className="sticky top-[72px] z-20 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur">
+      {/*
+        Sticky on its own page, where there is a masthead to sit under and a
+        long grid to scroll past. Not in an embed: the frame is the height of
+        its contents and never scrolls, so sticking does nothing except hold
+        the rail 72px down the page over the first row of watches.
+      */}
+      <div className={embedded
+        ? 'border-b border-[color:var(--hair)] bg-white'
+        : 'sticky top-[72px] z-20 border-b border-[color:var(--hair)] bg-white/92 backdrop-blur'}>
         <div className="mx-auto flex max-w-[1760px] flex-col gap-3 px-6 py-4 sm:px-10 md:flex-row md:items-center md:gap-x-8">
           <label className="relative w-full md:w-[240px] md:shrink-0 lg:w-[280px]">
             <span className="sr-only">Search the collection</span>

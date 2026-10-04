@@ -191,6 +191,18 @@ export const resellers = pgTable(
     /** Their own site's top-level links, as a JSON array of {label, href}. */
     navLinks: text('nav_links'),
     publicToken: text('public_token').notNull(),
+
+    /**
+     * A hostname of the reseller's own, pointed at this deployment.
+     *
+     * Where it is set, the host is what the shop is found by and the token
+     * never appears in front of a customer. It also makes the shop public —
+     * a hostname cannot be a secret — which is the whole of the trade.
+     */
+    customDomain: text('custom_domain'),
+    /** When a request on that hostname first arrived: proof the DNS is right. */
+    customDomainSeenAt: timestamp('custom_domain_seen_at', { withTimezone: true }),
+
     isActive: boolean('is_active').notNull().default(true),
     /** Our retail price, converted into what their customers are quoted in. */
     displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('USD'),

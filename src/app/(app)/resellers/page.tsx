@@ -30,7 +30,13 @@ export default async function ResellersPage() {
         actions={can(user.role, 'reseller:manage') ? <CreateAction label="Add reseller" /> : undefined}
       />
       <ResellerManager
-        resellers={resellers.map((r) => ({ ...r, availableCount: Number(r.availableCount) }))}
+        resellers={resellers.map((r) => ({
+          ...r,
+          availableCount: Number(r.availableCount),
+          // Serialised at the boundary: a Date cannot cross into a client
+          // component, and the panel only ever shows it as a day.
+          customDomainSeenAt: r.customDomainSeenAt?.toISOString() ?? null,
+        }))}
         canManage={can(user.role, 'reseller:manage')}
         origin={origin}
       />

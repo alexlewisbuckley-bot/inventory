@@ -54,15 +54,29 @@ const nextConfig = {
     ]
   },
   async headers() {
+    const common = [
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+    ]
     return [
+      // Everything in the application refuses to be framed, which is the right
+      // default for a page that can move stock or read a customer's address.
+      // The one deliberate exception is below, and it is excluded here rather
+      // than overridden there: two X-Frame-Options headers on one response is
+      // a disagreement, and a browser settles a disagreement by refusing.
       {
-        source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-        ],
+        source: '/:path((?!s/[^/]+/embed).*)',
+        headers: [{ key: 'X-Frame-Options', value: 'DENY' }, ...common],
+      },
+      { source: '/', headers: [{ key: 'X-Frame-Options', value: 'DENY' }, ...common] },
+      // The embeddable shop frame exists to be put inside somebody else's
+      // page, so it says so in the modern header rather than the blunt one.
+      // There is nothing on it that is not already public: stock that is for
+      // sale, at the price it is for sale at.
+      {
+        source: '/s/:token/embed',
+        headers: [{ key: 'Content-Security-Policy', value: 'frame-ancestors *' }, ...common],
       },
     ]
   },

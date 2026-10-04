@@ -3,8 +3,10 @@ import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import {
   createReseller, updateReseller, deleteReseller, rotateResellerToken,
-  setResellerLogo, assertLogoAcceptable,
+  setResellerDomain, setResellerLogo, assertLogoAcceptable,
 } from '@/server/services/reseller-service'
+import { headers } from 'next/headers'
+import { hostOf, ownHosts } from '@/lib/domains'
 import { resellerSchema, fieldErrors } from '@/lib/validation'
 import { describeDbError, isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
@@ -95,6 +97,36 @@ export async function rotateResellerTokenAction(id: string): Promise<ActionState
     return { ok: true, token, message: 'New link issued. The previous one no longer works.' }
   } catch (error) {
     return toState(error, 'Could not reissue the link.')
+  }
+}
+
+/**
+ * Point a reseller's shop at a hostname of theirs.
+ *
+ * The hostnames this deployment answers to are taken from the request as well
+ * as from configuration, so somebody cannot accidentally hand the application
+ * itself to a reseller — on a preview build, on a self-hosted install, or
+ * anywhere else the configured list has not been kept up.
+ */
+export async function setResellerDomainAction(
+  id: string, domain: string,
+): Promise<ActionState & { domain?: string | null }> {
+  try {
+    const actor = await requireCapability('reseller:manage')
+    const here = hostOf(headers().get('x-forwarded-host') ?? headers().get('host'))
+    const saved = await setResellerDomain(
+      id, domain, [...ownHosts(process.env.APP_HOSTS), here], actor,
+    )
+    revalidatePath('/resellers')
+    return {
+      ok: true,
+      domain: saved,
+      message: saved
+        ? `Pointed at ${saved}. It goes live as soon as the DNS is in place.`
+        : 'Domain removed. Their token link still works.',
+    }
+  } catch (error) {
+    return toState(error, 'Could not save that domain.')
   }
 }
 

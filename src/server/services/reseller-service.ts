@@ -1,11 +1,12 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
 import { brands, resellerEnquiries, resellers, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
+import { checkDomain } from '@/lib/domains'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { fromBase, type RateTable } from '@/lib/currency'
 import { sendMail } from './mailer'
@@ -44,6 +45,8 @@ export async function listResellers() {
       accentColor: resellers.accentColor,
       displayCurrency: resellers.displayCurrency,
       publicToken: resellers.publicToken,
+      customDomain: resellers.customDomain,
+      customDomainSeenAt: resellers.customDomainSeenAt,
       isActive: resellers.isActive,
       notes: resellers.notes,
       navLinks: resellers.navLinks,
@@ -159,6 +162,72 @@ export async function rotateResellerToken(id: string, actor: SessionUser): Promi
   })
 }
 
+/**
+ * Point a hostname of the reseller's at their shop.
+ *
+ * Two halves, and only one of them is ours. This records the claim and refuses
+ * the obvious mistakes — a hostname that is not one, one that is this
+ * application's own, one already serving somebody else's stock. The other half
+ * is the reseller's DNS and the platform's certificate, neither of which can be
+ * done from here, so nothing is marked as working: the row waits until a
+ * request actually arrives on that hostname, which is the only proof that
+ * exists.
+ *
+ * Clearing it is immediate and total: the shop stops answering on that address
+ * and reverts to the token link, which never stopped working.
+ */
+export async function setResellerDomain(
+  id: string,
+  raw: string,
+  ourHosts: readonly string[],
+  actor: SessionUser,
+): Promise<string | null> {
+  const checked = checkDomain(raw, ourHosts)
+  if (!checked.ok) throw new ValidationError(checked.error ?? 'That domain cannot be used.', { customDomain: checked.error ?? '' })
+  const domain = checked.value ?? null
+
+  return withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+    if ((existing.customDomain ?? null) === domain) return domain
+
+    if (domain) {
+      const clash = await db.select({ id: resellers.id, name: resellers.name })
+        .from(resellers)
+        .where(and(
+          eq(sql`lower(${resellers.customDomain})`, domain),
+          isNull(resellers.deletedAt),
+        ))
+        .limit(1)
+      if (clash[0] && clash[0].id !== id) {
+        throw new ConflictError(`${clash[0].name} is already using that domain.`, {
+          customDomain: 'That domain is already pointed at another shop.',
+        })
+      }
+    }
+
+    await db.update(resellers)
+      .set({
+        customDomain: domain,
+        // A new hostname has not been seen yet, whatever the old one had done.
+        customDomainSeenAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(resellers.id, id))
+
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: domain
+        ? `Reseller ${existing.name}: shop pointed at ${domain}`
+        : `Reseller ${existing.name}: custom domain removed, back to the token link`,
+      changes: { customDomain: { from: existing.customDomain, to: domain } },
+    })
+
+    return domain
+  })
+}
+
 export async function setResellerLogo(
   id: string,
   logo: { data: Buffer; mimeType: string } | null,
@@ -259,7 +328,12 @@ export interface ShopWindow {
 }
 
 /**
- * The shop window behind one token.
+ * The shop window behind one key.
+ *
+ * The key is the reseller's token, or a hostname of theirs pointed at this
+ * deployment — the same shop reached two ways. Both are looked up in one
+ * statement rather than two, because the page cannot know which it was given:
+ * the route segment carries whichever the request arrived with.
  *
  * Deliberately not a filtered version of the inventory query. The columns a
  * customer may see are named here and nothing else is fetched, so cost, margin,
@@ -270,12 +344,19 @@ export interface ShopWindow {
  * Returns null for an unknown, deleted or deactivated reseller, so a revoked
  * link is indistinguishable from one that never existed.
  */
-export async function getShopWindow(token: string, rates: RateTable): Promise<ShopWindow | null> {
-  if (!token || token.length < 16) return null
+export async function getShopWindow(key: string, rates: RateTable): Promise<ShopWindow | null> {
+  // A token is 32 characters; a hostname is at least four and shaped like one.
+  // Anything that is neither cannot match a row, and saying so here saves a
+  // query on every stray request for a path under /s.
+  const token = key ?? ''
+  const domain = checkDomain(token)
+  if (unusableKey(token)) return null
 
   const rows = await db
     .select({
       id: resellers.id,
+      customDomain: resellers.customDomain,
+      customDomainSeenAt: resellers.customDomainSeenAt,
       name: resellers.name,
       displayName: resellers.displayName,
       headline: resellers.headline,
@@ -292,7 +373,7 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
     })
     .from(resellers)
     .where(and(
-      eq(resellers.publicToken, token),
+      matchesKey(token),
       eq(resellers.isActive, true),
       isNull(resellers.deletedAt),
     ))
@@ -300,6 +381,19 @@ export async function getShopWindow(token: string, rates: RateTable): Promise<Sh
 
   const reseller = rows[0]
   if (!reseller) return null
+
+  // Proof that their DNS is right, which is otherwise not checkable from here:
+  // a request on their hostname could not have arrived any other way. Stamped
+  // once and never again, so this stays a read path.
+  if (
+    domain.value
+    && reseller.customDomain?.toLowerCase() === domain.value
+    && !reseller.customDomainSeenAt
+  ) {
+    await db.update(resellers)
+      .set({ customDomainSeenAt: new Date() })
+      .where(and(eq(resellers.id, reseller.id), isNull(resellers.customDomainSeenAt)))
+  }
 
   const currency = reseller.displayCurrency
 
@@ -401,15 +495,36 @@ export function assertLogoAcceptable(mimeType: string, byteSize: number): void {
  * image must belong to a watch that is actually on sale. An id alone opens
  * nothing, which matters because ids appear in the markup of the page.
  */
-export async function getShopImage(token: string, imageId: string) {
-  if (!token || token.length < 16 || !imageId) return null
+/**
+ * Match a shop by whichever key the request carried.
+ *
+ * The page and both asset routes take the same segment, and after a reseller
+ * points a hostname here that segment is a hostname on some requests and a
+ * token on others — the browser uses whatever was in the address bar. Each of
+ * the three asked only about the token, which is how a shop on a custom domain
+ * would have rendered perfectly and shown not one photograph.
+ */
+function matchesKey(key: string) {
+  const domain = checkDomain(key)
+  return domain.value
+    ? or(eq(resellers.publicToken, key), eq(sql`lower(${resellers.customDomain})`, domain.value))
+    : eq(resellers.publicToken, key)
+}
+
+/** A key that could not match anything, so no query is worth making. */
+function unusableKey(key: string): boolean {
+  return (!key || key.length < 16) && !checkDomain(key ?? '').value
+}
+
+export async function getShopImage(key: string, imageId: string) {
+  if (unusableKey(key) || !imageId) return null
 
   const rows = await db
     .select({ data: watchImages.data, mime: watchImages.mimeType, size: watchImages.byteSize })
     .from(watchImages)
     .innerJoin(watches, eq(watches.id, watchImages.watchId))
     .innerJoin(resellers, and(
-      eq(resellers.publicToken, token),
+      matchesKey(key),
       eq(resellers.isActive, true),
       isNull(resellers.deletedAt),
     ))
@@ -426,13 +541,13 @@ export async function getShopImage(token: string, imageId: string) {
 }
 
 /** The reseller's own logo, behind the same token as their page. */
-export async function getShopLogo(token: string) {
-  if (!token || token.length < 16) return null
+export async function getShopLogo(key: string) {
+  if (unusableKey(key)) return null
   const rows = await db
     .select({ data: resellers.logoData, mime: resellers.logoMime })
     .from(resellers)
     .where(and(
-      eq(resellers.publicToken, token),
+      matchesKey(key),
       eq(resellers.isActive, true),
       isNull(resellers.deletedAt),
     ))
