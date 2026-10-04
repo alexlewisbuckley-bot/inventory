@@ -96,9 +96,7 @@ export function StorefrontSync({ health }: {
               />
               <Figure
                 label="Last pushed"
-                value={health.lastSyncedAt
-                  ? new Date(health.lastSyncedAt).toLocaleString()
-                  : 'Never'}
+                value={formatWhen(health.lastSyncedAt)}
               />
             </div>
           )}
@@ -158,6 +156,13 @@ export function StorefrontSync({ health }: {
       />
     </>
   )
+}
+
+/** A timestamp somebody can read, or an honest "never". */
+function formatWhen(value: string | null): string {
+  if (!value) return 'Never'
+  const when = new Date(value)
+  return Number.isNaN(when.getTime()) ? 'Unknown' : when.toLocaleString()
 }
 
 function Figure({ label, value, tone }: { label: string; value: string; tone?: 'danger' }) {

@@ -28,7 +28,17 @@ export const maxDuration = 300
  */
 export default async function StorefrontPage() {
   await requireCapability('watch:update')
-  const health = await syncHealth()
+
+  /**
+   * A reading, or nothing — never a broken page.
+   *
+   * This is the page somebody opens when the shop is misbehaving. Letting one
+   * bad value in a status line take the whole screen down replaces a problem
+   * they could have acted on with one they cannot even see.
+   */
+  const health = await syncHealth().catch(() => ({
+    configured: false, listed: 0, failing: 0, lastSyncedAt: null as Date | null,
+  }))
 
   return (
     <>

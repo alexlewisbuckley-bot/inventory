@@ -677,10 +677,23 @@ export async function syncHealth(): Promise<{
   const row = rows[0]
   return {
     configured: shopifyIsConfigured(),
+    // Aggregates come back from the driver as strings, not numbers.
     listed: Number(row?.listed ?? 0),
     failing: Number(row?.failing ?? 0),
-    lastSyncedAt: row?.lastSyncedAt ?? null,
+    // And a timestamp out of a raw `max()` is whatever the driver decided to
+    // make of it — a Date on one path, a string on another. The caller formats
+    // it, so handing it something that only sometimes has `toISOString` is how
+    // a settings page renders perfectly until the first sync has run and then
+    // starts throwing.
+    lastSyncedAt: asDate(row?.lastSyncedAt),
   }
+}
+
+function asDate(value: unknown): Date | null {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  const parsed = new Date(String(value))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 /** Forget the storefront's ids, so the next sync re-matches from scratch. */
