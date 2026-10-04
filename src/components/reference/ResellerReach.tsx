@@ -5,8 +5,16 @@ import { Button, Modal, TextField, useToast } from '@/components/ui'
 import { setResellerDomainAction } from '@/app/actions/resellers'
 import { checkDomain, looksLikeApex } from '@/lib/domains'
 
-/** The DNS target for a hostname pointed at a Vercel deployment. */
-const CNAME_TARGET = 'cname.vercel-dns.com'
+/**
+ * Where a reseller points their CNAME.
+ *
+ * Vercel's general-purpose target, which works for any project. Each project
+ * is also given one of its own — a hash against `vercel-dns-NNN.com` — and the
+ * Domains screen shows it when a domain is added there. Prefer that value when
+ * it is offered; this one is the answer to give somebody who needs to add the
+ * record before anybody has opened the dashboard.
+ */
+const CNAME_TARGET = 'cname.vercel-dns-0.com'
 
 /**
  * How a reseller's customers actually reach the stock.
@@ -174,6 +182,11 @@ export function ResellerReach({ reseller, origin, canManage, onClose }: {
                     >
                       {copied === 'cname' ? 'Copied' : 'Copy'}
                     </button>
+                    <span className="mt-0.5 block text-content-secondary">
+                      If step 2 has already been done, use the target shown on Vercel&rsquo;s Domains
+                      screen instead — each project is given one of its own, and that is the one it
+                      checks for.
+                    </span>
                   </span>
                 </li>
                 <li className="flex gap-2.5">
