@@ -84,11 +84,26 @@ export async function applySyncAction(): Promise<ActionState> {
       ? `${addedNote} ${gaps.length} value${gaps.length === 1 ? '' : 's'} the shop has no entry for: ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? '…' : ''}.`
       : addedNote
 
+    if (failed > 0) {
+      return {
+        ok: false,
+        message: `${failed} of them failed. ${outcome.failed[0]?.what}: ${outcome.failed[0]?.error}`,
+      }
+    }
+
+    // Something the shop would not let this app do, as opposed to something
+    // that went wrong with a watch. Said once and said plainly, because the
+    // remedy is a permission on the app and nothing to do with the stock —
+    // and worth flagging rather than burying, since a product the app cannot
+    // publish is a product nobody browsing the site will ever see.
+    const refused = outcome.denied.length
+      ? ` The shop refused one thing, which needs a permission adding to the app: ${outcome.denied[0]}`
+      : ''
+
     return {
-      ok: failed === 0,
-      message: failed === 0
-        ? `Done — ${outcome.created} added, ${outcome.updated} updated, ${outcome.archived} archived, ${outcome.removed} deleted.${note}`
-        : `${failed} of them failed. ${outcome.failed[0]?.what}: ${outcome.failed[0]?.error}`,
+      ok: outcome.denied.length === 0,
+      message: `Done — ${outcome.created} added, ${outcome.updated} updated, `
+        + `${outcome.archived} archived, ${outcome.removed} deleted.${note}${refused}`,
     }
   } catch (error) {
     return toState(error, 'Could not sync the storefront.')

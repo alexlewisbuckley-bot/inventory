@@ -403,7 +403,7 @@ export async function pushWatch(
   taxonomy?: MetaobjectIndex,
   /** The title the shop has now, so one somebody wrote is never overwritten. */
   existingTitle?: string,
-): Promise<string> {
+): Promise<{ productId: string; warning: string | null }> {
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
   const price = priceFor(watch.estSaleGbp, currency, rates)
@@ -490,9 +490,14 @@ export async function pushWatch(
   // Live means visible. A product that is ACTIVE but attached to no sales
   // channel is in the admin and nowhere else, which looks from the outside
   // exactly like the sync having silently failed.
-  if (statusFor(watch) === 'ACTIVE') await publishToOnlineStore(id)
+  //
+  // It is also the one step here that can fail without the watch being wrong,
+  // so it reports rather than throws.
+  const warning = statusFor(watch) === 'ACTIVE'
+    ? await publishToOnlineStore(id)
+    : null
 
-  return id
+  return { productId: id, warning }
 }
 
 /**
@@ -650,16 +655,25 @@ export async function archiveProduct(productId: string): Promise<void> {
  * thing to get wrong. Cached for the run; a shop does not gain a storefront
  * halfway through a sync.
  */
-let cachedPublication: string | null = null
+let cachedPublication: { id: string | null; denied: string | null } | null = null
 
-async function onlineStorePublication(): Promise<string | null> {
+async function onlineStorePublication(): Promise<{ id: string | null; denied: string | null }> {
   if (cachedPublication) return cachedPublication
-  const data = await admin<{
-    publications: { edges: Array<{ node: { id: string; name: string } }> }
-  }>(`{ publications(first: 20) { edges { node { id name } } } }`, {})
+  try {
+    const data = await admin<{
+      publications: { edges: Array<{ node: { id: string; name: string } }> }
+    }>(`{ publications(first: 20) { edges { node { id name } } } }`, {})
 
-  const found = data.publications.edges.find((e) => e.node.name === 'Online Store')
-  cachedPublication = found?.node.id ?? null
+    const found = data.publications.edges.find((e) => e.node.name === 'Online Store')
+    cachedPublication = { id: found?.node.id ?? null, denied: null }
+  } catch (error) {
+    // Reading the list of sales channels needs the `read_publications` scope,
+    // and an app without it is refused rather than handed an empty list. That
+    // refusal is a fact about this app's permissions, not about the watch being
+    // pushed — so it is remembered, reported once, and not allowed to discredit
+    // the work that had already succeeded.
+    cachedPublication = { id: null, denied: (error as Error).message.slice(0, 300) }
+  }
   return cachedPublication
 }
 
@@ -669,20 +683,34 @@ async function onlineStorePublication(): Promise<string | null> {
  * Publishing something already published is not an error, so this is safe to
  * repeat — which matters, because the commonest way to reach this code is a
  * second run after the first was cut short.
+ *
+ * Hands back what went wrong instead of throwing it. This is the last and the
+ * least consequential step of a push: by the time it runs, the product, its
+ * price, its stock, its status and its seventeen structured fields have all
+ * been written, and a product already in the shop window gains nothing from
+ * it. Letting it throw reported a hundred and thirty-one watches as failing
+ * when every one of them was on the shop and right — which is worse than
+ * useless, because it hides the failures that are real.
  */
-export async function publishToOnlineStore(productId: string): Promise<void> {
-  const publicationId = await onlineStorePublication()
-  if (!publicationId) return
+export async function publishToOnlineStore(productId: string): Promise<string | null> {
+  const { id: publicationId, denied } = await onlineStorePublication()
+  if (denied) return denied
+  if (!publicationId) return null
 
-  const data = await admin<{
-    publishablePublish: { userErrors: Array<{ field?: string[] | null; message: string }> }
-  }>(`
-    mutation Publish($id: ID!, $input: [PublicationInput!]!) {
-      publishablePublish(id: $id, input: $input) { userErrors { field message } }
-    }
-  `, { id: productId, input: [{ publicationId }] })
+  try {
+    const data = await admin<{
+      publishablePublish: { userErrors: Array<{ field?: string[] | null; message: string }> }
+    }>(`
+      mutation Publish($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) { userErrors { field message } }
+      }
+    `, { id: productId, input: [{ publicationId }] })
 
-  assertNoUserErrors(data.publishablePublish.userErrors)
+    assertNoUserErrors(data.publishablePublish.userErrors)
+    return null
+  } catch (error) {
+    return (error as Error).message.slice(0, 300)
+  }
 }
 
 export interface SyncOutcome {
@@ -702,6 +730,15 @@ export interface SyncOutcome {
   unmatched: Array<{ stockNo: number; field: string; value: string }>
   /** Entries added to the shop's own lists, where it allows that. */
   added: Array<{ type: string; name: string }>
+  /**
+   * What the shop refused this app permission to do.
+   *
+   * Kept apart from `failed` on purpose. A missing scope is one line of setup
+   * that affects every watch identically; listing it against each of them in
+   * turn produces a hundred identical failures and buries the one that is
+   * really a watch's own problem.
+   */
+  denied: string[]
 }
 
 /**
@@ -729,8 +766,11 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   // are re-asserted each time so that anything lost is put back.
   const taxonomy = await loadMetaobjects()
   const outcome: SyncOutcome = {
-    created: 0, updated: 0, archived: 0, removed: 0, failed: [], unmatched: [], added: [],
+    created: 0, updated: 0, archived: 0, removed: 0,
+    failed: [], unmatched: [], added: [], denied: [],
   }
+  // The same refusal arrives once per watch; it is worth saying once.
+  const refused = new Set<string>()
 
   // Fill the gaps the shop will accept being filled, before anything is
   // pushed, so the watches that wanted them find them.
@@ -739,6 +779,7 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   outcome.added = additions.created
   if (additions.blocked) {
     logger.info('metaobject creation unavailable', { reason: additions.blocked })
+    refused.add(additions.blocked)
   }
 
   if (taxonomy) {
@@ -759,9 +800,10 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
       // at a page somebody deleted by hand.
-      const productId = await pushWatch(
+      const { productId, warning } = await pushWatch(
         { ...watch, shopifyProductId: existing }, rates, taxonomy, title,
       )
+      if (warning) refused.add(warning)
       await db.update(watches)
         .set({ shopifyProductId: productId, shopifySyncedAt: new Date(), shopifyError: null })
         .where(eq(watches.id, watch.id))
@@ -792,6 +834,7 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
     }
   }
 
+  outcome.denied = [...refused]
   logger.info('storefront synced', { ...outcome, failed: outcome.failed.length })
   return { plan: computed, outcome }
 }
@@ -817,7 +860,8 @@ export async function pushWatchById(watchId: string): Promise<void> {
     if (!watch) return
 
     const rates = await getRateTable()
-    const productId = await pushWatch(watch, rates)
+    const { productId, warning } = await pushWatch(watch, rates)
+    if (warning) logger.warn('storefront push incomplete', { watchId, warning })
     await db.update(watches)
       .set({ shopifyProductId: productId, shopifySyncedAt: new Date(), shopifyError: null })
       .where(eq(watches.id, watchId))
