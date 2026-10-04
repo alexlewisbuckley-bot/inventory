@@ -11,6 +11,7 @@ import { saveLocationAction, deleteLocationAction } from '@/app/actions/referenc
 import type { ActionState } from '@/app/actions/auth'
 import { useCurrency } from '@/components/ui'
 import { LOCATION_TYPES, LOCATION_TYPE_LABELS, locationTypeCaption, type LocationType } from '@/lib/enums'
+import { heldByQuery } from '@/components/inventory/views'
 
 export interface LocationRow {
   id: string
@@ -123,7 +124,7 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                 )}
 
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-line-subtle px-6 py-3.5">
-                  <Link href={`/inventory?locationId=${location.id}`} className="text-small font-bold text-content-accent hover:underline">
+                  <Link href={`/inventory?${heldByQuery('locationId', location.id)}`} className="text-small font-bold text-content-accent hover:underline">
                     View stock →
                   </Link>
                   {canManage && (

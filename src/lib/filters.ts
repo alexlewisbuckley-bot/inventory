@@ -277,6 +277,64 @@ export function parseFilters(
   return clauses
 }
 
+/**
+ * The V1 parameters, read as the clauses they always meant.
+ *
+ * The grammar replaced `?status=SOLD&locationId=…` but the links did not all
+ * follow, and the two shapes failed in different ways. `ownerId` was simply
+ * never read, so "View stock" on an owner showed the whole book. The others
+ * were read, and filtered, and appeared nowhere: the toolbar builds its chips
+ * from the clauses, so a list narrowed by a V1 parameter looked unfiltered,
+ * could not be widened by clicking anything, and lit no view chip.
+ *
+ * Translating rather than deleting, because the links that carry these shapes
+ * are also in bookmarks, in notes and in messages people sent each other, and
+ * the kind thing to do with an old link is answer it.
+ *
+ * Returns the clauses and the keys they came from, so the caller can swap one
+ * for the other and send the reader to a URL that describes what they are
+ * looking at.
+ */
+export function legacyClauses(
+  params: URLSearchParams,
+): { clauses: FilterClause[]; keys: string[] } {
+  const clauses: FilterClause[] = []
+  const keys: string[] = []
+
+  const reference = (key: string, field: string) => {
+    const values = params.getAll(key).filter(Boolean)
+    if (!values.length) return
+    keys.push(key)
+    clauses.push({ field, operator: 'is', values })
+  }
+
+  reference('status', 'status')
+  reference('locationId', 'locationId')
+  reference('ownerId', 'ownerId')
+  reference('supplierId', 'supplierId')
+  reference('brandId', 'brandId')
+
+  // Not a field of its own: "unpriced" is the absence of a retail price, and
+  // saying so in the grammar is what lets somebody then widen it.
+  if (params.get('unpricedOnly') === 'true') {
+    keys.push('unpricedOnly')
+    clauses.push({ field: 'estSaleGbp', operator: 'isEmpty', values: [] })
+  }
+
+  const from = params.get('purchasedFrom')
+  if (from) {
+    keys.push('purchasedFrom')
+    clauses.push({ field: 'purchaseDate', operator: 'after', values: [from] })
+  }
+  const to = params.get('purchasedTo')
+  if (to) {
+    keys.push('purchasedTo')
+    clauses.push({ field: 'purchaseDate', operator: 'before', values: [to] })
+  }
+
+  return { clauses, keys }
+}
+
 /** Write clauses back into a query string, leaving every other parameter alone. */
 export function applyFilters(params: URLSearchParams, clauses: FilterClause[]): URLSearchParams {
   const next = new URLSearchParams(params.toString())

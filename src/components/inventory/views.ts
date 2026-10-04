@@ -65,3 +65,31 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
     description: 'Oldest holdings first',
   },
 ]
+
+/**
+ * The statuses that count as stock you hold.
+ *
+ * The same three the owner and location cards count and value. A link from
+ * one of those cards that showed a different set would hand somebody a list
+ * that disagrees with the number they just clicked, which reads as the count
+ * being wrong rather than the link being loose.
+ */
+export const HELD_STATUSES = ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] as const
+
+/**
+ * "Show me what this owner / location / supplier is holding."
+ *
+ * Built as filter clauses rather than as the bare `?ownerId=` these links used
+ * to carry. That shape filtered nothing at all for owners — the parameter was
+ * never read — and for the others filtered without appearing anywhere on the
+ * toolbar, so the list narrowed with no chip to say why and nothing to click
+ * to widen it again. A clause is the one representation the whole list
+ * understands: the query runs it, the chip shows it, and removing the chip
+ * removes it.
+ */
+export function heldByQuery(field: 'ownerId' | 'locationId' | 'supplierId', id: string): string {
+  const params = new URLSearchParams()
+  params.append('f', `status:is:${HELD_STATUSES.join('|')}`)
+  params.append('f', `${field}:is:${id}`)
+  return params.toString()
+}

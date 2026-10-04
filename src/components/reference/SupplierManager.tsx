@@ -22,6 +22,7 @@ import { SupplierIdPanel, type IdDocument } from '@/components/compliance/Suppli
 import { formatMoney, type Currency } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { cn } from '@/lib/cn'
+import { heldByQuery } from '@/components/inventory/views'
 
 export interface SupplierRow {
   id: string
@@ -319,7 +320,7 @@ export function SupplierManager({
                           : `${PAYMENT_TERMS_LABELS[supplier.paymentTerms]} · ${supplier.defaultCurrency}`}
                       </TD>
                       <TD align="right">
-                        <Link href={`/inventory?supplierId=${supplier.id}`} className="font-bold text-navy-700 hover:underline">
+                        <Link href={`/inventory?${heldByQuery('supplierId', supplier.id)}`} className="font-bold text-navy-700 hover:underline">
                           {supplier.watchCount}
                         </Link>
                       </TD>

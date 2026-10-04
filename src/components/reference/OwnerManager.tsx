@@ -10,6 +10,7 @@ import {
 import { saveOwnerAction, deleteOwnerAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
 import { OWNER_TYPES, OWNER_TYPE_LABELS, type OwnerType } from '@/lib/enums'
+import { heldByQuery } from '@/components/inventory/views'
 
 export interface OwnerRow {
   id: string
@@ -143,7 +144,7 @@ export function OwnerManager({ owners, unownedCount, canManage }: {
                 {owner.notes && <p className="mt-2 px-6 text-caption text-content-secondary">{owner.notes}</p>}
 
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-line-subtle px-6 py-3.5">
-                  <Link href={`/inventory?ownerId=${owner.id}`} className="text-small font-bold text-content-accent hover:underline">
+                  <Link href={`/inventory?${heldByQuery('ownerId', owner.id)}`} className="text-small font-bold text-content-accent hover:underline">
                     View stock →
                   </Link>
                   {canManage && (

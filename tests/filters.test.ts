@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyFilters, describeClause, describeFilters, encodeClause, operatorsFor,
+  applyFilters, describeClause, describeFilters, encodeClause, legacyClauses, operatorsFor,
   parseClause, parseFilters, validateClause, WATCH_FIELDS, CONTACT_FIELDS,
   type FilterClause,
 } from '@/lib/filters'
+import { HELD_STATUSES, heldByQuery } from '@/components/inventory/views'
 
 /**
  * The filter grammar.
@@ -236,5 +237,85 @@ describe('field sets', () => {
       const keys = fields.map((field) => field.key)
       expect(new Set(keys).size).toBe(keys.length)
     }
+  })
+})
+
+/**
+ * Old links, answered.
+ *
+ * The grammar replaced a set of named parameters that are still in bookmarks
+ * and in messages people sent each other. They failed in two different ways
+ * and only one of them was visible: `ownerId` was never read at all, so "View
+ * stock" on an owner card showed the whole book; the rest filtered correctly
+ * and appeared nowhere on the toolbar, which is arguably worse — a list
+ * narrowed for a reason nobody can see or undo.
+ */
+describe('translating the old query parameters', () => {
+  const translate = (query: string) => legacyClauses(new URLSearchParams(query))
+
+  it('reads the owner parameter that used to do nothing', () => {
+    const { clauses, keys } = translate('ownerId=own_1')
+    expect(keys).toEqual(['ownerId'])
+    expect(clauses).toEqual([{ field: 'ownerId', operator: 'is', values: ['own_1'] }])
+  })
+
+  it('keeps repeated values together rather than dropping all but one', () => {
+    const { clauses } = translate('status=IN_STOCK&status=RESERVED')
+    expect(clauses).toEqual([{ field: 'status', operator: 'is', values: ['IN_STOCK', 'RESERVED'] }])
+  })
+
+  it('says what unpriced meant, so it can be widened again', () => {
+    const { clauses } = translate('unpricedOnly=true')
+    expect(clauses).toEqual([{ field: 'estSaleGbp', operator: 'isEmpty', values: [] }])
+    // Only the affirmative. `false` is not a filter.
+    expect(translate('unpricedOnly=false').clauses).toEqual([])
+  })
+
+  it('turns the two date bounds into the two date operators', () => {
+    const { clauses } = translate('purchasedFrom=2026-01-01&purchasedTo=2026-06-30')
+    expect(clauses).toEqual([
+      { field: 'purchaseDate', operator: 'after', values: ['2026-01-01'] },
+      { field: 'purchaseDate', operator: 'before', values: ['2026-06-30'] },
+    ])
+  })
+
+  it('finds nothing in a URL that already speaks the grammar', () => {
+    // The redirect is driven off `keys`, so anything returned here for a
+    // modern URL would be a redirect loop.
+    expect(translate('f=status%3Ais%3ASOLD').keys).toEqual([])
+    expect(translate('').keys).toEqual([])
+  })
+
+  it('ignores an empty value, which is a cleared control rather than a filter', () => {
+    expect(translate('locationId=').keys).toEqual([])
+  })
+
+  it('round-trips through the parser it is feeding', () => {
+    const { clauses } = translate('status=SOLD&locationId=loc_1')
+    const encoded = applyFilters(new URLSearchParams(), clauses)
+    expect(parseFilters(encoded, WATCH_FIELDS)).toEqual(clauses)
+  })
+})
+
+/**
+ * The link on an owner, location or supplier card.
+ *
+ * It sits directly under a count and a value, so it has to produce the list
+ * those figures describe. The card counts held stock; a link that also
+ * returned sold watches would read as the count being wrong.
+ */
+describe('the "view stock" link', () => {
+  it('asks for held stock belonging to one owner', () => {
+    const clauses = parseFilters(new URLSearchParams(heldByQuery('ownerId', 'own_1')), WATCH_FIELDS)
+    expect(clauses).toEqual([
+      { field: 'status', operator: 'is', values: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] },
+      { field: 'ownerId', operator: 'is', values: ['own_1'] },
+    ])
+  })
+
+  it('counts the same statuses the cards count', () => {
+    // Both are derived from this one list; the test is here so that changing
+    // it without changing the cards fails loudly.
+    expect(HELD_STATUSES).toEqual(['IN_STOCK', 'RESERVED', 'SALE_AGREED'])
   })
 })

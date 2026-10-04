@@ -8,7 +8,9 @@ import { db } from '@/server/db/client'
 import { brands, locations, owners, suppliers } from '@/server/db/schema'
 import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
-import { parseFilters, toSearchParams, WATCH_FIELDS } from '@/lib/filters'
+import {
+  applyFilters, legacyClauses, parseFilters, toSearchParams, WATCH_FIELDS,
+} from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
@@ -76,6 +78,33 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
    */
   if (Object.keys(searchParams).length === 0) {
     redirect(`/inventory?${AVAILABLE_QUERY}`)
+  }
+
+  /**
+   * An old link, answered in the grammar the list actually speaks.
+   *
+   * The V1 parameters still reach this page from bookmarks and from messages
+   * people sent each other, and they filtered invisibly: narrowed list, no
+   * chip, no view lit, nothing to click to widen it again. Rewriting them into
+   * clauses and sending the reader on means the URL describes what is on the
+   * screen, which is the whole reason the grammar exists.
+   *
+   * An explicit clause wins over a translated one, so a link carrying both
+   * says what the person who wrote it meant.
+   */
+  const legacy = legacyClauses(toSearchParams(searchParams))
+  if (legacy.keys.length > 0) {
+    const params = toSearchParams(searchParams)
+    for (const key of legacy.keys) params.delete(key)
+    const merged = [...parseFilters(params, WATCH_FIELDS), ...legacy.clauses]
+    const seen = new Set<string>()
+    const kept = merged.filter((clause) => {
+      const key = `${clause.field}:${clause.operator}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    redirect(`/inventory?${applyFilters(params, kept).toString()}`)
   }
 
   const query = parseQuery(searchParams)
