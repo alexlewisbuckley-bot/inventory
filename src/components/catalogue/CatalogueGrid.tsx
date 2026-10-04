@@ -112,21 +112,22 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
             piece reads as an invitation rather than an omission.
           */}
           <dl className="mt-auto space-y-1 border-t border-line-subtle pt-3">
-            {/* Two across on a phone leaves a tile about 150px inside, which
-                a six- or seven-figure dirham price and its label do not
-                share. So on a phone the figure always sits under the label —
-                always, not only when it overflows, or two tiles side by side
-                would set their prices at different heights. Wider up, it
-                drops under the label only if it has to, and never breaks. */}
-            <div className="flex flex-col gap-x-3 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between">
+            {/* Label left, figure right, one line each, so Trade and Retail
+                read as two rows of the same table. Two across on a phone
+                leaves a tile about 150px inside, so the trade figure is a
+                size smaller there — enough for a seven-figure dirham price
+                to share the line with its label on any current iPhone. If a
+                screen is narrower still it drops under the label rather than
+                breaking in two or being cut off. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 sm:gap-x-3">
               <dt className="text-caption font-semibold text-content-secondary">Trade</dt>
-              <dd className="self-end whitespace-nowrap text-body font-bold tabular-nums text-content-primary sm:ml-auto">
+              <dd className="ml-auto whitespace-nowrap text-small font-bold tabular-nums text-content-primary sm:text-body">
                 {item.trade === null
                   ? <span className="font-normal text-content-secondary">On request</span>
                   : formatCurrency(item.trade, currency, { decimals: false })}
               </dd>
             </div>
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2 sm:gap-x-3">
               <dt className="text-caption text-content-secondary">Retail</dt>
               <dd className="ml-auto whitespace-nowrap text-caption tabular-nums text-content-secondary">
                 {item.retail === null
