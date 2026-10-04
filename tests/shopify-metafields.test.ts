@@ -23,6 +23,7 @@ const INDEX = indexMetaobjects([
   { type: 'material', displayName: 'Oystersteel', id: 'gid://m/1' },
   { type: 'material', displayName: '18k White Gold', id: 'gid://m/2' },
   { type: 'material', displayName: 'Two-tone White Rolesor', id: 'gid://m/3' },
+  { type: 'material', displayName: 'Titanium and Platinum', id: 'gid://m/4' },
   { type: 'model', displayName: 'Datejust', id: 'gid://mo/dj' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/1' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/2' },
@@ -41,8 +42,19 @@ describe('matching two vocabularies', () => {
     expect(normalise('18k White Gold')).toBe(normalise('18K  white gold'))
   })
 
+  it('reads an ampersand as the word', () => {
+    // The shop writes "Titanium and Platinum"; the record says "Titanium &
+    // Platinum". Throwing the symbol away with the rest of the punctuation
+    // reported that metal as one the shop had no entry for, with the entry
+    // sitting there.
+    expect(normalise('Titanium & Platinum')).toBe(normalise('Titanium and Platinum'))
+    expect(normalise('Box & papers')).toBe(normalise('Box and papers'))
+  })
+
   it('keeps genuinely different words apart', () => {
     expect(normalise('Oystersteel')).not.toBe(normalise('Stainless Steel'))
+    // Not every "and" joins two metals into a third.
+    expect(normalise('Titanium & Platinum')).not.toBe(normalise('Titanium'))
   })
 })
 
@@ -116,6 +128,27 @@ describe('resolving against the shop', () => {
     const { metafields } = resolveMetafields(watch({ dial: 'Mother-of-pearl' }), INDEX)
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'dial', type: 'metaobject_reference', value: 'gid://d/2',
+    })
+  })
+
+  it('matches a name that was spelled out and then abbreviated', () => {
+    // "Mother of Pearl (MOP)" is the shop's "Mother of Pearl" with the
+    // initials added. A second entry for it would halve the filter.
+    const { metafields } = resolveMetafields(watch({ dial: 'Mother of Pearl (MOP)' }), INDEX)
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'dial', type: 'metaobject_reference', value: 'gid://d/2',
+    })
+  })
+
+  it('matches a metal the two systems punctuate differently', () => {
+    // Nothing derives this from the reference — it is an AP code that is
+    // deliberately not in the table — so it comes from the typed field.
+    const { metafields } = resolveMetafields(
+      watch({ brandName: 'Audemars Piguet', model: '26579IO.OO.1225IO.01', caseMaterial: 'Titanium & Platinum' }),
+      INDEX,
+    )
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/4',
     })
   })
 

@@ -25,7 +25,13 @@ import { materialFromReference } from './rolex-reference'
  * "Mother of Pearl" are not a disagreement about the dial.
  */
 export function normalise(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+  // An ampersand is read as the word, not thrown away with the punctuation.
+  // The shop writes "Titanium and Platinum" where a record says "Titanium &
+  // Platinum", and discarding the symbol left "titaniumplatinum" against
+  // "titaniumandplatinum" — one metal reported as a gap in the shop's list
+  // when the shop had it all along. Read before the rest is discarded, or
+  // there is nothing left to read it from.
+  return value.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '')
 }
 
 /**
@@ -43,6 +49,10 @@ const ALIASES: Record<string, string> = {
   'watch only': 'Neither',
   // A silver dial and a silvered dial are the same dial.
   silver: 'Silvered',
+  // Spelled out once and then abbreviated, in the same breath. The shop keeps
+  // one entry called "Mother of Pearl"; a second one carrying the initials
+  // would split the dial between two filters.
+  'mother of pearl (mop)': 'Mother of Pearl',
   // Carats, spelled the other way.
   '18ct white gold': '18k White Gold',
   '18ct yellow gold': '18k Yellow Gold',
