@@ -425,6 +425,51 @@ export async function pushWatch(
 }
 
 /**
+ * What the shop will accept in each field.
+ *
+ * Several definitions carry a fixed list of choices — `location` takes "Dubai"
+ * or "United Kingdom" and nothing else — and a value outside it is refused.
+ * Read once per run so the sync can leave a field alone rather than have it
+ * rejected, which matters more than it sounds: one bad value failed the whole
+ * write, so a location this system could not express cost the watch its dial,
+ * its material and its model too.
+ */
+let cachedChoices: Map<string, string[]> | null = null
+
+async function allowedChoices(): Promise<Map<string, string[]>> {
+  if (cachedChoices) return cachedChoices
+
+  const data = await admin<{
+    metafieldDefinitions: {
+      edges: Array<{ node: {
+        key: string
+        validations: Array<{ name: string; value: string | null }>
+      } }>
+    }
+  }>(`
+    {
+      metafieldDefinitions(first: 100, ownerType: PRODUCT, namespace: "custom") {
+        edges { node { key validations { name value } } }
+      }
+    }
+  `, {})
+
+  const choices = new Map<string, string[]>()
+  for (const edge of data.metafieldDefinitions.edges) {
+    const rule = edge.node.validations.find((v) => v.name === 'choices')
+    if (!rule?.value) continue
+    try {
+      const list = JSON.parse(rule.value) as string[]
+      if (Array.isArray(list) && list.length) choices.set(edge.node.key, list)
+    } catch {
+      // A validation we cannot read is one we do not enforce.
+    }
+  }
+  cachedChoices = choices
+  return choices
+}
+
+/**
  * The fields this system knows, written without disturbing the rest.
  *
  * `metafieldsSet` is an upsert per field: what is named is written, what is
@@ -441,6 +486,8 @@ async function writeMetafields(
   watch: SyncWatch,
   taxonomy?: MetaobjectIndex,
 ): Promise<void> {
+  const choices = await allowedChoices()
+
   const metafields = [
     { namespace: 'custom', key: 'reference', type: 'single_line_text_field', value: watch.model },
     ...(watch.serial
@@ -451,19 +498,52 @@ async function writeMetafields(
       ? [{ namespace: 'custom', key: 'location', type: 'single_line_text_field', value: watch.locationName }]
       : []),
     ...(taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
-  ].map((field) => ({ ...field, ownerId: productId }))
+  ]
+    // A field with a fixed list of choices takes one of them or nothing. This
+    // system's own vocabulary is not the shop's — a location here is a room,
+    // and over there it is a country — so a value the field will not accept is
+    // left unsaid rather than sent to be refused.
+    .filter((field) => {
+      const allowed = choices.get(field.key)
+      return !allowed || allowed.includes(field.value)
+    })
+    .map((field) => ({ ...field, ownerId: productId }))
 
   if (metafields.length === 0) return
 
-  const data = await admin<{
-    metafieldsSet: { userErrors: Array<{ field?: string[] | null; message: string }> }
-  }>(`
+  const FIELDS = `
     mutation Fields($metafields: [MetafieldsSetInput!]!) {
       metafieldsSet(metafields: $metafields) { userErrors { field message } }
     }
-  `, { metafields })
+  `
 
-  assertNoUserErrors(data.metafieldsSet.userErrors)
+  const data = await admin<{
+    metafieldsSet: { userErrors: Array<{ field?: string[] | null; message: string }> }
+  }>(FIELDS, { metafields })
+
+  if (!data.metafieldsSet.userErrors?.length) return
+
+  /**
+   * One refused field must not lose the other ten.
+   *
+   * `metafieldsSet` takes the batch or nothing, so a single value the shop
+   * will not accept cost a watch everything else the sync knew about it — and
+   * with one such value on every watch, the whole run wrote nothing at all.
+   * Sent one at a time, the good ones land and only the refusal is reported.
+   */
+  const refusals: string[] = []
+  for (const field of metafields) {
+    try {
+      const one = await admin<{
+        metafieldsSet: { userErrors: Array<{ field?: string[] | null; message: string }> }
+      }>(FIELDS, { metafields: [field] })
+      assertNoUserErrors(one.metafieldsSet.userErrors)
+    } catch (error) {
+      refusals.push(`${field.key}: ${(error as Error).message}`)
+    }
+  }
+
+  if (refusals.length) throw new Error(refusals.join('; '))
 }
 
 /** A product with no watch behind it, removed outright. */
