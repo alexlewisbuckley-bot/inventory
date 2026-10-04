@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 import { ValidationError } from '@/lib/errors'
 import {
   descriptionHtmlFor, planSync, priceFor, quantityFor, skuFor, statusFor, titleFor,
-  type SyncPlan, type SyncProduct, type SyncWatch,
+  titleIsOurs, type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import {
   indexMetaobjects, resolveMetafields, type MetaobjectIndex,
@@ -330,11 +330,17 @@ export async function pushWatch(
   watch: SyncWatch,
   rates: Record<string, number>,
   taxonomy?: MetaobjectIndex,
+  /** The title the shop has now, so one somebody wrote is never overwritten. */
+  existingTitle?: string,
 ): Promise<string> {
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
   const price = priceFor(watch.estSaleGbp, currency, rates)
   const isNew = !watch.shopifyProductId
+  // A title is written when there is none, or when the one there is one this
+  // system wrote before it knew the shop's convention. Anything somebody chose
+  // is left exactly as they chose it.
+  const setTitle = isNew || (existingTitle ? titleIsOurs(existingTitle, watch) : false)
 
   // Photographs, for a page being created. An existing page's media was very
   // likely arranged by hand — and in this store some of it is shared between
@@ -372,8 +378,8 @@ export async function pushWatch(
       // What this system does own is stock: the price, the quantity, whether
       // the page should be up at all, and the reference and serial that
       // identify the piece.
+      ...(setTitle ? { title: titleFor(watch) } : {}),
       ...(isNew ? {
-        title: titleFor(watch),
         descriptionHtml: descriptionHtmlFor(watch),
         vendor: watch.brandName,
         productType: 'Watch',
@@ -581,17 +587,19 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
     }
   }
 
-  const pushes: Array<{ watch: SyncWatch; productId: string | null }> = [
+  const pushes: Array<{ watch: SyncWatch; productId: string | null; title?: string }> = [
     ...computed.create.map((watch) => ({ watch, productId: null })),
-    ...computed.update.map((u) => ({ watch: u.watch, productId: u.productId })),
+    ...computed.update.map((u) => ({ watch: u.watch, productId: u.productId, title: u.title })),
   ]
 
-  for (const { watch, productId: existing } of pushes) {
+  for (const { watch, productId: existing, title } of pushes) {
     try {
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
       // at a page somebody deleted by hand.
-      const productId = await pushWatch({ ...watch, shopifyProductId: existing }, rates, taxonomy)
+      const productId = await pushWatch(
+        { ...watch, shopifyProductId: existing }, rates, taxonomy, title,
+      )
       await db.update(watches)
         .set({ shopifyProductId: productId, shopifySyncedAt: new Date(), shopifyError: null })
         .where(eq(watches.id, watch.id))

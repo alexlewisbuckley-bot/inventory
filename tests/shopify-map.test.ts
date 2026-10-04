@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, skuFor, statusFor,
-  titleFor, type SyncProduct, type SyncWatch,
+  titleFor, titleIsOurs, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import type { RateTable } from '@/lib/currency'
 
@@ -104,10 +104,11 @@ describe('the price', () => {
 })
 
 describe('the page’s words', () => {
-  it('leads with what somebody searches by', () => {
-    expect(titleFor(watch())).toBe('Rolex 116334')
-    expect(titleFor(watch({ model: '116610LV', nickname: 'Hulk' })))
-      .toBe('Rolex 116610LV "Hulk"')
+  it('leads with the family, never the brand', () => {
+    // The card carries the brand above the title already.
+    expect(titleFor(watch())).toBe('116334')
+    expect(titleFor(watch({ model: '116610LV', nickname: 'Submariner Date', dial: 'Green', caseSizeMm: 41 })))
+      .toBe('Submariner Date Green 41')
   })
 
   it('leaves out what is not known rather than saying "unknown"', () => {
@@ -143,7 +144,9 @@ describe('planning the sync', () => {
 
   it('updates the product whose SKU matches', () => {
     const plan = planSync([watch()], [product()])
-    expect(plan.update).toEqual([{ watch: watch(), productId: 'gid://shopify/Product/1' }])
+    expect(plan.update).toEqual([{
+      watch: watch(), productId: 'gid://shopify/Product/1', title: 'Datejust II Fluted 41',
+    }])
     expect(plan.create).toEqual([])
     expect(plan.remove).toEqual([])
   })
@@ -208,11 +211,71 @@ describe('planning the sync', () => {
  * it is first created, and nobody has written anything yet.
  */
 describe('seeding a page that does not exist yet', () => {
-  it('names it well enough to be found and then improved', () => {
-    expect(titleFor(watch())).toBe('Rolex 116334')
+  it('names it in the shop’s own convention', () => {
+    expect(titleFor(watch({ nickname: 'Explorer II', dial: 'Black', caseSizeMm: 42 })))
+      .toBe('Explorer II Black 42')
   })
 
   it('gives it the specification, since there is no copy yet', () => {
     expect(descriptionHtmlFor(watch())).toContain('2023')
+  })
+})
+
+/**
+ * The title, in the shop's own convention.
+ *
+ * Their titles lead with the family and never with the brand — "Explorer II
+ * Black 42" — because the card already carries the brand above the title. The
+ * first version of this wrote "Rolex 116334 \"Datejust 41\"", which said the
+ * brand twice on every card and, because the shop's menu falls back to the
+ * title, made a brand menu of a hundred families of one.
+ */
+describe('naming a product', () => {
+  it('leads with the family, then the dial, then the size', () => {
+    expect(titleFor(watch({ nickname: 'Explorer II', dial: 'Black', caseSizeMm: 42 })))
+      .toBe('Explorer II Black 42')
+  })
+
+  it('does not say the size twice', () => {
+    // The nickname often carries it already.
+    expect(titleFor(watch({ nickname: 'Datejust 41', dial: 'Wimbledon', caseSizeMm: 41 })))
+      .toBe('Datejust Wimbledon 41')
+  })
+
+  it('never leads with the brand', () => {
+    expect(titleFor(watch())).not.toMatch(/^Rolex/)
+  })
+
+  it('leaves a description out of the title', () => {
+    // A dial name earns its place when it is a colour, not when it is a
+    // sentence about the hour markers.
+    expect(titleFor(watch({
+      nickname: 'Datejust 41', dial: 'Champagne with Factory Diamond Hour Markers', caseSizeMm: 41,
+    }))).toBe('Datejust 41')
+  })
+
+  it('falls back to the reference alone when there is no name', () => {
+    // Not "116334 41", which reads like two references.
+    expect(titleFor(watch({ nickname: null }))).toBe('116334')
+  })
+})
+
+describe('whose title is it', () => {
+  it('claims the ones this system wrote', () => {
+    expect(titleIsOurs('Rolex 116334 "Datejust 41"', watch())).toBe(true)
+  })
+
+  it('leaves alone the ones somebody chose', () => {
+    for (const title of [
+      'Explorer II Black 42', 'Datejust Two-Tone Wimbledon 41', 'Lady-Datejust 26 Rolesor Fluted',
+      'Cosmograph Daytona Yellow Gold 40', 'Sky Dweller Two Tone Champagne 42',
+    ]) {
+      expect(titleIsOurs(title, watch()), title).toBe(false)
+    }
+  })
+
+  it('lets go once somebody has edited it into the shop’s convention', () => {
+    // Which is exactly when this system should stop touching it.
+    expect(titleIsOurs(titleFor(watch({ nickname: 'Explorer II' })), watch())).toBe(false)
   })
 })

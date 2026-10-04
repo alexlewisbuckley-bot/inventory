@@ -111,11 +111,70 @@ export function priceFor(
  * belongs in the title for a watch where it changes the thing entirely.
  */
 export function titleFor(watch: SyncWatch): string {
+  // No brand. The card already carries it above the title, and a page headed
+  // "Rolex / Rolex 126334" says it twice — which is also how the shop's brand
+  // menu ended up with a hundred families of one.
+  const family = familyOf(watch)
+  // Nothing to build a name out of. The reference on its own is what a dealer
+  // would say, and it is better than dressing it up with a measurement into
+  // "116334 41", which reads like two references.
+  if (!family) return watch.model
+
+  const dial = watch.dial?.trim()
   return [
-    watch.brandName,
-    watch.model,
-    watch.nickname ? `"${watch.nickname}"` : null,
+    family,
+    // A dial name earns its place when it is a colour. "Champagne with Factory
+    // Diamond Hour Markers" is a description, and a title is not where a
+    // description goes.
+    dial && dial.length <= 20 ? dial : null,
+    watch.caseSizeMm ? String(watch.caseSizeMm) : null,
   ].filter(Boolean).join(' ')
+}
+
+/**
+ * Is this a title this system wrote, or one somebody chose?
+ *
+ * The shop's own titles lead with the family — "Explorer II Black 42" — and
+ * never with the brand. The ones written here before that was understood lead
+ * with it, so the brand at the front is the signature of a generated title and
+ * a safe licence to replace it.
+ *
+ * It self-heals in the right direction too: edit one by hand into the shop's
+ * convention and it stops starting with the brand, which is exactly when this
+ * system should stop touching it.
+ */
+export function titleIsOurs(title: string, watch: SyncWatch): boolean {
+  return title.trim().toLowerCase().startsWith(`${watch.brandName.trim().toLowerCase()} `)
+}
+
+/**
+ * The family a watch belongs to — Datejust, GMT-Master II, Day-Date.
+ *
+ * The shop groups its brand menu by this, and it is the one field the record
+ * does not hold directly: `model` here is the reference number, which is what
+ * a dealer files by, while a shop window is browsed by name. The nickname is
+ * where the name actually lives — "Sky-Dweller", "Datejust 41" — so the family
+ * is that with the case size taken off the end, since a 41 and a 31 are the
+ * same family in two sizes and splitting them makes a menu of one-offs.
+ *
+ * Returns null rather than guessing from the reference. A reference prefix
+ * implies a family only if you already know Rolex's numbering, and a menu
+ * confidently filed under the wrong name is worse than one with a gap in it.
+ */
+export function familyOf(watch: SyncWatch): string | null {
+  const name = watch.nickname?.trim()
+  if (!name) return null
+  // "Datejust 41" -> "Datejust"; "Lady-Datejust 28" -> "Lady-Datejust".
+  //
+  // Only a plausible case size comes off, between 20 and 60 millimetres. A
+  // bare "trailing number" rule reads "RM 011" as an RM in 11mm and files a
+  // Richard Mille under "RM", and leaves "Nautilus 5711" alone only by
+  // accident. Roman numerals are left where they are: the II in Datejust II
+  // is part of the name.
+  const family = name.replace(/\s+(\d{2})(\s*mm)?$/i, (whole, size: string) => (
+    Number(size) >= 20 && Number(size) <= 60 ? '' : whole
+  )).trim()
+  return family || null
 }
 
 const SPEC_LABELS: Array<[keyof SyncWatch, string, (v: never) => string]> = [
@@ -165,7 +224,7 @@ export interface SyncPlan {
   /** Watches with no product yet. */
   create: SyncWatch[]
   /** Watches whose product exists and must be brought into line. */
-  update: Array<{ watch: SyncWatch; productId: string }>
+  update: Array<{ watch: SyncWatch; productId: string; title: string }>
   /** Products for stock we no longer hold. */
   archive: Array<{ productId: string; sku: string | null; title: string }>
   /** Products that answer to no watch at all. */
@@ -205,7 +264,7 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
     const sku = skuFor(watch.stockNo)
     seen.add(sku)
     const existing = bySku.get(sku)
-    if (existing) plan.update.push({ watch, productId: existing.id })
+    if (existing) plan.update.push({ watch, productId: existing.id, title: existing.title })
     else if (HELD.has(watch.status)) plan.create.push(watch)
     // A sold watch with no product never needs one.
   }
