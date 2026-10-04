@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { brands, locations, watchImages, watches } from '../db/schema'
 import { getRateTable } from './fx-service'
@@ -673,6 +673,8 @@ export async function syncHealth(): Promise<{
   listed: number
   failing: number
   lastSyncedAt: Date | null
+  /** What the failures actually say, which is the only useful part of a count. */
+  errors: Array<{ stockNo: number; message: string }>
 }> {
   const rows = await db
     .select({
@@ -694,7 +696,37 @@ export async function syncHealth(): Promise<{
     // a settings page renders perfectly until the first sync has run and then
     // starts throwing.
     lastSyncedAt: asDate(row?.lastSyncedAt),
+    errors: await recentErrors(),
   }
+}
+
+/**
+ * The failures, in the shop's own words.
+ *
+ * A page that says "131 failing" and nothing else tells somebody only that
+ * they cannot fix it. The message Shopify refused with is the whole of the
+ * useful information, so it belongs on the screen rather than in a log nobody
+ * can reach. Distinct messages only: a hundred and thirty-one copies of one
+ * sentence is the same sentence.
+ */
+async function recentErrors(): Promise<Array<{ stockNo: number; message: string }>> {
+  const rows = await db
+    .select({ stockNo: watches.stockNo, message: watches.shopifyError })
+    .from(watches)
+    .where(and(isNull(watches.deletedAt), isNotNull(watches.shopifyError)))
+    .orderBy(watches.stockNo)
+    .limit(200)
+
+  const seen = new Set<string>()
+  const distinct: Array<{ stockNo: number; message: string }> = []
+  for (const row of rows) {
+    const message = (row.message ?? '').trim()
+    if (!message || seen.has(message)) continue
+    seen.add(message)
+    distinct.push({ stockNo: row.stockNo, message })
+    if (distinct.length >= 5) break
+  }
+  return distinct
 }
 
 function asDate(value: unknown): Date | null {

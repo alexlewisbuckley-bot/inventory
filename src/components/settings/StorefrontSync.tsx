@@ -14,7 +14,13 @@ import { applySyncAction, previewSyncAction, type PlanSummary } from '@/app/acti
  * plan is read first, by name, and only then applied.
  */
 export function StorefrontSync({ health }: {
-  health: { configured: boolean; listed: number; failing: number; lastSyncedAt: string | null }
+  health: {
+    configured: boolean
+    listed: number
+    failing: number
+    lastSyncedAt: string | null
+    errors: Array<{ stockNo: number; message: string }>
+  }
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -98,6 +104,23 @@ export function StorefrontSync({ health }: {
                 label="Last pushed"
                 value={formatWhen(health.lastSyncedAt)}
               />
+            </div>
+          )}
+
+          {health.errors.length > 0 && (
+            <div className="mt-4 rounded-md border border-state-danger/40 bg-state-danger/5 p-4">
+              <p className="flex items-center gap-2 text-small font-bold text-content-primary">
+                <AlertTriangle className="h-4 w-4 text-state-danger" aria-hidden />
+                What the shop said
+              </p>
+              <ul className="mt-2 flex flex-col gap-2">
+                {health.errors.map((error) => (
+                  <li key={error.message} className="text-caption text-content-secondary">
+                    <span className="font-semibold text-content-primary">Stock {error.stockNo}</span>
+                    {' — '}{error.message}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

@@ -38,6 +38,7 @@ export default async function StorefrontPage() {
    */
   const health = await syncHealth().catch(() => ({
     configured: false, listed: 0, failing: 0, lastSyncedAt: null as Date | null,
+    errors: [] as Array<{ stockNo: number; message: string }>,
   }))
 
   return (
