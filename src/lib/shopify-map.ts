@@ -42,6 +42,8 @@ export interface SyncWatch {
   nickname: string | null
   year: number | null
   status: string
+  /** Where the piece physically is, which drives the shop's region filter. */
+  locationName: string | null
   estSaleGbp: number | null
   caseSizeMm: number | null
   caseMaterial: string | null

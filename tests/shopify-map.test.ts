@@ -17,6 +17,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   nickname: null,
   year: 2023,
   status: 'IN_STOCK',
+  locationName: 'Dubai',
   estSaleGbp: 1020000,
   caseSizeMm: 41,
   caseMaterial: 'Steel and white gold',

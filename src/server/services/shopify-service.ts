@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client'
-import { brands, watchImages, watches } from '../db/schema'
+import { brands, locations, watchImages, watches } from '../db/schema'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
 import { ValidationError } from '@/lib/errors'
@@ -183,6 +183,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       nickname: watches.nickname,
       year: watches.year,
       status: watches.status,
+      locationName: locations.name,
       estSaleGbp: watches.estSaleGbp,
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,
@@ -204,6 +205,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .leftJoin(locations, eq(locations.id, watches.locationId))
     .where(isNull(watches.deletedAt))
   return rows
 }
@@ -377,17 +379,15 @@ export async function pushWatch(
         productType: 'Watch',
       } : {}),
       status: statusFor(watch),
-      metafields: [
-        { namespace: 'custom', key: 'reference', type: 'single_line_text_field', value: watch.model },
-        ...(watch.serial
-          ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
-          : []),
-        // The structured fields the theme filters on, but only on a page being
-        // created. An existing product's were chosen by somebody who was
-        // looking at the watch, and this system's text is not a better answer
-        // than theirs.
-        ...(isNew && taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
-      ],
+      // No metafields here, ever.
+      //
+      // `productSet` treats the list it is given as the complete set and
+      // deletes everything not in it. Sending the two fields this system owns
+      // therefore removed the other seventeen — the dial, the material, the
+      // location that drives the shop's own filters, the copy somebody wrote —
+      // from every product it touched. They go through `metafieldsSet` below,
+      // which writes the fields it is given and leaves the rest alone.
+
       ...(files.length ? { files } : {}),
       productOptions: [{ name: 'Title', values: [{ name: 'Default Title' }] }],
       variants: [{
@@ -408,12 +408,56 @@ export async function pushWatch(
   const id = data.productSet.product?.id
   if (!id) throw new Error('Shopify accepted the product but returned no id.')
 
+  await writeMetafields(id, watch, taxonomy)
+
   // Live means visible. A product that is ACTIVE but attached to no sales
   // channel is in the admin and nowhere else, which looks from the outside
   // exactly like the sync having silently failed.
   if (statusFor(watch) === 'ACTIVE') await publishToOnlineStore(id)
 
   return id
+}
+
+/**
+ * The fields this system knows, written without disturbing the rest.
+ *
+ * `metafieldsSet` is an upsert per field: what is named is written, what is
+ * not named is untouched. That is the only safe way to put anything on a
+ * product somebody else also edits, and the difference between this and
+ * passing the same list to `productSet` is seventeen fields.
+ *
+ * Written on every push, not only on creation. They are derived from the
+ * record, so re-asserting them costs one call and repairs anything that has
+ * drifted or been lost.
+ */
+async function writeMetafields(
+  productId: string,
+  watch: SyncWatch,
+  taxonomy?: MetaobjectIndex,
+): Promise<void> {
+  const metafields = [
+    { namespace: 'custom', key: 'reference', type: 'single_line_text_field', value: watch.model },
+    ...(watch.serial
+      ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
+      : []),
+    // Where the piece physically is, which drives the shop's own region filter.
+    ...(watch.locationName
+      ? [{ namespace: 'custom', key: 'location', type: 'single_line_text_field', value: watch.locationName }]
+      : []),
+    ...(taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
+  ].map((field) => ({ ...field, ownerId: productId }))
+
+  if (metafields.length === 0) return
+
+  const data = await admin<{
+    metafieldsSet: { userErrors: Array<{ field?: string[] | null; message: string }> }
+  }>(`
+    mutation Fields($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) { userErrors { field message } }
+    }
+  `, { metafields })
+
+  assertNoUserErrors(data.metafieldsSet.userErrors)
 }
 
 /** A product with no watch behind it, removed outright. */
@@ -522,14 +566,15 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   if (!apply) return { plan: computed, outcome: null }
 
   const rates = await getRateTable()
-  // Only needed when something is being created, and it is several queries.
-  const taxonomy = computed.create.length > 0 ? await loadMetaobjects() : undefined
+  // Needed for every push now, not only for creations: the structured fields
+  // are re-asserted each time so that anything lost is put back.
+  const taxonomy = await loadMetaobjects()
   const outcome: SyncOutcome = {
     created: 0, updated: 0, archived: 0, removed: 0, failed: [], unmatched: [],
   }
 
   if (taxonomy) {
-    for (const watch of computed.create) {
+    for (const watch of [...computed.create, ...computed.update.map((u) => u.watch)]) {
       for (const miss of resolveMetafields(watch, taxonomy).unmatched) {
         outcome.unmatched.push({ stockNo: watch.stockNo, field: miss.type, value: miss.name })
       }
