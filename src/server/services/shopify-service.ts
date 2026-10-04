@@ -9,7 +9,8 @@ import {
   titleIsOurs, type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import {
-  indexMetaobjects, METAOBJECT_TYPES, resolveMetafields, type MetaobjectIndex,
+  desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
+  normalise, resolveMetafields, type MetaobjectIndex,
 } from '@/lib/shopify-metafields'
 import type { CurrencyCode } from '@/lib/enums'
 
@@ -287,6 +288,80 @@ export async function loadMetaobjects(): Promise<MetaobjectIndex> {
   }
 
   return indexMetaobjects(entries)
+}
+
+/**
+ * Add the entries the shop is simply missing.
+ *
+ * Only for the types where a missing value is a gap rather than a judgement —
+ * a year, a case size, a model family. The shop's own wording wins everywhere
+ * else: see CREATABLE_TYPES for why inventing a material would split a filter
+ * in two rather than complete it.
+ *
+ * Needs `write_metaobjects`. Without it every create is refused, which is not
+ * a failure of the sync: the values are reported as unmatched exactly as they
+ * were before, and somebody adds them by hand.
+ */
+export async function createMissing(
+  watches: SyncWatch[],
+  index: MetaobjectIndex,
+): Promise<{ created: Array<{ type: string; name: string }>; blocked: string | null }> {
+  const wanted = new Map<string, { type: string; name: string }>()
+
+  for (const watch of watches) {
+    for (const want of desiredMetaobjects(watch)) {
+      if (!isCreatable(want.type)) continue
+      if (index.get(want.type)?.has(normalise(want.name))) continue
+      // One entry per distinct name, however many watches want it.
+      wanted.set(`${want.type}:${normalise(want.name)}`, want)
+    }
+  }
+
+  const created: Array<{ type: string; name: string }> = []
+  let blocked: string | null = null
+
+  for (const want of wanted.values()) {
+    try {
+      const data = await admin<{
+        metaobjectCreate: {
+          metaobject: { id: string } | null
+          userErrors: Array<{ field?: string[] | null; message: string }>
+        }
+      }>(`
+        mutation Add($metaobject: MetaobjectCreateInput!) {
+          metaobjectCreate(metaobject: $metaobject) {
+            metaobject { id }
+            userErrors { field message }
+          }
+        }
+      `, {
+        metaobject: {
+          type: want.type,
+          fields: [{ key: nameFieldFor(want.type), value: want.name }],
+          // Entries the storefront cannot see are entries the filters cannot
+          // use, which would look exactly like not having created them.
+          capabilities: { publishable: { status: 'ACTIVE' } },
+        },
+      })
+
+      assertNoUserErrors(data.metaobjectCreate.userErrors)
+      const id = data.metaobjectCreate.metaobject?.id
+      if (!id) continue
+
+      // Into the index, so the rest of this run finds it.
+      const byName = index.get(want.type) ?? new Map<string, string>()
+      byName.set(normalise(want.name), id)
+      index.set(want.type, byName)
+      created.push(want)
+    } catch (error) {
+      const message = (error as Error).message
+      // One refusal is every refusal: it is the same permission each time.
+      blocked = message.slice(0, 300)
+      break
+    }
+  }
+
+  return { created, blocked }
 }
 
 /** What it would take to make the store match the book. */
@@ -625,6 +700,8 @@ export interface SyncOutcome {
    * than leaving to be noticed.
    */
   unmatched: Array<{ stockNo: number; field: string; value: string }>
+  /** Entries added to the shop's own lists, where it allows that. */
+  added: Array<{ type: string; name: string }>
 }
 
 /**
@@ -652,7 +729,16 @@ export async function runSync({ apply = false }: { apply?: boolean } = {}): Prom
   // are re-asserted each time so that anything lost is put back.
   const taxonomy = await loadMetaobjects()
   const outcome: SyncOutcome = {
-    created: 0, updated: 0, archived: 0, removed: 0, failed: [], unmatched: [],
+    created: 0, updated: 0, archived: 0, removed: 0, failed: [], unmatched: [], added: [],
+  }
+
+  // Fill the gaps the shop will accept being filled, before anything is
+  // pushed, so the watches that wanted them find them.
+  const all = [...computed.create, ...computed.update.map((u) => u.watch)]
+  const additions = await createMissing(all, taxonomy)
+  outcome.added = additions.created
+  if (additions.blocked) {
+    logger.info('metaobject creation unavailable', { reason: additions.blocked })
   }
 
   if (taxonomy) {
@@ -751,6 +837,8 @@ export async function syncHealth(): Promise<{
   lastSyncedAt: Date | null
   /** What the failures actually say, which is the only useful part of a count. */
   errors: Array<{ stockNo: number; message: string }>
+  /** Values the shop has no entry for, so they can be added rather than missed. */
+  unmatched: Array<{ field: string; value: string; count: number }>
 }> {
   const rows = await db
     .select({
@@ -773,8 +861,43 @@ export async function syncHealth(): Promise<{
     // starts throwing.
     lastSyncedAt: asDate(row?.lastSyncedAt),
     errors: await recentErrors(),
+    unmatched: await unmatchedValues(),
   }
 }
+
+/**
+ * Values this system holds that the shop has no entry for.
+ *
+ * Computed rather than remembered, so it is true now rather than true at the
+ * end of the last run. These are not errors — the watch is listed, priced and
+ * correct without them — but the shop filters on them, so a material with no
+ * entry is a material nobody can browse by. Naming them is the difference
+ * between a gap somebody can close and one they will never find.
+ */
+async function unmatchedValues(): Promise<Array<{ field: string; value: string; count: number }>> {
+  if (!shopifyIsConfigured()) return []
+  try {
+    const [stock, taxonomy] = await Promise.all([syncableWatches(), loadMetaobjects()])
+    const tally = new Map<string, { field: string; value: string; count: number }>()
+
+    for (const watch of stock) {
+      if (!HELD_FOR_SHOP.has(watch.status)) continue
+      for (const miss of resolveMetafields(watch, taxonomy).unmatched) {
+        const key = `${miss.type}:${normalise(miss.name)}`
+        const seen = tally.get(key)
+        if (seen) seen.count += 1
+        else tally.set(key, { field: miss.type, value: miss.name, count: 1 })
+      }
+    }
+
+    return [...tally.values()].sort((a, b) => b.count - a.count).slice(0, 25)
+  } catch {
+    // A reading that cannot be taken is not worth failing the page over.
+    return []
+  }
+}
+
+const HELD_FOR_SHOP = new Set(['IN_STOCK', 'RESERVED', 'SALE_AGREED'])
 
 /**
  * The failures, in the shop's own words.

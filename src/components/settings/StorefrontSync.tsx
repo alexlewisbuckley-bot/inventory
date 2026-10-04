@@ -20,6 +20,7 @@ export function StorefrontSync({ health }: {
     failing: number
     lastSyncedAt: string | null
     errors: Array<{ stockNo: number; message: string }>
+    unmatched: Array<{ field: string; value: string; count: number }>
   }
 }) {
   const router = useRouter()
@@ -118,6 +119,31 @@ export function StorefrontSync({ health }: {
                   <li key={error.message} className="text-caption text-content-secondary">
                     <span className="font-semibold text-content-primary">Stock {error.stockNo}</span>
                     {' — '}{error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {health.unmatched.length > 0 && (
+            <div className="mt-4 rounded-md border border-line-subtle bg-surface-subtle p-4">
+              <p className="text-small font-bold text-content-primary">
+                The shop has no entry for these
+              </p>
+              <p className="mt-1 text-caption text-content-secondary">
+                Not errors — the watches are listed and priced. But the shop filters on these, so
+                a material with no entry is a material nobody can browse by. Add them under
+                Settings → Custom data in Shopify, or change the wording here to match what the
+                shop already calls them.
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5">
+                {health.unmatched.map((gap) => (
+                  <li key={`${gap.field}-${gap.value}`} className="text-caption text-content-secondary">
+                    <span className="font-mono text-content-muted">{gap.field}</span>
+                    {' '}
+                    <span className="font-semibold text-content-primary">{gap.value}</span>
+                    {' '}
+                    <span className="tabular-nums">×{gap.count}</span>
                   </li>
                 ))}
               </ul>

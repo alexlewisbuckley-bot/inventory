@@ -77,9 +77,12 @@ export async function applySyncAction(): Promise<ActionState> {
     // correct — but the theme filters on them, so a watch missing one will not
     // appear when somebody browses by dial colour.
     const gaps = [...new Set(outcome.unmatched.map((u) => `${u.field} "${u.value}"`))]
-    const note = gaps.length
-      ? ` ${outcome.unmatched.length} field${outcome.unmatched.length === 1 ? '' : 's'} had no match in the shop: ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? '…' : ''}. Add them by hand.`
+    const addedNote = outcome.added.length
+      ? ` Added ${outcome.added.length} missing ${outcome.added.length === 1 ? 'entry' : 'entries'} to the shop's own lists.`
       : ''
+    const note = gaps.length
+      ? `${addedNote} ${gaps.length} value${gaps.length === 1 ? '' : 's'} the shop has no entry for: ${gaps.slice(0, 6).join(', ')}${gaps.length > 6 ? '…' : ''}.`
+      : addedNote
 
     return {
       ok: failed === 0,

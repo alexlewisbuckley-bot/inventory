@@ -68,6 +68,36 @@ export const METAOBJECT_TYPES = [
   'condition', 'box_papers',
 ] as const
 
+/**
+ * The types a missing entry can simply be added to.
+ *
+ * A year is a year and 36mm is 36mm: if the shop has no entry for 2019, that
+ * is a gap, not a disagreement, and filling it cannot produce two entries
+ * meaning the same thing.
+ *
+ * Everything else is a curated vocabulary and is deliberately left alone. The
+ * shop calls a material "Two-tone Everose Rolesor"; this system calls the same
+ * metal "Oystersteel and Everose gold". Creating the second would not fill a
+ * gap — it would split one material into two filters, each with half the
+ * watches, and nobody would notice until a customer did. Those are reported
+ * instead, so somebody who knows which is which decides.
+ */
+export const CREATABLE_TYPES = ['model', 'year', 'case_size'] as const
+
+/** The field each type keeps its name in. */
+export const NAME_FIELD: Record<string, string> = {
+  model: 'model',
+  brand: 'brand_name',
+}
+
+export function nameFieldFor(type: string): string {
+  return NAME_FIELD[type] ?? 'label'
+}
+
+export function isCreatable(type: string): boolean {
+  return (CREATABLE_TYPES as readonly string[]).includes(type)
+}
+
 /** One structured field the shop could hold for this watch. */
 export interface DesiredMetaobject {
   /** The metaobject type, which is also the metafield key. */
