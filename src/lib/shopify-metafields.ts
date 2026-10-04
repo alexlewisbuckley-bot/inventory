@@ -53,6 +53,21 @@ function alias(value: string): string {
   return ALIASES[value.trim().toLowerCase()] ?? value
 }
 
+/**
+ * Every metaobject type this system can fill in.
+ *
+ * Declared once, beside the function that asks for them, because the loader
+ * and the asker have to agree and nothing made them: `model` was added to what
+ * the sync asks for and not to what it loads, so it looked up a family in an
+ * index that had never been told families exist, found nothing, and reported
+ * every watch as unmatched. The brand menu the change existed to fix stayed
+ * exactly as it was.
+ */
+export const METAOBJECT_TYPES = [
+  'brand', 'model', 'dial', 'bracelet', 'material', 'case_size', 'year',
+  'condition', 'box_papers',
+] as const
+
 /** One structured field the shop could hold for this watch. */
 export interface DesiredMetaobject {
   /** The metaobject type, which is also the metafield key. */

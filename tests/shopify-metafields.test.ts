@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  desiredMetaobjects, familyOf, indexMetaobjects, normalise, resolveMetafields,
+  desiredMetaobjects, familyOf, indexMetaobjects, METAOBJECT_TYPES, normalise, resolveMetafields,
 } from '@/lib/shopify-metafields'
 import type { SyncWatch } from '@/lib/shopify-map'
 
@@ -178,5 +178,28 @@ describe('the model family', () => {
     expect(of('Sky-Dweller')).toBe('gid://mo/2')
     // Rolex's full name for the family the shop files as "Daytona".
     expect(of('Cosmograph Daytona')).toBe('gid://mo/3')
+  })
+})
+
+/**
+ * The loader and the asker have to agree.
+ *
+ * `model` was added to what the sync asks for and not to what it loads from
+ * the shop, so it looked a family up in an index that had never been told
+ * families exist. Every watch came back unmatched and the brand menu the
+ * change existed to fix stayed exactly as it was — silently, because an
+ * unmatched field is a normal, reportable outcome.
+ */
+describe('what is asked for and what is loaded', () => {
+  it('loads every type a watch can ask for', () => {
+    const asked = new Set(desiredMetaobjects(watch({
+      nickname: 'Datejust 41', dial: 'White', bracelet: 'Oyster',
+      caseMaterial: 'Oystersteel', caseSizeMm: 41, year: 2016,
+      condition: 'EXCELLENT', boxPapers: 'PAPERS_ONLY',
+    })).map((w) => w.type))
+
+    for (const type of asked) {
+      expect(METAOBJECT_TYPES, `${type} is asked for but never loaded`).toContain(type)
+    }
   })
 })

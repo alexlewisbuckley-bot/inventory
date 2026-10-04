@@ -9,7 +9,7 @@ import {
   titleIsOurs, type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import {
-  indexMetaobjects, resolveMetafields, type MetaobjectIndex,
+  indexMetaobjects, METAOBJECT_TYPES, resolveMetafields, type MetaobjectIndex,
 } from '@/lib/shopify-metafields'
 import type { CurrencyCode } from '@/lib/enums'
 
@@ -251,10 +251,6 @@ export async function storeProducts(): Promise<SyncProduct[]> {
   return found
 }
 
-/** The metaobject types the shop's product fields point at. */
-const METAOBJECT_TYPES = [
-  'brand', 'dial', 'bracelet', 'material', 'case_size', 'year', 'condition', 'box_papers',
-]
 
 /**
  * The shop's own taxonomy, read once.
