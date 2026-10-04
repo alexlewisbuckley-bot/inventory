@@ -62,12 +62,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <CurrencyProvider initial={partnerCurrency} rates={rates}>
         <DensityProvider value={densityOf(preferences?.density)}>
         <LiveNotifications initialUnread={Number(waiting[0]?.value ?? 0)}>
-        <div className="flex min-h-screen flex-col bg-surface-subtle">
+        {/* `overflow-x-clip` is the backstop, not the fix: on a phone,
+            anything wider than the screen makes Safari widen the whole page
+            to fit it, and every gutter goes with it. Clip rather than
+            hidden, so the sticky bar still sticks. */}
+        <div className="flex min-h-screen flex-col overflow-x-clip bg-surface-subtle">
           <PartnerTopBar user={user} brands={partnerBrands} enquiries={Number(waiting[0]?.value ?? 0)} />
           <main
             id="main"
             tabIndex={-1}
-            className="mx-auto w-full max-w-[1800px] flex-1 px-5 py-7 outline-none lg:px-8"
+            // The same gutters as the bar above, breakpoint for breakpoint.
+            className="mx-auto w-full max-w-[1800px] flex-1 px-4 py-5 outline-none sm:px-5 sm:py-7 lg:px-8"
           >
             {children}
           </main>

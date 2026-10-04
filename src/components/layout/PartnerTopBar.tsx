@@ -16,7 +16,7 @@ import type { SessionUser } from '@/server/auth/session'
  * The palette was the bad one: it read out the shape of our operation to a
  * dealer, in a list, before they had typed anything.
  *
- * What is left is one row. The filters live in it rather than in a card below
+ * What is left is one bar. The filters live in it rather than in a card below
  * a page title, because a title repeating the only nav item, above a card of
  * controls, was two bands of furniture before a single watch appeared.
  *
@@ -30,25 +30,43 @@ export function PartnerTopBar({ user, brands, enquiries = 0 }: {
   enquiries?: number
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-line-subtle bg-surface-page/95 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-[1800px] flex-wrap items-center gap-x-5 gap-y-2.5 px-5 py-2.5 lg:flex-nowrap lg:px-8">
-        <Link href="/catalogue" className="flex shrink-0 items-center" aria-label="One Street Watches — inventory">
-          <Wordmark />
-        </Link>
+    <>
+      {/*
+        Only the slim row stays pinned. On a phone the filters used to ride
+        along inside the sticky bar, and a bar holding a search box, two
+        selects and a view switch covered a third of the screen for the whole
+        scroll. Now the filters sit in their own band under the bar and
+        scroll away with the page; at xl, where they fit beside the mark,
+        they move up into the bar and the band is not rendered.
 
-        <CatalogueControls brands={brands} />
+        The side padding matches <main> in the partner shell exactly, so the
+        bar, the filters and the first tile all start on the same line.
+      */}
+      <header className="sticky top-0 z-30 border-b border-line-subtle bg-surface-page/95 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-[1800px] items-center gap-3 px-4 sm:gap-4 sm:px-5 lg:px-8 xl:h-auto xl:gap-5 xl:py-2.5">
+          <Link href="/catalogue" className="flex shrink-0 items-center" aria-label="One Street Watches — inventory">
+            <Wordmark />
+          </Link>
 
-        {/* Compact: the labelled three-way theme control was as wide as the
-            search box, on a bar where the width belongs to the filters. */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          {/* The other half of the catalogue: having asked about something,
-              this is where the answer arrives. */}
-          <EnquiriesLink initial={enquiries} />
-          <CurrencySwitcher />
-          <ThemeToggle compact />
-          <UserMenu user={user} />
+          <CatalogueControls brands={brands} className="hidden xl:flex" />
+
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-1.5">
+            {/* The other half of the catalogue: having asked about something,
+                this is where the answer arrives. */}
+            <EnquiriesLink initial={enquiries} />
+            <CurrencySwitcher />
+            {/* Not on a phone: the row there is the mark and three controls,
+                and the theme is also under Your profile. */}
+            <div className="hidden sm:block"><ThemeToggle compact /></div>
+            <UserMenu user={user} />
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      <CatalogueControls
+        brands={brands}
+        className="border-b border-line-subtle bg-surface-page px-4 py-3 sm:px-5 lg:px-8 xl:hidden"
+      />
+    </>
   )
 }
