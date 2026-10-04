@@ -8,6 +8,17 @@ export const metadata: Metadata = { title: 'Online shop' }
 export const dynamic = 'force-dynamic'
 
 /**
+ * Long enough to push a whole book of stock.
+ *
+ * The first run has a hundred and more products to create, each one a round
+ * trip to somebody else's API, and the platform's default ceiling cuts that
+ * off part-way. Raising it is not a guarantee — a big enough catalogue will
+ * still run past five minutes — which is why every success is recorded as it
+ * happens and the run resumes rather than restarts.
+ */
+export const maxDuration = 300
+
+/**
  * The shop, as a reflection of the book.
  *
  * Under settings rather than beside the stock list because it is a wiring
