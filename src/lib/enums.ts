@@ -156,11 +156,25 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   SYSTEM: 'System',
 }
 
-export const IMAGE_KINDS = ['WATCH', 'CARD', 'DOCUMENT'] as const
+/**
+ * What a photograph is for, which is also who may see it.
+ *
+ * WATCH is the one that leaves the building: it is what the storefront
+ * fetches, what a reseller's shop window shows, and what gets pushed to
+ * Shopify. TRADE is the same watch shot for the trade — shown in the
+ * catalogue a dealer signs in to and in the record here, and nowhere else.
+ * CARD and DOCUMENT never leave at all.
+ *
+ * The distinction is enforced where the bytes are served rather than where
+ * they are uploaded, because a door that cannot open a kind is a stronger
+ * guarantee than a rule about which kind to ask for.
+ */
+export const IMAGE_KINDS = ['WATCH', 'TRADE', 'CARD', 'DOCUMENT'] as const
 export type ImageKind = (typeof IMAGE_KINDS)[number]
 
 export const IMAGE_KIND_LABELS: Record<ImageKind, string> = {
   WATCH: 'Watch',
+  TRADE: 'Trade',
   CARD: 'Warranty card',
   DOCUMENT: 'Document',
 }

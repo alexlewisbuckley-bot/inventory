@@ -140,11 +140,28 @@ export async function getCatalogue(
   // One query for the photographs rather than a join, so a watch with six of
   // them does not multiply its row six times and break the page count.
   const ids = rows.map((r) => r.id)
+  //
+  // A trade photograph wins where there is one. It is the same watch shot for
+  // this audience, which is who is reading — and a dealer seeing the picture
+  // the public sees is the thing the second upload slot exists to avoid.
+  // Where there is none, the published photograph stands in, because a
+  // catalogue of empty plates is worse than a catalogue of familiar ones.
+  //
+  // Cards and documents are named out rather than left to sort order. They
+  // were reachable here: a watch whose warranty card happened to sort first
+  // put a serial and a dealer's stamp on the catalogue page.
   const images = ids.length === 0 ? [] : await db
     .select({ watchId: watchImages.watchId, id: watchImages.id, sortOrder: watchImages.sortOrder })
     .from(watchImages)
-    .where(inArray(watchImages.watchId, ids))
-    .orderBy(asc(watchImages.sortOrder), asc(watchImages.createdAt))
+    .where(and(
+      inArray(watchImages.watchId, ids),
+      inArray(watchImages.kind, ['TRADE', 'WATCH']),
+    ))
+    .orderBy(
+      sql`${watchImages.kind} <> 'TRADE'`,
+      asc(watchImages.sortOrder),
+      asc(watchImages.createdAt),
+    )
   const cover = new Map<string, string>()
   for (const image of images) if (!cover.has(image.watchId)) cover.set(image.watchId, image.id)
 

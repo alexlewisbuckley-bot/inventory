@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { referenceImages, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
@@ -49,11 +49,22 @@ export async function listImages(watchId: string): Promise<ImageSummary[]> {
   return rows.map((row) => ({ ...row, kind: row.kind as ImageKind }))
 }
 
-export async function getImageBytes(id: string) {
+/**
+ * The bytes of one photograph, for a reader who is allowed some of them.
+ *
+ * `kinds` is the list the caller may see. It is a parameter rather than a
+ * filter applied afterwards because the two readers of this are not equal: we
+ * see everything a watch has, and a dealer signed in to the catalogue sees
+ * the watch and the trade shot and no paperwork at all. Passing nothing means
+ * every kind, which is what the inside of the building gets.
+ */
+export async function getImageBytes(id: string, kinds?: readonly ImageKind[]) {
   const rows = await db
     .select({ data: watchImages.data, mimeType: watchImages.mimeType, byteSize: watchImages.byteSize })
     .from(watchImages)
-    .where(eq(watchImages.id, id))
+    .where(kinds
+      ? and(eq(watchImages.id, id), inArray(watchImages.kind, [...kinds]))
+      : eq(watchImages.id, id))
     .limit(1)
   return rows[0] ?? null
 }

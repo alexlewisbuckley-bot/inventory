@@ -1,7 +1,8 @@
 import { type NextRequest } from 'next/server'
 import { getSessionUser } from '@/server/auth/session'
 import { getImageBytes } from '@/server/services/image-service'
-import { canAny } from '@/lib/permissions'
+import { can, canAny } from '@/lib/permissions'
+import type { ImageKind } from '@/lib/enums'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,17 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return new Response('Forbidden', { status: 403 })
   }
 
-  const image = await getImageBytes(params.id)
+  // But not the same pictures. Somebody who can read a watch sees everything
+  // it carries; somebody who can only read the catalogue is a dealer, and
+  // gets the two kinds the catalogue is made of. A warranty card is a serial,
+  // a date and a dealer's stamp, and nothing about having a trade login says
+  // it should be fetchable — the catalogue never links one, but this door
+  // takes any id, so it decides for itself rather than trusting the page.
+  const kinds: readonly ImageKind[] | undefined = can(user.role, 'watch:read')
+    ? undefined
+    : ['TRADE', 'WATCH']
+
+  const image = await getImageBytes(params.id, kinds)
   if (!image) return new Response('Not found', { status: 404 })
 
   return new Response(new Uint8Array(image.data), {

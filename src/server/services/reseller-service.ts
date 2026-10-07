@@ -415,15 +415,23 @@ export async function getShopWindow(key: string, rates: RateTable): Promise<Shop
       movement: watches.movement,
       waterResistanceM: watches.waterResistanceM,
       description: watches.description,
-      // Every photograph, in the order they were arranged, as an array. One
+      // Photographs of the watch only, in the order they were arranged. One
       // query rather than one per watch: a shop window is a page of them.
+      //
+      // The kind filter is the whole of the access control here. This asked
+      // for every photograph a watch had, which is every kind: a reseller's
+      // shop is a public page, and a warranty card carries a serial, a date
+      // and a dealer's stamp. Trade photographs would have gone the same way
+      // the moment they existed. A dealer's own pictures and a customer's
+      // paperwork are both one `kind` away from a stranger's browser, so the
+      // query names the one kind that is meant to be seen.
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id}
+        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
       imageId: sql<string | null>`(
         SELECT i.id FROM watch_images i
-        WHERE i.watch_id = ${watches.id}
+        WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
         ORDER BY i.sort_order, i.created_at
         LIMIT 1
       )`,
@@ -530,6 +538,10 @@ export async function getShopImage(key: string, imageId: string) {
     ))
     .where(and(
       eq(watchImages.id, imageId),
+      // The listing only ever offers WATCH ids, but this door is reachable
+      // with any id at all, so it refuses on its own terms rather than
+      // trusting the page that linked to it.
+      eq(watchImages.kind, 'WATCH'),
       eq(watches.status, 'IN_STOCK'),
       isNull(watches.deletedAt),
     ))

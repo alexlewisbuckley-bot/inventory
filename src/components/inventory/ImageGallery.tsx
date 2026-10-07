@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, CreditCard, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Camera, CreditCard, Handshake, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, ConfirmDialog, Modal, useToast } from '@/components/ui'
 import { downscaleImage } from '@/lib/downscale'
@@ -153,8 +153,22 @@ export function ImageGallery({ watchId, initial, canEdit }: {
     setDeleting(null)
   }
 
+  // The hint on each of these says who sees it, because that is the only
+  // thing somebody uploading needs to decide and the only thing that cannot
+  // be undone by moving a file afterwards.
   const sections: Array<{ kind: ImageKind; icon: typeof Camera; hint: string }> = [
-    { kind: 'WATCH', icon: Camera, hint: 'Dial, caseback, bracelet — whatever a buyer would ask to see.' },
+    {
+      kind: 'WATCH',
+      icon: Camera,
+      hint: 'Dial, caseback, bracelet — whatever a buyer would ask to see. '
+        + 'These are the ones published: the website, the resellers, Shopify.',
+    },
+    {
+      kind: 'TRADE',
+      icon: Handshake,
+      hint: 'The same watch, shot for the trade. Dealers signed in to the catalogue '
+        + 'see these, and so does this system — the website and the resellers never do.',
+    },
     { kind: 'CARD', icon: CreditCard, hint: 'Warranty card, receipt or certificate.' },
   ]
 
