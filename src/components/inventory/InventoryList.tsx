@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LayoutGrid, MoreHorizontal, PackageSearch, Receipt, Rows3, SearchX } from 'lucide-react'
+import { Handshake, LayoutGrid, MoreHorizontal, PackageSearch, Receipt, Rows3, SearchX } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useListQuery } from '@/hooks/useListQuery'
@@ -10,6 +10,7 @@ import { useSelection } from '@/hooks/useSelection'
 import { SelectAllBanner } from '@/components/ui/DataList'
 import { useColumnPreferences } from '@/hooks/useColumnPreferences'
 import { useDisplayMode, type DisplayMode } from '@/hooks/useDisplayMode'
+import { useTradeShots } from '@/hooks/useTradeShots'
 import {
   Table, THead, TBody, TR, TD, TH, Pagination,
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
@@ -162,6 +163,7 @@ export function InventoryList({
   const columns = useColumnPreferences(STORAGE_KEY, columnKeys, DEFAULT_HIDDEN)
   const show = (key: string) => !columns.isHidden(key) && columnKeys.includes(key)
   const { mode, setMode } = useDisplayMode()
+  const { showTrade, setShowTrade } = useTradeShots()
   // The gallery cards link to the drawer the same way the table rows do, so
   // the URL is built once here rather than twice in two components.
   const listPath = usePathname()
@@ -243,6 +245,11 @@ export function InventoryList({
         </p>
         <div className="flex items-center gap-2">
           <DisplaySwitch mode={mode} onChange={setMode} />
+          {/* Only in the gallery: the table shows no photograph, so there
+              would be nothing for it to change. */}
+          {mode === 'gallery' && (
+            <TradeShotToggle on={showTrade} onChange={setShowTrade} />
+          )}
           {/* The picker chooses table columns: nothing for it to do in the
               gallery, and below sm there is no table either. */}
           {mode === 'table' && (
@@ -269,6 +276,7 @@ export function InventoryList({
             canSeeCost={capabilities['cost:read']}
             canSeeRevenue={capabilities['revenue:read']}
             href={(id) => `${listPath}?${withParam(listParams, 'watch', id)}`}
+            showTrade={showTrade}
           />
         ) : (
         <>
@@ -582,6 +590,37 @@ function DisplaySwitch({ mode, onChange }: { mode: DisplayMode; onChange: (mode:
         )
       })}
     </div>
+  )
+}
+
+/**
+ * Show the trade photographs instead of the published ones.
+ *
+ * One switch rather than a pair, because this is not a choice between two
+ * equal views: the published photograph is what the stock list is, and this
+ * is a mode you are briefly in. Pressed, it says so — the label stays on
+ * screen at every width, which a view that changes what the pictures mean
+ * has to do.
+ */
+function TradeShotToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      aria-pressed={on}
+      title={on
+        ? 'Showing trade photographs — these never reach the website'
+        : 'Show the trade photograph of each watch instead'}
+      className={cn(
+        'inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-caption font-semibold transition-colors',
+        on
+          ? 'border-teal-500 bg-teal-100 text-teal-900'
+          : 'border-line-subtle bg-surface-subtle text-content-secondary hover:text-content-primary',
+      )}
+    >
+      <Handshake className="h-3.5 w-3.5" aria-hidden />
+      Trade shots
+    </button>
   )
 }
 

@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { Camera } from 'lucide-react'
+import { Camera, Handshake } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { StatusChip, UnpricedChip, useCurrency } from '@/components/ui'
 import { CheckDot } from '@/components/compliance/CheckLight'
@@ -19,6 +19,7 @@ import type { WatchListItem } from '@/server/repositories/watch-repository'
  */
 export function InventoryGallery({
   items, selectable, isSelected, onToggle, canSeeCost, canSeeRevenue, href,
+  showTrade = false,
 }: {
   items: WatchListItem[]
   selectable: boolean
@@ -28,6 +29,8 @@ export function InventoryGallery({
   canSeeRevenue: boolean
   /** Where a card goes — the drawer, keeping the list behind it. */
   href: (id: string) => string
+  /** Show the trade shot of each watch rather than the published one. */
+  showTrade?: boolean
 }) {
   const { money } = useCurrency()
 
@@ -73,7 +76,7 @@ export function InventoryGallery({
                 selected ? 'border-[1.5px] border-teal-500' : 'border-line-subtle hover:border-line-strong',
               )}
             >
-              <Photo watch={watch} dimmed={sold} />
+              <Photo watch={watch} dimmed={sold} showTrade={showTrade} />
 
               <div className="flex flex-1 flex-col gap-1 p-3">
                 <div className="flex items-baseline justify-between gap-2">
@@ -132,20 +135,37 @@ export function InventoryGallery({
  * not reflow as they arrive. The bytes are already downscaled on upload and
  * served immutably, so a second visit costs nothing.
  */
-function Photo({ watch, dimmed }: { watch: WatchListItem; dimmed: boolean }) {
-  if (!watch.primaryImageId) {
+function Photo({ watch, dimmed, showTrade }: {
+  watch: WatchListItem
+  dimmed: boolean
+  showTrade: boolean
+}) {
+  // Asked for the trade shot, this shows the trade shot or nothing. It does
+  // not quietly fall back to the published photograph, because somebody who
+  // turns this on is checking which watches have been shot for the trade —
+  // and a grid that answers by showing the other picture answers the
+  // question with the one thing that looks like a yes.
+  const id = showTrade ? watch.tradeImageId : watch.primaryImageId
+
+  if (!id) {
     return (
       <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-surface-subtle text-content-muted">
-        <Camera className="h-6 w-6" aria-hidden />
-        <span className="text-micro font-semibold">No photograph</span>
+        {showTrade
+          ? <Handshake className="h-6 w-6" aria-hidden />
+          : <Camera className="h-6 w-6" aria-hidden />}
+        <span className="text-micro font-semibold">
+          {showTrade ? 'No trade shot' : 'No photograph'}
+        </span>
       </div>
     )
   }
 
   return (
     <img
-      src={`/api/images/${watch.primaryImageId}`}
-      alt={`${watch.brandName} ${watch.model}, stock ${watch.stockNo}`}
+      src={`/api/images/${id}`}
+      alt={showTrade
+        ? `${watch.brandName} ${watch.model}, stock ${watch.stockNo}, trade photograph`
+        : `${watch.brandName} ${watch.model}, stock ${watch.stockNo}`}
       loading="lazy"
       decoding="async"
       className={cn(

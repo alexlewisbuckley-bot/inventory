@@ -87,6 +87,26 @@ describe('the doors that serve photographs outward', () => {
   })
 })
 
+describe('what we see of our own stock', () => {
+  it('offers the trade shot beside the published one, not instead of it', () => {
+    // Both on every row, so the gallery's toggle is a change of mind rather
+    // than a round trip — and so a watch with no trade shot can say so.
+    const source = read('src/server/repositories/watch-repository.ts')
+    expect(source).toMatch(/tradeImageId: sql<string \| null>/)
+    expect(source).toMatch(/wi\.kind = 'TRADE'/)
+    expect(source).toMatch(/primaryImageId: sql<string \| null>/)
+  })
+
+  it('does not fall back to the published photograph when asked for trade', () => {
+    // Somebody turning the toggle on is checking which watches have been
+    // shot for the trade. Answering with the other picture answers that
+    // question with the one thing that looks like a yes.
+    const gallery = read('src/components/inventory/InventoryGallery.tsx')
+    expect(gallery).toMatch(/showTrade \? watch\.tradeImageId : watch\.primaryImageId/)
+    expect(gallery).toMatch(/No trade shot/)
+  })
+})
+
 describe('the kinds themselves', () => {
   it('carries a trade photograph as its own kind', () => {
     expect(IMAGE_KINDS).toContain('TRADE')

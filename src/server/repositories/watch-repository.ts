@@ -86,6 +86,8 @@ export interface WatchListItem {
   supplierIdDocumentExpiresOn: string | null
   /** The photograph the gallery leads with, where the watch has one. */
   primaryImageId: string | null
+  /** The trade shot, where one has been taken. Null is a gap, not an error. */
+  tradeImageId: string | null
 }
 
 export interface WatchListResult {
@@ -156,6 +158,21 @@ const listSelection = {
     SELECT wi.id FROM ${watchImages} wi
     WHERE wi.watch_id = ${watches.id}
     ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
+    LIMIT 1
+  )`,
+  /**
+   * The trade shot, fetched beside the other one rather than instead of it.
+   *
+   * Both come back on every row so the toggle in the gallery is a change of
+   * mind rather than a round trip — and so that a watch with no trade shot
+   * can say so, which is the thing somebody checking their trade photography
+   * actually wants to see. Two correlated scalars on an indexed column is a
+   * cheaper price than reloading the page to answer the same question.
+   */
+  tradeImageId: sql<string | null>`(
+    SELECT wi.id FROM ${watchImages} wi
+    WHERE wi.watch_id = ${watches.id} AND wi.kind = 'TRADE'
+    ORDER BY wi.sort_order, wi.created_at
     LIMIT 1
   )`,
 } as const
