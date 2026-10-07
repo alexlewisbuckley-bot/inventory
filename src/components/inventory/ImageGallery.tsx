@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CreditCard, Handshake, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, ConfirmDialog, Modal, useToast } from '@/components/ui'
-import { downscaleImage } from '@/lib/downscale'
+import { downscaleImage, isUploadableImage } from '@/lib/downscale'
 import { useLibraryImageAction } from '@/app/actions/watches'
 import { IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
 
@@ -112,7 +112,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
   }
 
   const upload = useCallback(async (files: FileList | File[], kind: ImageKind) => {
-    const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    const list = Array.from(files).filter(isUploadableImage)
     if (list.length === 0) {
       toast.error('That file is not an image', 'JPEG, PNG and WebP are supported.')
       return
@@ -210,7 +210,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
               {canEdit && (
                 <input
                   ref={(element) => { inputs.current[kind] = element }}
-                  type="file" accept="image/jpeg,image/png,image/webp" multiple hidden
+                  type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple hidden
                   onChange={(event) => {
                     if (event.target.files?.length) void upload(event.target.files, kind)
                     event.target.value = ''

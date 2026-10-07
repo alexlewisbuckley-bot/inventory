@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FileSpreadsheet, FileText, ImagePlus, Inbox, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, Card } from '@/components/ui'
+import { isUploadableImage } from '@/lib/downscale'
 import { InvoiceDropZone } from './InvoiceDropZone'
 import { ImportWizard } from './ImportWizard'
 import { PhotoIntake, type PhotoCandidate } from './PhotoIntake'
@@ -20,7 +21,7 @@ const SHEET = /\.(xlsx|xlsm|xls|csv|tsv)$/i
 function classify(file: File): Route | null {
   if (SHEET.test(file.name) || file.type.includes('spreadsheet') || file.type === 'text/csv') return 'sheet'
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return 'invoice'
-  if (file.type.startsWith('image/')) return 'photographs'
+  if (isUploadableImage(file)) return 'photographs'
   return null
 }
 

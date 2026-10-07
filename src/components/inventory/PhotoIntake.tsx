@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { AlertTriangle, Check, ImagePlus, Loader2, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, Card, useToast } from '@/components/ui'
-import { downscaleImage } from '@/lib/downscale'
+import { downscaleImage, isUploadableImage } from '@/lib/downscale'
 import { guessKind, matchPhoto } from '@/lib/photo-match'
 import { IMAGE_KINDS, IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
 import { WatchPicker, type PickerWatch } from './WatchPicker'
@@ -104,7 +104,7 @@ export function PhotoIntake({ candidates, initialFiles }: {
   const heldBy = (watchId: string, kind: ImageKind) => byId.get(watchId)?.photographsByKind[kind] ?? 0
 
   const accept = (files: FileList | null) => {
-    const list = Array.from(files ?? []).filter((f) => f.type.startsWith('image/'))
+    const list = Array.from(files ?? []).filter(isUploadableImage)
     if (!list.length) return
     setPending((current) => [
       ...current,
@@ -365,7 +365,7 @@ export function PhotoIntake({ candidates, initialFiles }: {
           <input
             ref={input}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
             multiple
             hidden
             onChange={(e) => { accept(e.target.files); e.target.value = '' }}
