@@ -261,9 +261,26 @@ describe('guessing what an image is of', () => {
     expect(guessKind('service-papers-5167R.png')).toBe('DOCUMENT')
   })
 
+  it('reads a trade shot from the filename', () => {
+    // So a folder of them can be dropped on the intake page and land in the
+    // right half of the watch without anybody setting a dropdown forty times.
+    expect(guessKind('1143-trade.jpg')).toBe('TRADE')
+    expect(guessKind('5167R_dealer_02.png')).toBe('TRADE')
+    expect(guessKind('wholesale 1143.jpeg')).toBe('TRADE')
+  })
+
+  it('still calls a trade-folder warranty card a warranty card', () => {
+    // The paperwork words are the ones it would be alarming to get wrong, so
+    // they are read first and a trade shot never outranks them.
+    expect(guessKind('1143-trade-warranty.jpg')).toBe('CARD')
+    expect(guessKind('trade/1143 service papers.png')).toBe('DOCUMENT')
+  })
+
   it('assumes a photograph of the watch otherwise', () => {
     expect(guessKind('5167R.png')).toBe('WATCH')
     expect(guessKind('IMG_4821.jpeg')).toBe('WATCH')
+    // "Traded" is not "trade", and neither is a reference that starts with it.
+    expect(guessKind('IMG_4821_tradition.jpeg')).toBe('WATCH')
   })
 })
 

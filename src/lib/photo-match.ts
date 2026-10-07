@@ -25,6 +25,7 @@
  * and distinctive enough to be safe as a substring, which is what lets a
  * hyphenated one still be found.
  */
+import type { ImageKind } from './enums'
 
 export interface MatchCandidate {
   id: string
@@ -281,7 +282,7 @@ export function matchPhotos(files: readonly string[], candidates: readonly Match
  * same value seventy-three times. Anything that does not say otherwise is
  * taken to be a photograph of the watch, which is what most of them are.
  */
-export function guessKind(file: string): 'WATCH' | 'CARD' | 'DOCUMENT' {
+export function guessKind(file: string): ImageKind {
   // Whole words, not substrings: `IMG_01_card` has no word boundary before
   // `card` as a regular expression counts one, because an underscore is a
   // word character — and an underscore is how most cameras separate things.
@@ -291,6 +292,13 @@ export function guessKind(file: string): 'WATCH' | 'CARD' | 'DOCUMENT' {
   }
   for (const word of words) {
     if (/^(doc|invoice|receipt|service|papers)/.test(word.toLowerCase())) return 'DOCUMENT'
+  }
+  // Read last of the three, so "1143-trade-warranty" is still a warranty
+  // card. The paperwork words are the ones it would be alarming to get
+  // wrong; this one only decides which audience a photograph of the watch
+  // is for, and the uploader shows that choice before anything is sent.
+  for (const word of words) {
+    if (/^(trade|dealer|wholesale)/.test(word.toLowerCase())) return 'TRADE'
   }
   return 'WATCH'
 }
