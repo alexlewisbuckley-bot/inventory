@@ -103,10 +103,19 @@ export function InventoryGallery({
 
                 <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                   <StatusChip status={watch.status as WatchStatus} />
-                  {/* Cost above, and quieter, so the two read down the card as
-                      what it cost and then what it is worth — the order they
-                      are thought about in, and the one that makes the gap
-                      between them legible without doing the sum.
+                  {/* Cost above, at the same size as the figure under it, so
+                      the two read down the card as what it cost and then what
+                      it is worth — the order they are thought about in, and
+                      the one that makes the gap between them legible without
+                      doing the sum.
+
+                      No label, and not greyed down: this card is only ever
+                      read by people who are allowed the number, and shrinking
+                      it was treating it as an aside when it is half the point
+                      of looking. Weight alone separates them — the asking
+                      price is the bold one — which is enough to tell them
+                      apart at a glance and keeps the two figures on one
+                      typographic step so the column reads as a pair.
 
                       Each figure is behind its own permission, so a card can
                       show one, both or neither. Nothing stands in for a
@@ -114,8 +123,8 @@ export function InventoryGallery({
                       advertise what is being withheld. */}
                   <div className="flex flex-col items-end gap-0.5">
                     {canSeeCost && (
-                      <span className="text-micro text-content-muted">
-                        Cost {money(watch.purchasePriceGbp)}
+                      <span className="text-caption text-content-primary">
+                        {money(watch.purchasePriceGbp)}
                       </span>
                     )}
                     {/* Sold rows show what they made, live ones what they ask. */}
