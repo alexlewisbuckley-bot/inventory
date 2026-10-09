@@ -7,7 +7,7 @@ import type { SyncWatch } from '@/lib/shopify-map'
 
 const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   id: 'wch_1', stockNo: 1143, brandName: 'Rolex', model: '116334', serial: null,
-  nickname: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', estSaleGbp: 1020000,
+  nickname: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', locationType: 'STORE', estSaleGbp: 1020000,
   caseSizeMm: 41, caseMaterial: 'Oystersteel', dial: 'White', bracelet: 'Oyster',
   movement: null, waterResistanceM: null, condition: 'EXCELLENT',
   boxPapers: 'PAPERS_ONLY', description: null, images: [], shopifyProductId: null,

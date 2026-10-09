@@ -1,3 +1,4 @@
+import { HELD_STATUSES } from '@/lib/enums'
 import type { BuiltInView } from '@/components/ui/DataList'
 
 /**
@@ -38,9 +39,12 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
     description: 'Completed sales',
   },
   {
+    // Stock you hold, all three statuses of it. This was IN_STOCK|RESERVED,
+    // which quietly hid a deposit-taken watch nobody had ever priced from the
+    // only list that would have caught it.
     id: 'unpriced',
     label: 'Needs a price',
-    query: 'f=estSaleGbp%3AisEmpty&f=status%3Ais%3AIN_STOCK%7CRESERVED',
+    query: 'f=estSaleGbp%3AisEmpty&f=status%3Ais%3AIN_STOCK%7CRESERVED%7CSALE_AGREED',
     description: 'Invisible to margin forecasting until priced',
   },
   {
@@ -72,9 +76,11 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
  * The same three the owner and location cards count and value. A link from
  * one of those cards that showed a different set would hand somebody a list
  * that disagrees with the number they just clicked, which reads as the count
- * being wrong rather than the link being loose.
+ * being wrong rather than the link being loose. Stated once in `enums`, where
+ * the server can read it too, and re-exported here so the views that have
+ * always imported it from this module still can.
  */
-export const HELD_STATUSES = ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] as const
+export { HELD_STATUSES }
 
 /**
  * "Show me what this owner / location / supplier is holding."

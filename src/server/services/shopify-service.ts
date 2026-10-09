@@ -186,6 +186,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       year: watches.year,
       status: watches.status,
       locationName: locations.name,
+      locationType: locations.type,
       estSaleGbp: watches.estSaleGbp,
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,

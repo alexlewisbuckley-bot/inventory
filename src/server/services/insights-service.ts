@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
   brands, customers, deals, fxRates, offers, sales, tasks, watches, watchRequests,
 } from '../db/schema'
+import { HELD_STATUSES } from '@/lib/enums'
 
 /**
  * What is worth knowing today.
@@ -285,9 +286,15 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     })
   }
 
+  // Counted exactly as the list this notice links to filters: stock we hold,
+  // all three statuses, and a zero counted as no price. It used to count
+  // IN_STOCK alone against a list that had no status filter whatsoever, so
+  // the headline and the page it opened were never the same set of watches.
   const unpriced = await db.select({ count: sql<number>`count(*)` }).from(watches)
     .where(and(
-      isNull(watches.deletedAt), isNull(watches.estSaleGbp), eq(watches.status, 'IN_STOCK'),
+      isNull(watches.deletedAt),
+      inArray(watches.status, [...HELD_STATUSES]),
+      or(isNull(watches.estSaleGbp), eq(watches.estSaleGbp, 0)),
     ))
 
   const unpricedCount = Number(unpriced[0]?.count ?? 0)

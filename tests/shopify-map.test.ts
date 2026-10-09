@@ -19,6 +19,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   year: 2023,
   status: 'IN_STOCK',
   locationName: 'Dubai',
+  locationType: 'STORE',
   estSaleGbp: 1020000,
   caseSizeMm: 41,
   caseMaterial: 'Steel and white gold',
@@ -394,6 +395,32 @@ describe('whose search title is it', () => {
  * shop already holds or a URL for it to come and fetch.
  */
 const ORIGIN = 'https://inventory.example.com'
+
+describe('a watch that is still travelling', () => {
+  it('is a draft, not a live listing', () => {
+    // The plates say "available to view today" and the shop is a room people
+    // walk into. A piece in a courier's bag is not that, however complete.
+    expect(statusFor(watch({ locationType: 'TRANSIT' }))).toBe('DRAFT')
+  })
+
+  it('publishes itself the moment it lands, with nothing else to do', () => {
+    expect(statusFor(watch({ locationType: 'STORE' }))).toBe('ACTIVE')
+    expect(statusFor(watch({ locationType: 'VAULT' }))).toBe('ACTIVE')
+    // A location with no type recorded is not a reason to hide the watch.
+    expect(statusFor(watch({ locationType: null }))).toBe('ACTIVE')
+  })
+
+  it('still archives one that has left the book', () => {
+    // Transit does not outrank sold: a watch being couriered to its buyer is
+    // gone, and its page should come down rather than go back to draft.
+    expect(statusFor(watch({ status: 'SOLD', locationType: 'TRANSIT' }))).toBe('ARCHIVED')
+  })
+
+  it('has nothing to sell while it is in the air', () => {
+    expect(quantityFor(watch({ locationType: 'TRANSIT' }))).toBe(0)
+    expect(quantityFor(watch({ locationType: 'STORE' }))).toBe(1)
+  })
+})
 
 describe('the photographs we send to the shop', () => {
   it('offers a photograph the shop has never seen as a URL to collect', () => {

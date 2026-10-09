@@ -20,6 +20,18 @@ export const WATCH_STATUSES = [
 ] as const
 export type WatchStatus = (typeof WATCH_STATUSES)[number]
 
+/**
+ * The statuses that count as stock you hold.
+ *
+ * Here rather than beside the stock list's views, where it used to live,
+ * because the server needs it too and a component module is not somewhere a
+ * repository should be importing from. Everything that counts, values or
+ * queues up "what we have" reads this one list, so a count and the list it
+ * links to cannot disagree — which they did: the unpriced queue counted held
+ * stock and then opened a list with every sold watch in it as well.
+ */
+export const HELD_STATUSES = ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] as const
+
 export const LOCATION_TYPES = ['STORE', 'VAULT', 'TRANSIT', 'CONSIGNMENT'] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 

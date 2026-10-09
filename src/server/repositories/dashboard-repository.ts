@@ -8,10 +8,11 @@
  * is one round trip.
  */
 
-import { and, count, eq, gte, isNull, sql } from 'drizzle-orm'
+import { and, count, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import { fxRates, sales, watchImages, watches } from '../db/schema'
+import { HELD_STATUSES } from '@/lib/enums'
 import { BASE_CURRENCY } from '@/lib/enums'
 
 const DAY_MS = 86_400_000
@@ -27,7 +28,10 @@ function daysAgo(days: number): string {
   return new Date(Date.now() - days * DAY_MS).toISOString()
 }
 
-const liveWatch = and(isNull(watches.deletedAt), sql`${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED')`)
+// Stock you hold, from the one list that says what that means. Written out
+// as a SQL literal before, which is how the unpriced queue and the unpriced
+// list came to disagree about whether a sold watch counts.
+const liveWatch = and(isNull(watches.deletedAt), inArray(watches.status, [...HELD_STATUSES]))
 
 export interface AgeBucket {
   key: string

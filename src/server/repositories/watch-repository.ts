@@ -7,6 +7,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
+import { HELD_STATUSES } from '@/lib/enums'
 import type { WatchQuery } from '@/lib/validation'
 import type {
   EntityType, IdCheckStatus, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
@@ -201,7 +202,22 @@ function buildFilters(query: WatchQuery): SQL | undefined {
   if (query.locationId?.length) clauses.push(inArray(watches.locationId, query.locationId))
   if (query.supplierId?.length) clauses.push(inArray(watches.supplierId, query.supplierId))
   if (query.brandId?.length) clauses.push(inArray(watches.brandId, query.brandId))
-  if (query.unpricedOnly) clauses.push(isNull(watches.estSaleGbp))
+  // "Needs a price" means stock we hold with no asking price on it.
+  //
+  // Both halves of that were missing. There was no status filter at all, so
+  // every link that carried this parameter — the sidebar's Unpriced stock,
+  // the insight's "Price them", the reports page — opened a list with every
+  // sold and written-off watch in it, while the count printed beside the link
+  // had counted held stock only. The number said seven and the list showed
+  // forty, which reads as the number being wrong.
+  //
+  // And a retail price of zero is not a price. It is what an import leaves
+  // behind, the dashboard has always counted it as unpriced, and the Shopify
+  // mirror already refuses to publish one — only this list disagreed.
+  if (query.unpricedOnly) {
+    clauses.push(inArray(watches.status, [...HELD_STATUSES]))
+    clauses.push(or(isNull(watches.estSaleGbp), eq(watches.estSaleGbp, 0)))
+  }
   if (query.purchasedFrom) clauses.push(gte(watches.purchaseDate, query.purchasedFrom))
   if (query.purchasedTo) clauses.push(lte(watches.purchaseDate, query.purchasedTo))
   if (query.minPriceGbp !== undefined) clauses.push(gte(watches.purchasePriceGbp, Math.round(query.minPriceGbp * 100)))
