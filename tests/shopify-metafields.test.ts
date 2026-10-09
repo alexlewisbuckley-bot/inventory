@@ -10,7 +10,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   nickname: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', estSaleGbp: 1020000,
   caseSizeMm: 41, caseMaterial: 'Oystersteel', dial: 'White', bracelet: 'Oyster',
   movement: null, waterResistanceM: null, condition: 'EXCELLENT',
-  boxPapers: 'PAPERS_ONLY', description: null, imageIds: [], shopifyProductId: null,
+  boxPapers: 'PAPERS_ONLY', description: null, images: [], shopifyProductId: null,
   ...over,
 })
 

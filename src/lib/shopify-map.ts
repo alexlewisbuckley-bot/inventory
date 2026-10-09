@@ -54,7 +54,9 @@ export interface SyncWatch {
   condition: string
   boxPapers: string
   description: string | null
-  imageIds: string[]
+  /** The photographs, in the order they are arranged, with whatever the shop
+      is already holding of each. */
+  images: WatchPhotograph[]
   shopifyProductId: string | null
 }
 
@@ -69,6 +71,13 @@ export interface SyncProduct {
    * the title. Carried so that one somebody wrote by hand is never overwritten.
    */
   seoTitle: string | null
+}
+
+/** One photograph, and the copy of it the storefront already holds. */
+export interface WatchPhotograph {
+  id: string
+  /** The media row on Shopify, once this photograph has been sent there. */
+  mediaId: string | null
 }
 
 export type ShopifyStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
@@ -180,6 +189,59 @@ export function familyOf(watch: SyncWatch): string | null {
     Number(size) >= 20 && Number(size) <= 60 ? '' : whole
   )).trim()
   return family || null
+}
+
+/* ================= the photographs ================= */
+
+/** One entry in a product's file list: an upload, or one already there. */
+export interface MediaFile {
+  id?: string
+  originalSource?: string
+  contentType?: 'IMAGE'
+  alt?: string
+}
+
+/**
+ * The product's photographs, as the shop should hold them.
+ *
+ * `files` on productSet is declarative, the same way metafields turned out to
+ * be: the list given becomes the whole list, and anything left out is
+ * removed. That is what makes a real mirror possible — a photograph deleted
+ * here goes from the shop too, and the order they are arranged in is the
+ * order they appear on the page.
+ *
+ * Each one is sent as whichever of two things it is. A photograph the shop
+ * already holds is named by its media id, so it stays where it is and
+ * nothing is uploaded again; one it has never seen is sent as a URL for
+ * Shopify to come and fetch. So the first sync after this uploads
+ * everything once, and every sync after it uploads only what changed.
+ *
+ * Null means "say nothing about photographs", which leaves the product's
+ * media exactly as it is. Two cases need that, and they are why this cannot
+ * simply always send a list:
+ *
+ *   - A watch with no photographs of its own. Mirroring an empty set would
+ *     strip the page bare, and the pictures on the shop today were put there
+ *     by hand rather than by this system. An empty record is far likelier to
+ *     mean nobody has photographed it yet than to mean somebody decided the
+ *     page should have no picture.
+ *   - A watch that has left the book. The door Shopify fetches from only
+ *     opens for stock still held, so an upload for a sold watch would be a
+ *     URL answering 404 — and its page is being archived anyway.
+ */
+export function mediaFilesFor(watch: SyncWatch, origin: string | null): MediaFile[] | null {
+  if (!origin || watch.images.length === 0) return null
+
+  const unsent = watch.images.some((photograph) => !photograph.mediaId)
+  if (unsent && statusFor(watch) === 'ARCHIVED') return null
+
+  return watch.images.map((photograph) => (photograph.mediaId
+    ? { id: photograph.mediaId }
+    : {
+      originalSource: `${origin}/api/storefront-image/${photograph.id}`,
+      contentType: 'IMAGE' as const,
+      alt: titleFor(watch),
+    }))
 }
 
 /* ================= what a search engine is shown =================

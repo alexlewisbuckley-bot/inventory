@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, seoDescriptionFor,
-  seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
+  mediaFilesFor, seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
   type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import type { RateTable } from '@/lib/currency'
@@ -32,7 +32,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   // a watch that could not exist.
   boxPapers: 'FULL_SET',
   description: null,
-  imageIds: [],
+  images: [],
   shopifyProductId: null,
   ...over,
 })
@@ -380,5 +380,85 @@ describe('whose search title is it', () => {
 
   it('leaves alone one somebody wrote themselves', () => {
     expect(seoIsOurs('Buy a pre-owned Rolex Datejust in Dubai')).toBe(false)
+  })
+})
+
+/**
+ * The photographs, which are the half of the mirror that never worked.
+ *
+ * Pictures were sent to Shopify exactly once, on the push that created the
+ * product, and never again — so a photograph replaced here stayed the old one
+ * on the shop for ever, which is precisely what was reported. The fix rests on
+ * two facts about `productSet.files` worth stating in tests rather than in a
+ * comment: the list given is the complete list, and a file is either an id the
+ * shop already holds or a URL for it to come and fetch.
+ */
+const ORIGIN = 'https://inventory.example.com'
+
+describe('the photographs we send to the shop', () => {
+  it('offers a photograph the shop has never seen as a URL to collect', () => {
+    const files = mediaFilesFor(watch({ images: [{ id: 'img_1', mediaId: null }] }), ORIGIN)
+    expect(files).toEqual([{
+      originalSource: `${ORIGIN}/api/storefront-image/img_1`,
+      contentType: 'IMAGE',
+      alt: titleFor(watch()),
+    }])
+  })
+
+  it('names one it already holds, rather than uploading it again', () => {
+    // The whole point of recording the media id. Without this every sync
+    // re-uploads every picture, for ever.
+    const files = mediaFilesFor(
+      watch({ images: [{ id: 'img_1', mediaId: 'gid://shopify/MediaImage/1' }] }),
+      ORIGIN,
+    )
+    expect(files).toEqual([{ id: 'gid://shopify/MediaImage/1' }])
+  })
+
+  it('keeps the order they are arranged in here', () => {
+    // `files` is also the order they appear on the product page, so the
+    // photograph chosen as the first one here is the one the shop leads with.
+    const files = mediaFilesFor(watch({
+      images: [
+        { id: 'img_1', mediaId: 'gid://m/1' },
+        { id: 'img_2', mediaId: null },
+        { id: 'img_3', mediaId: 'gid://m/3' },
+      ],
+    }), ORIGIN)
+    expect(files).toEqual([
+      { id: 'gid://m/1' },
+      {
+        originalSource: `${ORIGIN}/api/storefront-image/img_2`,
+        contentType: 'IMAGE',
+        alt: titleFor(watch()),
+      },
+      { id: 'gid://m/3' },
+    ])
+  })
+
+  it('says nothing at all about a watch we have not photographed', () => {
+    // Not an empty list. An empty list is an instruction to strip the page,
+    // and the pictures on the shop today were put there by hand.
+    expect(mediaFilesFor(watch({ images: [] }), ORIGIN)).toBeNull()
+  })
+
+  it('says nothing when it does not know its own address', () => {
+    // Shopify fetches the bytes, so a relative URL is useless to it.
+    expect(mediaFilesFor(watch({ images: [{ id: 'img_1', mediaId: null }] }), null)).toBeNull()
+  })
+
+  it('does not offer an upload for a watch that has left the book', () => {
+    // The storefront door only opens for stock still held, so the URL would
+    // answer 404 and the shop would record a failed media row.
+    const sold = watch({ status: 'SOLD', images: [{ id: 'img_1', mediaId: null }] })
+    expect(statusFor(sold)).toBe('ARCHIVED')
+    expect(mediaFilesFor(sold, ORIGIN)).toBeNull()
+  })
+
+  it('still keeps the pictures on a page it is archiving', () => {
+    // Archived, not stripped: the page can be brought back, and everything
+    // the shop already holds is named by id, which needs no fetching.
+    const sold = watch({ status: 'SOLD', images: [{ id: 'img_1', mediaId: 'gid://m/1' }] })
+    expect(mediaFilesFor(sold, ORIGIN)).toEqual([{ id: 'gid://m/1' }])
   })
 })
