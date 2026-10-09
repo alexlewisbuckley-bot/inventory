@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { brands, referenceImages, watchImages, watches } from '../db/schema'
+import { referenceImages, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { newId } from '@/lib/ids'
 import { NotFoundError, ValidationError } from '@/lib/errors'
@@ -393,89 +393,4 @@ export async function removeLibraryImage(id: string, actor: SessionUser): Promis
     entityType: 'Watch', entityId: 'library', action: 'UPDATE', actorId: actor.id,
     summary: `Photograph removed from the ${rows[0].label} library`,
   })
-}
-
-/* ================= every photograph, under the serial ================= */
-
-/** One watch and the photographs taken of it. */
-export interface PhotographedWatch {
-  id: string
-  stockNo: number
-  /** The serial, which is what the photographs are named after. */
-  serial: string | null
-  brandName: string
-  model: string
-  nickname: string | null
-  status: string
-  photographs: Array<{ id: string; kind: ImageKind; mimeType: string }>
-}
-
-/**
- * The photographs this house holds, filed under the serial of the watch in
- * them, which is a different question from the one the stock list answers.
- *
- * Photographs arrive off a phone as IMG_2841, IMG_2842, IMG_2843 — eighty of
- * them in a row, identical names, no way to tell from a filename which watch
- * is in the picture. Once they are uploaded that stops mattering here, because
- * the watch they belong to is what they are attached to. It starts mattering
- * again the moment one has to leave: sent to a dealer, filed on a drive,
- * attached to a message. A serial is the one name a photograph of a watch can
- * carry that means the same thing to everybody who sees it.
- *
- * Only photographs of the watch — the published shot and the trade one.
- * Warranty cards and receipts are the same watch's paperwork and belong to
- * the record rather than to this wall, and naming a scan of a receipt after a
- * serial would make it look like a photograph of the piece.
- *
- * Two queries rather than a join: a watch with eight photographs would
- * otherwise arrive as eight rows of itself, and the page counts watches.
- */
-export async function photographedWatches(): Promise<PhotographedWatch[]> {
-  const rows = await db
-    .select({
-      id: watches.id,
-      stockNo: watches.stockNo,
-      serial: watches.serial,
-      brandName: brands.name,
-      model: watches.model,
-      nickname: watches.nickname,
-      status: watches.status,
-    })
-    .from(watches)
-    .innerJoin(brands, eq(brands.id, watches.brandId))
-    .where(and(
-      isNull(watches.deletedAt),
-      sql`EXISTS (
-        SELECT 1 FROM watch_images i
-        WHERE i.watch_id = ${watches.id} AND i.kind IN ('WATCH', 'TRADE')
-      )`,
-    ))
-    .orderBy(asc(watches.stockNo))
-
-  if (rows.length === 0) return []
-
-  const images = await db
-    .select({
-      watchId: watchImages.watchId,
-      id: watchImages.id,
-      kind: watchImages.kind,
-      mimeType: watchImages.mimeType,
-    })
-    .from(watchImages)
-    .where(and(
-      inArray(watchImages.watchId, rows.map((row) => row.id)),
-      inArray(watchImages.kind, ['WATCH', 'TRADE']),
-    ))
-    // The published shot first, then the order somebody arranged them in, so
-    // the first photograph on the wall is the one the listing leads with.
-    .orderBy(sql`${watchImages.kind} <> 'WATCH'`, asc(watchImages.sortOrder), asc(watchImages.createdAt))
-
-  const byWatch = new Map<string, PhotographedWatch['photographs']>()
-  for (const image of images) {
-    const list = byWatch.get(image.watchId) ?? []
-    list.push({ id: image.id, kind: image.kind as ImageKind, mimeType: image.mimeType })
-    byWatch.set(image.watchId, list)
-  }
-
-  return rows.map((row) => ({ ...row, photographs: byWatch.get(row.id) ?? [] }))
 }
