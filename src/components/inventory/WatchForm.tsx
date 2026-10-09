@@ -4,8 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, MoneyField, useToast, useCurrency } from '@/components/ui'
+import { BrandField } from './BrandField'
 import { createWatchAction, updateWatchAction } from '@/app/actions/watches'
-import { createBrandAction, createSupplierInlineAction } from '@/app/actions/reference'
+import { createSupplierInlineAction } from '@/app/actions/reference'
 import { ChevronDown } from 'lucide-react'
 import type { ActionState } from '@/app/actions/auth'
 import {
@@ -206,19 +207,10 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
             options={PRODUCT_TYPES.map((type) => ({ value: type, label: PRODUCT_TYPE_LABELS[type] }))}
             error={state.errors?.productType}
           />
-          <ComboSelect
-            name="brandId" label="Brand" required
+          <BrandField
+            options={brands}
             value={values.brandId}
             onChange={(v) => setValues((c) => ({ ...c, brandId: v }))}
-            placeholder="Choose a brand…"
-            options={brands.map((b) => ({ value: b.id, label: b.name }))}
-            onCreate={async (label) => {
-              const result = await createBrandAction(label)
-              if (!result.ok || !result.id) { toast.error('Could not add brand', result.message); return null }
-              if (result.message) toast.success(result.message)
-              return { value: result.id, label: result.name ?? label }
-            }}
-            createLabel="Add brand"
             error={state.errors?.brandId}
           />
           <TextField
