@@ -14,7 +14,7 @@ describe('navigation highlighting', () => {
   it('marks exactly one destination as current, whatever the path', () => {
     // Two destinations lit at once left the user unsure which section they
     // were actually in, so a sidebar path must resolve to exactly one.
-    for (const path of ['/today', '/insights', '/inventory', '/inventory/new', '/sales',
+    for (const path of ['/today', '/insights', '/inventory', '/inventory/new', '/images', '/sales',
                         '/suppliers', '/locations', '/owners', '/reports', '/reports/ageing']) {
       expect(activeFor(path), `for ${path}`).toHaveLength(1)
     }

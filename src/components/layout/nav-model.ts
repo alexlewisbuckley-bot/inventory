@@ -1,7 +1,5 @@
 import {
-  BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
-  Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
-  type LucideIcon,
+  BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, Images, KanbanSquare, Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, type LucideIcon, Users2,
 } from 'lucide-react'
 import { can, isExternalRole, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -62,6 +60,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         // distinction is the whole point.
         { href: '/catalogue', label: 'Inventory', icon: Package, capability: 'catalogue:read', match: '/catalogue' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
+        { href: '/images', label: 'Images', icon: Images, capability: 'watch:read', match: '/images' },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
       ],
     },
