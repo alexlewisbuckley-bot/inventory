@@ -4,8 +4,9 @@ import {
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
   PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
   REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS,
+  MISSING_FACTS, MISSING_FACT_LABELS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS,
-  WATCH_STATUSES, WATCH_STATUS_LABELS,
+  WATCH_STATUSES, WATCH_STATUS_LABELS, WEARS, WEARS_LABELS,
 } from './enums'
 
 /**
@@ -130,6 +131,24 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'serial', label: 'Serial', type: 'text' },
   { key: 'purchasePriceGbp', label: 'Cost', type: 'money' },
   { key: 'estSaleGbp', label: 'Retail', type: 'money' },
+  // Two questions about a watch rather than two columns of it — see
+  // DerivedBinding in filter-sql. Both are restricted to is / is not: the
+  // operators the type would otherwise offer, "is empty" above all, have no
+  // meaning for a question that is answered for every row.
+  {
+    key: 'wears',
+    label: 'Worn by',
+    type: 'enum',
+    options: enumOptions(WEARS, WEARS_LABELS),
+    operators: ['is', 'isNot'],
+  },
+  {
+    key: 'missing',
+    label: 'Missing',
+    type: 'enum',
+    options: enumOptions(MISSING_FACTS, MISSING_FACT_LABELS),
+    operators: ['is', 'isNot'],
+  },
   { key: 'purchaseDate', label: 'Bought', type: 'date' },
   { key: 'year', label: 'Year', type: 'number' },
   {

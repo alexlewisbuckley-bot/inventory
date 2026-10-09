@@ -7,12 +7,33 @@ import { AnchoredMenu } from '../AnchoredMenu'
 import { Button } from '../Button'
 import { FilterChip } from './FilterChip'
 import { useDebounced } from '@/hooks/useDebounced'
+import { cn } from '@/lib/cn'
 import {
   applyFilters, operatorsFor, parseFilters,
   type FieldSpec, type FilterClause,
 } from '@/lib/filters'
 
 export type ReferenceOptions = Record<string, ReadonlyArray<{ value: string; label: string }>>
+
+/**
+ * One filter worth reaching in a single tap.
+ *
+ * `+ Filter` can express anything, and that is exactly its problem for the
+ * two or three questions a list is asked all day. "Have you anything for my
+ * wife around ten thousand" is four interactions through the menu — pick the
+ * field, pick the value, pick the field again, type the number — and it is
+ * asked across the counter, with somebody waiting.
+ *
+ * A quick filter is not a different kind of filter. It writes the same clause
+ * the menu would, so it shows up as the same chip, survives in the same URL,
+ * saves into the same view, and is removed either by tapping it again or by
+ * taking the chip off. Nothing here knows what the clause means.
+ */
+export interface QuickFilter {
+  id: string
+  label: string
+  clause: FilterClause
+}
 
 /**
  * Search, plus as many filters as the object supports, on one row.
@@ -28,13 +49,15 @@ export type ReferenceOptions = Record<string, ReadonlyArray<{ value: string; lab
  * carries the result. Adding a filterable column is one line in
  * `src/lib/filters.ts`.
  */
-export function FilterBar({ fields, options, placeholder, actions }: {
+export function FilterBar({ fields, options, placeholder, actions, quick }: {
   fields: readonly FieldSpec[]
   /** Options for reference fields, keyed by the field's `optionSource`. */
   options?: ReferenceOptions
   placeholder: string
   /** View switcher, column menu — whatever the list puts on the right. */
   actions?: React.ReactNode
+  /** The handful of filters this list is asked for most, as one-tap toggles. */
+  quick?: readonly QuickFilter[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -118,6 +141,31 @@ export function FilterBar({ fields, options, placeholder, actions }: {
     write(next)
   }
 
+  const sameClause = (a: FilterClause, b: FilterClause) =>
+    a.field === b.field && a.operator === b.operator
+      && a.values.length === b.values.length
+      && a.values.every((value, i) => value === b.values[i])
+
+  /**
+   * Toggle a quick filter on or off.
+   *
+   * Off is an exact match — tapping "Women's" again removes it. On replaces
+   * any other clause on the same field and operator, which is what makes a
+   * row of budgets behave as a choice of one: "up to £10,000" and "up to
+   * £25,000" are both `Retail is less than`, and keeping both would AND them
+   * into the smaller one while showing two chips that look like a mistake.
+   */
+  const toggleQuick = (quickFilter: QuickFilter) => {
+    const on = clauses.some((clause) => sameClause(clause, quickFilter.clause))
+    replaceClauses(on
+      ? clauses.filter((clause) => !sameClause(clause, quickFilter.clause))
+      : [
+        ...clauses.filter((clause) =>
+          clause.field !== quickFilter.clause.field || clause.operator !== quickFilter.clause.operator),
+        quickFilter.clause,
+      ])
+  }
+
   const filtering = clauses.length > 0 || term.length > 0
 
   return (
@@ -149,6 +197,34 @@ export function FilterBar({ fields, options, placeholder, actions }: {
 
         {actions}
       </div>
+
+      {quick && quick.length > 0 && (
+        /* Above the chips, not among them. These are the questions you arrive
+           with; the chips are the answer to whatever you have asked so far,
+           and a control that both asks and reports in the same row reads as
+           neither. */
+        <div className="flex flex-wrap items-center gap-1.5">
+          {quick.map((entry) => {
+            const on = clauses.some((clause) => sameClause(clause, entry.clause))
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => toggleQuick(entry)}
+                aria-pressed={on}
+                className={cn(
+                  'inline-flex h-8 items-center rounded-pill border px-3 text-caption font-medium transition-colors',
+                  on
+                    ? 'border-content-primary bg-content-primary text-surface-raised'
+                    : 'border-line-subtle bg-surface-raised text-content-secondary hover:border-line-strong hover:text-content-primary',
+                )}
+              >
+                {entry.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         {clauses.map((clause, index) => {

@@ -238,6 +238,10 @@ export interface AttentionCounts {
   reservedStale: number
   staleRates: number
   oldestRateAt: Date | null
+  /** Held stock missing at least one of the three facts a record must carry. */
+  incomplete: number
+  /** Of those, the ones with nobody recorded as owning them. */
+  noOwner: number
 }
 
 const AGEING_DAYS = 90
@@ -262,6 +266,17 @@ export async function attentionCounts(): Promise<AttentionCounts> {
         ageing: sql<number>`coalesce(sum(case when ${watches.purchaseDate} < ${ageingBefore}::timestamptz then 1 else 0 end), 0)`,
         saleAgreedStale: sql<number>`coalesce(sum(case when ${watches.status} = 'SALE_AGREED' and ${watches.updatedAt} < ${committedBefore}::timestamptz then 1 else 0 end), 0)`,
         reservedStale: sql<number>`coalesce(sum(case when ${watches.status} = 'RESERVED' and ${watches.updatedAt} < ${committedBefore}::timestamptz then 1 else 0 end), 0)`,
+        // The three facts a record cannot do its job without, counted as one
+        // queue because they are missing from the same watches: all three are
+        // what gets skipped when stock is booked in at speed, and chasing
+        // them one list at a time means opening the same record three times.
+        //
+        // Must stay the same question the `missing` filter asks, or the row
+        // opens a list that does not match its own count.
+        incomplete: sql<number>`coalesce(sum(case when ${watches.ownerId} is null
+          or ${watches.serial} is null or btrim(${watches.serial}) = ''
+          or ${watches.vatScheme} = 'UNKNOWN' then 1 else 0 end), 0)`,
+        noOwner: sql<number>`coalesce(sum(case when ${watches.ownerId} is null then 1 else 0 end), 0)`,
       })
       .from(watches)
       .where(liveWatch),
@@ -286,6 +301,8 @@ export async function attentionCounts(): Promise<AttentionCounts> {
     reservedStale: Number(stock[0]?.reservedStale ?? 0),
     staleRates: Number(rates[0]?.stale ?? 0),
     oldestRateAt: rates[0]?.oldest ? new Date(rates[0].oldest) : null,
+    incomplete: Number(stock[0]?.incomplete ?? 0),
+    noOwner: Number(stock[0]?.noOwner ?? 0),
   }
 }
 

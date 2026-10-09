@@ -1,4 +1,5 @@
-import { HELD_STATUSES } from '@/lib/enums'
+import { HELD_STATUSES, MISSING_FACTS } from '@/lib/enums'
+import type { QuickFilter } from '@/components/ui/DataList'
 import type { BuiltInView } from '@/components/ui/DataList'
 
 /**
@@ -63,6 +64,20 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
     description: 'Not yet searched against The Watch Register',
   },
   {
+    /**
+     * The record-keeping queue: a watch we hold that cannot answer one of the
+     * three questions a record exists to answer — whose it is, which one it
+     * is, and how it can be sold. Everything else about a thin record is
+     * marketing; these three each stop something, and all three are usually
+     * missing on the same watch, because they are what gets skipped when
+     * stock is booked in at speed.
+     */
+    id: 'incomplete',
+    label: 'Missing key details',
+    query: `f=missing%3Ais%3A${MISSING_FACTS.join('%7C')}&f=status%3Ais%3A${HELD_STATUSES.join('%7C')}`,
+    description: 'No owner, no serial or no VAT scheme recorded',
+  },
+  {
     id: 'ageing',
     label: 'Ageing',
     query: 'f=status%3Ais%3AIN_STOCK%7CRESERVED&sort=purchaseDate&dir=asc',
@@ -99,3 +114,36 @@ export function heldByQuery(field: 'ownerId' | 'locationId' | 'supplierId', id: 
   params.append('f', `${field}:is:${id}`)
   return params.toString()
 }
+
+/**
+ * The three questions the stock list is actually asked at the counter.
+ *
+ * "Have you anything for my wife, around ten thousand?" is one sentence and
+ * was four trips through the filter menu. Everything here was already
+ * askable — `+ Filter` can express all of it — but a filter you have to
+ * assemble while somebody waits is a filter nobody uses, and the answer gets
+ * given from memory instead, which is how a watch sits unsold in a drawer.
+ *
+ * Budget is stated as a ceiling rather than a band. Nobody says "between ten
+ * and twenty-five"; they say "about twenty" and mean "not much over". The
+ * four ceilings are one control, not four — they share a field and an
+ * operator, so picking one replaces the last (see toggleQuick) — and they
+ * compose with the two on the left, which is the whole point of their being
+ * toggles rather than views.
+ *
+ * Priced in base currency, which is what the figures underneath are kept in.
+ */
+const BUDGETS = [5_000, 10_000, 25_000, 50_000] as const
+
+export const INVENTORY_QUICK_FILTERS: readonly QuickFilter[] = [
+  { id: 'womens', label: "Women's", clause: { field: 'wears', operator: 'is', values: ['WOMENS'] } },
+  { id: 'mens', label: "Men's", clause: { field: 'wears', operator: 'is', values: ['MENS'] } },
+  ...BUDGETS.map((amount) => ({
+    id: `under-${amount}`,
+    label: `Up to £${(amount / 1000)}k`,
+    // `lt` on Retail, in pounds — the grammar converts to pence. Stock with
+    // no asking price has no budget and drops out, which is right: you
+    // cannot offer somebody a watch you have not priced.
+    clause: { field: 'estSaleGbp', operator: 'lt' as const, values: [String(amount)] },
+  })),
+]

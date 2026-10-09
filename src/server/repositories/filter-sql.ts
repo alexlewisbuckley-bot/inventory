@@ -22,7 +22,9 @@ import type { FieldSpec, FilterClause, FilterOperator } from '@/lib/filters'
 
 export type ColumnMap = Record<string, ColumnBinding>
 
-export interface ColumnBinding {
+export type ColumnBinding = ValueBinding | DerivedBinding
+
+export interface ValueBinding {
   column: AnyPgColumn | SQL
   /**
    * How the value in the URL relates to the value in the column.
@@ -35,6 +37,29 @@ export interface ColumnBinding {
    */
   kind: 'text' | 'enum' | 'number' | 'money' | 'date'
 }
+
+/**
+ * A field that is a question about a row rather than a column of it.
+ *
+ * Two of them exist and neither can be a column. "Men's or women's" is read
+ * off the case size and the two answers deliberately OVERLAP — a 36mm watch
+ * is both, and is meant to appear in either list — so no single expression
+ * can return one bucket per row. "Missing something critical" is true when
+ * any one of three unrelated columns is blank, and the grammar ANDs its
+ * clauses, so an OR across fields cannot be written as three of them.
+ *
+ * Each option supplies its own condition instead. `is` ORs the conditions of
+ * the values asked for, which is what a reader means by picking two, and
+ * nothing else is offered: "contains" has no meaning for a question, and the
+ * field specs restrict the operators to match.
+ */
+export interface DerivedBinding {
+  kind: 'derived'
+  /** What it means for a row to be this value. Unknown values match nothing. */
+  match: (value: string) => SQL | undefined
+}
+
+const isDerived = (binding: ColumnBinding): binding is DerivedBinding => binding.kind === 'derived'
 
 /**
  * One clause as a SQL condition, or undefined when it cannot be expressed.
@@ -51,6 +76,8 @@ export function clauseToSql(
   const binding = columns[clause.field]
   if (!binding) return undefined
   if (!fields.some((field) => field.key === clause.field)) return undefined
+
+  if (isDerived(binding)) return derivedToSql(clause, binding)
 
   const column = binding.column as AnyPgColumn
   const values = clause.values
@@ -103,6 +130,25 @@ export function clauseToSql(
     default:
       return undefined
   }
+}
+
+/**
+ * A clause on a derived field.
+ *
+ * `isNot` is wrapped in coalesce rather than a bare NOT, for the same reason
+ * the column version spells out its NULL case: a condition that is unknown
+ * for a row comes back NULL, NOT NULL is still NULL, and the row silently
+ * disappears. A watch with no case size recorded is not known to be a man's
+ * watch, so "is not men's" should keep it rather than hide it.
+ */
+function derivedToSql(clause: FilterClause, binding: DerivedBinding): SQL | undefined {
+  if (clause.operator !== 'is' && clause.operator !== 'isNot') return undefined
+
+  const matches = clause.values.map(binding.match).filter(Boolean) as SQL[]
+  const any = or(...matches)
+  if (!any) return undefined
+
+  return clause.operator === 'is' ? any : sql`coalesce(NOT (${any}), true)`
 }
 
 /** Every clause, ANDed. Clauses that cannot be expressed are simply absent. */

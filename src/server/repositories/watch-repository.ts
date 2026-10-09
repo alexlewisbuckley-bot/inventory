@@ -7,7 +7,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
-import { HELD_STATUSES } from '@/lib/enums'
+import { HELD_STATUSES, MENS_MIN_MM, WOMENS_MAX_MM } from '@/lib/enums'
 import type { WatchQuery } from '@/lib/validation'
 import type {
   EntityType, IdCheckStatus, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
@@ -258,6 +258,45 @@ const WATCH_COLUMNS: ColumnMap = {
   tradePriceGbp: { column: watches.tradePriceGbp, kind: 'money' },
   purchaseDate: { column: watches.purchaseDate, kind: 'date' },
   year: { column: watches.year, kind: 'number' },
+
+  /**
+   * Who the watch is for, measured rather than recorded.
+   *
+   * Overlapping on purpose, and the overlap is why this cannot be a CASE
+   * expression returning one bucket per row: 35–37mm is worn by anyone and
+   * has to answer yes to both questions. The thresholds are the storefront's,
+   * so the shop and the book sort the same watch the same way.
+   *
+   * A piece with no case size matches neither. We do not know, and guessing
+   * puts a man's watch in front of somebody shopping for their wife.
+   */
+  wears: {
+    kind: 'derived',
+    match: (value) => value === 'WOMENS'
+      ? sql`${watches.caseSizeMm} is not null and ${watches.caseSizeMm} <= ${WOMENS_MAX_MM}`
+      : value === 'MENS'
+        ? sql`${watches.caseSizeMm} is not null and ${watches.caseSizeMm} >= ${MENS_MIN_MM}`
+        : undefined,
+  },
+
+  /**
+   * What the record is still missing, one condition per fact.
+   *
+   * Three unrelated columns, so this cannot be three clauses: the grammar
+   * ANDs them, and a watch missing its owner OR its serial OR its VAT scheme
+   * is what the queue means. Picking several here ORs them, which is also
+   * what picking several of anything else means.
+   */
+  missing: {
+    kind: 'derived',
+    match: (value) => value === 'OWNER'
+      ? sql`${watches.ownerId} is null`
+      : value === 'SERIAL'
+        ? sql`(${watches.serial} is null or btrim(${watches.serial}) = '')`
+        : value === 'VAT'
+          ? sql`${watches.vatScheme} = 'UNKNOWN'`
+          : undefined,
+  },
 }
 
 function buildOrder(query: WatchQuery): SQL {

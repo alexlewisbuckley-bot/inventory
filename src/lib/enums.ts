@@ -32,6 +32,59 @@ export type WatchStatus = (typeof WATCH_STATUSES)[number]
  */
 export const HELD_STATUSES = ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] as const
 
+/**
+ * Who a watch is for, read off the case.
+ *
+ * The store holds no gender field and asking for one to be ticked on every
+ * piece is busy work for a question the tape measure already answers. The
+ * thresholds are the storefront's own — osw-data.js has sorted the shop this
+ * way since it was built — so the two systems give the same answer about the
+ * same watch, which is the whole point of there being one book.
+ *
+ * The bands OVERLAP on purpose. A 36mm watch is worn by anyone and belongs in
+ * both lists; forcing it into one would mean a customer asking for a lady's
+ * watch never being shown the midsize Datejust that is exactly what they
+ * want. A piece with no case size recorded appears in neither rather than
+ * being guessed into one.
+ */
+export const WEARS = ['WOMENS', 'MENS'] as const
+export type Wears = (typeof WEARS)[number]
+
+export const WEARS_LABELS: Record<Wears, string> = {
+  WOMENS: "Women's",
+  MENS: "Men's",
+}
+
+/** Up to and including this, a watch is a woman's. */
+export const WOMENS_MAX_MM = 37
+/** From this up, a watch is a man's. The gap between the two is the overlap. */
+export const MENS_MIN_MM = 35
+
+/**
+ * The facts a record cannot do its job without.
+ *
+ * Not the same list as the facts that sell a watch. A missing dial colour is
+ * a thinner listing; these three each stop something:
+ *
+ *   OWNER   whose it is. The accounts are built on this, and the column is
+ *           nullable because stock predating the owner register genuinely
+ *           has nobody recorded against it — an honest blank that nothing
+ *           ever came back for.
+ *   SERIAL  which one it is. No serial means no register check, no
+ *           insurance entry and nothing to prove the piece is the piece.
+ *   VAT     how it can be sold. Margin-scheme stock cannot be resold as
+ *           standard rated, the scheme travels with the watch, and UNKNOWN
+ *           is a question asked at the worst possible moment — invoicing.
+ */
+export const MISSING_FACTS = ['OWNER', 'SERIAL', 'VAT'] as const
+export type MissingFact = (typeof MISSING_FACTS)[number]
+
+export const MISSING_FACT_LABELS: Record<MissingFact, string> = {
+  OWNER: 'No owner',
+  SERIAL: 'No serial',
+  VAT: 'No VAT scheme',
+}
+
 export const LOCATION_TYPES = ['STORE', 'VAULT', 'TRANSIT', 'CONSIGNMENT'] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 

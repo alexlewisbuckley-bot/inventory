@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import {
-  AlertTriangle, ArrowRight, Banknote, Camera, Clock, Coins, Handshake,
+  AlertTriangle, ArrowRight, Banknote, Camera, Clock, Coins, FileQuestion, Handshake,
   ImageOff, Package, PoundSterling, Receipt, ShoppingBag, TrendingUp, Truck, Upload,
 } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
@@ -15,6 +15,7 @@ import {
 } from '@/server/repositories/dashboard-repository'
 import { auditTrail } from '@/server/services/audit'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { INVENTORY_VIEWS } from '@/components/inventory/views'
 import { SellingInsightsPanel } from '@/components/insights/SellingInsights'
 import { lostReasons, sellingInsights } from '@/server/repositories/insights-repository'
 import { Card, CardHeader, EmptyState, LinkButton, Chip } from '@/components/ui'
@@ -99,6 +100,10 @@ export default async function InsightsPage() {
     ? Math.round((topBrand.valueGbp / summary.totalCostGbp) * 100)
     : null
 
+  // The queue and the list it opens are the same query, taken from the one
+  // place it is written down rather than restated here.
+  const incompleteView = INVENTORY_VIEWS.find((view) => view.id === 'incomplete')
+
   const attentionItems: AttentionItem[] = [
     {
       id: 'unpriced',
@@ -119,6 +124,31 @@ export default async function InsightsPage() {
       cta: 'Review',
       severity: 'critical',
       icon: <Handshake className="h-4 w-4" />,
+    },
+    {
+      /**
+       * Whose it is, which one it is, and how it can be sold.
+       *
+       * Critical rather than tidy-up: an owner nobody recorded is a hole in
+       * the accounts, a watch with no serial cannot be register-checked or
+       * insured and cannot be proved to be itself, and an unknown VAT scheme
+       * is a question that surfaces at the worst possible moment — when the
+       * invoice is being raised, with the buyer in front of you. None of the
+       * three is visible anywhere until somebody opens the record.
+       *
+       * Owner is named in the line because it is almost always the one, and
+       * because it is the one somebody can answer from memory in a second.
+       */
+      id: 'incomplete',
+      count: attention.incomplete,
+      title: attention.incomplete === 1 ? 'watch is missing key details' : 'watches are missing key details',
+      description: attention.noOwner > 0
+        ? `${attention.noOwner} with no owner recorded. Owner, serial and VAT scheme decide whose it is, which one it is, and how it can be sold.`
+        : 'Serial and VAT scheme decide which one it is and how it can be sold.',
+      href: `/inventory?${incompleteView?.query ?? ''}`,
+      cta: 'Fill them in',
+      severity: 'critical',
+      icon: <FileQuestion className="h-4 w-4" />,
     },
     {
       id: 'ageing',
