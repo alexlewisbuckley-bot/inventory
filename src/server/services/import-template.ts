@@ -20,7 +20,7 @@ export async function buildImportTemplate(
   currency: CurrencyCode,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'Bluecroft Stock'
+  workbook.creator = 'One Street Watches'
   workbook.created = new Date(0)
 
   const sheet = workbook.addWorksheet('Stock', {

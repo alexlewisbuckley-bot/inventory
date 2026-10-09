@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
   return new Response(new Uint8Array(workbook), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="bluecroft-sales-${stamp}.xlsx"`,
+      'Content-Disposition': `attachment; filename="osw-sales-${stamp}.xlsx"`,
       'Content-Length': String(workbook.byteLength),
       'Cache-Control': 'no-store',
     },

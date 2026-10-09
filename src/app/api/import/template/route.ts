@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   return new Response(new Uint8Array(workbook), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': 'attachment; filename="bluecroft-stock-template.xlsx"',
+      'Content-Disposition': 'attachment; filename="osw-stock-template.xlsx"',
       'Content-Length': String(workbook.byteLength),
     },
   })

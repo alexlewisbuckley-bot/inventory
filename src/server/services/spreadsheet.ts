@@ -29,7 +29,7 @@ export async function buildWorkbook(
   currency: CurrencyCode,
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'Bluecroft Stock'
+  workbook.creator = 'One Street Watches'
   workbook.created = new Date()
 
   const sheet = workbook.addWorksheet(sheetName, { views: [{ state: 'frozen', ySplit: 1 }] })
