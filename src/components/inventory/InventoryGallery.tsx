@@ -90,28 +90,45 @@ export function InventoryGallery({
                 <span className="truncate text-small font-bold text-content-primary" title={`${watch.brandName} ${watch.model}`}>
                   {watch.brandName}
                 </span>
+                {/* The year rides on the reference line rather than taking
+                    one of its own: it is read together with the reference —
+                    a 116520 from 2016 is a different watch to price than one
+                    from 1999 — and a card that grows a line per fact stops
+                    fitting six to a row. */}
                 <span className="truncate text-caption text-content-secondary" title={watch.model}>
                   {watch.model}
+                  {watch.year !== null && ` · ${watch.year}`}
                   {watch.productType !== 'WATCH' && ` · ${PRODUCT_TYPE_LABELS[watch.productType]}`}
                 </span>
 
-                <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                   <StatusChip status={watch.status as WatchStatus} />
-                  {/* Sold rows show what they made, live ones what they ask.
-                      Roles that may not see a figure get no placeholder for
-                      it — the gap would only advertise what they cannot see. */}
-                  {sold
-                    ? canSeeRevenue && watch.soldAmountGbp !== null && (
-                      <span className="text-caption font-bold text-content-primary">{money(watch.soldAmountGbp)}</span>
-                    )
-                    : canSeeRevenue && (
-                      watch.estSaleGbp === null
-                        ? <UnpricedChip />
-                        : <span className="text-caption font-bold text-content-primary">{money(watch.estSaleGbp)}</span>
+                  {/* Cost above, and quieter, so the two read down the card as
+                      what it cost and then what it is worth — the order they
+                      are thought about in, and the one that makes the gap
+                      between them legible without doing the sum.
+
+                      Each figure is behind its own permission, so a card can
+                      show one, both or neither. Nothing stands in for a
+                      figure somebody may not see: a placeholder would only
+                      advertise what is being withheld. */}
+                  <div className="flex flex-col items-end gap-0.5">
+                    {canSeeCost && (
+                      <span className="text-micro text-content-muted">
+                        Cost {money(watch.purchasePriceGbp)}
+                      </span>
                     )}
-                  {!canSeeRevenue && canSeeCost && (
-                    <span className="text-caption text-content-secondary">{money(watch.purchasePriceGbp)}</span>
-                  )}
+                    {/* Sold rows show what they made, live ones what they ask. */}
+                    {sold
+                      ? canSeeRevenue && watch.soldAmountGbp !== null && (
+                        <span className="text-caption font-bold text-content-primary">{money(watch.soldAmountGbp)}</span>
+                      )
+                      : canSeeRevenue && (
+                        watch.estSaleGbp === null
+                          ? <UnpricedChip />
+                          : <span className="text-caption font-bold text-content-primary">{money(watch.estSaleGbp)}</span>
+                      )}
+                  </div>
                 </div>
               </div>
             </Link>
