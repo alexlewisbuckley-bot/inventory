@@ -8,7 +8,7 @@
  * guess about what the second consumer will want.
  */
 export { FilterBar } from './FilterBar'
-export type { QuickFilter, ReferenceOptions } from './FilterBar'
+export type { ReferenceOptions } from './FilterBar'
 export { FilterChip } from './FilterChip'
 export { SelectAllBanner } from './SelectAllBanner'
 export { ViewBar } from './ViewBar'

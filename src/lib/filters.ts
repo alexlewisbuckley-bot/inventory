@@ -1,4 +1,5 @@
 import {
+  BASE_CURRENCY, CURRENCY_SYMBOLS,
   CONDITIONS, CONDITION_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS,
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
@@ -62,6 +63,16 @@ export interface FieldSpec {
   optionSource?: string
   /** Overrides the default operators for the type. */
   operators?: readonly FilterOperator[]
+  /**
+   * Which band of the `+ Filter` menu this belongs to.
+   *
+   * Eighteen fields in one unbroken column is a list to be read rather than a
+   * menu to be used: nothing tells the eye where "how much did it cost" sits
+   * relative to "whose is it", so every use is a scan from the top. The bands
+   * are drawn as rules between groups, not as headings — a heading in a menu
+   * this short costs more height than it saves.
+   */
+  group?: string
 }
 
 export interface FilterClause {
@@ -120,17 +131,27 @@ const enumOptions = <T extends string>(values: readonly T[], labels: Record<T, s
   values.map((value) => ({ value, label: labels[value] }))
 
 export const WATCH_FIELDS: readonly FieldSpec[] = [
-  { key: 'status', label: 'Status', type: 'enum', options: enumOptions(WATCH_STATUSES, WATCH_STATUS_LABELS) },
-  { key: 'condition', label: 'Condition', type: 'enum', options: enumOptions(CONDITIONS, CONDITION_LABELS) },
-  { key: 'productType', label: 'Type', type: 'enum', options: enumOptions(PRODUCT_TYPES, PRODUCT_TYPE_LABELS) },
-  { key: 'brandId', label: 'Brand', type: 'reference', optionSource: 'brands' },
-  { key: 'locationId', label: 'Location', type: 'reference', optionSource: 'locations' },
-  { key: 'ownerId', label: 'Owner', type: 'reference', optionSource: 'owners' },
-  { key: 'supplierId', label: 'Supplier', type: 'reference', optionSource: 'suppliers' },
-  { key: 'model', label: 'Model', type: 'text' },
-  { key: 'serial', label: 'Serial', type: 'text' },
-  { key: 'purchasePriceGbp', label: 'Cost', type: 'money' },
-  { key: 'estSaleGbp', label: 'Retail', type: 'money' },
+  // Grouped in the order somebody thinks: where the watch stands, what it is,
+  // what it is worth, what is still owed on the record. The `+ Filter` menu
+  // rules between the groups and reads them back in the same order.
+  //
+  // Two fields were taken out rather than tidied: `model` and `serial`, text
+  // filters over two of the five columns the search box already matches — the
+  // others being the nickname, the brand and the stock number — so reaching
+  // them cost three taps to do less than typing. One line each if either is
+  // ever wanted back.
+  //
+  // `productType` nearly went with them, on the grounds that the handbags are
+  // not live on the website. They are a seventh of the stock, which is the
+  // difference between a filter with one answer and the only cut that
+  // separates two businesses sharing a list. Counted before cutting.
+  { key: 'status', label: 'Status', type: 'enum', options: enumOptions(WATCH_STATUSES, WATCH_STATUS_LABELS), group: 'where' },
+  { key: 'locationId', label: 'Location', type: 'reference', optionSource: 'locations', group: 'where' },
+  { key: 'ownerId', label: 'Owner', type: 'reference', optionSource: 'owners', group: 'where' },
+  { key: 'supplierId', label: 'Supplier', type: 'reference', optionSource: 'suppliers', group: 'where' },
+  { key: 'productType', label: 'Type', type: 'enum', options: enumOptions(PRODUCT_TYPES, PRODUCT_TYPE_LABELS), group: 'what' },
+  { key: 'brandId', label: 'Brand', type: 'reference', optionSource: 'brands', group: 'what' },
+  { key: 'condition', label: 'Condition', type: 'enum', options: enumOptions(CONDITIONS, CONDITION_LABELS), group: 'what' },
   // Two questions about a watch rather than two columns of it — see
   // DerivedBinding in filter-sql. Both are restricted to is / is not: the
   // operators the type would otherwise offer, "is empty" above all, have no
@@ -141,6 +162,7 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
     type: 'enum',
     options: enumOptions(WEARS, WEARS_LABELS),
     operators: ['is', 'isNot'],
+    group: 'what',
   },
   // The three a customer actually asks in: what model, how much, what size.
   // `family` is a question about the nickname rather than a column of its
@@ -152,25 +174,29 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   // — it is whatever is in the case this morning. Declared as an enum it
   // passed every check and then had all its values stripped on the way to
   // the query, so the filter silently returned the whole book.
-  { key: 'family', label: 'Model', type: 'reference', optionSource: 'families' },
+  { key: 'family', label: 'Model', type: 'reference', optionSource: 'families', group: 'what' },
+  { key: 'year', label: 'Year', type: 'number', group: 'what' },
+  // Across the case, excluding the crown. A number, not bands: somebody says
+  // "about 36" and means a range around it, which four fixed brackets cannot
+  // express however carefully the brackets are chosen.
+  { key: 'caseSizeMm', label: 'Case size', type: 'number', group: 'what' },
+  { key: 'purchasePriceGbp', label: 'Cost', type: 'money', group: 'worth' },
+  { key: 'estSaleGbp', label: 'Retail', type: 'money', group: 'worth' },
+  { key: 'purchaseDate', label: 'Bought', type: 'date', group: 'worth' },
   {
     key: 'missing',
     label: 'Missing',
     type: 'enum',
     options: enumOptions(MISSING_FACTS, MISSING_FACT_LABELS),
     operators: ['is', 'isNot'],
+    group: 'record',
   },
-  { key: 'purchaseDate', label: 'Bought', type: 'date' },
-  { key: 'year', label: 'Year', type: 'number' },
-  // Across the case, excluding the crown. A number, not bands: somebody says
-  // "about 36" and means a range around it, which four fixed brackets cannot
-  // express however carefully the brackets are chosen.
-  { key: 'caseSizeMm', label: 'Case size', type: 'number' },
   {
     key: 'registerCheckStatus',
     label: 'Register check',
     type: 'enum',
     options: enumOptions(REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS),
+    group: 'record',
   },
 ]
 
@@ -420,8 +446,18 @@ export function describeClause(
 
 function formatValue(field: FieldSpec, value: string): string {
   if (field.type === 'money') {
+    // The symbol of the currency the figure is STORED in, which is the only
+    // one this function can know. It had a pound sign hard-coded, and the
+    // stored currency has been dollars since 0018 — so a chip read "Retail is
+    // under £7,000" over a number that meant seven thousand dollars, which is
+    // the one mistake a price label must never make.
+    //
+    // Anything rendered where a person has chosen a display currency passes a
+    // `resolve` that converts and formats; this is the fallback beneath that.
     const major = Number(value)
-    return Number.isFinite(major) ? `£${major.toLocaleString('en-GB')}` : value
+    return Number.isFinite(major)
+      ? `${CURRENCY_SYMBOLS[BASE_CURRENCY]}${major.toLocaleString('en-GB')}`
+      : value
   }
   if (field.type === 'date') {
     const parsed = new Date(value)

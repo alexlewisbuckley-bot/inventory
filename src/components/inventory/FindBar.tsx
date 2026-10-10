@@ -4,6 +4,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { applyFilters, parseFilters, WATCH_FIELDS, type FilterClause } from '@/lib/filters'
+import { useCurrency } from '@/components/ui/CurrencyProvider'
+import { fromBase } from '@/lib/currency'
+import { CURRENCY_SYMBOLS } from '@/lib/enums'
 import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositories/watch-repository'
 
 /**
@@ -98,9 +101,30 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
     || bound('estSaleGbp', 'gt') !== null || bound('estSaleGbp', 'lt') !== null
     || bound('caseSizeMm', 'gt') !== null || bound('caseSizeMm', 'lt') !== null
 
-  const money = (amount: number) => (amount >= 1000
-    ? `£${Math.round(amount / 1000)}k`
-    : `£${amount.toLocaleString('en-GB')}`)
+  /**
+   * The budget, in the currency this person is reading the business in.
+   *
+   * The slider itself stays in stored units from end to end — the facet
+   * arrives in them and the clause is written in them — because the column
+   * being filtered is in stored units and a conversion anywhere along that
+   * path would filter on a different number from the one it had counted. Only
+   * the labels move, which is the whole of what the switcher means.
+   *
+   * It said `£` before, over figures that have been dollars since 0018. Not a
+   * cosmetic slip: it put the wrong symbol on a number and so misstated every
+   * budget on the bar by the exchange rate, in the direction that makes a
+   * watch look cheaper than it is.
+   */
+  const { currency, rates } = useCurrency()
+  const money = useCallback((stored: number) => {
+    const shown = fromBase(Math.round(stored * 100), currency, rates) / 100
+    const symbol = CURRENCY_SYMBOLS[currency]
+    // Thousands as "7k" — four digits of precision on a slider handle is
+    // precision nobody asked for and it makes the two labels collide.
+    return shown >= 1000
+      ? `${symbol}${Math.round(shown / 1000).toLocaleString('en-GB')}k`
+      : `${symbol}${Math.round(shown).toLocaleString('en-GB')}`
+  }, [currency, rates])
 
   return (
     <div className="mb-5 flex flex-wrap items-center gap-2">

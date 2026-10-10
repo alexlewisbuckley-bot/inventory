@@ -16,26 +16,6 @@ import {
 export type ReferenceOptions = Record<string, ReadonlyArray<{ value: string; label: string }>>
 
 /**
- * One filter worth reaching in a single tap.
- *
- * `+ Filter` can express anything, and that is exactly its problem for the
- * two or three questions a list is asked all day. "Have you anything for my
- * wife around ten thousand" is four interactions through the menu — pick the
- * field, pick the value, pick the field again, type the number — and it is
- * asked across the counter, with somebody waiting.
- *
- * A quick filter is not a different kind of filter. It writes the same clause
- * the menu would, so it shows up as the same chip, survives in the same URL,
- * saves into the same view, and is removed either by tapping it again or by
- * taking the chip off. Nothing here knows what the clause means.
- */
-export interface QuickFilter {
-  id: string
-  label: string
-  clause: FilterClause
-}
-
-/**
  * Search, plus as many filters as the object supports, on one row.
  *
  * V1 gave each list a hand-built toolbar: three fixed dropdowns and a "more
@@ -49,21 +29,21 @@ export interface QuickFilter {
  * carries the result. Adding a filterable column is one line in
  * `src/lib/filters.ts`.
  */
-export function FilterBar({ fields, options, placeholder, actions, quick }: {
+export function FilterBar({ fields, options, placeholder, actions }: {
   fields: readonly FieldSpec[]
   /** Options for reference fields, keyed by the field's `optionSource`. */
   options?: ReferenceOptions
   placeholder: string
   /** View switcher, column menu — whatever the list puts on the right. */
   actions?: React.ReactNode
-  /** The handful of filters this list is asked for most, as one-tap toggles. */
-  quick?: readonly QuickFilter[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
   const addTrigger = useRef<HTMLButtonElement>(null)
   const [adding, setAdding] = useState(false)
+  /** A filter being typed, which is not a filter yet. See `draft` on the chip. */
+  const [draft, setDraft] = useState<FilterClause | null>(null)
 
   const clauses = useMemo(() => parseFilters(params, fields), [params, fields])
 
@@ -114,18 +94,27 @@ export function FilterBar({ fields, options, placeholder, actions, quick }: {
     const operator = operatorsFor(field).find((candidate) => !taken.has(candidate))
     if (!operator) return
 
-    const choices = optionsFor(field)
-    const seed = choices?.[0]?.value
-    // Enum and reference filters start on their first value rather than empty,
-    // because an empty chip filters nothing and reads as a broken control. Text
-    // and number chips open their own editor instead.
     if (operator === 'isEmpty' || operator === 'isNotEmpty') {
       replaceClauses([...clauses, { field: field.key, operator, values: [] }])
       return
     }
+
+    // Enum and reference filters start on their first value rather than empty,
+    // because an empty chip filters nothing and reads as a broken control.
+    const seed = optionsFor(field)?.[0]?.value
     if (seed) {
       replaceClauses([...clauses, { field: field.key, operator, values: [seed] }])
+      return
     }
+
+    // Everything else — a price, a year, a date, a word to match — has no
+    // first value worth guessing, and the old code fell off the end of this
+    // function when it could not find one. So Cost, Retail, Year, Case size
+    // and Bought sat in the menu and did nothing at all when chosen: the menu
+    // closed, no chip appeared, and the only reading available was that the
+    // whole filter bar was broken. The chip is now created locally with its
+    // editor open, and reaches the URL when it has a value.
+    setDraft({ field: field.key, operator, values: [] })
   }
 
   const clear = () => {
@@ -138,35 +127,13 @@ export function FilterBar({ fields, options, placeholder, actions, quick }: {
       if (value) next.set(key, value)
     }
     setTerm('')
+    setDraft(null)
     write(next)
   }
 
-  const sameClause = (a: FilterClause, b: FilterClause) =>
-    a.field === b.field && a.operator === b.operator
-      && a.values.length === b.values.length
-      && a.values.every((value, i) => value === b.values[i])
+  const draftField = draft ? fields.find((spec) => spec.key === draft.field) : undefined
 
-  /**
-   * Toggle a quick filter on or off.
-   *
-   * Off is an exact match — tapping "Women's" again removes it. On replaces
-   * any other clause on the same field and operator, which is what makes a
-   * row of budgets behave as a choice of one: "up to £10,000" and "up to
-   * £25,000" are both `Retail is less than`, and keeping both would AND them
-   * into the smaller one while showing two chips that look like a mistake.
-   */
-  const toggleQuick = (quickFilter: QuickFilter) => {
-    const on = clauses.some((clause) => sameClause(clause, quickFilter.clause))
-    replaceClauses(on
-      ? clauses.filter((clause) => !sameClause(clause, quickFilter.clause))
-      : [
-        ...clauses.filter((clause) =>
-          clause.field !== quickFilter.clause.field || clause.operator !== quickFilter.clause.operator),
-        quickFilter.clause,
-      ])
-  }
-
-  const filtering = clauses.length > 0 || term.length > 0
+  const filtering = clauses.length > 0 || term.length > 0 || draft !== null
 
   return (
     <div className="mb-5 flex flex-col gap-3">
@@ -198,34 +165,6 @@ export function FilterBar({ fields, options, placeholder, actions, quick }: {
         {actions}
       </div>
 
-      {quick && quick.length > 0 && (
-        /* Above the chips, not among them. These are the questions you arrive
-           with; the chips are the answer to whatever you have asked so far,
-           and a control that both asks and reports in the same row reads as
-           neither. */
-        <div className="flex flex-wrap items-center gap-1.5">
-          {quick.map((entry) => {
-            const on = clauses.some((clause) => sameClause(clause, entry.clause))
-            return (
-              <button
-                key={entry.id}
-                type="button"
-                onClick={() => toggleQuick(entry)}
-                aria-pressed={on}
-                className={cn(
-                  'inline-flex h-8 items-center rounded-pill border px-3 text-caption font-medium transition-colors',
-                  on
-                    ? 'border-content-primary bg-content-primary text-surface-raised'
-                    : 'border-line-subtle bg-surface-raised text-content-secondary hover:border-line-strong hover:text-content-primary',
-                )}
-              >
-                {entry.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
       <div className="flex flex-wrap items-center gap-2">
         {clauses.map((clause, index) => {
           const field = fields.find((spec) => spec.key === clause.field)
@@ -241,6 +180,21 @@ export function FilterBar({ fields, options, placeholder, actions, quick }: {
             />
           )
         })}
+
+        {draftField && draft && (
+          <FilterChip
+            key="draft"
+            clause={draft}
+            field={draftField}
+            options={optionsFor(draftField)}
+            draft
+            onChange={(next) => {
+              setDraft(null)
+              replaceClauses([...clauses, next])
+            }}
+            onRemove={() => setDraft(null)}
+          />
+        )}
 
         {addable.length > 0 && (
           <>
@@ -260,9 +214,16 @@ export function FilterBar({ fields, options, placeholder, actions, quick }: {
               onClose={() => setAdding(false)}
               anchorRef={addTrigger}
               label="Add a filter"
-              items={addable.map((field) => ({
+              /* A rule between the bands a field belongs to. Fifteen names in
+                 one unbroken column is a list to be read; four short groups in
+                 the order somebody thinks — where it stands, what it is, what
+                 it is worth, what the record still owes — is a menu to be
+                 used. No headings: in a menu this short they cost more height
+                 than they save. */
+              items={addable.map((field, index) => ({
                 id: field.key,
                 label: field.label,
+                separated: index > 0 && field.group !== addable[index - 1]?.group,
                 onSelect: () => add(field),
               }))}
             />

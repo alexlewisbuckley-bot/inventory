@@ -1,13 +1,19 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, X } from 'lucide-react'
 import { AnchoredMenu } from '../AnchoredMenu'
+import { useCurrency } from '../CurrencyProvider'
 import { cn } from '@/lib/cn'
+import { fromBase, toBase } from '@/lib/currency'
+import { CURRENCY_SYMBOLS } from '@/lib/enums'
 import {
   describeClause, operatorsFor, OPERATOR_LABELS, validateClause,
   type FieldSpec, type FilterClause, type FilterOperator,
 } from '@/lib/filters'
+
+/** Operators that take no value at all; everything else needs one. */
+const VALUELESS = new Set<FilterOperator>(['isEmpty', 'isNotEmpty'])
 
 /**
  * One filter, as a chip you can edit in place.
@@ -20,12 +26,29 @@ import {
  * The operator is a second, smaller menu rather than a third dropdown in a
  * row: most filters never change operator, and putting "is / is not" in front
  * of the values makes the common case cost an extra decision.
+ *
+ * Until now only fields with a list of choices could be edited — so Cost,
+ * Retail, Year, Case size and Bought were offered by the menu and then did
+ * nothing whatsoever when chosen, because there was nowhere to put a number.
+ * Seven of eighteen entries were dead buttons. A field with no choices now
+ * opens a single input instead of a list, which is all any of them ever
+ * needed.
  */
-export function FilterChip({ clause, field, options, onChange, onRemove }: {
+export function FilterChip({ clause, field, options, draft = false, onChange, onRemove }: {
   clause: FilterClause
   field: FieldSpec
   /** Reference options resolved by the page — brands, locations, people. */
   options?: ReadonlyArray<{ value: string; label: string }>
+  /**
+   * A filter being composed, not one that is applied.
+   *
+   * A number filter cannot be seeded the way an enum can: there is no sensible
+   * first value, and writing "Cost is over 0" into the URL so it can be
+   * corrected puts a filter nobody asked for in front of the list and in
+   * anything saved from it. So the chip exists locally, with its editor
+   * already open, until there is a number in it.
+   */
+  draft?: boolean
   onChange: (next: FilterClause) => void
   onRemove: () => void
 }) {
@@ -33,11 +56,30 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
   const operatorTrigger = useRef<HTMLButtonElement>(null)
   const [valuesOpen, setValuesOpen] = useState(false)
   const [operatorsOpen, setOperatorsOpen] = useState(false)
+  const [typing, setTyping] = useState(draft)
 
   const choices = field.options ?? options ?? []
   const operators = operatorsFor(field)
+  const { currency, rates } = useCurrency()
+
+  /**
+   * A stored amount, read in the currency on screen.
+   *
+   * Clause values for money are major units of the stored currency, and the
+   * chip used to print them behind a hard-coded pound sign — over figures that
+   * have been dollars since 0018. So "Retail is under £7,000" described a
+   * filter on seven thousand dollars, which is a price label telling a lie.
+   */
+  const showMoney = (value: string): string => {
+    const stored = Number(value)
+    if (!Number.isFinite(stored)) return value
+    const shown = fromBase(Math.round(stored * 100), currency, rates) / 100
+    return `${CURRENCY_SYMBOLS[currency]}${shown.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`
+  }
+
   const resolve = (_key: string, value: string) =>
     choices.find((choice) => choice.value === value)?.label
+      ?? (field.type === 'money' ? showMoney(value) : undefined)
 
   const toggleValue = (value: string) => {
     const next = clause.values.includes(value)
@@ -60,10 +102,26 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
     else onRemove()
   }
 
-  const editable = choices.length > 0 && (clause.operator === 'is' || clause.operator === 'isNot')
+  const commit = (value: string) => {
+    setTyping(false)
+    if (!value.trim()) { onRemove(); return }
+    const validated = validateClause({ ...clause, values: [value] }, [field])
+    if (validated) onChange(validated)
+    else onRemove()
+  }
+
+  const listed = choices.length > 0 && (clause.operator === 'is' || clause.operator === 'isNot')
+  const typed = !listed && !VALUELESS.has(clause.operator)
+  const editable = listed || typed
+
+  const described = describeClause(clause, [field], resolve)
+    .replace(`${field.label} ${OPERATOR_LABELS[clause.operator]} `, '')
 
   return (
-    <span className="inline-flex items-center rounded-sm border border-line-subtle bg-surface-raised text-caption">
+    <span className={cn(
+      'relative inline-flex items-center rounded-sm border bg-surface-raised text-caption',
+      draft ? 'border-content-primary' : 'border-line-subtle',
+    )}>
       <button
         ref={operatorTrigger}
         type="button"
@@ -79,15 +137,18 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
       <button
         ref={valueTrigger}
         type="button"
-        onClick={() => editable && setValuesOpen((value) => !value)}
-        aria-haspopup={editable ? 'menu' : undefined}
-        aria-expanded={editable ? valuesOpen : undefined}
+        onClick={() => {
+          if (listed) setValuesOpen((value) => !value)
+          else if (typed) setTyping((value) => !value)
+        }}
+        aria-haspopup={editable ? (listed ? 'menu' : 'dialog') : undefined}
+        aria-expanded={listed ? valuesOpen : typed ? typing : undefined}
         className={cn(
           'py-1.5 pr-1 font-semibold text-content-primary',
           editable && 'hover:text-content-accent',
         )}
       >
-        {describeClause(clause, [field], resolve).replace(`${field.label} ${OPERATOR_LABELS[clause.operator]} `, '') || '—'}
+        {described || (typed ? 'any' : '—')}
         {editable && <ChevronDown className="ml-1 inline h-3 w-3" aria-hidden />}
       </button>
 
@@ -99,6 +160,17 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
       >
         <X className="h-3.5 w-3.5" aria-hidden />
       </button>
+
+      {typed && typing && (
+        <ValueEditor
+          field={field}
+          value={clause.values[0] ?? ''}
+          currency={currency}
+          rates={rates}
+          onCancel={() => { setTyping(false); if (draft) onRemove() }}
+          onCommit={commit}
+        />
+      )}
 
       <AnchoredMenu
         open={operatorsOpen}
@@ -130,5 +202,103 @@ export function FilterChip({ clause, field, options, onChange, onRemove }: {
         }))}
       />
     </span>
+  )
+}
+
+/**
+ * One input, under the chip it belongs to.
+ *
+ * Deliberately not a form in a dialog: the whole point of the chip is that a
+ * filter costs a tap and a number. Enter applies, Escape abandons, and a draft
+ * that is abandoned takes its chip with it rather than leaving an empty one on
+ * the row.
+ *
+ * Money is typed in whatever currency the person is reading, and converted on
+ * the way into the clause — otherwise switching to dollars would quietly
+ * change what every saved filter means.
+ */
+function ValueEditor({ field, value, currency, rates, onCommit, onCancel }: {
+  field: FieldSpec
+  value: string
+  currency: Parameters<typeof fromBase>[1]
+  rates: Parameters<typeof fromBase>[2]
+  onCommit: (value: string) => void
+  onCancel: () => void
+}) {
+  const money = field.type === 'money'
+  const asShown = (stored: string) => {
+    if (!money) return stored
+    const number = Number(stored)
+    return Number.isFinite(number) && stored !== ''
+      ? String(Math.round(fromBase(Math.round(number * 100), currency, rates) / 100))
+      : ''
+  }
+
+  const [text, setText] = useState(() => asShown(value))
+  const input = useRef<HTMLInputElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { input.current?.focus(); input.current?.select() }, [])
+
+  useEffect(() => {
+    const away = (event: MouseEvent) => {
+      if (panel.current?.contains(event.target as Node)) return
+      // The chip's own buttons are siblings of this panel, so a click on the
+      // value button must not be read as a dismissal and then reopened.
+      if (panel.current?.parentElement?.contains(event.target as Node)) return
+      onCancel()
+    }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [onCancel])
+
+  const submit = () => {
+    const raw = text.trim()
+    if (!raw) { onCommit(''); return }
+    if (!money) { onCommit(raw); return }
+    const typed = Number(raw.replace(/[^\d.-]/g, ''))
+    if (!Number.isFinite(typed)) { onCommit(''); return }
+    onCommit(String(Math.round(toBase(Math.round(typed * 100), currency, rates) / 100)))
+  }
+
+  const type = field.type === 'date' ? 'date' : money || field.type === 'number' ? 'number' : 'text'
+
+  return (
+    <div
+      ref={panel}
+      className="absolute left-0 top-[calc(100%+6px)] z-40 w-[220px] rounded-md border border-line-subtle bg-surface-raised p-2 shadow-overlay"
+    >
+      <label className="relative flex items-center">
+        <span className="sr-only">{field.label}</span>
+        {money && (
+          <span className="pointer-events-none absolute left-2.5 text-caption text-content-secondary">
+            {CURRENCY_SYMBOLS[currency]}
+          </span>
+        )}
+        <input
+          ref={input}
+          type={type}
+          value={text}
+          inputMode={money || field.type === 'number' ? 'decimal' : undefined}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') { event.preventDefault(); submit() }
+            if (event.key === 'Escape') { event.preventDefault(); onCancel() }
+          }}
+          placeholder={field.type === 'text' ? 'Type to match…' : undefined}
+          className={cn(
+            'h-9 w-full rounded-sm border border-line-subtle bg-surface-subtle pr-2 text-caption text-content-primary placeholder:text-content-muted',
+            money ? 'pl-6' : 'pl-2',
+          )}
+        />
+      </label>
+      <button
+        type="button"
+        onClick={submit}
+        className="mt-2 h-8 w-full rounded-sm bg-content-primary text-caption font-semibold text-surface-raised"
+      >
+        Apply
+      </button>
+    </div>
   )
 }

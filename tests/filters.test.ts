@@ -16,6 +16,15 @@ import { HELD_STATUSES, heldByQuery } from '@/components/inventory/views'
  */
 
 const round = (clause: FilterClause) => parseClause(encodeClause(clause), WATCH_FIELDS)
+/**
+ * The grammar's text operators, exercised where text filters still live.
+ *
+ * A watch no longer has any: `model` and `serial` were filters over the two
+ * columns the search box already matches, so they were three taps to do worse
+ * than typing, and they went. A contact's company and country remain, and the
+ * grammar has to keep handling `contains` for them.
+ */
+const roundContact = (clause: FilterClause) => parseClause(encodeClause(clause), CONTACT_FIELDS)
 
 describe('round trip', () => {
   it('survives encode and decode unchanged', () => {
@@ -23,11 +32,14 @@ describe('round trip', () => {
       { field: 'status', operator: 'is', values: ['IN_STOCK', 'RESERVED'] },
       { field: 'purchasePriceGbp', operator: 'gt', values: ['10000'] },
       { field: 'purchaseDate', operator: 'before', values: ['2026-03-01'] },
-      { field: 'model', operator: 'contains', values: ['Daytona'] },
-      { field: 'productType', operator: 'is', values: ['HANDBAG', 'JEWELLERY'] },
-      { field: 'serial', operator: 'isEmpty', values: [] },
+      { field: 'missing', operator: 'is', values: ['OWNER', 'VAT'] },
+      { field: 'caseSizeMm', operator: 'lt', values: ['38'] },
+      { field: 'estSaleGbp', operator: 'isEmpty', values: [] },
     ]
     for (const clause of cases) expect(round(clause)).toEqual(clause)
+
+    const text: FilterClause = { field: 'company', operator: 'contains', values: ['Watches of'] }
+    expect(roundContact(text)).toEqual(text)
   })
 
   it('survives a whole query string', () => {
@@ -54,8 +66,8 @@ describe('round trip', () => {
   it('keeps a colon inside a text value', () => {
     // "GMT-Master II: 1675" is a real thing somebody would search for, and
     // splitting on every colon would silently truncate it to "GMT-Master II".
-    const clause: FilterClause = { field: 'model', operator: 'contains', values: ['GMT-Master II: 1675'] }
-    expect(round(clause)).toEqual(clause)
+    const clause: FilterClause = { field: 'company', operator: 'contains', values: ['GMT-Master II: 1675'] }
+    expect(roundContact(clause)).toEqual(clause)
   })
 })
 
@@ -65,18 +77,22 @@ describe('hostile input', () => {
     ['an unknown operator', 'status:sortOf:IN_STOCK'],
     ['an operator the field does not support', 'status:contains:IN_STOCK'],
     ['an enum value outside the enum', 'status:is:MELTED'],
-    ['a product type the system does not sell', 'productType:is:CAR'],
+    ['a fact the record cannot be missing', 'missing:is:PASSPORT'],
     ['a number that is not a number', 'purchasePriceGbp:gt:lots'],
     ['a date that is not a date', 'purchaseDate:before:soon'],
     ['a date that looks right and is not', 'purchaseDate:before:2026-13-45'],
     ['a clause with no operator', 'status'],
     ['an empty string', ''],
     ['a leading colon', ':is:IN_STOCK'],
-    ['a value that is only whitespace', 'model:contains:   '],
+    ['a text filter on an object that has none', 'model:contains:Daytona'],
   ] as const
 
   it.each(rejected)('drops %s', (_name, raw) => {
     expect(parseClause(raw, WATCH_FIELDS)).toBeNull()
+  })
+
+  it('drops a value that is only whitespace', () => {
+    expect(parseClause('company:contains:   ', CONTACT_FIELDS)).toBeNull()
   })
 
   it('keeps the good clauses in a query that also contains rubbish', () => {
@@ -91,17 +107,17 @@ describe('hostile input', () => {
   })
 
   it('refuses to be used as a database', () => {
-    const many = Array.from({ length: 60 }, (_, i) => `f=model:contains:term${i}`).join('&')
-    expect(parseFilters(many, WATCH_FIELDS).length).toBeLessThanOrEqual(20)
+    const many = Array.from({ length: 60 }, (_, i) => `f=company:contains:term${i}`).join('&')
+    expect(parseFilters(many, CONTACT_FIELDS).length).toBeLessThanOrEqual(20)
 
     const values = Array.from({ length: 200 }, (_, i) => `V${i}`).join('|')
-    const clause = parseClause(`model:contains:${values}`, WATCH_FIELDS)
+    const clause = parseClause(`company:contains:${values}`, CONTACT_FIELDS)
     expect(clause?.values.length).toBeLessThanOrEqual(40)
   })
 
   it('truncates a value nobody could have typed', () => {
     const long = 'x'.repeat(500)
-    expect(parseClause(`model:contains:${long}`, WATCH_FIELDS)).toBeNull()
+    expect(parseClause(`company:contains:${long}`, CONTACT_FIELDS)).toBeNull()
   })
 
   it('takes only the first value for a comparison', () => {
@@ -144,16 +160,21 @@ describe('operators', () => {
     // as a hand-written special case forever.
     expect(operatorsFor(cost)).toEqual(['gt', 'lt', 'isEmpty', 'isNotEmpty'])
 
-    const serial = WATCH_FIELDS.find((field) => field.key === 'serial')!
-    expect(operatorsFor(serial)).toContain('isEmpty')
+    const bought = WATCH_FIELDS.find((field) => field.key === 'purchaseDate')!
+    expect(operatorsFor(bought)).toEqual(['after', 'before', 'isEmpty', 'isNotEmpty'])
+
+    // And a watch has no text filter left at all: the search box matches the
+    // model, the serial, the nickname, the brand and the stock number in one
+    // box, which is strictly more than two `contains` chips could do.
+    expect(WATCH_FIELDS.filter((field) => field.type === 'text')).toEqual([])
   })
 
   it('discards values on an operator that does not take them', () => {
     const clause = validateClause(
-      { field: 'serial', operator: 'isEmpty', values: ['ignored'] },
+      { field: 'estSaleGbp', operator: 'isEmpty', values: ['ignored'] },
       WATCH_FIELDS,
     )
-    expect(clause).toEqual({ field: 'serial', operator: 'isEmpty', values: [] })
+    expect(clause).toEqual({ field: 'estSaleGbp', operator: 'isEmpty', values: [] })
   })
 })
 
@@ -162,9 +183,14 @@ describe('description', () => {
     expect(describeClause({ field: 'status', operator: 'is', values: ['IN_STOCK'] }, WATCH_FIELDS))
       .toBe('Status is In stock')
     expect(describeClause({ field: 'purchasePriceGbp', operator: 'gt', values: ['10000'] }, WATCH_FIELDS))
-      .toBe('Cost is over £10,000')
-    expect(describeClause({ field: 'serial', operator: 'isEmpty', values: [] }, WATCH_FIELDS))
-      .toBe('Serial is empty')
+      // The symbol of the currency the figures are STORED in, which is all
+      // this function can know. It read `£` over amounts that have been
+      // dollars since 0018 — a price label stating the wrong currency, which
+      // understated every budget on the bar by the exchange rate. Anything
+      // drawn where somebody has chosen a display currency converts instead.
+      .toBe('Cost is over $10,000')
+    expect(describeClause({ field: 'estSaleGbp', operator: 'isEmpty', values: [] }, WATCH_FIELDS))
+      .toBe('Retail is empty')
   })
 
   it('never reads a multi-value clause as a conjunction', () => {
@@ -202,7 +228,7 @@ describe('description', () => {
       { field: 'status', operator: 'is', values: ['IN_STOCK'] },
       { field: 'purchasePriceGbp', operator: 'gt', values: ['10000'] },
     ], WATCH_FIELDS)
-    expect(said).toBe('Status is In stock, and Cost is over £10,000')
+    expect(said).toBe('Status is In stock, and Cost is over $10,000')
     expect(describeFilters([], WATCH_FIELDS)).toBe('')
   })
 })
