@@ -6,7 +6,7 @@ import { Download, Inbox, Plus } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { brands, locations, owners, suppliers } from '@/server/db/schema'
-import { countUnpriced, findWatches, summariseInventory } from '@/server/repositories/watch-repository'
+import { countUnpriced, findWatches, stockFacets, summariseInventory } from '@/server/repositories/watch-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import {
   applyFilters, legacyClauses, parseFilters, toSearchParams, WATCH_FIELDS,
@@ -15,7 +15,8 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { AVAILABLE_QUERY, INVENTORY_QUICK_FILTERS, INVENTORY_VIEWS } from '@/components/inventory/views'
+import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
+import { StockFacets } from '@/components/inventory/StockFacets'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -131,7 +132,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
   const [
     result, summary, locationOptions, ownerOptions, supplierOptions, brandOptions, rates, preferences,
-    unpricedCount, customers, dealsByWatch, savedViews,
+    unpricedCount, customers, dealsByWatch, savedViews, facets,
   ] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
@@ -150,6 +151,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     can(user.role, 'customer:read') ? customerOptions() : Promise.resolve([]),
     can(user.role, 'deal:read') ? openDealsByWatch() : Promise.resolve({}),
     listViews('watch', user.id),
+    // Alongside the list rather than after it: the counts are of the same
+    // query, so one round trip answers both and the bar cannot be a moment
+    // out of date with the rows underneath it.
+    stockFacets(query),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -267,15 +272,21 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <FilterBar
         fields={WATCH_FIELDS}
-        quick={INVENTORY_QUICK_FILTERS}
         placeholder="Search by stock number, model, reference or serial…"
         options={{
           locations: locationOptions.map((row) => ({ value: row.id, label: row.name })),
           owners: ownerOptions.map((row) => ({ value: row.id, label: row.name })),
           suppliers: supplierOptions.map((row) => ({ value: row.id, label: row.name })),
           brands: brandOptions.map((row) => ({ value: row.id, label: row.name })),
+          // From the facets, so the menu offers exactly the families that are
+          // in the case — and the same ones the bar above is showing.
+          families: (facets.find((group) => group.field === 'family')?.options ?? [])
+            .map((option) => ({ value: option.value, label: option.label })),
         }}
       />
+
+      {/* The four questions, counted from what is actually in the case. */}
+      <StockFacets groups={facets} />
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>

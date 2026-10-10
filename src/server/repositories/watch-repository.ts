@@ -7,7 +7,38 @@ import {
 import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
-import { HELD_STATUSES, MENS_MIN_MM, WOMENS_MAX_MM } from '@/lib/enums'
+import {
+  BUDGET_BANDS, HELD_STATUSES, MENS_MIN_MM, SIZE_BANDS, WEARS, WEARS_LABELS,
+  WOMENS_MAX_MM, type Wears,
+} from '@/lib/enums'
+import { budgetBandLabel } from '@/lib/filters'
+
+/**
+ * The family a watch belongs to, read off its nickname, as SQL.
+ *
+ * Two cuts, and the order matters.
+ *
+ * First everything from a quote or a dash onward, because a nickname is a
+ * family plus the name the trade gave one version of it: Submariner
+ * "Hulk", Submariner "Starbucks", GMT-Master II "Root Beer". Left whole,
+ * every nicknamed watch becomes its own family of one and the Model row
+ * turns into a list of individual watches — measured on the seed, eight
+ * families for fifteen named watches, which is a menu that answers no
+ * question. Cut, they collect under Submariner, where somebody asking for
+ * a Submariner will find them.
+ *
+ * Then a trailing case size, 20 to 60: a Datejust 41 and a Datejust 31 are
+ * one family in two sizes, and the size has a row of its own. Bounded,
+ * because a bare trailing-number rule reads "RM 011" as an RM in 11mm and
+ * files a Richard Mille under "RM".
+ *
+ * This goes one step further than `familyOf` in shopify-map, which only
+ * takes the size off. That is not drift: familyOf feeds the shop's model
+ * list, and the storefront makes the same quote cut itself in famOf when it
+ * builds its menu. The customer sees the same grouping either way; this is
+ * the first place the trade side has had it.
+ */
+const FAMILY_SQL = sql`nullif(btrim(regexp_replace(regexp_replace(${watches.nickname}, '\\s*[“”"–—].*$', ''), '\\s+(2[0-9]|[3-5][0-9]|60)(\\s*mm)?$', '', 'i')), '')`
 import type { WatchQuery } from '@/lib/validation'
 import type {
   EntityType, IdCheckStatus, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
@@ -287,6 +318,57 @@ const WATCH_COLUMNS: ColumnMap = {
    * is what the queue means. Picking several here ORs them, which is also
    * what picking several of anything else means.
    */
+  /**
+   * The model family, read off the nickname.
+   *
+   * `model` holds the reference — 126334 — which is what a dealer files by;
+   * a customer asks for a Datejust. The name lives in the nickname, with the
+   * case size on the end, so the size comes off: a 41 and a 31 are one
+   * family in two sizes and splitting them makes a menu of one-offs.
+   *
+   * Only a plausible case size comes off, 20 to 60. A bare trailing-number
+   * rule reads "RM 011" as an RM in 11mm and files a Richard Mille under
+   * "RM". Mirrors familyOf in shopify-map, which does the same job for the
+   * storefront's brand menu — see FAMILY_SQL for why it is stated twice.
+   */
+  family: {
+    kind: 'derived',
+    match: (value) => sql`${FAMILY_SQL} = ${value}`,
+  },
+
+  /**
+   * Budget, as a band rather than a ceiling.
+   *
+   * Upper bound exclusive, so no watch lands in two bands and gets counted
+   * twice, and a watch with no asking price is in no band at all — you
+   * cannot offer somebody a watch you have not priced.
+   */
+  budget: {
+    kind: 'derived',
+    match: (value) => {
+      const band = BUDGET_BANDS.find((entry) => entry.value === value)
+      if (!band) return undefined
+      // Bands are written in whole pounds; the column is in pence.
+      const floor = sql`${watches.estSaleGbp} >= ${band.min * 100}`
+      return band.max === null
+        ? sql`(${watches.estSaleGbp} is not null and ${floor})`
+        : sql`(${watches.estSaleGbp} is not null and ${floor} and ${watches.estSaleGbp} < ${band.max * 100})`
+    },
+  },
+
+  /** Case size, cut where the trade cuts it. Unmeasured is in no band. */
+  size: {
+    kind: 'derived',
+    match: (value) => {
+      const band = SIZE_BANDS.find((entry) => entry.value === value)
+      if (!band) return undefined
+      const floor = sql`${watches.caseSizeMm} >= ${band.min}`
+      return band.max === null
+        ? sql`(${watches.caseSizeMm} is not null and ${floor})`
+        : sql`(${watches.caseSizeMm} is not null and ${floor} and ${watches.caseSizeMm} < ${band.max})`
+    },
+  },
+
   missing: {
     kind: 'derived',
     match: (value) => value === 'OWNER'
@@ -297,6 +379,127 @@ const WATCH_COLUMNS: ColumnMap = {
           ? sql`${watches.vatScheme} = 'UNKNOWN'`
           : undefined,
   },
+}
+
+/**
+ * What is in the case, counted the way somebody browsing would ask.
+ *
+ * FACETED, which is the whole of why this exists rather than a list of
+ * hard-coded chips. Each group is counted under every OTHER filter that is
+ * on, and never under its own. So choosing Rolex renarrows the models and
+ * the budgets to Rolexes, while the brand row still shows Patek with its
+ * count — because the one thing somebody does next after picking a brand is
+ * change their mind about it, and a row that hid the alternatives would make
+ * that a trip back through the menu.
+ *
+ * Two rules, both learned on the storefront and both about not wasting a
+ * reader's attention:
+ *
+ *   - an option with nothing behind it is not shown. A chip that opens an
+ *     empty list is worse than no chip, because it is a promise.
+ *   - a group with one option is not a filter. It is a label that cannot be
+ *     switched off, and it costs a row.
+ *
+ * One query per group rather than one clever query: there are a few hundred
+ * watches and five groups, the planner answers each in milliseconds, and the
+ * alternative is a single statement nobody can read or change.
+ */
+export interface FacetOption {
+  value: string
+  label: string
+  count: number
+}
+
+export interface FacetGroup {
+  /** The filter field this writes, so the bar does not need to know. */
+  field: string
+  label: string
+  options: FacetOption[]
+}
+
+/** Below two options a group is a label, not a filter. */
+const WORTH_SHOWING = 2
+
+export async function stockFacets(query: WatchQuery): Promise<FacetGroup[]> {
+  // The same query with one field's clauses lifted out, which is what makes
+  // a count faceted rather than merely filtered.
+  const without = (field: string): SQL | undefined => buildFilters({
+    ...query,
+    f: (query.f ?? []).filter((clause) => clause.field !== field),
+  })
+
+  const [brandRows, familyRows, budgetRow, sizeRow, wearsRow] = await Promise.all([
+    db.select({ value: brands.id, label: brands.name, count: count() })
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(without('brandId'))
+      .groupBy(brands.id, brands.name),
+
+    db.select({ value: sql<string>`${FAMILY_SQL}`, count: count() })
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(and(without('family'), sql`${FAMILY_SQL} is not null`))
+      .groupBy(FAMILY_SQL),
+
+    // The bands come back as one row of counts rather than one row each: a
+    // GROUP BY would drop an empty band silently, and the difference between
+    // "no watches under five" and "that band does not exist" is one the bar
+    // has to be able to tell.
+    db.select(Object.fromEntries(BUDGET_BANDS.map((band) => [
+      band.value,
+      sql<number>`count(*) filter (where ${WATCH_COLUMNS.budget.kind === 'derived'
+        ? WATCH_COLUMNS.budget.match(band.value) ?? sql`false`
+        : sql`false`})`,
+    ])) as Record<string, SQL<number>>)
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(without('budget')),
+
+    db.select(Object.fromEntries(SIZE_BANDS.map((band) => [
+      band.value,
+      sql<number>`count(*) filter (where ${WATCH_COLUMNS.size.kind === 'derived'
+        ? WATCH_COLUMNS.size.match(band.value) ?? sql`false`
+        : sql`false`})`,
+    ])) as Record<string, SQL<number>>)
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(without('size')),
+
+    db.select(Object.fromEntries(WEARS.map((value) => [
+      value,
+      sql<number>`count(*) filter (where ${WATCH_COLUMNS.wears.kind === 'derived'
+        ? WATCH_COLUMNS.wears.match(value) ?? sql`false`
+        : sql`false`})`,
+    ])) as Record<string, SQL<number>>)
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(without('wears')),
+  ])
+
+  const rank = (options: FacetOption[]) => options
+    .filter((option) => option.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+
+  // Bands keep the order they are declared in — a budget row running
+  // cheapest to dearest is a scale, and sorting it by popularity would make
+  // it a list of numbers in no order at all.
+  const banded = <T extends { value: string }>(
+    bands: readonly T[],
+    row: Record<string, unknown> | undefined,
+    label: (band: T) => string,
+  ): FacetOption[] => bands
+    .map((band) => ({ value: band.value, label: label(band), count: Number(row?.[band.value] ?? 0) }))
+    .filter((option) => option.count > 0)
+
+  const groups: FacetGroup[] = [
+    { field: 'brandId', label: 'Brand', options: rank(brandRows.map((r) => ({ value: r.value, label: r.label, count: Number(r.count) }))) },
+    { field: 'family', label: 'Model', options: rank(familyRows.map((r) => ({ value: r.value, label: r.value, count: Number(r.count) }))) },
+    { field: 'budget', label: 'Budget', options: banded(BUDGET_BANDS, budgetRow[0], budgetBandLabel) },
+    { field: 'size', label: 'Case size', options: banded(SIZE_BANDS, sizeRow[0], (band) => band.label) },
+    { field: 'wears', label: 'Worn by', options: banded(WEARS.map((value) => ({ value })), wearsRow[0], (band) => WEARS_LABELS[band.value as Wears]) },
+  ]
+
+  return groups.filter((group) => group.options.length >= WORTH_SHOWING)
 }
 
 function buildOrder(query: WatchQuery): SQL {
