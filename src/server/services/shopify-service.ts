@@ -13,7 +13,7 @@ import {
   desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
   normalise, resolveMetafields, type MetaobjectIndex,
 } from '@/lib/shopify-metafields'
-import type { CurrencyCode } from '@/lib/enums'
+import { HELD_STATUSES, type CurrencyCode } from '@/lib/enums'
 
 /**
  * The storefront, kept in step with the book.
@@ -646,10 +646,13 @@ async function writeMetafields(
     ...(watch.serial
       ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
       : []),
-    // Where the piece physically is, which drives the shop's own region filter.
-    ...(watch.locationName
-      ? [{ namespace: 'custom', key: 'location', type: 'single_line_text_field', value: watch.locationName }]
-      : []),
+    // No location. It used to be sent for the storefront's region filter,
+    // which is switched off, and it was not arriving anyway: the shop's field
+    // takes "Dubai" or "United Kingdom" and this system's locations are rooms
+    // — One Street Watches, Own inventory, In transit — so every value was
+    // being dropped by the filter below. Where a watch sits is this system's
+    // business and decides one thing about the shop, which is whether the
+    // watch is there at all. The shop does not need to know the room.
     ...(taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
   ]
     // A field with a fixed list of choices takes one of them or nothing. This
@@ -1007,6 +1010,8 @@ export async function syncHealth(): Promise<{
   errors: Array<{ stockNo: number; message: string }>
   /** Values the shop has no entry for, so they can be added rather than missed. */
   unmatched: Array<{ field: string; value: string; count: number }>
+  /** Places whose stock is deliberately kept off the shop, and how much. */
+  withheld: Array<{ name: string; count: number }>
 }> {
   const rows = await db
     .select({
@@ -1030,7 +1035,36 @@ export async function syncHealth(): Promise<{
     lastSyncedAt: asDate(row?.lastSyncedAt),
     errors: await recentErrors(),
     unmatched: await unmatchedValues(),
+    withheld: await withheldLocations(),
   }
+}
+
+/**
+ * Where stock is being held back from the shop on purpose.
+ *
+ * Here because this is the page somebody opens to ask why a watch is not on
+ * the website, and the answer is now sometimes "because of where it is" — a
+ * setting that lives on another page entirely. Without this the page shows a
+ * count of what IS on the shop and says nothing whatsoever about the rest,
+ * so the only way to find the switch is to already know it exists.
+ *
+ * Counted rather than listed: the point is to name the place and send
+ * somebody to it, not to reproduce the stock list.
+ */
+async function withheldLocations(): Promise<Array<{ name: string; count: number }>> {
+  const rows = await db
+    .select({ name: locations.name, count: sql<number>`count(*)` })
+    .from(watches)
+    .innerJoin(locations, eq(locations.id, watches.locationId))
+    .where(and(
+      isNull(watches.deletedAt),
+      eq(locations.publishToStorefront, false),
+      inArray(watches.status, [...HELD_STATUSES]),
+    ))
+    .groupBy(locations.name)
+    .orderBy(locations.name)
+
+  return rows.map((row) => ({ name: row.name, count: Number(row.count) }))
 }
 
 /**

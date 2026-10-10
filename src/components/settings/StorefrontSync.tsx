@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Check, Plus, RefreshCw, Trash2, Archive } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, useToast } from '@/components/ui'
@@ -21,6 +22,7 @@ export function StorefrontSync({ health }: {
     lastSyncedAt: string | null
     errors: Array<{ stockNo: number; message: string }>
     unmatched: Array<{ field: string; value: string; count: number }>
+    withheld: Array<{ name: string; count: number }>
   }
 }) {
   const router = useRouter()
@@ -170,6 +172,44 @@ export function StorefrontSync({ health }: {
                   <li key={error.message} className="text-caption text-content-secondary">
                     <span className="font-semibold text-content-primary">Stock {error.stockNo}</span>
                     {' — '}{error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/*
+            Where the stock that is NOT on the shop has gone.
+
+            This page showed a count of what is listed and said nothing at all
+            about the rest, so the only way to find the switch that holds a
+            location back was to already know it existed — somebody came here
+            looking for it, which is a page failing at the one job it has.
+            The setting itself stays on Locations, where the place is; this
+            says it is on and points at it.
+          */}
+          {health.withheld.length > 0 && (
+            <div className="mt-4 rounded-md border border-line-subtle bg-surface-subtle p-4">
+              <p className="text-small font-bold text-content-primary">
+                Kept off the shop
+              </p>
+              <p className="mt-1 text-caption text-content-secondary">
+                Stock in these places is not pushed, and anything already there is taken
+                down — they are watches nobody can come and see. Turn a place back on
+                under{' '}
+                <Link href="/locations" className="font-semibold text-content-primary underline underline-offset-2">
+                  Locations
+                </Link>
+                {' '}and its stock returns to the shop on the next push.
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5">
+                {health.withheld.map((place) => (
+                  <li key={place.name} className="text-caption text-content-secondary">
+                    <span className="font-semibold text-content-primary">{place.name}</span>
+                    {' '}
+                    <span className="tabular-nums">
+                      {place.count} {place.count === 1 ? 'watch' : 'watches'}
+                    </span>
                   </li>
                 ))}
               </ul>

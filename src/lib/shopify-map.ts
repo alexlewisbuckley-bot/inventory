@@ -106,25 +106,33 @@ export function sellableFrom(watch: Pick<SyncWatch, 'locationPublishes'>): boole
  * are worse than the watch being absent — so it goes up as a draft, where it
  * is ready the moment somebody prices it.
  *
- * A watch somewhere we do not sell from is the same case for a different
- * reason. The storefront says "available to view today" on every live plate
- * and the shop is a room people walk into; a piece in a courier's bag
- * between Dubai and London is not that, however completely its record is
- * filled in. It is a draft until it lands, and the moment somebody moves it
- * to a place that does sell, the next push publishes it with nothing else to
- * do — no list to remember, nothing to tidy up afterwards.
+ * A watch somewhere we do not sell from comes off the shop entirely:
+ * "anything not pushed should not be on Shopify". It is archived, which is
+ * what every other watch the shop should not be showing already gets, and it
+ * is checked before the price because it is the stronger statement — a piece
+ * in a courier's bag has no business on the storefront whether or not
+ * somebody has got round to pricing it.
  *
- * Draft rather than simply not pushed, which is the version of this that
- * looks simpler and is wrong: skipping a watch leaves whatever is on the
- * shop exactly as it was, so a piece that goes out on loan would stay live
- * and buyable. Saying DRAFT is what actually takes it down.
+ * Archived rather than deleted, for the same reason a sold watch is archived
+ * rather than deleted: it comes back. A product carries its handle, its
+ * search ranking and its photographs, and deleting one means the piece
+ * returns from Dubai as a new page at a new URL with every picture to upload
+ * again. Archived, it is off the storefront, out of the active catalogue and
+ * unbuyable — and the moment somebody moves it to a place that does sell,
+ * the next push restores it intact, with nothing to remember and nothing to
+ * tidy up.
+ *
+ * Note what this is NOT: silently skipping the watch. Skipping leaves
+ * whatever is on the shop exactly as it was, so a piece that was live and
+ * then went out on loan would stay live and buyable. Nothing new is created
+ * for it (see planSync), but a page that exists is always brought down.
  */
 export function statusFor(
   watch: Pick<SyncWatch, 'status' | 'estSaleGbp' | 'locationPublishes'>,
 ): ShopifyStatus {
   if (!HELD.has(watch.status)) return 'ARCHIVED'
+  if (!sellableFrom(watch)) return 'ARCHIVED'
   if (watch.estSaleGbp === null || watch.estSaleGbp <= 0) return 'DRAFT'
-  if (!sellableFrom(watch)) return 'DRAFT'
   return 'ACTIVE'
 }
 
@@ -569,8 +577,19 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
         watch, productId: existing.id, title: existing.title, seoTitle: existing.seoTitle,
       })
     }
-    else if (HELD.has(watch.status)) plan.create.push(watch)
-    // A sold watch with no product never needs one.
+    // A watch somewhere we do not sell from never gets a page made for it.
+    // Asked for plainly: "we don't want to push in transit watches to
+    // Shopify". Nothing is created, so the shop's catalogue only ever holds
+    // pieces the business actually has, and a watch bought and still
+    // travelling simply does not exist over there until it lands.
+    //
+    // Only CREATE is skipped, never UPDATE. A watch that was on the shop and
+    // then went out on loan has a page already, and leaving that page alone
+    // is the one outcome nobody wants: it stays live and buyable for a watch
+    // that is in somebody's bag. Those are in `update` above and go to DRAFT
+    // through statusFor, which is what actually takes them down.
+    else if (HELD.has(watch.status) && watch.locationPublishes) plan.create.push(watch)
+    // A sold watch with no product never needs one. Nor does one in transit.
   }
 
   for (const [sku, product] of bySku) {
