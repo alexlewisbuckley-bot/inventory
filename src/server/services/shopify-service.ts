@@ -5,7 +5,7 @@ import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
 import { ValidationError } from '@/lib/errors'
 import {
-  descriptionHtmlFor, planSync, priceFor, quantityFor, seoDescriptionFor, seoIsOurs,
+  descriptionHtmlFor, mediaFilesFor, planSync, priceFor, quantityFor, seoDescriptionFor, seoIsOurs,
   seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
   type SyncPlan, type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
@@ -186,6 +186,11 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       year: watches.year,
       status: watches.status,
       locationName: locations.name,
+      // Coalesced, because the join is a left one and a watch whose location
+      // somehow cannot be read should behave the way every location behaved
+      // before this switch existed — on the shop. A null here taking stock
+      // off the website would be a database join quietly closing the shop.
+      locationPublishes: sql<boolean>`coalesce(${locations.publishToStorefront}, true)`,
       estSaleGbp: watches.estSaleGbp,
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,
@@ -200,10 +205,15 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       // Photographs of the watch only. A warranty card carries a serial, a
       // date and a dealer's stamp, and the storefront is the last place any of
       // that should appear.
-      imageIds: sql<string[]>`coalesce((
-        SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
+      // Each photograph with the media row the shop is already holding for
+      // it, so a sync can tell what it has to upload from what is simply
+      // already there. Shaped here rather than joined, because a watch with
+      // six photographs must not arrive as six copies of itself.
+      images: sql<Array<{ id: string; mediaId: string | null }>>`coalesce((
+        SELECT json_agg(json_build_object('id', i.id, 'mediaId', i.shopify_media_id)
+                        ORDER BY i.sort_order, i.created_at)
         FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
-      ), ARRAY[]::text[])`,
+      ), '[]'::json)`,
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
@@ -386,7 +396,11 @@ export async function plan(): Promise<SyncPlan> {
 const PRODUCT_SET = `
   mutation Push($input: ProductSetInput!, $identifier: ProductSetIdentifiers) {
     productSet(input: $input, identifier: $identifier, synchronous: true) {
-      product { id variants(first: 1) { edges { node { id sku } } } }
+      product {
+        id
+        media(first: 50) { nodes { id status } }
+        variants(first: 1) { edges { node { id sku } } }
+      }
       userErrors { field message }
     }
   }
@@ -429,21 +443,19 @@ export async function pushWatch(
   // which case they are never touched again.
   const setSeo = isNew || seoIsOurs(existingSeoTitle)
 
-  // Photographs, for a page being created. An existing page's media was very
-  // likely arranged by hand — and in this store some of it is shared between
-  // products — so a push that re-sent images on every price change would
-  // reshuffle a gallery nobody asked it to touch.
-  const files = origin && isNew
-    ? watch.imageIds.map((id) => ({
-      originalSource: `${origin}/api/storefront-image/${id}`,
-      contentType: 'IMAGE' as const,
-      alt: titleFor(watch),
-    }))
-    : []
+  // Photographs, on every push rather than only on the one that created the
+  // page. Sending them once meant a photograph replaced here never reached
+  // the shop: the first push carried the pictures and every push afterwards
+  // carried none, so the shop kept whatever it was given on the day the
+  // product was made. See mediaFilesFor for what is sent and when nothing is.
+  const files = mediaFilesFor(watch, origin)
 
   const data = await admin<{
     productSet: {
-      product: { id: string } | null
+      product: {
+        id: string
+        media: { nodes: Array<{ id: string; status: string }> }
+      } | null
       userErrors: Array<{ field?: string[] | null; message: string }>
     }
   }>(PRODUCT_SET, {
@@ -484,7 +496,7 @@ export async function pushWatch(
       // from every product it touched. They go through `metafieldsSet` below,
       // which writes the fields it is given and leaves the rest alone.
 
-      ...(files.length ? { files } : {}),
+      ...(files ? { files } : {}),
       productOptions: [{ name: 'Title', values: [{ name: 'Default Title' }] }],
       variants: [{
         sku,
@@ -504,6 +516,8 @@ export async function pushWatch(
   const id = data.productSet.product?.id
   if (!id) throw new Error('Shopify accepted the product but returned no id.')
 
+  await rememberMedia(watch, data.productSet.product?.media.nodes ?? [], files !== null)
+
   await writeMetafields(id, watch, taxonomy)
 
   // Live means visible. A product that is ACTIVE but attached to no sales
@@ -517,6 +531,50 @@ export async function pushWatch(
     : null
 
   return { productId: id, warning }
+}
+
+/**
+ * Write down which media row the shop made for each photograph.
+ *
+ * Without this the next push has no way of knowing the shop already holds a
+ * picture, so it uploads all of them again — every sync, for ever. The
+ * column has existed since the storefront link was added and was never
+ * filled in, which is the other half of why photographs never updated.
+ *
+ * Matched by position. `productSet` is synchronous here and the file list is
+ * declarative, so what comes back is the list that was sent, in order. If
+ * the counts disagree then that assumption is wrong for a reason worth not
+ * guessing about, and nothing is written: the next push re-uploads, which is
+ * wasteful but never wrong.
+ *
+ * A row the shop could not make sense of is skipped rather than written
+ * down. Shopify fetches the bytes itself and in its own time, so a push can
+ * come back holding a media row that failed — and remembering that row would
+ * make the failure permanent: every later push would point at the broken
+ * media by id and never try the upload again. Left unrecorded, the next push
+ * sends the URL once more.
+ */
+async function rememberMedia(
+  watch: SyncWatch,
+  media: Array<{ id: string; status: string }>,
+  sentFiles: boolean,
+): Promise<void> {
+  if (!sentFiles || media.length !== watch.images.length) return
+
+  const changed = watch.images
+    .map((photograph, index) => ({
+      photograph,
+      // A failed row is forgotten rather than recorded, including one we had
+      // already written down: the id is what stops the next push re-sending
+      // the URL, so holding onto a broken one is how a picture stays missing.
+      mediaId: media[index]!.status === 'FAILED' ? null : media[index]!.id,
+    }))
+    .filter(({ photograph, mediaId }) => photograph.mediaId !== mediaId)
+  if (changed.length === 0) return
+
+  await Promise.all(changed.map(({ photograph, mediaId }) => db.update(watchImages)
+    .set({ shopifyMediaId: mediaId })
+    .where(eq(watchImages.id, photograph.id))))
 }
 
 /**
@@ -1045,10 +1103,20 @@ function asDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-/** Forget the storefront's ids, so the next sync re-matches from scratch. */
+/**
+ * Forget the storefront's ids, so the next sync re-matches from scratch.
+ *
+ * Scoped the same way for photographs as for products. Forgetting one
+ * watch's link used to clear every media id in the table, which was harmless
+ * while nothing read that column and is not now: it would make the next push
+ * upload every photograph of every watch in the book again.
+ */
 export async function forgetLinks(watchIds?: string[]): Promise<void> {
+  const scope = watchIds?.length ? watchIds : null
   await db.update(watches)
     .set({ shopifyProductId: null, shopifySyncedAt: null, shopifyError: null })
-    .where(watchIds?.length ? inArray(watches.id, watchIds) : sql`true`)
-  await db.update(watchImages).set({ shopifyMediaId: null }).where(sql`true`)
+    .where(scope ? inArray(watches.id, scope) : sql`true`)
+  await db.update(watchImages)
+    .set({ shopifyMediaId: null })
+    .where(scope ? inArray(watchImages.watchId, scope) : sql`true`)
 }

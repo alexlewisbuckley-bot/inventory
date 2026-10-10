@@ -44,6 +44,8 @@ export interface SyncWatch {
   status: string
   /** Where the piece physically is, which drives the shop's region filter. */
   locationName: string | null
+  /** Whether that place is one the website is allowed to sell from. */
+  locationPublishes: boolean
   estSaleGbp: number | null
   caseSizeMm: number | null
   caseMaterial: string | null
@@ -54,7 +56,9 @@ export interface SyncWatch {
   condition: string
   boxPapers: string
   description: string | null
-  imageIds: string[]
+  /** The photographs, in the order they are arranged, with whatever the shop
+      is already holding of each. */
+  images: WatchPhotograph[]
   shopifyProductId: string | null
 }
 
@@ -71,7 +75,28 @@ export interface SyncProduct {
   seoTitle: string | null
 }
 
+/** One photograph, and the copy of it the storefront already holds. */
+export interface WatchPhotograph {
+  id: string
+  /** The media row on Shopify, once this photograph has been sent there. */
+  mediaId: string | null
+}
+
 export type ShopifyStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+
+/**
+ * Is this watch somewhere the website may sell from?
+ *
+ * Read from a switch on the location rather than from its type, which is how
+ * this started. Transit was the case that prompted it and the type was right
+ * about transit, but a rule in the code is one only an engineer can change
+ * and only this one case had been thought of — a bonded warehouse, a piece
+ * away at service, a consignment case in somebody else's shop are all the
+ * same question and none of them is typed TRANSIT.
+ */
+export function sellableFrom(watch: Pick<SyncWatch, 'locationPublishes'>): boolean {
+  return watch.locationPublishes
+}
 
 /**
  * Whether a watch should be on the storefront, and in what state.
@@ -80,10 +105,26 @@ export type ShopifyStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
  * price of zero on the page or a figure invented to fill the field, and both
  * are worse than the watch being absent — so it goes up as a draft, where it
  * is ready the moment somebody prices it.
+ *
+ * A watch somewhere we do not sell from is the same case for a different
+ * reason. The storefront says "available to view today" on every live plate
+ * and the shop is a room people walk into; a piece in a courier's bag
+ * between Dubai and London is not that, however completely its record is
+ * filled in. It is a draft until it lands, and the moment somebody moves it
+ * to a place that does sell, the next push publishes it with nothing else to
+ * do — no list to remember, nothing to tidy up afterwards.
+ *
+ * Draft rather than simply not pushed, which is the version of this that
+ * looks simpler and is wrong: skipping a watch leaves whatever is on the
+ * shop exactly as it was, so a piece that goes out on loan would stay live
+ * and buyable. Saying DRAFT is what actually takes it down.
  */
-export function statusFor(watch: Pick<SyncWatch, 'status' | 'estSaleGbp'>): ShopifyStatus {
+export function statusFor(
+  watch: Pick<SyncWatch, 'status' | 'estSaleGbp' | 'locationPublishes'>,
+): ShopifyStatus {
   if (!HELD.has(watch.status)) return 'ARCHIVED'
   if (watch.estSaleGbp === null || watch.estSaleGbp <= 0) return 'DRAFT'
+  if (!sellableFrom(watch)) return 'DRAFT'
   return 'ACTIVE'
 }
 
@@ -94,7 +135,12 @@ export function statusFor(watch: Pick<SyncWatch, 'status' | 'estSaleGbp'>): Shop
  * still worth having — it is what somebody was sent a link to — and the watch
  * is genuinely spoken for.
  */
-export function quantityFor(watch: Pick<SyncWatch, 'status'>): number {
+export function quantityFor(watch: Pick<SyncWatch, 'status' | 'locationPublishes'>): number {
+  // Nothing to sell from a place we do not sell from. The page is a draft
+  // anyway, so this only matters for the moment after it moves and before the
+  // next push — but a stock figure that says one when the watch is in the air
+  // is still wrong, and the figure is what an oversell would be counted from.
+  if (!sellableFrom(watch)) return 0
   return watch.status === 'IN_STOCK' ? 1 : 0
 }
 
@@ -180,6 +226,71 @@ export function familyOf(watch: SyncWatch): string | null {
     Number(size) >= 20 && Number(size) <= 60 ? '' : whole
   )).trim()
   return family || null
+}
+
+/* ================= the photographs ================= */
+
+/** One entry in a product's file list: an upload, or one already there. */
+export interface MediaFile {
+  id?: string
+  originalSource?: string
+  contentType?: 'IMAGE'
+  alt?: string
+}
+
+/**
+ * The product's photographs, as the shop should hold them.
+ *
+ * `files` on productSet is declarative, the same way metafields turned out to
+ * be: the list given becomes the whole list, and anything left out is
+ * removed. That is what makes a real mirror possible — a photograph deleted
+ * here goes from the shop too, and the order they are arranged in is the
+ * order they appear on the page.
+ *
+ * Each one is sent as whichever of two things it is. A photograph the shop
+ * already holds is named by its media id, so it stays where it is and
+ * nothing is uploaded again; one it has never seen is sent as a URL for
+ * Shopify to come and fetch. So the first sync after this uploads
+ * everything once, and every sync after it uploads only what changed.
+ *
+ * A watch with no photographs sends an EMPTY list, which removes every
+ * picture from the product. That is the point, and it was the other half of
+ * the same complaint: two Lady-Datejusts, one photographed here and one not,
+ * showed the same picture on the shop — because the unphotographed one was
+ * keeping an image somebody had uploaded to Shopify months earlier, of a
+ * different watch. Leaving it alone was the cautious reading and it was the
+ * wrong one: a photograph of the wrong watch is worse than no photograph, and
+ * a mirror that declines to mirror the empty case is not a mirror. The queue
+ * that chases this is already on the insights page — "watches have no
+ * photographs" is now, exactly, the list of products with no picture.
+ *
+ * Verified against the shop rather than assumed: `files: []` on a throwaway
+ * product did clear its media, and `productSet` is declarative here the same
+ * way it turned out to be for metafields.
+ *
+ * Null still means "say nothing", and two cases keep it:
+ *
+ *   - No origin. We cannot offer an upload without our own address, and a
+ *     missing environment variable must not be able to strip the shop bare.
+ *     Nothing is the only safe answer to not knowing.
+ *   - A watch that has left the book. Its page is archived and off the
+ *     storefront already, so there is no wrong picture to show anybody; the
+ *     door Shopify fetches from is shut for sold stock, so an upload would
+ *     404; and an archived page can be brought back, which it cannot be if
+ *     this empties it on the way past. Mirroring it costs a record and gains
+ *     nothing a customer could ever see.
+ */
+export function mediaFilesFor(watch: SyncWatch, origin: string | null): MediaFile[] | null {
+  if (!origin) return null
+  if (statusFor(watch) === 'ARCHIVED') return null
+
+  return watch.images.map((photograph) => (photograph.mediaId
+    ? { id: photograph.mediaId }
+    : {
+      originalSource: `${origin}/api/storefront-image/${photograph.id}`,
+      contentType: 'IMAGE' as const,
+      alt: titleFor(watch),
+    }))
 }
 
 /* ================= what a search engine is shown =================

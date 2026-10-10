@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, seoDescriptionFor,
-  seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
+  mediaFilesFor, seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
   type SyncProduct, type SyncWatch,
 } from '@/lib/shopify-map'
 import type { RateTable } from '@/lib/currency'
@@ -19,6 +19,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   year: 2023,
   status: 'IN_STOCK',
   locationName: 'Dubai',
+  locationPublishes: true,
   estSaleGbp: 1020000,
   caseSizeMm: 41,
   caseMaterial: 'Steel and white gold',
@@ -32,7 +33,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   // a watch that could not exist.
   boxPapers: 'FULL_SET',
   description: null,
-  imageIds: [],
+  images: [],
   shopifyProductId: null,
   ...over,
 })
@@ -380,5 +381,122 @@ describe('whose search title is it', () => {
 
   it('leaves alone one somebody wrote themselves', () => {
     expect(seoIsOurs('Buy a pre-owned Rolex Datejust in Dubai')).toBe(false)
+  })
+})
+
+/**
+ * The photographs, which are the half of the mirror that never worked.
+ *
+ * Pictures were sent to Shopify exactly once, on the push that created the
+ * product, and never again — so a photograph replaced here stayed the old one
+ * on the shop for ever, which is precisely what was reported. The fix rests on
+ * two facts about `productSet.files` worth stating in tests rather than in a
+ * comment: the list given is the complete list, and a file is either an id the
+ * shop already holds or a URL for it to come and fetch.
+ */
+const ORIGIN = 'https://inventory.example.com'
+
+describe('a watch somewhere we do not sell from', () => {
+  it('is a draft, not a live listing', () => {
+    // The plates say "available to view today" and the shop is a room people
+    // walk into. A piece in a courier's bag is not that, however complete.
+    expect(statusFor(watch({ locationPublishes: false }))).toBe('DRAFT')
+  })
+
+  it('publishes itself the moment it moves, with nothing else to do', () => {
+    // No list to remember and nothing to tidy up: the next push does it.
+    expect(statusFor(watch({ locationPublishes: true }))).toBe('ACTIVE')
+  })
+
+  it('still archives one that has left the book', () => {
+    // Where it is does not outrank sold: a watch being couriered to its buyer
+    // is gone, and its page comes down rather than reverting to draft.
+    expect(statusFor(watch({ status: 'SOLD', locationPublishes: false }))).toBe('ARCHIVED')
+  })
+
+  it('has nothing to sell while it is in the air', () => {
+    // A quantity of one on a watch nobody can hand over is what an oversell
+    // gets counted from.
+    expect(quantityFor(watch({ locationPublishes: false }))).toBe(0)
+    expect(quantityFor(watch({ locationPublishes: true }))).toBe(1)
+  })
+})
+
+describe('the photographs we send to the shop', () => {
+  it('offers a photograph the shop has never seen as a URL to collect', () => {
+    const files = mediaFilesFor(watch({ images: [{ id: 'img_1', mediaId: null }] }), ORIGIN)
+    expect(files).toEqual([{
+      originalSource: `${ORIGIN}/api/storefront-image/img_1`,
+      contentType: 'IMAGE',
+      alt: titleFor(watch()),
+    }])
+  })
+
+  it('names one it already holds, rather than uploading it again', () => {
+    // The whole point of recording the media id. Without this every sync
+    // re-uploads every picture, for ever.
+    const files = mediaFilesFor(
+      watch({ images: [{ id: 'img_1', mediaId: 'gid://shopify/MediaImage/1' }] }),
+      ORIGIN,
+    )
+    expect(files).toEqual([{ id: 'gid://shopify/MediaImage/1' }])
+  })
+
+  it('keeps the order they are arranged in here', () => {
+    // `files` is also the order they appear on the product page, so the
+    // photograph chosen as the first one here is the one the shop leads with.
+    const files = mediaFilesFor(watch({
+      images: [
+        { id: 'img_1', mediaId: 'gid://m/1' },
+        { id: 'img_2', mediaId: null },
+        { id: 'img_3', mediaId: 'gid://m/3' },
+      ],
+    }), ORIGIN)
+    expect(files).toEqual([
+      { id: 'gid://m/1' },
+      {
+        originalSource: `${ORIGIN}/api/storefront-image/img_2`,
+        contentType: 'IMAGE',
+        alt: titleFor(watch()),
+      },
+      { id: 'gid://m/3' },
+    ])
+  })
+
+  it('strips the page of a watch we have not photographed', () => {
+    // An empty list is an instruction to remove every picture, and that is
+    // what is wanted. Two Lady-Datejusts, one photographed here and one not,
+    // were showing the same image on the shop: the unphotographed one was
+    // keeping a picture of a different watch that somebody had uploaded to
+    // Shopify months earlier. No photograph is better than the wrong one.
+    expect(mediaFilesFor(watch({ images: [] }), ORIGIN)).toEqual([])
+  })
+
+  it('is an empty list, not an absent one', () => {
+    // The difference the whole behaviour turns on, and it is one character
+    // at the call site: `files ? { files } : {}` sends [] and withholds null.
+    // A test for truthiness rather than for null would read as passing while
+    // the field was being dropped from the payload entirely.
+    const files = mediaFilesFor(watch({ images: [] }), ORIGIN)
+    expect(files).not.toBeNull()
+    expect(Array.isArray(files)).toBe(true)
+  })
+
+  it('says nothing when it does not know its own address', () => {
+    // Shopify fetches the bytes, so a relative URL is useless to it — and a
+    // missing environment variable must not be able to strip the shop bare.
+    expect(mediaFilesFor(watch({ images: [{ id: 'img_1', mediaId: null }] }), null)).toBeNull()
+    expect(mediaFilesFor(watch({ images: [] }), null)).toBeNull()
+  })
+
+  it('leaves an archived page\'s pictures alone, whatever the book says', () => {
+    // Off the storefront already, so there is no wrong picture to show
+    // anybody; the door Shopify fetches from is shut for sold stock, so an
+    // upload would 404; and an archived page can be brought back, which it
+    // cannot be if the sync empties it on the way past.
+    const sold = watch({ status: 'SOLD', images: [{ id: 'img_1', mediaId: null }] })
+    expect(statusFor(sold)).toBe('ARCHIVED')
+    expect(mediaFilesFor(sold, ORIGIN)).toBeNull()
+    expect(mediaFilesFor(watch({ status: 'SOLD', images: [] }), ORIGIN)).toBeNull()
   })
 })

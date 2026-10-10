@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
+import { AVAILABLE_QUERY, INVENTORY_QUICK_FILTERS, INVENTORY_VIEWS } from '@/components/inventory/views'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -267,6 +267,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <FilterBar
         fields={WATCH_FIELDS}
+        quick={INVENTORY_QUICK_FILTERS}
         placeholder="Search by stock number, model, reference or serial…"
         options={{
           locations: locationOptions.map((row) => ({ value: row.id, label: row.name })),

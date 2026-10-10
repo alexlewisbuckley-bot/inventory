@@ -355,6 +355,7 @@ export const supplierSchema = z.object({
 
   notes: optionalText(1000),
   isActive: z.coerce.boolean().default(true),
+  publishToStorefront: z.coerce.boolean().default(true),
 })
 
 /**

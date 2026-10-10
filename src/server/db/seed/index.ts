@@ -87,7 +87,13 @@ export async function seed(): Promise<void> {
       const existing = await db.select({ id: locations.id }).from(locations).where(eq(locations.slug, slug))
       if (existing[0]) { locationIds.set(spec.name, existing[0].id); continue }
       const id = newId('loc')
-      await db.insert(locations).values({ id, slug, ...spec })
+      // Transit does not sell. The migration that added this column set it
+      // on the rows that existed then, but the seed builds its locations
+      // fresh and would otherwise hand every new database a transit
+      // location whose stock goes live on the website.
+      await db.insert(locations).values({
+        id, slug, ...spec, publishToStorefront: spec.type !== 'TRANSIT',
+      })
       locationIds.set(spec.name, id)
     }
 
