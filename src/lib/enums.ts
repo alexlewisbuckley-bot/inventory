@@ -85,6 +85,54 @@ export const MISSING_FACT_LABELS: Record<MissingFact, string> = {
   VAT: 'No VAT scheme',
 }
 
+/* ================= how stock is browsed =================
+ *
+ * A dealer standing at the counter is asked four questions and always the
+ * same four: what make, what model, how much, and what size. The stock list
+ * could already answer all of them through the filter menu, one field at a
+ * time, which is to say it could not answer them at all while somebody was
+ * waiting.
+ *
+ * So the bands live here, named once, and both the SQL that counts them and
+ * the bar that shows them read this. A band defined twice is a count that
+ * disagrees with the list it opens, which is the bug this file has now
+ * produced three times in other forms.
+ * ======================================================== */
+
+/**
+ * Budget, in whole base-currency units.
+ *
+ * Bands rather than ceilings. "Up to £50,000" matched almost everything in
+ * the case and told nobody anything; what a customer says is "about ten",
+ * and what they mean is a range with a floor as well as a roof. The top band
+ * is open because the alternative is inventing a ceiling above the most
+ * expensive watch in the book and re-inventing it when a dearer one arrives.
+ */
+export const BUDGET_BANDS = [
+  { value: 'U5K', min: 0, max: 5_000 },
+  { value: '5_10K', min: 5_000, max: 10_000 },
+  { value: '10_25K', min: 10_000, max: 25_000 },
+  { value: '25_50K', min: 25_000, max: 50_000 },
+  { value: 'O50K', min: 50_000, max: null },
+] as const
+export type BudgetBand = (typeof BUDGET_BANDS)[number]['value']
+
+/**
+ * Case size, in millimetres.
+ *
+ * Cut where the trade cuts: a ladies' watch, a midsize, the ordinary men's
+ * run, and the big ones. The boundaries are inclusive of the lower number
+ * and exclusive of the upper, so 36 is a midsize and 37 is not, and no watch
+ * can land in two bands and be counted twice.
+ */
+export const SIZE_BANDS = [
+  { value: 'U32', label: 'Up to 31mm', min: 0, max: 32 },
+  { value: '32_36', label: '32–36mm', min: 32, max: 37 },
+  { value: '37_41', label: '37–41mm', min: 37, max: 42 },
+  { value: 'O42', label: '42mm and over', min: 42, max: null },
+] as const
+export type SizeBand = (typeof SIZE_BANDS)[number]['value']
+
 export const LOCATION_TYPES = ['STORE', 'VAULT', 'TRANSIT', 'CONSIGNMENT'] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 

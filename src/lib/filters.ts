@@ -4,7 +4,7 @@ import {
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
   PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
   REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS,
-  MISSING_FACTS, MISSING_FACT_LABELS,
+  BUDGET_BANDS, MISSING_FACTS, MISSING_FACT_LABELS, SIZE_BANDS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS,
   WATCH_STATUSES, WATCH_STATUS_LABELS, WEARS, WEARS_LABELS,
 } from './enums'
@@ -119,6 +119,23 @@ export function operatorsFor(field: FieldSpec): readonly FilterOperator[] {
 const enumOptions = <T extends string>(values: readonly T[], labels: Record<T, string>) =>
   values.map((value) => ({ value, label: labels[value] }))
 
+/**
+ * A budget band in words.
+ *
+ * In base currency and in round thousands, which is how the question is
+ * asked: nobody says "between five thousand and ten thousand pounds", they
+ * say "five to ten". The figures on the rows underneath are shown in whoever
+ * is looking at them's own currency, and this deliberately is not — a band is
+ * a bracket to think in, and a bracket that moved with the exchange rate
+ * would stop being one.
+ */
+export function budgetBandLabel(band: { min: number; max: number | null }): string {
+  const k = (amount: number) => `£${amount / 1000}k`
+  if (band.max === null) return `${k(band.min)}+`
+  if (band.min === 0) return `Under ${k(band.max)}`
+  return `${k(band.min)}–${k(band.max)}`
+}
+
 export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'status', label: 'Status', type: 'enum', options: enumOptions(WATCH_STATUSES, WATCH_STATUS_LABELS) },
   { key: 'condition', label: 'Condition', type: 'enum', options: enumOptions(CONDITIONS, CONDITION_LABELS) },
@@ -140,6 +157,31 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
     label: 'Worn by',
     type: 'enum',
     options: enumOptions(WEARS, WEARS_LABELS),
+    operators: ['is', 'isNot'],
+  },
+  // The three a customer actually asks in: what model, how much, what size.
+  // `family` is a question about the nickname rather than a column of its
+  // own — the model column holds the reference, which is what a dealer files
+  // by, while a customer asks for a Daytona. Its options come from stock, so
+  // they are supplied at runtime rather than listed here.
+  // A reference, not an enum, and the distinction is load-bearing: an enum's
+  // values are validated against a closed list, and a family name is not one
+  // — it is whatever is in the case this morning. Declared as an enum it
+  // passed every check and then had all its values stripped on the way to
+  // the query, so the filter silently returned the whole book.
+  { key: 'family', label: 'Model', type: 'reference', optionSource: 'families' },
+  {
+    key: 'budget',
+    label: 'Budget',
+    type: 'enum',
+    options: BUDGET_BANDS.map((band) => ({ value: band.value, label: budgetBandLabel(band) })),
+    operators: ['is', 'isNot'],
+  },
+  {
+    key: 'size',
+    label: 'Case size',
+    type: 'enum',
+    options: SIZE_BANDS.map((band) => ({ value: band.value, label: band.label })),
     operators: ['is', 'isNot'],
   },
   {
