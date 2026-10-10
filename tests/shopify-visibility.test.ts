@@ -89,6 +89,17 @@ describe('being refused a sales channel', () => {
     expect(service).not.toMatch(/if \(!publicationId\) return null/)
   })
 
+  it('stops being refused the moment the scope is granted', () => {
+    // The token carries the scopes it was minted with and lasts a day, and the
+    // refusal is remembered for the life of the instance. So the obvious move
+    // after granting a permission — press Apply again — went on using the
+    // credentials from before the change, and granting it looked like it had
+    // not worked. A run re-asks; a later batch of the same run does not.
+    const service = read('src/server/services/shopify-service.ts')
+    expect(service).toMatch(/export function forgetCredentials\(\): void \{\n  cachedToken = null\n  cachedPublication = null/)
+    expect(service).toMatch(/if \(after === null\) forgetCredentials\(\)/)
+  })
+
   it('is said once rather than once per watch', () => {
     // A missing permission is one line of setup that fails every watch
     // identically; a hundred and thirty-one copies of it buries the failure

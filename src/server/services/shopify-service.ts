@@ -739,6 +739,17 @@ export async function archiveProduct(productId: string): Promise<void> {
  */
 let cachedPublication: { id: string | null; denied: string | null } | null = null
 
+/**
+ * Forget what the shop last said this app was allowed to do.
+ *
+ * Called at the top of a run, so that a scope granted in Shopify a minute ago
+ * is in force the next time somebody presses Apply.
+ */
+export function forgetCredentials(): void {
+  cachedToken = null
+  cachedPublication = null
+}
+
 async function onlineStorePublication(): Promise<{ id: string | null; denied: string | null }> {
   if (cachedPublication) return cachedPublication
   try {
@@ -887,6 +898,23 @@ export async function runSync({ apply = false, after = null, limit }: {
   plan: SyncPlan
   outcome: SyncOutcome | null
 }> {
+  // A fresh run asks the shop what this app may do, rather than trusting what
+  // it was told yesterday. Both of the things it would otherwise remember are
+  // answers to that question: the access token carries the scopes that were
+  // granted when it was minted, and a refused sales channel is remembered so
+  // it is reported once per run instead of once per watch.
+  //
+  // Together they made granting a permission look like it had not worked. The
+  // token lasts a day, the instance lives as long as it lives, and the obvious
+  // next move after changing a setting in Shopify — press Apply again — went
+  // on using the credentials from before the change. The fix for "I granted
+  // it and nothing happened" should not be "redeploy and wait".
+  //
+  // Only on the first batch: a run of a hundred and thirty-one watches is
+  // seven presses of Apply, and re-minting on each of them would be asking
+  // the same question six more times with nothing able to have changed.
+  if (after === null) forgetCredentials()
+
   const computed = await plan()
   if (!apply) return { plan: computed, outcome: null }
 
