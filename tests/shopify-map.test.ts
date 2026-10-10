@@ -463,29 +463,40 @@ describe('the photographs we send to the shop', () => {
     ])
   })
 
-  it('says nothing at all about a watch we have not photographed', () => {
-    // Not an empty list. An empty list is an instruction to strip the page,
-    // and the pictures on the shop today were put there by hand.
-    expect(mediaFilesFor(watch({ images: [] }), ORIGIN)).toBeNull()
+  it('strips the page of a watch we have not photographed', () => {
+    // An empty list is an instruction to remove every picture, and that is
+    // what is wanted. Two Lady-Datejusts, one photographed here and one not,
+    // were showing the same image on the shop: the unphotographed one was
+    // keeping a picture of a different watch that somebody had uploaded to
+    // Shopify months earlier. No photograph is better than the wrong one.
+    expect(mediaFilesFor(watch({ images: [] }), ORIGIN)).toEqual([])
+  })
+
+  it('is an empty list, not an absent one', () => {
+    // The difference the whole behaviour turns on, and it is one character
+    // at the call site: `files ? { files } : {}` sends [] and withholds null.
+    // A test for truthiness rather than for null would read as passing while
+    // the field was being dropped from the payload entirely.
+    const files = mediaFilesFor(watch({ images: [] }), ORIGIN)
+    expect(files).not.toBeNull()
+    expect(Array.isArray(files)).toBe(true)
   })
 
   it('says nothing when it does not know its own address', () => {
-    // Shopify fetches the bytes, so a relative URL is useless to it.
+    // Shopify fetches the bytes, so a relative URL is useless to it — and a
+    // missing environment variable must not be able to strip the shop bare.
     expect(mediaFilesFor(watch({ images: [{ id: 'img_1', mediaId: null }] }), null)).toBeNull()
+    expect(mediaFilesFor(watch({ images: [] }), null)).toBeNull()
   })
 
-  it('does not offer an upload for a watch that has left the book', () => {
-    // The storefront door only opens for stock still held, so the URL would
-    // answer 404 and the shop would record a failed media row.
+  it('leaves an archived page\'s pictures alone, whatever the book says', () => {
+    // Off the storefront already, so there is no wrong picture to show
+    // anybody; the door Shopify fetches from is shut for sold stock, so an
+    // upload would 404; and an archived page can be brought back, which it
+    // cannot be if the sync empties it on the way past.
     const sold = watch({ status: 'SOLD', images: [{ id: 'img_1', mediaId: null }] })
     expect(statusFor(sold)).toBe('ARCHIVED')
     expect(mediaFilesFor(sold, ORIGIN)).toBeNull()
-  })
-
-  it('still keeps the pictures on a page it is archiving', () => {
-    // Archived, not stripped: the page can be brought back, and everything
-    // the shop already holds is named by id, which needs no fetching.
-    const sold = watch({ status: 'SOLD', images: [{ id: 'img_1', mediaId: 'gid://m/1' }] })
-    expect(mediaFilesFor(sold, ORIGIN)).toEqual([{ id: 'gid://m/1' }])
+    expect(mediaFilesFor(watch({ status: 'SOLD', images: [] }), ORIGIN)).toBeNull()
   })
 })

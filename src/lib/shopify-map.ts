@@ -239,24 +239,36 @@ export interface MediaFile {
  * Shopify to come and fetch. So the first sync after this uploads
  * everything once, and every sync after it uploads only what changed.
  *
- * Null means "say nothing about photographs", which leaves the product's
- * media exactly as it is. Two cases need that, and they are why this cannot
- * simply always send a list:
+ * A watch with no photographs sends an EMPTY list, which removes every
+ * picture from the product. That is the point, and it was the other half of
+ * the same complaint: two Lady-Datejusts, one photographed here and one not,
+ * showed the same picture on the shop — because the unphotographed one was
+ * keeping an image somebody had uploaded to Shopify months earlier, of a
+ * different watch. Leaving it alone was the cautious reading and it was the
+ * wrong one: a photograph of the wrong watch is worse than no photograph, and
+ * a mirror that declines to mirror the empty case is not a mirror. The queue
+ * that chases this is already on the insights page — "watches have no
+ * photographs" is now, exactly, the list of products with no picture.
  *
- *   - A watch with no photographs of its own. Mirroring an empty set would
- *     strip the page bare, and the pictures on the shop today were put there
- *     by hand rather than by this system. An empty record is far likelier to
- *     mean nobody has photographed it yet than to mean somebody decided the
- *     page should have no picture.
- *   - A watch that has left the book. The door Shopify fetches from only
- *     opens for stock still held, so an upload for a sold watch would be a
- *     URL answering 404 — and its page is being archived anyway.
+ * Verified against the shop rather than assumed: `files: []` on a throwaway
+ * product did clear its media, and `productSet` is declarative here the same
+ * way it turned out to be for metafields.
+ *
+ * Null still means "say nothing", and two cases keep it:
+ *
+ *   - No origin. We cannot offer an upload without our own address, and a
+ *     missing environment variable must not be able to strip the shop bare.
+ *     Nothing is the only safe answer to not knowing.
+ *   - A watch that has left the book. Its page is archived and off the
+ *     storefront already, so there is no wrong picture to show anybody; the
+ *     door Shopify fetches from is shut for sold stock, so an upload would
+ *     404; and an archived page can be brought back, which it cannot be if
+ *     this empties it on the way past. Mirroring it costs a record and gains
+ *     nothing a customer could ever see.
  */
 export function mediaFilesFor(watch: SyncWatch, origin: string | null): MediaFile[] | null {
-  if (!origin || watch.images.length === 0) return null
-
-  const unsent = watch.images.some((photograph) => !photograph.mediaId)
-  if (unsent && statusFor(watch) === 'ARCHIVED') return null
+  if (!origin) return null
+  if (statusFor(watch) === 'ARCHIVED') return null
 
   return watch.images.map((photograph) => (photograph.mediaId
     ? { id: photograph.mediaId }

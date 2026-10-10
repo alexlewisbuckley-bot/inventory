@@ -183,13 +183,19 @@ export default async function InsightsPage() {
       icon: <Coins className="h-4 w-4" />,
     },
     {
+      // No longer a nicety. The storefront mirrors this book exactly, so a
+      // watch with no photographs here is a product page with no picture on
+      // it — this count IS the list of blank pages on the shop. It used to
+      // be worse than blank: an unphotographed watch kept whatever had been
+      // uploaded to Shopify by hand, which on two Lady-Datejusts meant the
+      // same picture of the wrong watch on both.
       id: 'images',
       count: attention.withoutImages,
       title: attention.withoutImages === 1 ? 'watch has no photographs' : 'watches have no photographs',
-      description: 'Photographs of the watch and its card make listing and authentication quicker.',
+      description: 'The storefront shows exactly what is here, so each of these is a product page with no picture on it.',
       href: '/inventory',
       cta: 'Add photos',
-      severity: 'info',
+      severity: 'warning',
       icon: <ImageOff className="h-4 w-4" />,
     },
   ]
