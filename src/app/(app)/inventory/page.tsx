@@ -16,7 +16,7 @@ import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
 import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
-import { StockFacets } from '@/components/inventory/StockFacets'
+import { FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -280,13 +280,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
           brands: brandOptions.map((row) => ({ value: row.id, label: row.name })),
           // From the facets, so the menu offers exactly the families that are
           // in the case — and the same ones the bar above is showing.
-          families: (facets.find((group) => group.field === 'family')?.options ?? [])
-            .map((option) => ({ value: option.value, label: option.label })),
+          families: facets.families.map((option) => ({ value: option.value, label: option.label })),
         }}
       />
 
-      {/* The four questions, counted from what is actually in the case. */}
-      <StockFacets groups={facets} />
+      {/* One row: the four questions, answered from what is in the case. */}
+      <FindBar facets={facets} total={result.total} />
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>

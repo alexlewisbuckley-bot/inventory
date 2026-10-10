@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  BUDGET_BANDS, HELD_STATUSES, MENS_MIN_MM, MISSING_FACTS, MISSING_FACT_LABELS,
-  SIZE_BANDS, WEARS, WEARS_LABELS, WOMENS_MAX_MM,
+  HELD_STATUSES, MENS_MIN_MM, MISSING_FACTS, MISSING_FACT_LABELS,
+  WEARS, WEARS_LABELS, WOMENS_MAX_MM,
 } from '@/lib/enums'
-import { WATCH_FIELDS, budgetBandLabel, operatorsFor, parseFilters, validateClause } from '@/lib/filters'
+import { WATCH_FIELDS, operatorsFor, parseFilters, validateClause } from '@/lib/filters'
 import { INVENTORY_VIEWS } from '@/components/inventory/views'
 
 /**
@@ -91,110 +91,103 @@ describe('what a record is missing', () => {
 
 describe('browsing a caseful of watches', () => {
   /**
-   * The bar this replaced was six pills: two genders and four budget
-   * ceilings. It answered none of the questions a dealer is actually asked —
-   * "have you got a Daytona?" was unanswerable from it — and "up to £50,000"
-   * matched nearly everything in the book, which makes it a label rather than
-   * a filter.
+   * Five stacked rows of chips, with a hundred and eighteen Rolexes behind
+   * them, was a wall: two hundred pixels of chrome before the first watch and
+   * a "24 more" link doing a scrollbar's job. Budget was four fixed brackets,
+   * which cannot express "about fifteen" however carefully they are chosen.
    *
-   * The counting itself needs a database and was checked against one: every
-   * facet count equalled the length of the list that option opens, and
-   * choosing a brand renarrowed the models while leaving the other brands
-   * reachable. What is kept here is everything provable without one.
+   * One row of five controls now, each closed until asked. The counting and
+   * the drawing need a database and a browser and were checked against both.
+   * What is kept here is everything provable without either.
    */
   const field = (key: string) => WATCH_FIELDS.find((spec) => spec.key === key)
 
   it('asks the four questions a customer actually asks', () => {
-    for (const key of ['brandId', 'family', 'budget', 'size']) {
+    for (const key of ['brandId', 'family', 'estSaleGbp', 'caseSizeMm']) {
       expect(field(key), key).toBeDefined()
     }
   })
 
   it('treats a model family as an open list, not a closed one', () => {
-    // The distinction is load-bearing. An enum's values are checked against a
-    // fixed list; a family name is whatever is in the case this morning.
-    // Declared as an enum it passed every check and then had all its values
-    // stripped on the way to the query, so the filter silently returned the
-    // whole book — caught by comparing each facet count against its own list.
+    // An enum's values are checked against a fixed list; a family name is
+    // whatever is in the case this morning. Declared as an enum it passed
+    // every check and then had its values stripped on the way to the query,
+    // so the filter silently returned the whole book.
     const family = field('family')!
     expect(family.type).toBe('reference')
-    expect(family.optionSource).toBe('families')
     const clause = { field: 'family', operator: 'is' as const, values: ['Submariner'] }
     expect(validateClause(clause, WATCH_FIELDS)).toEqual(clause)
   })
 
-  it('states a budget as a band, never as a ceiling', () => {
-    // "Up to £50,000" is not a filter, it is a label: it matches nearly the
-    // whole case. What a customer says is "about ten", which has a floor.
-    for (const band of BUDGET_BANDS) {
-      expect(band.min, band.value).toBeTypeOf('number')
+  it('states budget and size as ranges, not as brackets', () => {
+    // Both halves matter: a floor as well as a roof, so "about fifteen" is
+    // expressible, and no fixed band list to go stale as stock changes.
+    for (const key of ['estSaleGbp', 'caseSizeMm']) {
+      const operators = operatorsFor(field(key)!)
+      expect(operators, key).toContain('gt')
+      expect(operators, key).toContain('lt')
     }
-    expect(BUDGET_BANDS.some((band) => band.min > 0)).toBe(true)
-    // Open at the top, or the dearest watch in the book falls out of every
-    // band the day a dearer one arrives.
-    expect(BUDGET_BANDS[BUDGET_BANDS.length - 1]!.max).toBeNull()
-  })
-
-  it('leaves no gap and no overlap between bands', () => {
-    // A watch in two bands is counted twice and a watch in none is invisible.
-    for (const bands of [BUDGET_BANDS, SIZE_BANDS]) {
-      for (let i = 1; i < bands.length; i++) {
-        expect(bands[i]!.min).toBe(bands[i - 1]!.max)
-      }
-    }
-  })
-
-  it('names a budget in round thousands rather than in exchange rates', () => {
-    // A band is a bracket to think in. One that moved with the rate would
-    // stop being one, so this is deliberately not in the reader's currency.
-    expect(budgetBandLabel({ min: 0, max: 5000 })).toBe('Under £5k')
-    expect(budgetBandLabel({ min: 5000, max: 10000 })).toBe('£5k–£10k')
-    expect(budgetBandLabel({ min: 50000, max: null })).toBe('£50k+')
   })
 
   it('writes the same clauses the filter menu writes', () => {
-    // A facet chip is a shortcut, not a second kind of filter: it has to
-    // survive the same validation, or it would be dropped on the way to the
-    // query and the bar would show a filter that was not applied.
-    for (const [key, value] of [
-      ['budget', BUDGET_BANDS[1]!.value], ['size', SIZE_BANDS[0]!.value], ['wears', 'WOMENS'],
-    ] as const) {
-      const clause = { field: key, operator: 'is' as const, values: [value] }
-      expect(validateClause(clause, WATCH_FIELDS), key).toEqual(clause)
+    // A control in the bar is a shortcut, not a second kind of filter: it has
+    // to survive the same validation or it would be dropped on the way to the
+    // query, and the bar would show a filter that was not applied.
+    const pairs = [
+      { field: 'estSaleGbp', operator: 'gt' as const, values: ['5000'] },
+      { field: 'caseSizeMm', operator: 'lt' as const, values: ['41'] },
+      { field: 'wears', operator: 'is' as const, values: ['WOMENS'] },
+    ]
+    for (const clause of pairs) {
+      expect(validateClause(clause, WATCH_FIELDS), clause.field).toEqual(clause)
     }
   })
 
   it('lets a group hold several answers at once', () => {
     // Rolex and Patek together means both, not neither — which is what
-    // picking two of anything means everywhere else in this grammar, and
-    // what the faceted counts above already assume.
-    for (const key of ['brandId', 'family', 'budget', 'size']) {
-      expect(operatorsFor(field(key)!), key).toContain('is')
-    }
-    const two = { field: 'budget', operator: 'is' as const, values: ['U5K', '5_10K'] }
+    // picking two of anything means everywhere else in this grammar.
+    const two = { field: 'brandId', operator: 'is' as const, values: ['a', 'b'] }
     expect(validateClause(two, WATCH_FIELDS)?.values).toHaveLength(2)
   })
 
   it('reaches the stock list', () => {
     const page = read('src/app/(app)/inventory/page.tsx')
-    expect(page).toMatch(/<StockFacets groups=\{facets\} \/>/)
+    expect(page).toMatch(/<FindBar facets=\{facets\} total=\{result\.total\} \/>/)
     expect(page).toMatch(/stockFacets\(query\)/)
   })
 
-  it('hides a group that cannot be switched off', () => {
-    // One option is not a filter, it is a label that costs a row — the rule
-    // the storefront learned and this borrows.
+  it('counts each answer under the others and never under itself', () => {
+    // The whole of why this is faceted rather than a list of fixed chips:
+    // choosing Rolex renarrows the models while the brand list still offers
+    // Patek, because changing your mind is the next thing anybody does.
     const source = read('src/server/repositories/watch-repository.ts')
-    expect(source).toMatch(/WORTH_SHOWING = 2/)
-    expect(source).toMatch(/options\.length >= WORTH_SHOWING/)
+    expect(source).toMatch(/!fields\.includes\(clause\.field\)/)
+    for (const name of ['brandId', 'family', 'estSaleGbp', 'caseSizeMm', 'wears']) {
+      expect(source, name).toMatch(new RegExp(`without\\('${name}'\\)`))
+    }
   })
 
-  it('counts each group under the others and never under itself', () => {
-    // The whole of why this is faceted rather than a list of fixed chips.
+  it('survives a case holding one priced watch', () => {
+    // A range of zero width divides by zero and draws nothing. It is an
+    // ordinary Tuesday, not an edge case worth crashing the page over.
     const source = read('src/server/repositories/watch-repository.ts')
-    expect(source).toMatch(/clause\.field !== field/)
-    for (const field of ['brandId', 'family', 'budget', 'size', 'wears']) {
-      expect(source, field).toMatch(new RegExp(`without\\('${field}'\\)`))
-    }
+    expect(source).toMatch(/max === min/)
+    expect(source).toMatch(/present\.length === 0/)
+  })
+
+  it('does not write a bound for a handle nobody moved', () => {
+    // "From the cheapest watch upwards" filters nothing, and a chip saying so
+    // is a filter the reader has to work out they can ignore.
+    const bar = read('src/components/inventory/FindBar.tsx')
+    expect(bar).toMatch(/low <= min \? null : low/)
+    expect(bar).toMatch(/high >= max \? null : high/)
+  })
+
+  it('writes the URL on release, not on every pixel of a drag', () => {
+    // A write per pixel refetches the list a hundred times across one drag,
+    // and the handles stutter against their own results.
+    const bar = read('src/components/inventory/FindBar.tsx')
+    expect(bar).toMatch(/if \(!drag\) setLocal/)
+    expect(bar).toMatch(/pointerup/)
   })
 })
