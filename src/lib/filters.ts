@@ -4,7 +4,7 @@ import {
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
   PAYMENT_STATUSES, PAYMENT_STATUS_LABELS, PRODUCT_TYPES, PRODUCT_TYPE_LABELS,
   REGISTER_CHECK_STATUSES, REGISTER_CHECK_STATUS_LABELS,
-  BUDGET_BANDS, MISSING_FACTS, MISSING_FACT_LABELS, SIZE_BANDS,
+  MISSING_FACTS, MISSING_FACT_LABELS,
   SALE_CHANNELS, SALE_CHANNEL_LABELS,
   WATCH_STATUSES, WATCH_STATUS_LABELS, WEARS, WEARS_LABELS,
 } from './enums'
@@ -119,23 +119,6 @@ export function operatorsFor(field: FieldSpec): readonly FilterOperator[] {
 const enumOptions = <T extends string>(values: readonly T[], labels: Record<T, string>) =>
   values.map((value) => ({ value, label: labels[value] }))
 
-/**
- * A budget band in words.
- *
- * In base currency and in round thousands, which is how the question is
- * asked: nobody says "between five thousand and ten thousand pounds", they
- * say "five to ten". The figures on the rows underneath are shown in whoever
- * is looking at them's own currency, and this deliberately is not — a band is
- * a bracket to think in, and a bracket that moved with the exchange rate
- * would stop being one.
- */
-export function budgetBandLabel(band: { min: number; max: number | null }): string {
-  const k = (amount: number) => `£${amount / 1000}k`
-  if (band.max === null) return `${k(band.min)}+`
-  if (band.min === 0) return `Under ${k(band.max)}`
-  return `${k(band.min)}–${k(band.max)}`
-}
-
 export const WATCH_FIELDS: readonly FieldSpec[] = [
   { key: 'status', label: 'Status', type: 'enum', options: enumOptions(WATCH_STATUSES, WATCH_STATUS_LABELS) },
   { key: 'condition', label: 'Condition', type: 'enum', options: enumOptions(CONDITIONS, CONDITION_LABELS) },
@@ -171,20 +154,6 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   // the query, so the filter silently returned the whole book.
   { key: 'family', label: 'Model', type: 'reference', optionSource: 'families' },
   {
-    key: 'budget',
-    label: 'Budget',
-    type: 'enum',
-    options: BUDGET_BANDS.map((band) => ({ value: band.value, label: budgetBandLabel(band) })),
-    operators: ['is', 'isNot'],
-  },
-  {
-    key: 'size',
-    label: 'Case size',
-    type: 'enum',
-    options: SIZE_BANDS.map((band) => ({ value: band.value, label: band.label })),
-    operators: ['is', 'isNot'],
-  },
-  {
     key: 'missing',
     label: 'Missing',
     type: 'enum',
@@ -193,6 +162,10 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   },
   { key: 'purchaseDate', label: 'Bought', type: 'date' },
   { key: 'year', label: 'Year', type: 'number' },
+  // Across the case, excluding the crown. A number, not bands: somebody says
+  // "about 36" and means a range around it, which four fixed brackets cannot
+  // express however carefully the brackets are chosen.
+  { key: 'caseSizeMm', label: 'Case size', type: 'number' },
   {
     key: 'registerCheckStatus',
     label: 'Register check',

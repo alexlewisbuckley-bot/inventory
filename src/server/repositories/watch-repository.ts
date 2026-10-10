@@ -8,10 +8,8 @@ import { alias } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import {
-  BUDGET_BANDS, HELD_STATUSES, MENS_MIN_MM, SIZE_BANDS, WEARS, WEARS_LABELS,
-  WOMENS_MAX_MM, type Wears,
+  HELD_STATUSES, MENS_MIN_MM, WEARS, WEARS_LABELS, WOMENS_MAX_MM, type Wears,
 } from '@/lib/enums'
-import { budgetBandLabel } from '@/lib/filters'
 
 /**
  * The family a watch belongs to, read off its nickname, as SQL.
@@ -289,6 +287,7 @@ const WATCH_COLUMNS: ColumnMap = {
   tradePriceGbp: { column: watches.tradePriceGbp, kind: 'money' },
   purchaseDate: { column: watches.purchaseDate, kind: 'date' },
   year: { column: watches.year, kind: 'number' },
+  caseSizeMm: { column: watches.caseSizeMm, kind: 'number' },
 
   /**
    * Who the watch is for, measured rather than recorded.
@@ -336,39 +335,6 @@ const WATCH_COLUMNS: ColumnMap = {
     match: (value) => sql`${FAMILY_SQL} = ${value}`,
   },
 
-  /**
-   * Budget, as a band rather than a ceiling.
-   *
-   * Upper bound exclusive, so no watch lands in two bands and gets counted
-   * twice, and a watch with no asking price is in no band at all — you
-   * cannot offer somebody a watch you have not priced.
-   */
-  budget: {
-    kind: 'derived',
-    match: (value) => {
-      const band = BUDGET_BANDS.find((entry) => entry.value === value)
-      if (!band) return undefined
-      // Bands are written in whole pounds; the column is in pence.
-      const floor = sql`${watches.estSaleGbp} >= ${band.min * 100}`
-      return band.max === null
-        ? sql`(${watches.estSaleGbp} is not null and ${floor})`
-        : sql`(${watches.estSaleGbp} is not null and ${floor} and ${watches.estSaleGbp} < ${band.max * 100})`
-    },
-  },
-
-  /** Case size, cut where the trade cuts it. Unmeasured is in no band. */
-  size: {
-    kind: 'derived',
-    match: (value) => {
-      const band = SIZE_BANDS.find((entry) => entry.value === value)
-      if (!band) return undefined
-      const floor = sql`${watches.caseSizeMm} >= ${band.min}`
-      return band.max === null
-        ? sql`(${watches.caseSizeMm} is not null and ${floor})`
-        : sql`(${watches.caseSizeMm} is not null and ${floor} and ${watches.caseSizeMm} < ${band.max})`
-    },
-  },
-
   missing: {
     kind: 'derived',
     match: (value) => value === 'OWNER'
@@ -382,27 +348,20 @@ const WATCH_COLUMNS: ColumnMap = {
 }
 
 /**
- * What is in the case, counted the way somebody browsing would ask.
+ * What is in the case, as the four questions somebody actually asks.
  *
- * FACETED, which is the whole of why this exists rather than a list of
- * hard-coded chips. Each group is counted under every OTHER filter that is
- * on, and never under its own. So choosing Rolex renarrows the models and
- * the budgets to Rolexes, while the brand row still shows Patek with its
- * count — because the one thing somebody does next after picking a brand is
- * change their mind about it, and a row that hid the alternatives would make
- * that a trip back through the menu.
+ * FACETED: each answer is counted under every OTHER filter and never under
+ * its own, so choosing Rolex renarrows the models and the price range to
+ * Rolexes while the brand list still shows Patek with its count — because
+ * the thing somebody does straight after picking a brand is change their
+ * mind about it.
  *
- * Two rules, both learned on the storefront and both about not wasting a
- * reader's attention:
- *
- *   - an option with nothing behind it is not shown. A chip that opens an
- *     empty list is worse than no chip, because it is a promise.
- *   - a group with one option is not a filter. It is a label that cannot be
- *     switched off, and it costs a row.
- *
- * One query per group rather than one clever query: there are a few hundred
- * watches and five groups, the planner answers each in milliseconds, and the
- * alternative is a single statement nobody can read or change.
+ * Price and size come back as a RANGE with its distribution rather than as
+ * fixed brackets. Four brackets cannot express "about fifteen", which is how
+ * the question is actually put, and they hide where the stock really sits:
+ * a case with a hundred and eighteen Rolexes in it has a shape, and a bar
+ * chart behind a slider shows that shape in one glance where a row of
+ * brackets flattens it.
  */
 export interface FacetOption {
   value: string
@@ -410,25 +369,60 @@ export interface FacetOption {
   count: number
 }
 
-export interface FacetGroup {
-  /** The filter field this writes, so the bar does not need to know. */
-  field: string
-  label: string
-  options: FacetOption[]
+export interface RangeFacet {
+  /** In whole base-currency units for price, millimetres for size. */
+  min: number
+  max: number
+  /** How the stock is spread across that range, for the slider to draw. */
+  buckets: number[]
 }
 
-/** Below two options a group is a label, not a filter. */
-const WORTH_SHOWING = 2
+export interface StockFacetData {
+  brands: FacetOption[]
+  families: FacetOption[]
+  price: RangeFacet | null
+  size: RangeFacet | null
+  wears: FacetOption[]
+}
 
-export async function stockFacets(query: WatchQuery): Promise<FacetGroup[]> {
+/** Enough bars to show a shape, few enough that each one is still visible. */
+const BUCKETS = 28
+
+/**
+ * A column's spread, computed here rather than in SQL.
+ *
+ * There are a few hundred watches, so the whole column costs nothing to
+ * fetch, and the alternative is width_bucket with its edge cases around an
+ * empty set and a single distinct value — both of which this has to survive,
+ * because a case holding one priced watch is an ordinary Tuesday.
+ */
+function spread(values: number[]): RangeFacet | null {
+  const present = values.filter((value) => Number.isFinite(value))
+  if (present.length === 0) return null
+
+  const min = Math.min(...present)
+  const max = Math.max(...present)
+  // One distinct value is a range of zero width, which would divide by zero
+  // and draw nothing. It is still worth showing as a single full bar.
+  if (max === min) return { min, max, buckets: [present.length] }
+
+  const buckets = new Array<number>(BUCKETS).fill(0)
+  for (const value of present) {
+    const at = Math.min(BUCKETS - 1, Math.floor(((value - min) / (max - min)) * BUCKETS))
+    buckets[at] = (buckets[at] ?? 0) + 1
+  }
+  return { min, max, buckets }
+}
+
+export async function stockFacets(query: WatchQuery): Promise<StockFacetData> {
   // The same query with one field's clauses lifted out, which is what makes
   // a count faceted rather than merely filtered.
-  const without = (field: string): SQL | undefined => buildFilters({
+  const without = (...fields: string[]): SQL | undefined => buildFilters({
     ...query,
-    f: (query.f ?? []).filter((clause) => clause.field !== field),
+    f: (query.f ?? []).filter((clause) => !fields.includes(clause.field)),
   })
 
-  const [brandRows, familyRows, budgetRow, sizeRow, wearsRow] = await Promise.all([
+  const [brandRows, familyRows, priceRows, sizeRows, wearsRow] = await Promise.all([
     db.select({ value: brands.id, label: brands.name, count: count() })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
@@ -441,29 +435,15 @@ export async function stockFacets(query: WatchQuery): Promise<FacetGroup[]> {
       .where(and(without('family'), sql`${FAMILY_SQL} is not null`))
       .groupBy(FAMILY_SQL),
 
-    // The bands come back as one row of counts rather than one row each: a
-    // GROUP BY would drop an empty band silently, and the difference between
-    // "no watches under five" and "that band does not exist" is one the bar
-    // has to be able to tell.
-    db.select(Object.fromEntries(BUDGET_BANDS.map((band) => [
-      band.value,
-      sql<number>`count(*) filter (where ${WATCH_COLUMNS.budget.kind === 'derived'
-        ? WATCH_COLUMNS.budget.match(band.value) ?? sql`false`
-        : sql`false`})`,
-    ])) as Record<string, SQL<number>>)
+    db.select({ value: watches.estSaleGbp })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(without('budget')),
+      .where(and(without('estSaleGbp'), isNotNull(watches.estSaleGbp), sql`${watches.estSaleGbp} > 0`)),
 
-    db.select(Object.fromEntries(SIZE_BANDS.map((band) => [
-      band.value,
-      sql<number>`count(*) filter (where ${WATCH_COLUMNS.size.kind === 'derived'
-        ? WATCH_COLUMNS.size.match(band.value) ?? sql`false`
-        : sql`false`})`,
-    ])) as Record<string, SQL<number>>)
+    db.select({ value: watches.caseSizeMm })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(without('size')),
+      .where(and(without('caseSizeMm'), isNotNull(watches.caseSizeMm))),
 
     db.select(Object.fromEntries(WEARS.map((value) => [
       value,
@@ -476,30 +456,22 @@ export async function stockFacets(query: WatchQuery): Promise<FacetGroup[]> {
       .where(without('wears')),
   ])
 
+  // Heaviest first. A list of brands in alphabetical order makes somebody
+  // read all of it to find out that the case is mostly Rolex.
   const rank = (options: FacetOption[]) => options
     .filter((option) => option.count > 0)
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
 
-  // Bands keep the order they are declared in — a budget row running
-  // cheapest to dearest is a scale, and sorting it by popularity would make
-  // it a list of numbers in no order at all.
-  const banded = <T extends { value: string }>(
-    bands: readonly T[],
-    row: Record<string, unknown> | undefined,
-    label: (band: T) => string,
-  ): FacetOption[] => bands
-    .map((band) => ({ value: band.value, label: label(band), count: Number(row?.[band.value] ?? 0) }))
-    .filter((option) => option.count > 0)
-
-  const groups: FacetGroup[] = [
-    { field: 'brandId', label: 'Brand', options: rank(brandRows.map((r) => ({ value: r.value, label: r.label, count: Number(r.count) }))) },
-    { field: 'family', label: 'Model', options: rank(familyRows.map((r) => ({ value: r.value, label: r.value, count: Number(r.count) }))) },
-    { field: 'budget', label: 'Budget', options: banded(BUDGET_BANDS, budgetRow[0], budgetBandLabel) },
-    { field: 'size', label: 'Case size', options: banded(SIZE_BANDS, sizeRow[0], (band) => band.label) },
-    { field: 'wears', label: 'Worn by', options: banded(WEARS.map((value) => ({ value })), wearsRow[0], (band) => WEARS_LABELS[band.value as Wears]) },
-  ]
-
-  return groups.filter((group) => group.options.length >= WORTH_SHOWING)
+  return {
+    brands: rank(brandRows.map((row) => ({ value: row.value, label: row.label, count: Number(row.count) }))),
+    families: rank(familyRows.map((row) => ({ value: row.value, label: row.value, count: Number(row.count) }))),
+    // Pence to pounds: the slider is dragged in the units the labels are in.
+    price: spread(priceRows.map((row) => Math.round(Number(row.value) / 100))),
+    size: spread(sizeRows.map((row) => Number(row.value))),
+    wears: WEARS
+      .map((value) => ({ value, label: WEARS_LABELS[value as Wears], count: Number(wearsRow[0]?.[value] ?? 0) }))
+      .filter((option) => option.count > 0),
+  }
 }
 
 function buildOrder(query: WatchQuery): SQL {
