@@ -44,8 +44,8 @@ export interface SyncWatch {
   status: string
   /** Where the piece physically is, which drives the shop's region filter. */
   locationName: string | null
-  /** What kind of place that is. TRANSIT is the one the storefront cares about. */
-  locationType: string | null
+  /** Whether that place is one the website is allowed to sell from. */
+  locationPublishes: boolean
   estSaleGbp: number | null
   caseSizeMm: number | null
   caseMaterial: string | null
@@ -84,9 +84,18 @@ export interface WatchPhotograph {
 
 export type ShopifyStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
 
-/** A watch between two of our own places, rather than sitting in one. */
-export function inTransit(watch: Pick<SyncWatch, 'locationType'>): boolean {
-  return watch.locationType === 'TRANSIT'
+/**
+ * Is this watch somewhere the website may sell from?
+ *
+ * Read from a switch on the location rather than from its type, which is how
+ * this started. Transit was the case that prompted it and the type was right
+ * about transit, but a rule in the code is one only an engineer can change
+ * and only this one case had been thought of — a bonded warehouse, a piece
+ * away at service, a consignment case in somebody else's shop are all the
+ * same question and none of them is typed TRANSIT.
+ */
+export function sellableFrom(watch: Pick<SyncWatch, 'locationPublishes'>): boolean {
+  return watch.locationPublishes
 }
 
 /**
@@ -97,21 +106,25 @@ export function inTransit(watch: Pick<SyncWatch, 'locationType'>): boolean {
  * are worse than the watch being absent — so it goes up as a draft, where it
  * is ready the moment somebody prices it.
  *
- * A watch in transit is the same case for a different reason. The storefront
- * says "available to view today" on every live plate and the shop is a room
- * people walk into; a piece in a courier's bag between Dubai and London is
- * not that, however completely its record is filled in. It is a draft until
- * it lands, and the moment somebody sets its location to the place it landed
- * the next push publishes it with nothing else to do.
+ * A watch somewhere we do not sell from is the same case for a different
+ * reason. The storefront says "available to view today" on every live plate
+ * and the shop is a room people walk into; a piece in a courier's bag
+ * between Dubai and London is not that, however completely its record is
+ * filled in. It is a draft until it lands, and the moment somebody moves it
+ * to a place that does sell, the next push publishes it with nothing else to
+ * do — no list to remember, nothing to tidy up afterwards.
  *
- * Read from the location's TYPE, not its name. "In transit" is a seeded
- * location of type TRANSIT, and a second one — a bonded warehouse, a watch
- * away at service — only has to be typed TRANSIT to behave the same way.
+ * Draft rather than simply not pushed, which is the version of this that
+ * looks simpler and is wrong: skipping a watch leaves whatever is on the
+ * shop exactly as it was, so a piece that goes out on loan would stay live
+ * and buyable. Saying DRAFT is what actually takes it down.
  */
-export function statusFor(watch: Pick<SyncWatch, 'status' | 'estSaleGbp' | 'locationType'>): ShopifyStatus {
+export function statusFor(
+  watch: Pick<SyncWatch, 'status' | 'estSaleGbp' | 'locationPublishes'>,
+): ShopifyStatus {
   if (!HELD.has(watch.status)) return 'ARCHIVED'
   if (watch.estSaleGbp === null || watch.estSaleGbp <= 0) return 'DRAFT'
-  if (inTransit(watch)) return 'DRAFT'
+  if (!sellableFrom(watch)) return 'DRAFT'
   return 'ACTIVE'
 }
 
@@ -122,11 +135,12 @@ export function statusFor(watch: Pick<SyncWatch, 'status' | 'estSaleGbp' | 'loca
  * still worth having — it is what somebody was sent a link to — and the watch
  * is genuinely spoken for.
  */
-export function quantityFor(watch: Pick<SyncWatch, 'status' | 'locationType'>): number {
-  // Nothing to sell from a courier's bag. The page is a draft anyway, so this
-  // only matters for the moment after it lands and before the next push, but
-  // a stock figure that says one when the watch is in the air is still wrong.
-  if (inTransit(watch)) return 0
+export function quantityFor(watch: Pick<SyncWatch, 'status' | 'locationPublishes'>): number {
+  // Nothing to sell from a place we do not sell from. The page is a draft
+  // anyway, so this only matters for the moment after it moves and before the
+  // next push — but a stock figure that says one when the watch is in the air
+  // is still wrong, and the figure is what an oversell would be counted from.
+  if (!sellableFrom(watch)) return 0
   return watch.status === 'IN_STOCK' ? 1 : 0
 }
 

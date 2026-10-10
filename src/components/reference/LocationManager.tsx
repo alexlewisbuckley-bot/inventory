@@ -22,6 +22,7 @@ export interface LocationRow {
   addressLine: string | null
   notes: string | null
   isActive: boolean
+  publishToStorefront: boolean
   watchCount: number
   valueGbp: number
 }
@@ -92,9 +93,19 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                       ].filter(Boolean).join(' · ') || 'No address recorded'}
                     </p>
                   </div>
-                  <Chip tone={location.isActive ? 'accent' : 'neutral'} dot={location.isActive}>
-                    {location.isActive ? 'Active' : 'Inactive'}
-                  </Chip>
+                  {/* Two different facts, and only the unusual halves are
+                      worth a chip. Active is the state of the place; off the
+                      website is the state of what is in it, and a card that
+                      said "On the website" on all four of them would be
+                      saying nothing while taking up the room that matters. */}
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <Chip tone={location.isActive ? 'accent' : 'neutral'} dot={location.isActive}>
+                      {location.isActive ? 'Active' : 'Inactive'}
+                    </Chip>
+                    {!location.publishToStorefront && (
+                      <Chip tone="neutral">Not on the website</Chip>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-end gap-8 px-6 pt-5">
@@ -178,6 +189,31 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
 }) {
   const [state, action] = useFormState(saveLocationAction, INITIAL)
   const [wasOpen, setWasOpen] = useState(false)
+  /*
+    Both controlled, so that choosing "In transit" from the dropdown can
+    untick the website switch as you do it. The alternative — a defaultChecked
+    read once on mount — means somebody adding a transit location has to know
+    to untick a box they were never shown a reason to look at, which is the
+    whole thing this setting exists to stop.
+
+    Changing the type only re-suggests; it never overrules an existing
+    location, whose stored setting is the authority once it exists. Both reset
+    when the modal is opened for a different row, or this would show the last
+    location somebody looked at.
+  */
+  const [type, setType] = useState<LocationType>(location?.type ?? 'STORE')
+  const [publishes, setPublishes] = useState(location?.publishToStorefront ?? true)
+  const [shownFor, setShownFor] = useState<string | null>(location?.id ?? null)
+  if ((location?.id ?? null) !== shownFor) {
+    setShownFor(location?.id ?? null)
+    setType(location?.type ?? 'STORE')
+    setPublishes(location?.publishToStorefront ?? true)
+  }
+
+  const chooseType = (next: LocationType) => {
+    setType(next)
+    if (!location) setPublishes(next !== 'TRANSIT')
+  }
 
   if (state.ok && open && !wasOpen) {
     setWasOpen(true)
@@ -197,17 +233,28 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
         {location && <input type="hidden" name="id" value={location.id} />}
         <TextField name="name" label="Location name" required defaultValue={location?.name ?? ''}
           className="sm:col-span-2" error={state.errors?.name} placeholder="e.g. One Street Watches" />
-        <SelectField name="type" label="Type" defaultValue={location?.type ?? 'STORE'}
+        <SelectField name="type" label="Type" value={type}
+          onChange={(event) => chooseType(event.target.value as LocationType)}
           options={LOCATION_TYPES.map((t) => ({ value: t, label: LOCATION_TYPE_LABELS[t] }))} />
         <TextField name="city" label="City" defaultValue={location?.city ?? ''} placeholder="e.g. Dubai" />
         <TextField name="addressLine" label="Address" className="sm:col-span-2" defaultValue={location?.addressLine ?? ''} />
         <TextField name="country" label="Country" defaultValue={location?.country ?? ''} />
         <TextareaField name="notes" label="Notes" className="sm:col-span-2" defaultValue={location?.notes ?? ''}
           placeholder="e.g. Retail showroom — display stock only" />
-        <div className="sm:col-span-2">
+        <div className="sm:col-span-2 flex flex-col gap-3">
           <Checkbox name="isActive" label="Active"
             hint="Inactive locations cannot receive new stock but keep their history."
             defaultChecked={location?.isActive ?? true} />
+          {/*
+            Off for transit by default when adding a new one, because that is
+            the case this exists for and nobody should have to know to untick
+            it. Editing an existing location shows what it is actually set to,
+            type or no type — the setting is the authority once it exists.
+          */}
+          <Checkbox name="publishToStorefront" label="Sell this location's stock on the website"
+            hint="Off for stock nobody can come and see — in transit, away at service, on loan. Those pieces stay as drafts on Shopify and publish themselves when they move somewhere that does sell."
+            checked={publishes}
+            onChange={(event) => setPublishes(event.target.checked)} />
         </div>
       </form>
     </Modal>

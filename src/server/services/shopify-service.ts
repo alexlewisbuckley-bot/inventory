@@ -186,7 +186,11 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       year: watches.year,
       status: watches.status,
       locationName: locations.name,
-      locationType: locations.type,
+      // Coalesced, because the join is a left one and a watch whose location
+      // somehow cannot be read should behave the way every location behaved
+      // before this switch existed — on the shop. A null here taking stock
+      // off the website would be a database join quietly closing the shop.
+      locationPublishes: sql<boolean>`coalesce(${locations.publishToStorefront}, true)`,
       estSaleGbp: watches.estSaleGbp,
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,

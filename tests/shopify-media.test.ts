@@ -59,6 +59,16 @@ describe('pushing a watch', () => {
     expect(source).toMatch(/=== 'FAILED' \? null :/)
   })
 
+  it('reads where a watch may be sold from, rather than deciding it', () => {
+    // The first version of this hard-coded the location TYPE: transit meant
+    // draft, and nothing else could. A rule in the code is one only an
+    // engineer can change, and transit was the only case anybody had thought
+    // of — a bonded warehouse, a piece away at service, a consignment case in
+    // somebody else's shop are the same question and none is typed TRANSIT.
+    expect(source).toMatch(/locationPublishes: sql<boolean>`coalesce\(/)
+    expect(source).not.toMatch(/locationType/)
+  })
+
   it('forgets one watch’s media without forgetting everybody’s', () => {
     // forgetLinks takes an optional list of watches. The photograph half of
     // it ignored that list and cleared the whole table, which after this

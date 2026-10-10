@@ -151,6 +151,7 @@ export async function listLocations() {
       addressLine: locations.addressLine,
       notes: locations.notes,
       isActive: locations.isActive,
+      publishToStorefront: locations.publishToStorefront,
       sortOrder: locations.sortOrder,
       watchCount: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then 1 else 0 end), 0)`,
       valueGbp: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then ${watches.purchasePriceGbp} else 0 end), 0)`,

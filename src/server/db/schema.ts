@@ -144,6 +144,19 @@ export const locations = pgTable(
     country: text('country'),
     notes: text('notes'),
     isActive: boolean('is_active').notNull().default(true),
+    /**
+     * Whether the website may sell what is sitting here.
+     *
+     * Stock in transit is the case that prompted it: the storefront promises
+     * every live piece is available to view today, and a watch in a
+     * courier's bag is not. Off here, its product stays in the shop's admin
+     * as a draft and publishes itself the moment the watch lands somewhere
+     * that does sell — nothing to remember, nothing to tidy up afterwards.
+     *
+     * True by default, because that is what every location did before this
+     * column existed.
+     */
+    publishToStorefront: boolean('publish_to_storefront').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

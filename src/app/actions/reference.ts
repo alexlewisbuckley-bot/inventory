@@ -33,6 +33,8 @@ export async function saveSupplierAction(_prev: ActionState, formData: FormData)
   const parsed = supplierSchema.safeParse({
     ...Object.fromEntries(formData.entries()),
     isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
+    publishToStorefront: formData.get('publishToStorefront') === 'on'
+      || formData.get('publishToStorefront') === 'true',
   })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 
