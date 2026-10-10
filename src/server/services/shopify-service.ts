@@ -236,6 +236,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
           id: string
           title: string
           status: string
+          publishedAt: string | null
           seo: { title: string | null }
           variants: { edges: Array<{ node: { sku: string | null } }> }
         } }>
@@ -246,7 +247,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
         products(first: 100, after: $cursor) {
           edges {
             node {
-              id title status
+              id title status publishedAt
               seo { title }
               variants(first: 1) { edges { node { sku } } }
             }
@@ -261,6 +262,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
         id: edge.node.id,
         title: edge.node.title,
         status: edge.node.status,
+        publishedAt: edge.node.publishedAt ?? null,
         seoTitle: edge.node.seo?.title ?? null,
         sku: edge.node.variants.edges[0]?.node.sku ?? null,
       })
@@ -745,7 +747,24 @@ async function onlineStorePublication(): Promise<{ id: string | null; denied: st
     }>(`{ publications(first: 20) { edges { node { id name } } } }`, {})
 
     const found = data.publications.edges.find((e) => e.node.name === 'Online Store')
-    cachedPublication = { id: found?.node.id ?? null, denied: null }
+    cachedPublication = found
+      ? { id: found.node.id, denied: null }
+      // An app sees the sales channels it has been given, and an app with no
+      // `read_publications` scope is handed an empty list rather than an
+      // error — so "there is no Online Store here" and "you may not be told
+      // about it" arrive as the same answer, and the old code read it as the
+      // first and quietly published nothing. Every push after that reported
+      // success, because every step that could fail had succeeded. Ten watches
+      // were live in the admin and invisible on the website for a day.
+      //
+      // A shop with a storefront and no Online Store channel does not exist,
+      // so the honest reading of an empty list is that this app cannot see it.
+      : {
+        id: null,
+        denied: data.publications.edges.length === 0
+          ? 'Shopify listed no sales channels for this app, so nothing could be published to the Online Store. The app needs the read_publications and write_publications scopes.'
+          : `Shopify listed ${data.publications.edges.length} sales channels for this app and none of them is the Online Store, so nothing could be published.`,
+      }
   } catch (error) {
     // Reading the list of sales channels needs the `read_publications` scope,
     // and an app without it is refused rather than handed an empty list. That
@@ -774,8 +793,7 @@ async function onlineStorePublication(): Promise<{ id: string | null; denied: st
  */
 export async function publishToOnlineStore(productId: string): Promise<string | null> {
   const { id: publicationId, denied } = await onlineStorePublication()
-  if (denied) return denied
-  if (!publicationId) return null
+  if (!publicationId) return denied
 
   try {
     const data = await admin<{
@@ -798,6 +816,15 @@ export interface SyncOutcome {
   updated: number
   archived: number
   removed: number
+  /**
+   * Pages that existed but were in no sales channel, and now are.
+   *
+   * Counted separately from `updated` because it is a different kind of good
+   * news: those watches were not changed by this run, they were revealed by
+   * it. A run that fixes nothing else and this reads as "0 updated", which is
+   * exactly wrong about the only thing it did.
+   */
+  published: number
   failed: Array<{ what: string; error: string }>
   /**
    * Structured fields the shop has no entry for.
@@ -868,7 +895,7 @@ export async function runSync({ apply = false, after = null, limit }: {
   // are re-asserted each time so that anything lost is put back.
   const taxonomy = await loadMetaobjects()
   const outcome: SyncOutcome = {
-    created: 0, updated: 0, archived: 0, removed: 0,
+    created: 0, updated: 0, archived: 0, removed: 0, published: 0,
     failed: [], unmatched: [], added: [], denied: [],
     nextCursor: null, pushed: 0, total: 0,
   }
@@ -940,6 +967,17 @@ export async function runSync({ apply = false, after = null, limit }: {
   // Hiding and deleting happen once, at the start of the run, rather than once
   // per batch. They are the irreversible half and they are small.
   if (after === null) {
+    // Putting an existing page back in the shop window happens here too, and
+    // first. Each push publishes what it sends, so in a healthy shop this list
+    // is empty; when it is not, the backlog is a handful of watches that have
+    // been invisible for days, and pressing through six batches of re-pushing
+    // the whole book to reach them is not a fix anybody would wait for.
+    for (const item of computed.publish) {
+      const warning = await publishToOnlineStore(item.productId)
+      if (warning) refused.add(warning)
+      else outcome.published += 1
+    }
+
     for (const item of computed.archive) {
       try {
         await archiveProduct(item.productId)
@@ -1012,6 +1050,16 @@ export async function syncHealth(): Promise<{
   unmatched: Array<{ field: string; value: string; count: number }>
   /** Places whose stock is deliberately kept off the shop, and how much. */
   withheld: Array<{ name: string; count: number }>
+  /**
+   * Pages that exist, are meant to be live, and are in no sales channel.
+   *
+   * The counterpart to `withheld`: that one is stock held back on purpose,
+   * this one is stock held back by accident, and from the website the two look
+   * identical. Named here because this is the page somebody opens to ask why a
+   * watch is not on the site, and until now the answer to the commonest cause
+   * was not on it — the push knew, said so in a toast, and the toast went.
+   */
+  invisible: Array<{ sku: string | null; title: string }>
 }> {
   const rows = await db
     .select({
@@ -1022,6 +1070,12 @@ export async function syncHealth(): Promise<{
     .from(watches)
     .where(isNull(watches.deletedAt))
   const row = rows[0]
+  // Four readings, three of which are somebody else's API. Taken together
+  // rather than one after another: the page is one page and it should not take
+  // four round trips' worth of waiting to draw.
+  const [errors, unmatched, withheld, invisible] = await Promise.all([
+    recentErrors(), unmatchedValues(), withheldLocations(), invisibleProducts(),
+  ])
   return {
     configured: shopifyIsConfigured(),
     // Aggregates come back from the driver as strings, not numbers.
@@ -1033,9 +1087,36 @@ export async function syncHealth(): Promise<{
     // a settings page renders perfectly until the first sync has run and then
     // starts throwing.
     lastSyncedAt: asDate(row?.lastSyncedAt),
-    errors: await recentErrors(),
-    unmatched: await unmatchedValues(),
-    withheld: await withheldLocations(),
+    errors,
+    unmatched,
+    withheld,
+    invisible,
+  }
+}
+
+/**
+ * Stock the shop is holding out of its own window.
+ *
+ * Asked of Shopify rather than of this database, because the fault being
+ * looked for is precisely the one where this side believes everything went
+ * well. The push writes the product, its price, its stock and its seventeen
+ * structured fields, and then attaches it to the Online Store as a last and
+ * separate act; when only that last act fails, every record here says the
+ * watch is listed and synced, and it is — in the admin, and nowhere a
+ * customer can reach.
+ *
+ * Capped, like the other readings on this page: the useful information is
+ * that it is happening and to roughly how much, and a list of a hundred
+ * titles is a list nobody reads.
+ */
+async function invisibleProducts(): Promise<Array<{ sku: string | null; title: string }>> {
+  if (!shopifyIsConfigured()) return []
+  try {
+    const computed = await plan()
+    return computed.publish.slice(0, 25).map((item) => ({ sku: item.sku, title: item.title }))
+  } catch {
+    // A reading that cannot be taken is not worth failing the page over.
+    return []
   }
 }
 

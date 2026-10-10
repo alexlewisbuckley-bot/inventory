@@ -23,6 +23,7 @@ export function StorefrontSync({ health }: {
     errors: Array<{ stockNo: number; message: string }>
     unmatched: Array<{ field: string; value: string; count: number }>
     withheld: Array<{ name: string; count: number }>
+    invisible: Array<{ sku: string | null; title: string }>
   }
 }) {
   const router = useRouter()
@@ -172,6 +173,45 @@ export function StorefrontSync({ health }: {
                   <li key={error.message} className="text-caption text-content-secondary">
                     <span className="font-semibold text-content-primary">Stock {error.stockNo}</span>
                     {' — '}{error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/*
+            Listed, correct, and not on the website.
+
+            The one failure this page could not show, because from this side it
+            is not a failure: the product is written, the row says synced, and
+            nothing anywhere says that Shopify is keeping it out of its own
+            shop window. It reads as a warning rather than an error for the
+            same reason — the watches are right, and the next push fixes them —
+            but it is first in the list, because it is the state somebody is
+            looking at this page to explain.
+          */}
+          {health.invisible.length > 0 && (
+            <div className="mt-4 rounded-md border border-state-warning/40 bg-state-warning/5 p-4">
+              <p className="flex items-center gap-2 text-small font-bold text-content-primary">
+                <AlertTriangle className="h-4 w-4 text-state-warning" aria-hidden />
+                On the shop, but in no sales channel
+              </p>
+              <p className="mt-1 text-caption text-content-secondary">
+                These pages exist and are priced, and Shopify is not showing them to anybody:
+                they are in the admin only, which from the website is indistinguishable from
+                never having been pushed. Press Apply and they go into the window. If they come
+                back after a push, the app is missing the{' '}
+                <span className="font-semibold text-content-primary">read_publications</span> and{' '}
+                <span className="font-semibold text-content-primary">write_publications</span>{' '}
+                permissions, which are granted to the app in Shopify.
+              </p>
+              <ul className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1.5">
+                {health.invisible.map((item) => (
+                  <li key={item.sku ?? item.title} className="text-caption text-content-secondary">
+                    <span className="font-semibold tabular-nums text-content-primary">
+                      {item.sku ? `Stock ${item.sku}` : '—'}
+                    </span>
+                    {' '}{item.title}
                   </li>
                 ))}
               </ul>

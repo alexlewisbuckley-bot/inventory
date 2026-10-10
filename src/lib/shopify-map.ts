@@ -73,6 +73,17 @@ export interface SyncProduct {
    * the title. Carried so that one somebody wrote by hand is never overwritten.
    */
   seoTitle: string | null
+  /**
+   * When the shop put this in its window, or null for never.
+   *
+   * Status and visibility are two different facts and this is the one the
+   * plan never read. A product can be ACTIVE, priced, stocked, photographed
+   * and attached to no sales channel at all, in which case it is in the admin
+   * and nowhere else — indistinguishable, from the website, from a watch the
+   * sync had never heard of. Ten watches sat like that for a day and the only
+   * thing that noticed was somebody looking at the site.
+   */
+  publishedAt: string | null
 }
 
 /** One photograph, and the copy of it the storefront already holds. */
@@ -537,6 +548,21 @@ export interface SyncPlan {
   archive: Array<{ productId: string; sku: string | null; title: string }>
   /** Products that answer to no watch at all. */
   remove: Array<{ productId: string; sku: string | null; title: string }>
+  /**
+   * Products meant to be live that the shop holds in no sales channel.
+   *
+   * Every push already tries to publish what it sends, so this is not a
+   * second way of doing it — it is the only way of finding out that the first
+   * one is not working. Publishing is the one step of a push that can fail
+   * while leaving the watch entirely correct, so it reports a warning instead
+   * of throwing; and a warning shown in a toast is a warning nobody sees
+   * twenty minutes later, when the question being asked is why one particular
+   * watch is not on the website.
+   *
+   * Read from the shop rather than remembered, so it answers for the state of
+   * things now and keeps answering however the publishing came to fail.
+   */
+  publish: Array<{ productId: string; sku: string | null; title: string }>
 }
 
 /**
@@ -553,7 +579,7 @@ export interface SyncPlan {
  * because two live pages for one watch is the thing that sells it twice.
  */
 export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPlan {
-  const plan: SyncPlan = { create: [], update: [], archive: [], remove: [] }
+  const plan: SyncPlan = { create: [], update: [], archive: [], remove: [], publish: [] }
 
   const bySku = new Map<string, SyncProduct>()
   const duplicates: SyncProduct[] = []
@@ -576,6 +602,10 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
       plan.update.push({
         watch, productId: existing.id, title: existing.title, seoTitle: existing.seoTitle,
       })
+      // Intent on this side, visibility on that side. A watch we mean to sell
+      // whose page is in no sales channel is the silent failure: the product
+      // is right, the sync reported success, and the website does not have it.
+      if (statusFor(watch) === 'ACTIVE' && !existing.publishedAt) plan.publish.push(descr(existing))
     }
     // A watch somewhere we do not sell from never gets a page made for it.
     // Asked for plainly: "we don't want to push in transit watches to
