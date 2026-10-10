@@ -49,10 +49,57 @@ const ALIASES: Record<string, string> = {
   'watch only': 'Neither',
   // A silver dial and a silvered dial are the same dial.
   silver: 'Silvered',
-  // The colour is olive. "Green" after it is the shade of olive, not a second
-  // colour — and left on, it would sit in the filter beside the shop's own
-  // Green as though they were two unrelated dials.
-  'olive green': 'Olive',
+  /*
+    DIAL SHADES, FILED UNDER THEIR COLOUR.
+    ---------------------------------------------------------------
+    The shop's dial list is a dozen colours and it is a FILTER, not a
+    description: somebody browsing clicks Blue because they want a blue
+    watch, and a Deepsea whose dial this system calls "D-Blue" is a blue
+    watch. Unaliased it matches no entry at all, so it is dropped — and a
+    watch with no dial is in no filter, which is strictly worse than being
+    in a slightly coarse one. Four Blues on the website against a case full
+    of them was this, sixteen watches over.
+
+    The shade is not lost. It stays on the record, in the listing copy and
+    in the trade catalogue; only the thing the storefront files it under is
+    coarsened, which is what a filter is for.
+
+    "Olive green" used to map to Olive, on the reasoning that olive is its
+    own colour and "green" after it is the shade. True about colour and
+    wrong about this list: the shop has no Olive entry and never did, so
+    the answer was a dial nobody could browse to. Creating one would split
+    the greens in two, which is the splitting CREATABLE_TYPES exists to
+    prevent. Under Green it is found.
+  */
+  // Greens.
+  'olive green': 'Green',
+  olive: 'Green',
+  'mint green': 'Green',
+  'dark green': 'Green',
+  // Blues. "D-Blue" is Rolex's own name for the Deepsea's graded dial.
+  'd-blue': 'Blue',
+  dblue: 'Blue',
+  'dark blue': 'Blue',
+  'light blue': 'Blue',
+  // Greys.
+  'dark grey': 'Grey',
+  'dark gray': 'Grey',
+  'slate grey': 'Grey',
+  'slate gray': 'Grey',
+  gray: 'Grey',
+  // Whites and the mother-of-pearls, which the shop keeps as one entry.
+  ivory: 'White',
+  'dark mother-of-pearl': 'Mother of Pearl',
+  'white mother-of-pearl': 'Mother of Pearl',
+  'black mother-of-pearl': 'Mother of Pearl',
+  'pink mother-of-pearl': 'Mother of Pearl',
+  // Pinks.
+  'candy pink': 'Pink',
+  'rose pink': 'Pink',
+  // A Jubilee motif dial is a silvered dial with a pattern pressed into it.
+  'silver jubilee': 'Silvered',
+  'silver jubilee motif': 'Silvered',
+  'jubilee motif': 'Silvered',
   // Spelled out once and then abbreviated, in the same breath. The shop keeps
   // one entry called "Mother of Pearl"; a second one carrying the initials
   // would split the dial between two filters.

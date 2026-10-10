@@ -21,6 +21,11 @@ const INDEX = indexMetaobjects([
   { type: 'dial', displayName: 'Mother of Pearl', id: 'gid://d/2' },
   { type: 'dial', displayName: 'Silvered', id: 'gid://d/3' },
   { type: 'dial', displayName: 'Pink', id: 'gid://d/4' },
+  // The rest of the shop's real dial list, so these tests resolve against the
+  // vocabulary the store actually has rather than a convenient subset.
+  { type: 'dial', displayName: 'Blue', id: 'gid://d/5' },
+  { type: 'dial', displayName: 'Green', id: 'gid://d/6' },
+  { type: 'dial', displayName: 'Grey', id: 'gid://d/7' },
   { type: 'bracelet', displayName: 'Oyster', id: 'gid://br/1' },
   { type: 'material', displayName: 'Oystersteel', id: 'gid://m/1' },
   { type: 'material', displayName: '18k White Gold', id: 'gid://m/2' },
@@ -72,13 +77,16 @@ describe('trimming a description down to a name', () => {
     expect(withoutDescription('Olive green, Roman numerals')).toBe('Olive green')
   })
 
-  it('then calls the colour what it is', () => {
+  it('then files the colour where the shop keeps it', () => {
     // Trimming leaves "Olive green"; the alias table has the last word, and
-    // the colour is Olive. "Green" is the shade of it, not a second colour,
-    // and left on it would sit in the filter beside the shop's own Green.
+    // it says Green. This used to say Olive, on the reasoning that olive is
+    // its own colour and "green" after it is the shade — true about colour
+    // and wrong about this list, because the shop has no Olive entry and the
+    // answer was a dial nobody could browse to. The shade is not lost: it
+    // stays on the record and in the copy. Only the filter is coarsened.
     const [dial] = desiredMetaobjects(watch({ dial: 'Olive green, Roman numerals' }))
       .filter((d) => d.type === 'dial')
-    expect(dial?.name).toBe('Olive')
+    expect(dial?.name).toBe('Green')
   })
 
   it('cuts at a bracketed reference', () => {
@@ -115,7 +123,7 @@ describe('trimming a description down to a name', () => {
     // so adding it cannot split one filter into two.
     const [dial] = desiredMetaobjects(watch({ dial: 'Olive green, Roman numerals' }))
       .filter((d) => d.type === 'dial')
-    expect(dial?.name).toBe('Olive')
+    expect(dial?.name).toBe('Green')
     expect(isCreatable(dial!)).toBe(true)
   })
 })
@@ -246,6 +254,68 @@ describe('resolving against the shop', () => {
  * number, which is what a dealer files by, while a shop window is browsed by
  * name — so it comes from the nickname, which is where the name actually sits.
  */
+describe('a dial shade, filed under its colour', () => {
+  /**
+   * Four Blues on the website and a case full of them.
+   *
+   * The shop's dial list is a FILTER, not a description: somebody clicks Blue
+   * because they want a blue watch, and a Deepsea whose dial this system
+   * calls "D-Blue" is a blue watch. Unaliased it matched no entry, so it was
+   * dropped — and a watch in no filter is strictly worse off than a watch in
+   * a slightly coarse one.
+   */
+  const dialOf = (dial: string) =>
+    resolveMetafields(watch({ dial }), INDEX).metafields.find((m) => m.key === 'dial')?.value
+
+  it('files every blue under Blue', () => {
+    for (const shade of ['D-Blue', 'Dark blue', 'Light blue', 'Blue']) {
+      expect(dialOf(shade), shade).toBe('gid://d/5')
+    }
+  })
+
+  it('files every green under Green, olive included', () => {
+    // Olive used to map to an Olive entry, on the reasoning that olive is its
+    // own colour. True about colour and wrong about this list: the shop has
+    // no Olive entry, so the answer was a dial nobody could browse to.
+    for (const shade of ['Olive', 'Olive green', 'Mint green', 'Dark green']) {
+      expect(dialOf(shade), shade).toBe('gid://d/6')
+    }
+  })
+
+  it('files the greys together however they are spelled', () => {
+    for (const shade of ['Dark grey', 'Dark gray', 'Slate grey', 'Gray']) {
+      expect(dialOf(shade), shade).toBe('gid://d/7')
+    }
+  })
+
+  it('keeps the shop to one mother-of-pearl', () => {
+    for (const shade of ['Dark mother-of-pearl', 'White mother-of-pearl', 'Mother-of-pearl']) {
+      expect(dialOf(shade), shade).toBe('gid://d/2')
+    }
+  })
+
+  it('reads a Jubilee motif as the silvered dial it is', () => {
+    for (const shade of ['Silver Jubilee', 'Silver Jubilee motif']) {
+      expect(dialOf(shade), shade).toBe('gid://d/3')
+    }
+  })
+
+  it('still trims the description off before filing it', () => {
+    // The alias runs on what is left after the description is cut, so both
+    // steps have to agree — "Dark blue, diamond-set" is a blue watch.
+    expect(dialOf('Dark blue, diamond-set')).toBe('gid://d/5')
+    expect(dialOf('Mint green with gilt markers')).toBe('gid://d/6')
+  })
+
+  it('does not quietly file a colour it has never heard of', () => {
+    // Aubergine is a real dial and genuinely not one of the shop's twelve.
+    // Reported, so somebody decides — guessing a colour onto a listing is
+    // the one failure here that misleads a buyer rather than hiding a watch.
+    const { unmatched } = resolveMetafields(watch({ dial: 'Aubergine' }), INDEX)
+    expect(unmatched.map((gap) => gap.name)).toContain('Aubergine')
+  })
+})
+
 describe('the model family', () => {
   it('takes the case size off, because a 41 and a 31 are one family', () => {
     expect(familyOf(watch({ nickname: 'Datejust 41' }))).toBe('Datejust')
