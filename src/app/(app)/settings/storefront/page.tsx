@@ -40,6 +40,7 @@ export default async function StorefrontPage() {
     configured: false, listed: 0, failing: 0, lastSyncedAt: null as Date | null,
     errors: [] as Array<{ stockNo: number; message: string }>,
     unmatched: [] as Array<{ field: string; value: string; count: number }>,
+    withheld: [] as Array<{ name: string; count: number }>,
   }))
 
   return (

@@ -397,21 +397,48 @@ describe('whose search title is it', () => {
 const ORIGIN = 'https://inventory.example.com'
 
 describe('a watch somewhere we do not sell from', () => {
-  it('is a draft, not a live listing', () => {
-    // The plates say "available to view today" and the shop is a room people
-    // walk into. A piece in a courier's bag is not that, however complete.
-    expect(statusFor(watch({ locationPublishes: false }))).toBe('DRAFT')
+  it('is off the shop entirely, not sitting on it as a draft', () => {
+    // "Anything not pushed should not be on Shopify." Archived is what every
+    // other watch the shop should not show already gets.
+    expect(statusFor(watch({ locationPublishes: false }))).toBe('ARCHIVED')
   })
 
-  it('publishes itself the moment it moves, with nothing else to do', () => {
-    // No list to remember and nothing to tidy up: the next push does it.
+  it('is off it even before anybody has priced it', () => {
+    // Checked ahead of the price, because it is the stronger statement: a
+    // piece in a courier's bag has no business on the storefront whether or
+    // not somebody has got round to pricing it.
+    expect(statusFor(watch({ locationPublishes: false, estSaleGbp: null }))).toBe('ARCHIVED')
+  })
+
+  it('comes back the moment it moves, with nothing else to do', () => {
+    // Archived rather than deleted is what makes this reversible: the page
+    // keeps its handle, its ranking and its photographs.
     expect(statusFor(watch({ locationPublishes: true }))).toBe('ACTIVE')
   })
 
-  it('still archives one that has left the book', () => {
-    // Where it is does not outrank sold: a watch being couriered to its buyer
-    // is gone, and its page comes down rather than reverting to draft.
-    expect(statusFor(watch({ status: 'SOLD', locationPublishes: false }))).toBe('ARCHIVED')
+  it('keeps its photographs while it is away', () => {
+    // mediaFilesFor says nothing at all about an archived page, so a watch
+    // that travels does not come home with every picture to upload again.
+    expect(mediaFilesFor(watch({ locationPublishes: false, images: [] }), ORIGIN)).toBeNull()
+  })
+
+  it('is never given a page it did not already have', () => {
+    // "We don't want to push in transit watches to Shopify." Nothing is
+    // created, so the catalogue only holds pieces the business actually has.
+    const travelling = watch({ stockNo: 9001, locationPublishes: false })
+    const plan = planSync([travelling], [])
+    expect(plan.create).toEqual([])
+  })
+
+  it('but is taken down if it already had one', () => {
+    // The outcome nobody wants is a watch that was live, went out on loan,
+    // and stayed live because the sync decided to skip it. Skipping applies
+    // to creating a page, never to updating one.
+    const travelling = watch({ locationPublishes: false })
+    const plan = planSync([travelling], [product()])
+    expect(plan.create).toEqual([])
+    expect(plan.update).toHaveLength(1)
+    expect(statusFor(plan.update[0]!.watch)).toBe('ARCHIVED')
   })
 
   it('has nothing to sell while it is in the air', () => {
