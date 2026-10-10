@@ -1,5 +1,5 @@
 import {
-  and, eq, gt, ilike, inArray, isNotNull, isNull, lt, not, notInArray, sql, type SQL,
+  and, eq, gt, gte, ilike, inArray, isNotNull, isNull, lt, lte, not, notInArray, sql, type SQL,
 } from 'drizzle-orm'
 import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import type { FieldSpec, FilterClause, FilterOperator } from '@/lib/filters'
@@ -114,6 +114,14 @@ export function clauseToSql(
 
     case 'lt':
       return values[0] === undefined ? undefined : lt(column, coerce(values[0], binding.kind))
+
+    // The inclusive pair, which is what a slider's handles mean: the number
+    // you stopped on is in the answer, not just short of it.
+    case 'gte':
+      return values[0] === undefined ? undefined : gte(column, coerce(values[0], binding.kind))
+
+    case 'lte':
+      return values[0] === undefined ? undefined : lte(column, coerce(values[0], binding.kind))
 
     case 'after':
       return values[0] === undefined ? undefined : gt(column, new Date(values[0]))

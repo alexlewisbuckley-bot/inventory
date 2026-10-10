@@ -48,6 +48,13 @@ export type FilterOperator =
   | 'is' | 'isNot'
   | 'contains' | 'notContains'
   | 'gt' | 'lt'
+  // Inclusive, and the pair a slider writes. A range control's handles ARE
+  // the range: stopping one on 36mm and being shown "under 36mm" takes every
+  // 36mm watch out of the answer, which is the one size the person was
+  // pointing at. The strict pair stays — "cost is over ten thousand" is a
+  // sentence somebody means — and every link already written in it still
+  // reads.
+  | 'gte' | 'lte'
   | 'before' | 'after'
   | 'isEmpty' | 'isNotEmpty'
 
@@ -73,6 +80,14 @@ export interface FieldSpec {
    * this short costs more height than it saves.
    */
   group?: string
+  /**
+   * What the number is measured in, for a chip that has to read as a sentence.
+   *
+   * "Case size is up to 31" is a number floating free of what it counts, next
+   * to a slider whose own labels say 31mm. Only numbers need this: money
+   * carries its currency and a date carries its format.
+   */
+  unit?: string
 }
 
 export interface FilterClause {
@@ -94,11 +109,11 @@ const OPERATORS_FOR: Record<FieldType, readonly FilterOperator[]> = {
   enum: ['is', 'isNot'],
   reference: ['is', 'isNot'],
   text: ['contains', 'notContains', 'isEmpty', 'isNotEmpty'],
-  number: ['gt', 'lt', 'is', 'isEmpty', 'isNotEmpty'],
+  number: ['lte', 'gte', 'gt', 'lt', 'is', 'isEmpty', 'isNotEmpty'],
   // "Is empty" on a price is the unpriced-stock query, which is the single
   // most-used filter in the product. Leaving it off a money field would have
   // meant keeping `unpricedOnly=true` as a special case forever.
-  money: ['gt', 'lt', 'isEmpty', 'isNotEmpty'],
+  money: ['lte', 'gte', 'gt', 'lt', 'isEmpty', 'isNotEmpty'],
   date: ['after', 'before', 'isEmpty', 'isNotEmpty'],
   boolean: ['is'],
 }
@@ -110,6 +125,8 @@ export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   notContains: 'does not contain',
   gt: 'is over',
   lt: 'is under',
+  gte: 'is from',
+  lte: 'is up to',
   after: 'is after',
   before: 'is before',
   isEmpty: 'is empty',
@@ -179,7 +196,7 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   // Across the case, excluding the crown. A number, not bands: somebody says
   // "about 36" and means a range around it, which four fixed brackets cannot
   // express however carefully the brackets are chosen.
-  { key: 'caseSizeMm', label: 'Case size', type: 'number', group: 'what' },
+  { key: 'caseSizeMm', label: 'Case size', type: 'number', group: 'what', unit: 'mm' },
   { key: 'purchasePriceGbp', label: 'Cost', type: 'money', group: 'worth' },
   { key: 'estSaleGbp', label: 'Retail', type: 'money', group: 'worth' },
   { key: 'purchaseDate', label: 'Bought', type: 'date', group: 'worth' },
@@ -458,6 +475,10 @@ function formatValue(field: FieldSpec, value: string): string {
     return Number.isFinite(major)
       ? `${CURRENCY_SYMBOLS[BASE_CURRENCY]}${major.toLocaleString('en-GB')}`
       : value
+  }
+  if (field.type === 'number' && field.unit) {
+    const number = Number(value)
+    return Number.isFinite(number) ? `${number.toLocaleString('en-GB')}${field.unit}` : value
   }
   if (field.type === 'date') {
     const parsed = new Date(value)

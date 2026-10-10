@@ -158,7 +158,13 @@ describe('operators', () => {
     // "Is empty" belongs on a price: unpriced stock is the most-used filter in
     // the product, and leaving it off would mean keeping `unpricedOnly=true`
     // as a hand-written special case forever.
-    expect(operatorsFor(cost)).toEqual(['gt', 'lt', 'isEmpty', 'isNotEmpty'])
+    //
+    // Both an inclusive and a strict pair, and the inclusive one first so a
+    // new chip defaults to it. A slider's handles are inclusive bounds — the
+    // number you stop on is in the answer — while "cost is over ten thousand"
+    // is a sentence somebody means strictly, and every link already written
+    // with the strict pair still has to read.
+    expect(operatorsFor(cost)).toEqual(['lte', 'gte', 'gt', 'lt', 'isEmpty', 'isNotEmpty'])
 
     const bought = WATCH_FIELDS.find((field) => field.key === 'purchaseDate')!
     expect(operatorsFor(bought)).toEqual(['after', 'before', 'isEmpty', 'isNotEmpty'])
