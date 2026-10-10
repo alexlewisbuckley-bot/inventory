@@ -83,8 +83,12 @@ describe('being refused a sales channel', () => {
     // that is an empty list rather than an error, and the empty list was being
     // believed — so the sync skipped publishing and reported success.
     const service = read('src/server/services/shopify-service.ts')
-    expect(service).toMatch(/data\.publications\.edges\.length === 0/)
-    expect(service).toMatch(/read_publications and write_publications scopes/)
+    expect(service).toMatch(/seen\.length === 0/)
+    expect(service).toMatch(/read_publications and write_publications permissions/)
+    // And the page says it outright, without waiting for a push to catch it.
+    expect(service).toMatch(/async function channelHealth/)
+    expect(read('src/components/settings/StorefrontSync.tsx'))
+      .toMatch(/The shop will not let this app publish anything/)
     // The silent return that let it happen: no publication, no complaint.
     expect(service).not.toMatch(/if \(!publicationId\) return null/)
   })

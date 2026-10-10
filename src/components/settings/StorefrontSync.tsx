@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/cn'
 import { AlertTriangle, Check, Plus, RefreshCw, Trash2, Archive } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, useToast } from '@/components/ui'
 import { applySyncAction, previewSyncAction, type PlanSummary } from '@/app/actions/shopify'
@@ -24,6 +25,7 @@ export function StorefrontSync({ health }: {
     unmatched: Array<{ field: string; value: string; count: number }>
     withheld: Array<{ name: string; count: number }>
     invisible: Array<{ sku: string | null; title: string }>
+    channel: { name: string | null; refusal: string | null; seen: string[] }
   }
 }) {
   const router = useRouter()
@@ -69,23 +71,50 @@ export function StorefrontSync({ health }: {
     let failures = 0
     let last: Awaited<ReturnType<typeof applySyncAction>> | null = null
 
-    do {
-      const result = await applySyncAction(cursor)
-      last = result
-      done += result.pushed
-      failures += result.failed
-      // The first batch is the one that knows how many there are in all.
-      if (!total) total = result.total
-      setProgress({ done, total })
-      cursor = result.nextCursor
-    } while (cursor !== null)
+    /**
+     * Whatever happens, stop spinning and say something.
+     *
+     * The loop below had no catch. A batch that was killed by the platform —
+     * which is what a long run looks like from the outside — does not come
+     * back as a failed result; the request simply dies, the promise rejects,
+     * and every line after it never runs. So the button span, the progress bar
+     * sat at nothing, and the screen said nothing at all, which is the exact
+     * failure the batching was written to end and which it only half fixed.
+     *
+     * The work already done is safe either way: each batch is written to the
+     * database before it answers. So the honest report is how far it got and
+     * what stopped it, not silence.
+     */
+    try {
+      do {
+        const result = await applySyncAction(cursor)
+        last = result
+        done += result.pushed
+        failures += result.failed
+        // The first batch is the one that knows how many there are in all.
+        if (!total) total = result.total
+        setProgress({ done, total })
+        // A batch that reports no progress and asks to be called again with
+        // the same cursor would spin for ever. It cannot happen as the server
+        // is written; it costs one comparison to make sure it cannot happen as
+        // the server is rewritten either.
+        cursor = result.nextCursor === cursor ? null : result.nextCursor
+      } while (cursor !== null)
 
-    setBusy(null)
-    setProgress(null)
-    if (last?.ok && failures === 0) toast.success('Storefront updated', last.message)
-    else toast.error('Finished with problems', last?.message ?? 'The run stopped early.')
-    setPlan(null)
-    router.refresh()
+      if (last?.ok && failures === 0) toast.success('Storefront updated', last.message)
+      else toast.error('Finished with problems', last?.message ?? 'The run stopped early.')
+    } catch (error) {
+      toast.error(
+        done > 0 ? `Stopped after ${done} of ${total}` : 'The shop could not be reached',
+        `${(error as Error).message?.slice(0, 200) || 'The connection dropped.'} `
+        + 'Everything pushed so far is saved — press Apply again to carry on.',
+      )
+    } finally {
+      setBusy(null)
+      setProgress(null)
+      setPlan(null)
+      router.refresh()
+    }
   }
 
   const total = plan
@@ -147,16 +176,32 @@ export function StorefrontSync({ health }: {
 
           {busy === 'apply' && (
             <div className="mt-4">
+              {/* Before the first batch answers there is no count, and
+                  "Pushing to the shop — 0" over an empty bar reads as stuck
+                  rather than as starting. It is the longest wait of the run:
+                  the plan has to be read off the shop first. Say what is
+                  happening instead of reporting a zero. */}
               <p className="text-small text-content-secondary">
-                Pushing to the shop —{' '}
-                <b className="tabular-nums text-content-primary">{progress?.done ?? 0}</b>
-                {progress?.total ? <> of <span className="tabular-nums">{progress.total}</span></> : null}
-                . This takes a few minutes; leave the page open.
+                {progress
+                  ? <>
+                    Pushing to the shop —{' '}
+                    <b className="tabular-nums text-content-primary">{progress.done}</b>
+                    {progress.total ? <> of <span className="tabular-nums">{progress.total}</span></> : null}
+                    . Leave the page open.
+                  </>
+                  : <>Reading the shop to work out what has changed. This is the slow part; leave the page open.</>}
               </p>
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-surface-subtle">
                 <div
-                  className="h-full rounded-full bg-state-success transition-all duration-500"
-                  style={{ width: `${progress?.total ? (progress.done / progress.total) * 100 : 0}%` }}
+                  className={cn(
+                    'h-full rounded-full bg-state-success',
+                    progress ? 'transition-all duration-500' : 'animate-pulse',
+                  )}
+                  style={{
+                    width: progress?.total
+                      ? `${(progress.done / progress.total) * 100}%`
+                      : '15%',
+                  }}
                 />
               </div>
             </div>
@@ -190,6 +235,38 @@ export function StorefrontSync({ health }: {
             but it is first in the list, because it is the state somebody is
             looking at this page to explain.
           */}
+          {/*
+            Whether the shop will let this app put anything in its window.
+
+            Shown only when the answer is no, and shown whether or not any
+            watch has yet been caught by it — because the failure it names is
+            the silent one. Publishing is a separate act from writing the
+            product, it is the last step of a push, and it reports rather than
+            throws; so when it stops working every record on this side goes on
+            saying the watch is listed and synced, and it is, in the admin,
+            and nowhere a customer can reach. A day was spent on that.
+          */}
+          {health.configured && !health.channel.name && (
+            <div className="mt-4 rounded-md border border-state-danger/40 bg-state-danger/5 p-4">
+              <p className="flex items-center gap-2 text-small font-bold text-content-primary">
+                <AlertTriangle className="h-4 w-4 text-state-danger" aria-hidden />
+                The shop will not let this app publish anything
+              </p>
+              <p className="mt-1 text-caption text-content-secondary">
+                Watches are being written to Shopify correctly and then left out of the Online
+                Store, which from the website looks exactly like them never having been pushed.
+              </p>
+              <p className="mt-2 text-caption text-content-secondary">
+                <span className="font-semibold text-content-primary">Shopify said: </span>
+                {health.channel.refusal ?? 'nothing — the Online Store channel was not in the list.'}
+              </p>
+              <p className="mt-2 text-caption text-content-secondary">
+                <span className="font-semibold text-content-primary">Channels this app can see: </span>
+                {health.channel.seen.length ? health.channel.seen.join(', ') : 'none at all'}
+              </p>
+            </div>
+          )}
+
           {health.invisible.length > 0 && (
             <div className="mt-4 rounded-md border border-state-warning/40 bg-state-warning/5 p-4">
               <p className="flex items-center gap-2 text-small font-bold text-content-primary">
