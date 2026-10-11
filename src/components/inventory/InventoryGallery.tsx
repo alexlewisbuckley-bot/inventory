@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { Camera, Handshake } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { StatusChip, UnpricedChip, useCurrency } from '@/components/ui'
+import { StatusChip, UnpricedChip, ZoomButton, useCurrency } from '@/components/ui'
 import { CheckDot } from '@/components/compliance/CheckLight'
 import { CHECK_TONE_LABELS, watchChecks } from '@/lib/checks'
 import { PRODUCT_TYPE_LABELS, type WatchStatus } from '@/lib/enums'
@@ -186,18 +186,32 @@ function Photo({ watch, dimmed, showTrade }: {
     )
   }
 
+  const alt = showTrade
+    ? `${watch.brandName} ${watch.model}, stock ${watch.stockNo}, trade photograph`
+    : `${watch.brandName} ${watch.model}, stock ${watch.stockNo}`
+
+  // The card is a link to the watch, and that is the right thing for a click
+  // on it to do — so enlarging gets its own control in the corner rather than
+  // taking the card's click away. It appears on hover and on keyboard focus,
+  // and swallows the click before the link sees it.
   return (
-    <img
-      src={`/api/images/${id}`}
-      alt={showTrade
-        ? `${watch.brandName} ${watch.model}, stock ${watch.stockNo}, trade photograph`
-        : `${watch.brandName} ${watch.model}, stock ${watch.stockNo}`}
-      loading="lazy"
-      decoding="async"
-      className={cn(
-        'aspect-[4/3] w-full bg-surface-subtle object-cover transition-transform group-hover:scale-[1.02]',
-        dimmed && 'opacity-70',
-      )}
-    />
+    <div className="relative">
+      <ZoomButton
+        src={`/api/images/${id}`}
+        alt={alt}
+        caption={`Stock ${watch.stockNo} · ${watch.brandName} ${watch.model}`}
+      />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/api/images/${id}`}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        className={cn(
+          'aspect-[4/3] w-full bg-surface-subtle object-cover transition-transform group-hover:scale-[1.02]',
+          dimmed && 'opacity-70',
+        )}
+      />
+    </div>
   )
 }

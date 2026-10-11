@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CreditCard, Handshake, Library, Loader2, Trash2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { Button, ConfirmDialog, Modal, useToast } from '@/components/ui'
+import { Button, ConfirmDialog, Lightbox, Modal, openerProps, useLightbox, useToast } from '@/components/ui'
 import { downscaleImage, isUploadableImage } from '@/lib/downscale'
 import { useLibraryImageAction } from '@/app/actions/watches'
 import { IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
@@ -40,6 +40,10 @@ export function ImageGallery({ watchId, initial, canEdit }: {
   const [dragging, setDragging] = useState<ImageKind | null>(null)
   const [deleting, setDeleting] = useState<GalleryImage | null>(null)
   const inputs = useRef<Record<string, HTMLInputElement | null>>({})
+  // Enlarging pages through the whole watch, not just the kind that was
+  // clicked: somebody checking a serial against a card wants the card and the
+  // watch next to each other, and they are in two different sections.
+  const viewer = useLightbox()
 
   // The reference library: every photograph banked against this watch's
   // model, whichever watch it was taken for. Fetched when the picker opens
@@ -317,10 +321,14 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                           <img> is used rather than next/image. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
+                        {...openerProps(
+                          () => viewer.open(images.indexOf(image)),
+                          `Enlarge this ${IMAGE_KIND_LABELS[image.kind].toLowerCase()} photograph`,
+                        )}
                         src={`/api/images/${image.id}`}
                         alt={image.caption ?? `${IMAGE_KIND_LABELS[image.kind]} image`}
                         loading="lazy"
-                        className="h-full w-full object-cover"
+                        className="h-full w-full cursor-zoom-in object-cover"
                       />
                       {canEdit && (
                         <button
@@ -419,6 +427,19 @@ export function ImageGallery({ watchId, initial, canEdit }: {
         message="It will be deleted permanently. The change is recorded in the watch's history."
         confirmLabel="Remove"
       />
+
+      {viewer.at !== null && (
+        <Lightbox
+          images={images.map((image) => ({
+            src: `/api/images/${image.id}`,
+            alt: image.caption ?? `${IMAGE_KIND_LABELS[image.kind]} image`,
+            caption: image.caption ?? IMAGE_KIND_LABELS[image.kind],
+          }))}
+          index={viewer.at}
+          onIndex={viewer.move}
+          onClose={viewer.close}
+        />
+      )}
     </>
   )
 }

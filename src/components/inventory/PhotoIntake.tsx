@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertTriangle, Check, ImagePlus, Loader2, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { Button, Card, useToast } from '@/components/ui'
+import { Button, Card, Zoomable, useToast } from '@/components/ui'
 import { downscaleImage, isUploadableImage } from '@/lib/downscale'
 import { guessKind, matchPhoto } from '@/lib/photo-match'
 import { IMAGE_KINDS, IMAGE_KIND_LABELS, type ImageKind } from '@/lib/enums'
@@ -517,10 +517,15 @@ export function PhotoIntake({ candidates, initialFiles }: {
                       className="mt-5 h-3.5 w-3.5 shrink-0 accent-teal-500"
                     />
 
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
+                    {/* Enlargeable: this row is where somebody decides which
+                        watch a photograph belongs to and whether it is the
+                        card or the watch, and fourteen pixels of a serial
+                        number is not a thing anybody can read. */}
+                    <Zoomable
                       src={p.preview}
-                      alt=""
+                      alt={p.file.name}
+                      caption={p.file.name}
+                      loading="eager"
                       className="h-14 w-14 shrink-0 rounded-sm border border-line-subtle object-cover"
                     />
 

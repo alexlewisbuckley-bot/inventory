@@ -6,6 +6,7 @@ import { CheckCircle2, CircleSlash, ImageOff, MapPin, ScanLine, Undo2, XCircle }
 import {
   Button, Card, CardBody, CardHeader, Chip, ConfirmDialog, Modal, SelectField,
   TextareaField, ToolbarRow, ToolbarSearch, ToolbarSelect, useCurrency, useToast,
+  Zoomable,
 } from '@/components/ui'
 import {
   abandonStockCheckAction, completeStockCheckAction, recordLineAction, scanForCheckAction,
@@ -528,12 +529,12 @@ function WatchThumb({ imageId, alt, className }: {
       </span>
     )
   }
+  // Enlargeable, because this is the screen where somebody is holding the
+  // watch and comparing it to the picture. A 44-pixel square settles nothing.
   return (
-    <img
+    <Zoomable
       src={`/api/images/${imageId}`}
       alt={alt}
-      loading="lazy"
-      decoding="async"
       className={cn('rounded-sm bg-surface-subtle object-cover', className)}
     />
   )
