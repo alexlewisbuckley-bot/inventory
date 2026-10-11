@@ -19,7 +19,7 @@ const INDEX = indexMetaobjects([
   { type: 'brand', displayName: 'Rolex', id: 'gid://b/1' },
   { type: 'dial', displayName: 'White', id: 'gid://d/1' },
   { type: 'dial', displayName: 'Mother of Pearl', id: 'gid://d/2' },
-  { type: 'dial', displayName: 'Silvered', id: 'gid://d/3' },
+  { type: 'dial', displayName: 'Silver', id: 'gid://d/3' },
   { type: 'dial', displayName: 'Pink', id: 'gid://d/4' },
   // The rest of the shop's real dial list, so these tests resolve against the
   // vocabulary the store actually has rather than a convenient subset.
@@ -160,8 +160,8 @@ describe('what the shop should say about a watch', () => {
       .toContainEqual({ type: 'box_papers', name: 'Box & papers' })
     expect(desiredMetaobjects(watch({ boxPapers: 'WATCH_ONLY' })))
       .toContainEqual({ type: 'box_papers', name: 'Neither' })
-    expect(desiredMetaobjects(watch({ dial: 'Silver' })))
-      .toContainEqual({ type: 'dial', name: 'Silvered', canCreate: true })
+    expect(desiredMetaobjects(watch({ dial: 'Silvered' })))
+      .toContainEqual({ type: 'dial', name: 'Silver', canCreate: true })
     // Only where the reference says nothing — a house that does not encode
     // the metal leaves the typed words to be translated.
     expect(desiredMetaobjects(watch({
