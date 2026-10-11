@@ -131,11 +131,33 @@ describe('what a dealer is shown', () => {
   })
 
   it('can be cut down by everything except money', () => {
-    // The six questions a dealer asks, and not one about price.
-    for (const label of ['Brand', 'Model', 'Size', 'Year', 'Condition', 'Box & papers']) {
+    // The questions a dealer asks, and not one about price. Dial and who it
+    // is worn by were missing from the first version — the two cuts anybody
+    // browsing a case makes out loud, and the list was four controls that
+    // could not express either.
+    for (const label of ['Brand', 'Model', 'Dial', 'Worn by', 'Size', 'Year', 'Condition', 'Box & papers']) {
       expect(room, label).toContain(`label: '${label}'`)
     }
     expect(room).not.toMatch(/label: '(Budget|Price|Retail|Cost)'/)
+  })
+
+  it('leaves a midsize watch in both lists rather than picking one', () => {
+    // 35 to 37mm is worn by anyone, and forcing a 36mm Datejust into one
+    // list means never showing it to half the people it suits. The same
+    // bands the stock list uses, so a dealer and the shop agree what a
+    // midsize is — which is why one watch can answer a group twice, and why
+    // the group test is `holds` rather than an equality.
+    expect(room).toMatch(/if \(mm >= MENS_MIN_MM\) wears\.push\('MENS'\)/)
+    expect(room).toMatch(/if \(mm <= WOMENS_MAX_MM\) wears\.push\('WOMENS'\)/)
+    expect(room).toMatch(/function holds\(item: TradeItem, group: string, chosen: string\[\]\)/)
+    expect(room).not.toMatch(/chosen\.includes\(valueOf\(item/)
+  })
+
+  it('offers a way into a long list', () => {
+    // Thirty brands is a scroll and ninety models is a wall, and the chosen
+    // ones pin to the top so narrowing never hides what is already picked.
+    expect(room).toMatch(/options\.length > 8/)
+    expect(room).toMatch(/matching\.filter\(\(option\) => chosen\.includes\(option\.value\)\)/)
   })
 
   it('counts each group under the others and never under itself', () => {
