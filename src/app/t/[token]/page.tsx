@@ -41,7 +41,6 @@ export default async function TradePage({ params }: { params: { token: string } 
         token={params.token}
         name={door.name}
         hasLogo={door.hasLogo}
-        publicToken={door.publicToken}
         brandColor={door.brandColor}
         accentColor={door.accentColor}
       />
@@ -57,7 +56,6 @@ export default async function TradePage({ params }: { params: { token: string } 
     <TradeRoom
       token={params.token}
       reseller={room.reseller}
-      publicToken={door.publicToken}
       items={room.items}
     />
   )

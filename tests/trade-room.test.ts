@@ -156,3 +156,29 @@ describe('what a dealer is shown', () => {
     expect(room).toMatch(/event\.key === 'Escape'/)
   })
 })
+
+describe('the reseller’s own mark', () => {
+  it('is found by the token the page actually carries', () => {
+    // It reused the shop window's lookup, which matches the PUBLIC token or
+    // the reseller's hostname. A trade URL carries neither, so it matched
+    // nothing and the page drew a broken image next to the name.
+    const route = read('src/app/t/[token]/logo/route.ts')
+    expect(route).toMatch(/getTradeLogo\(params\.token\)/)
+    expect(route).not.toMatch(/getShopLogo/)
+
+    const service = read('src/server/services/reseller-service.ts')
+    const logo = service.slice(service.indexOf('export async function getTradeLogo'))
+    expect(logo.slice(0, 700)).toMatch(/eq\(resellers\.tradeToken, token\)/)
+  })
+
+  it('is not fixed by handing the dealer the shop window’s secret', () => {
+    // The first fix on hand was to pass the public token through to the page
+    // and build the URL from it. That would put the shop window's secret in
+    // the markup of a page shown to dealers — the one audience with no
+    // business holding it — which is worse than the broken image.
+    for (const path of ['src/components/trade/TradeGate.tsx', 'src/components/trade/TradeRoom.tsx']) {
+      expect(read(path), path).not.toMatch(/publicToken/)
+    }
+    expect(read('src/app/t/[token]/page.tsx')).not.toMatch(/publicToken/)
+  })
+})

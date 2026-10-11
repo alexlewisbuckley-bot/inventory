@@ -1,21 +1,21 @@
 import { type NextRequest } from 'next/server'
-import { getShopLogo } from '@/server/services/reseller-service'
+import { getTradeLogo } from '@/server/services/reseller-service'
 
 export const dynamic = 'force-dynamic'
 
 /**
  * The reseller's mark, on their own trade page.
  *
- * Looked up by their public token rather than the trade one: a logo is on
- * every page of their shop already and is not a thing the passphrase is
- * protecting, so this reuses the door that already serves it rather than
- * opening a second one onto the same bytes.
+ * Found by the trade token, which is the only one this route is given. It
+ * reused the shop window's lookup at first — which matches the public token
+ * or the reseller's hostname — so it matched nothing and the page drew a
+ * broken image next to the name.
  */
 export async function GET(
   _request: NextRequest,
   { params }: { params: { token: string } },
 ) {
-  const logo = await getShopLogo(params.token)
+  const logo = await getTradeLogo(params.token)
   if (!logo?.data) return new Response('Not found', { status: 404 })
   return new Response(new Uint8Array(logo.data), {
     headers: {

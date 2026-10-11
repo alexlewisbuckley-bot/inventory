@@ -42,10 +42,9 @@ export interface TradeItem {
  * photographs it describes; paging it off the server would cost a round trip
  * per keystroke to save nothing.
  */
-export function TradeRoom({ token, reseller, publicToken, items }: {
+export function TradeRoom({ token, reseller, items }: {
   token: string
   reseller: { name: string; brandColor: string; accentColor: string; hasLogo: boolean }
-  publicToken: string
   items: TradeItem[]
 }) {
   const [term, setTerm] = useState('')
@@ -119,7 +118,7 @@ export function TradeRoom({ token, reseller, publicToken, items }: {
           {reseller.hasLogo ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={`/t/${token}/logo?v=${publicToken.slice(0, 6)}`}
+              src={`/t/${token}/logo`}
               alt={reseller.name}
               className="h-8 w-auto shrink-0 object-contain"
             />
