@@ -51,6 +51,7 @@ export default async function ShopContentPage() {
   const rows: ContentRow[] = result.items.map((watch) => ({
     id: watch.id,
     stockNo: watch.stockNo,
+    locationName: watch.locationName,
     brandName: watch.brandName,
     model: watch.model,
     nickname: watch.nickname,
