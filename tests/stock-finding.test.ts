@@ -5,7 +5,7 @@ import {
   HELD_STATUSES, MENS_MIN_MM, MISSING_FACTS, MISSING_FACT_LABELS,
   WEARS, WEARS_LABELS, WOMENS_MAX_MM,
 } from '@/lib/enums'
-import { WATCH_FIELDS, operatorsFor, parseFilters, validateClause } from '@/lib/filters'
+import { WATCH_FIELDS, describeClause, operatorsFor, parseFilters, validateClause } from '@/lib/filters'
 import { INVENTORY_VIEWS } from '@/components/inventory/views'
 
 /**
@@ -189,5 +189,68 @@ describe('browsing a caseful of watches', () => {
     const bar = read('src/components/inventory/FindBar.tsx')
     expect(bar).toMatch(/if \(!drag\) setLocal/)
     expect(bar).toMatch(/pointerup/)
+  })
+})
+
+/**
+ * A range that includes the numbers on its own handles.
+ *
+ * Dragging the size slider to 36mm said "under 36mm" and returned no 36mm
+ * watch at all — which is the one size the person had just pointed at, and the
+ * quietest possible way to be wrong: the list is plausible, and short.
+ *
+ * The handles of a range control ARE the range. "36mm and under" is also how
+ * the question gets asked out loud; nobody browsing for a lady's watch says
+ * "under thirty-seven".
+ */
+describe('the number you stop the handle on', () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+
+  it('is inside the answer, not just short of it', () => {
+    for (const key of ['estSaleGbp', 'caseSizeMm']) {
+      const operators = operatorsFor(WATCH_FIELDS.find((spec) => spec.key === key)!)
+      expect(operators, key).toContain('gte')
+      expect(operators, key).toContain('lte')
+      // And the inclusive pair comes first, so a chip added from the menu
+      // starts on the one that matches what a slider means.
+      expect(operators[0], key).toBe('lte')
+    }
+    const sql = read('src/server/repositories/filter-sql.ts')
+    expect(sql).toMatch(/case 'gte':[\s\S]{0,120}gte\(column/)
+    expect(sql).toMatch(/case 'lte':[\s\S]{0,120}lte\(column/)
+  })
+
+  it('is what the slider writes', () => {
+    const bar = read('src/components/inventory/FindBar.tsx')
+    expect(bar).toMatch(/operator: 'gte', values: \[String\(lo\)\]/)
+    expect(bar).toMatch(/operator: 'lte', values: \[String\(hi\)\]/)
+  })
+
+  it('still reads a link written before the handles were inclusive', () => {
+    // `gt` and `lt` are valid filters and people have them in saved views.
+    for (const raw of ['caseSizeMm:lt:36', 'estSaleGbp:gt:5000']) {
+      expect(parseFilters(`f=${raw}`, WATCH_FIELDS), raw).toHaveLength(1)
+    }
+    const bar = read('src/components/inventory/FindBar.tsx')
+    expect(bar).toMatch(/side === 'lo' \? \['gte', 'gt'\] : \['lte', 'lt'\]/)
+  })
+
+  it('says so on the trigger', () => {
+    const bar = read('src/components/inventory/FindBar.tsx')
+    expect(bar).toMatch(/\$\{format\(hi!\)\} and under/)
+    expect(bar).toMatch(/\$\{format\(lo\)\} and over/)
+    expect(bar).not.toMatch(/`under \$\{format/)
+  })
+})
+
+describe('a measurement in a chip', () => {
+  it('says what it is measured in', () => {
+    // "Case size is up to 31" is a number floating free of what it counts,
+    // sitting next to a slider whose own labels read 31mm.
+    expect(describeClause({ field: 'caseSizeMm', operator: 'lte', values: ['36'] }, WATCH_FIELDS))
+      .toBe('Case size is up to 36mm')
+    // And a plain number stays plain: a year is not 2023 of anything.
+    expect(describeClause({ field: 'year', operator: 'gte', values: ['2023'] }, WATCH_FIELDS))
+      .toBe('Year is from 2023')
   })
 })

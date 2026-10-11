@@ -41,6 +41,8 @@ export default async function StorefrontPage() {
     errors: [] as Array<{ stockNo: number; message: string }>,
     unmatched: [] as Array<{ field: string; value: string; count: number }>,
     withheld: [] as Array<{ name: string; count: number }>,
+    invisible: [] as Array<{ sku: string | null; title: string }>,
+    channel: { name: null as string | null, refusal: null as string | null, seen: [] as string[] },
   }))
 
   return (

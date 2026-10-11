@@ -4,6 +4,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { applyFilters, parseFilters, WATCH_FIELDS, type FilterClause } from '@/lib/filters'
+import { useCurrency } from '@/components/ui/CurrencyProvider'
+import { fromBase } from '@/lib/currency'
+import { CURRENCY_SYMBOLS } from '@/lib/enums'
 import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositories/watch-repository'
 
 /**
@@ -34,6 +37,9 @@ import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositor
  * clause the filter menu writes, so it shows as the same removable chip,
  * lives in the same URL, and saves into the same view.
  */
+/** Both ways a bound can be written: the pair in use, and the pair in old links. */
+const RANGE_OPERATORS = new Set<FilterClause['operator']>(['gte', 'lte', 'gt', 'lt'])
+
 export function FindBar({ facets, total }: { facets: StockFacetData; total: number }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -66,27 +72,43 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
   }
 
   /**
-   * Set or clear a range, as the pair of clauses the grammar already has.
+   * Set or clear a range, as the pair of clauses the grammar has for it.
+   *
+   * Inclusive at both ends, because that is what the handles mean. They were
+   * written as the strict pair, so stopping one on 36mm asked for under 36 and
+   * left out every 36mm watch there is — the one size the person had just
+   * pointed at. A range control whose bounds exclude their own labels is
+   * wrong in the quietest possible way: the list is plausible and short.
    *
    * A handle left at the end of its track is not an opinion — "from the
-   * cheapest watch upwards" filters nothing — so that side is written as no
-   * clause at all rather than as a bound equal to the limit. Otherwise a
-   * chip would appear saying "Retail is more than £1,200" for a slider
-   * nobody had moved.
+   * smallest watch upwards" filters nothing — so that side is written as no
+   * clause at all rather than as a bound equal to the limit. Otherwise a chip
+   * would appear saying "Case size is from 26mm" for a slider nobody moved.
    */
   const setRange = (field: string, lo: number | null, hi: number | null) => {
     const rest = clauses.filter((clause) => !(
-      clause.field === field && (clause.operator === 'gt' || clause.operator === 'lt')
+      clause.field === field && RANGE_OPERATORS.has(clause.operator)
     ))
     const next = [...rest]
-    if (lo !== null) next.push({ field, operator: 'gt', values: [String(lo)] })
-    if (hi !== null) next.push({ field, operator: 'lt', values: [String(hi)] })
+    if (lo !== null) next.push({ field, operator: 'gte', values: [String(lo)] })
+    if (hi !== null) next.push({ field, operator: 'lte', values: [String(hi)] })
     write(next)
   }
 
-  const bound = (field: string, operator: 'gt' | 'lt'): number | null => {
-    const value = clauses.find((c) => c.field === field && c.operator === operator)?.values[0]
-    return value === undefined ? null : Number(value)
+  /**
+   * One end of a range, whichever way it was written.
+   *
+   * Links made before the handles became inclusive say `gt` and `lt`, and
+   * they are still valid filters — so the bar reads either, and rewrites the
+   * pair the moment somebody moves a handle.
+   */
+  const bound = (field: string, side: 'lo' | 'hi'): number | null => {
+    const wanted = side === 'lo' ? ['gte', 'gt'] : ['lte', 'lt']
+    for (const operator of wanted) {
+      const value = clauses.find((c) => c.field === field && c.operator === operator)?.values[0]
+      if (value !== undefined) return Number(value)
+    }
+    return null
   }
 
   const clearAll = () => write(clauses.filter((clause) => (
@@ -95,12 +117,33 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
   )))
 
   const anyOn = ['brandId', 'family', 'wears'].some((field) => chosen(field).length > 0)
-    || bound('estSaleGbp', 'gt') !== null || bound('estSaleGbp', 'lt') !== null
-    || bound('caseSizeMm', 'gt') !== null || bound('caseSizeMm', 'lt') !== null
+    || bound('estSaleGbp', 'lo') !== null || bound('estSaleGbp', 'hi') !== null
+    || bound('caseSizeMm', 'lo') !== null || bound('caseSizeMm', 'hi') !== null
 
-  const money = (amount: number) => (amount >= 1000
-    ? `£${Math.round(amount / 1000)}k`
-    : `£${amount.toLocaleString('en-GB')}`)
+  /**
+   * The budget, in the currency this person is reading the business in.
+   *
+   * The slider itself stays in stored units from end to end — the facet
+   * arrives in them and the clause is written in them — because the column
+   * being filtered is in stored units and a conversion anywhere along that
+   * path would filter on a different number from the one it had counted. Only
+   * the labels move, which is the whole of what the switcher means.
+   *
+   * It said `£` before, over figures that have been dollars since 0018. Not a
+   * cosmetic slip: it put the wrong symbol on a number and so misstated every
+   * budget on the bar by the exchange rate, in the direction that makes a
+   * watch look cheaper than it is.
+   */
+  const { currency, rates } = useCurrency()
+  const money = useCallback((stored: number) => {
+    const shown = fromBase(Math.round(stored * 100), currency, rates) / 100
+    const symbol = CURRENCY_SYMBOLS[currency]
+    // Thousands as "7k" — four digits of precision on a slider handle is
+    // precision nobody asked for and it makes the two labels collide.
+    return shown >= 1000
+      ? `${symbol}${Math.round(shown / 1000).toLocaleString('en-GB')}k`
+      : `${symbol}${Math.round(shown).toLocaleString('en-GB')}`
+  }, [currency, rates])
 
   return (
     <div className="mb-5 flex flex-wrap items-center gap-2">
@@ -121,11 +164,11 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
       {facets.price && (
         <Pick
           id="budget" label="Budget" open={open} setOpen={setOpen}
-          summary={rangeSummary(bound('estSaleGbp', 'gt'), bound('estSaleGbp', 'lt'), money)}
+          summary={rangeSummary(bound('estSaleGbp', 'lo'), bound('estSaleGbp', 'hi'), money)}
         >
           <Range
             facet={facets.price}
-            lo={bound('estSaleGbp', 'gt')} hi={bound('estSaleGbp', 'lt')}
+            lo={bound('estSaleGbp', 'lo')} hi={bound('estSaleGbp', 'hi')}
             onCommit={(lo, hi) => setRange('estSaleGbp', lo, hi)}
             format={money}
           />
@@ -135,11 +178,11 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
       {facets.size && (
         <Pick
           id="size" label="Size" open={open} setOpen={setOpen}
-          summary={rangeSummary(bound('caseSizeMm', 'gt'), bound('caseSizeMm', 'lt'), (mm) => `${mm}mm`)}
+          summary={rangeSummary(bound('caseSizeMm', 'lo'), bound('caseSizeMm', 'hi'), (mm) => `${mm}mm`)}
         >
           <Range
             facet={facets.size}
-            lo={bound('caseSizeMm', 'gt')} hi={bound('caseSizeMm', 'lt')}
+            lo={bound('caseSizeMm', 'lo')} hi={bound('caseSizeMm', 'hi')}
             onCommit={(lo, hi) => setRange('caseSizeMm', lo, hi)}
             format={(mm) => `${mm}mm`}
             step={1}
@@ -177,10 +220,17 @@ function summarise(options: FacetOption[], chosen: string[], noun: string): stri
   return `${chosen.length} ${noun}s`
 }
 
+/**
+ * What a range reads as, once the bounds include themselves.
+ *
+ * "under 36mm" over a filter that returns 36mm watches is a label lying about
+ * its own control, and "36mm and under" is how the question is asked out loud
+ * anyway — nobody browsing for a lady's watch says "under thirty-seven".
+ */
 function rangeSummary(lo: number | null, hi: number | null, format: (n: number) => string): string | null {
   if (lo === null && hi === null) return null
-  if (lo === null) return `under ${format(hi!)}`
-  if (hi === null) return `over ${format(lo)}`
+  if (lo === null) return `${format(hi!)} and under`
+  if (hi === null) return `${format(lo)} and over`
   return `${format(lo)}–${format(hi)}`
 }
 

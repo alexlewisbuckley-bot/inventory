@@ -236,6 +236,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
           id: string
           title: string
           status: string
+          publishedAt: string | null
           seo: { title: string | null }
           variants: { edges: Array<{ node: { sku: string | null } }> }
         } }>
@@ -246,7 +247,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
         products(first: 100, after: $cursor) {
           edges {
             node {
-              id title status
+              id title status publishedAt
               seo { title }
               variants(first: 1) { edges { node { sku } } }
             }
@@ -261,6 +262,7 @@ export async function storeProducts(): Promise<SyncProduct[]> {
         id: edge.node.id,
         title: edge.node.title,
         status: edge.node.status,
+        publishedAt: edge.node.publishedAt ?? null,
         seoTitle: edge.node.seo?.title ?? null,
         sku: edge.node.variants.edges[0]?.node.sku ?? null,
       })
@@ -735,24 +737,61 @@ export async function archiveProduct(productId: string): Promise<void> {
  * thing to get wrong. Cached for the run; a shop does not gain a storefront
  * halfway through a sync.
  */
-let cachedPublication: { id: string | null; denied: string | null } | null = null
+interface ChannelLookup {
+  id: string | null
+  denied: string | null
+  /** Every channel the shop named, which is the whole of the evidence. */
+  seen: string[]
+}
 
-async function onlineStorePublication(): Promise<{ id: string | null; denied: string | null }> {
+let cachedPublication: ChannelLookup | null = null
+
+/**
+ * Forget what the shop last said this app was allowed to do.
+ *
+ * Called at the top of a run, so that a scope granted in Shopify a minute ago
+ * is in force the next time somebody presses Apply.
+ */
+export function forgetCredentials(): void {
+  cachedToken = null
+  cachedPublication = null
+}
+
+async function onlineStorePublication(): Promise<ChannelLookup> {
   if (cachedPublication) return cachedPublication
   try {
     const data = await admin<{
       publications: { edges: Array<{ node: { id: string; name: string } }> }
     }>(`{ publications(first: 20) { edges { node { id name } } } }`, {})
 
+    const seen = data.publications.edges.map((e) => e.node.name)
     const found = data.publications.edges.find((e) => e.node.name === 'Online Store')
-    cachedPublication = { id: found?.node.id ?? null, denied: null }
+    cachedPublication = found
+      ? { id: found.node.id, denied: null, seen }
+      // An app sees the sales channels it has been given, and an app with no
+      // `read_publications` scope is handed an empty list rather than an
+      // error — so "there is no Online Store here" and "you may not be told
+      // about it" arrive as the same answer, and the old code read it as the
+      // first and quietly published nothing. Every push after that reported
+      // success, because every step that could fail had succeeded. Ten watches
+      // were live in the admin and invisible on the website for a day.
+      //
+      // A shop with a storefront and no Online Store channel does not exist,
+      // so the honest reading of an empty list is that this app cannot see it.
+      : {
+        id: null,
+        seen,
+        denied: seen.length === 0
+          ? 'Shopify listed no sales channels for this app, so nothing could be published to the Online Store. The app needs the read_publications and write_publications permissions.'
+          : `Shopify listed ${seen.length} sales channels for this app — ${seen.join(', ')} — and none of them is called "Online Store", so nothing could be published.`,
+      }
   } catch (error) {
     // Reading the list of sales channels needs the `read_publications` scope,
     // and an app without it is refused rather than handed an empty list. That
     // refusal is a fact about this app's permissions, not about the watch being
     // pushed — so it is remembered, reported once, and not allowed to discredit
     // the work that had already succeeded.
-    cachedPublication = { id: null, denied: (error as Error).message.slice(0, 300) }
+    cachedPublication = { id: null, seen: [], denied: (error as Error).message.slice(0, 300) }
   }
   return cachedPublication
 }
@@ -774,8 +813,7 @@ async function onlineStorePublication(): Promise<{ id: string | null; denied: st
  */
 export async function publishToOnlineStore(productId: string): Promise<string | null> {
   const { id: publicationId, denied } = await onlineStorePublication()
-  if (denied) return denied
-  if (!publicationId) return null
+  if (!publicationId) return denied
 
   try {
     const data = await admin<{
@@ -798,6 +836,15 @@ export interface SyncOutcome {
   updated: number
   archived: number
   removed: number
+  /**
+   * Pages that existed but were in no sales channel, and now are.
+   *
+   * Counted separately from `updated` because it is a different kind of good
+   * news: those watches were not changed by this run, they were revealed by
+   * it. A run that fixes nothing else and this reads as "0 updated", which is
+   * exactly wrong about the only thing it did.
+   */
+  published: number
   failed: Array<{ what: string; error: string }>
   /**
    * Structured fields the shop has no entry for.
@@ -838,6 +885,16 @@ export interface SyncOutcome {
 }
 
 /**
+ * How long one batch may spend pushing before it hands back.
+ *
+ * Forty-five seconds, because the smallest ceiling a deployment of this is
+ * likely to sit under is sixty, and a batch has to finish the watch it is
+ * holding and write the outcome after the clock runs out. Where the ceiling is
+ * higher the deadline simply never bites: the count runs out first.
+ */
+const BATCH_SECONDS = 45
+
+/**
  * Make the store match the book.
  *
  * Deliberately not atomic, and it could not be: there is no transaction
@@ -860,6 +917,44 @@ export async function runSync({ apply = false, after = null, limit }: {
   plan: SyncPlan
   outcome: SyncOutcome | null
 }> {
+  // A fresh run asks the shop what this app may do, rather than trusting what
+  // it was told yesterday. Both of the things it would otherwise remember are
+  // answers to that question: the access token carries the scopes that were
+  // granted when it was minted, and a refused sales channel is remembered so
+  // it is reported once per run instead of once per watch.
+  //
+  // Together they made granting a permission look like it had not worked. The
+  // token lasts a day, the instance lives as long as it lives, and the obvious
+  // next move after changing a setting in Shopify — press Apply again — went
+  // on using the credentials from before the change. The fix for "I granted
+  // it and nothing happened" should not be "redeploy and wait".
+  //
+  // Only on the first batch: a run of a hundred and thirty-one watches is
+  // seven presses of Apply, and re-minting on each of them would be asking
+  // the same question six more times with nothing able to have changed.
+  if (after === null) forgetCredentials()
+
+  /**
+   * When this batch must stop pushing and report, whatever is left.
+   *
+   * A batch was bounded by a count — twenty watches — on the assumption that
+   * twenty is comfortably inside the time a request is allowed to live. That
+   * is an assumption about somebody else's API on a day nobody has had yet. On
+   * a slow one, or a batch full of first-time photograph uploads, twenty runs
+   * past the platform's ceiling, the function is killed mid-flight, and what
+   * the browser gets is not an error but a dropped connection: the button goes
+   * on spinning, the progress bar sits at nothing, and the work that did
+   * finish is invisible. Which is precisely the failure the batching was
+   * introduced to end.
+   *
+   * A count cannot fix that, because the unit of work is not a constant. A
+   * deadline can: whole watches are pushed until the clock says stop, and the
+   * cursor carries the rest to the next batch. Every watch already finished is
+   * saved before the check, so stopping early costs nothing but another round
+   * trip. The ceiling it sits under is the smallest anyone is likely to have.
+   */
+  const deadline = Date.now() + BATCH_SECONDS * 1000
+
   const computed = await plan()
   if (!apply) return { plan: computed, outcome: null }
 
@@ -868,7 +963,7 @@ export async function runSync({ apply = false, after = null, limit }: {
   // are re-asserted each time so that anything lost is put back.
   const taxonomy = await loadMetaobjects()
   const outcome: SyncOutcome = {
-    created: 0, updated: 0, archived: 0, removed: 0,
+    created: 0, updated: 0, archived: 0, removed: 0, published: 0,
     failed: [], unmatched: [], added: [], denied: [],
     nextCursor: null, pushed: 0, total: 0,
   }
@@ -877,12 +972,21 @@ export async function runSync({ apply = false, after = null, limit }: {
 
   // Fill the gaps the shop will accept being filled, before anything is
   // pushed, so the watches that wanted them find them.
-  const all = [...computed.create, ...computed.update.map((u) => u.watch)]
-  const additions = await createMissing(all, taxonomy)
-  outcome.added = additions.created
-  if (additions.blocked) {
-    logger.info('metaobject creation unavailable', { reason: additions.blocked })
-    refused.add(additions.blocked)
+  //
+  // On the first batch only, and across every watch in the plan rather than
+  // the twenty in hand — so the entries exist before any of them is pushed,
+  // and the six batches that follow are not each re-scanning the whole book to
+  // discover there is nothing left to create. It is the most expensive thing
+  // this function does on the run where it does anything at all, and running
+  // it seven times put that cost in front of every press of Apply.
+  if (after === null) {
+    const all = [...computed.create, ...computed.update.map((u) => u.watch)]
+    const additions = await createMissing(all, taxonomy)
+    outcome.added = additions.created
+    if (additions.blocked) {
+      logger.info('metaobject creation unavailable', { reason: additions.blocked })
+      refused.add(additions.blocked)
+    }
   }
 
   if (taxonomy) {
@@ -890,6 +994,21 @@ export async function runSync({ apply = false, after = null, limit }: {
       for (const miss of resolveMetafields(watch, taxonomy).unmatched) {
         outcome.unmatched.push({ stockNo: watch.stockNo, field: miss.type, value: miss.name })
       }
+    }
+  }
+
+  // A page that already exists and is in no sales channel goes back in the
+  // window now, before any pushing. Each push publishes what it sends, so in
+  // a healthy shop this list is empty; when it is not, it is a handful of
+  // watches that have been invisible for days, and it is one cheap call each
+  // — no plan to build, no photographs to upload. Making them wait out six
+  // batches of re-pushing the whole book to reach them is not a fix anybody
+  // would sit through.
+  if (after === null) {
+    for (const item of computed.publish) {
+      const warning = await publishToOnlineStore(item.productId)
+      if (warning) refused.add(warning)
+      else outcome.published += 1
     }
   }
 
@@ -914,9 +1033,15 @@ export async function runSync({ apply = false, after = null, limit }: {
     : everything.filter((p) => p.watch.stockNo > after)
   const pushes = limit ? left.slice(0, limit) : left
   outcome.total = left.length
-  outcome.pushed = pushes.length
+  /** The last watch this batch actually got to, which is where the next starts. */
+  let reached: number | null = null
+  /** Whether the clock, rather than the count, ended this batch. */
+  let ranLong = false
 
   for (const { watch, productId: existing, title, seoTitle } of pushes) {
+    // Checked before a watch rather than after, so the batch never starts work
+    // it has no time to finish, and never leaves a half-written product.
+    if (reached !== null && Date.now() > deadline) { ranLong = true; break }
     try {
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
@@ -935,11 +1060,22 @@ export async function runSync({ apply = false, after = null, limit }: {
       await db.update(watches).set({ shopifyError: message }).where(eq(watches.id, watch.id))
       outcome.failed.push({ what: `Stock ${watch.stockNo}`, error: message })
     }
+    reached = watch.stockNo
+    outcome.pushed += 1
   }
 
-  // Hiding and deleting happen once, at the start of the run, rather than once
-  // per batch. They are the irreversible half and they are small.
-  if (after === null) {
+  // Whatever the batch actually reached, not whatever it set out to do. The
+  // two were the same while only the count could end a batch.
+  outcome.nextCursor = reached !== null && outcome.pushed < left.length ? reached : null
+
+  // Hiding and deleting happen once per run, on the batch that finishes it,
+  // rather than on the one that starts it. They are the irreversible half and
+  // they are small — but they used to sit at the front, where they competed
+  // for time with the heaviest batch of the run: the one that also has to
+  // build the plan and fill in the shop's own lists. At the back they are the
+  // only thing left, and if that batch is killed anyway the next press
+  // re-plans and finds them still to do.
+  if (outcome.nextCursor === null) {
     for (const item of computed.archive) {
       try {
         await archiveProduct(item.productId)
@@ -959,8 +1095,6 @@ export async function runSync({ apply = false, after = null, limit }: {
     }
   }
 
-  const last = pushes[pushes.length - 1]
-  outcome.nextCursor = last && left.length > pushes.length ? last.watch.stockNo : null
   outcome.denied = [...refused]
   logger.info('storefront synced', { ...outcome, failed: outcome.failed.length })
   return { plan: computed, outcome }
@@ -1012,6 +1146,31 @@ export async function syncHealth(): Promise<{
   unmatched: Array<{ field: string; value: string; count: number }>
   /** Places whose stock is deliberately kept off the shop, and how much. */
   withheld: Array<{ name: string; count: number }>
+  /**
+   * Pages that exist, are meant to be live, and are in no sales channel.
+   *
+   * The counterpart to `withheld`: that one is stock held back on purpose,
+   * this one is stock held back by accident, and from the website the two look
+   * identical. Named here because this is the page somebody opens to ask why a
+   * watch is not on the site, and until now the answer to the commonest cause
+   * was not on it — the push knew, said so in a toast, and the toast went.
+   */
+  invisible: Array<{ sku: string | null; title: string }>
+  /**
+   * What the shop says this app may put in its window, asked plainly.
+   *
+   * Publishing is the last step of a push and the one that can fail while
+   * leaving the watch entirely correct, so it reports rather than throws — and
+   * a report that only ever reached a toast was a report nobody had twenty
+   * minutes later. Worse, the commonest failure was silent: an app that may
+   * not see the sales channels is handed an empty list rather than an error.
+   *
+   * So the page asks the question directly, on load, with no push involved.
+   * One cheap query, and the answer is either the name of the channel or the
+   * reason there isn't one — which is the difference between a day of
+   * guessing and a sentence.
+   */
+  channel: { name: string | null; refusal: string | null; seen: string[] }
 }> {
   const rows = await db
     .select({
@@ -1022,6 +1181,12 @@ export async function syncHealth(): Promise<{
     .from(watches)
     .where(isNull(watches.deletedAt))
   const row = rows[0]
+  // Four readings, three of which are somebody else's API. Taken together
+  // rather than one after another: the page is one page and it should not take
+  // four round trips' worth of waiting to draw.
+  const [errors, unmatched, withheld, invisible, channel] = await Promise.all([
+    recentErrors(), unmatchedValues(), withheldLocations(), invisibleProducts(), channelHealth(),
+  ])
   return {
     configured: shopifyIsConfigured(),
     // Aggregates come back from the driver as strings, not numbers.
@@ -1033,9 +1198,55 @@ export async function syncHealth(): Promise<{
     // a settings page renders perfectly until the first sync has run and then
     // starts throwing.
     lastSyncedAt: asDate(row?.lastSyncedAt),
-    errors: await recentErrors(),
-    unmatched: await unmatchedValues(),
-    withheld: await withheldLocations(),
+    errors,
+    unmatched,
+    withheld,
+    invisible,
+    channel,
+  }
+}
+
+/**
+ * Which sales channel the shop will let this app publish to.
+ *
+ * Read fresh, not from the run's cache: somebody reading this page has
+ * usually just changed a permission in Shopify and wants to know whether it
+ * took.
+ */
+async function channelHealth(): Promise<{ name: string | null; refusal: string | null; seen: string[] }> {
+  if (!shopifyIsConfigured()) return { name: null, refusal: null, seen: [] }
+  try {
+    cachedPublication = null
+    const { id, denied, seen } = await onlineStorePublication()
+    return { name: id ? 'Online Store' : null, refusal: denied, seen }
+  } catch (error) {
+    return { name: null, refusal: (error as Error).message.slice(0, 300), seen: [] }
+  }
+}
+
+/**
+ * Stock the shop is holding out of its own window.
+ *
+ * Asked of Shopify rather than of this database, because the fault being
+ * looked for is precisely the one where this side believes everything went
+ * well. The push writes the product, its price, its stock and its seventeen
+ * structured fields, and then attaches it to the Online Store as a last and
+ * separate act; when only that last act fails, every record here says the
+ * watch is listed and synced, and it is — in the admin, and nowhere a
+ * customer can reach.
+ *
+ * Capped, like the other readings on this page: the useful information is
+ * that it is happening and to roughly how much, and a list of a hundred
+ * titles is a list nobody reads.
+ */
+async function invisibleProducts(): Promise<Array<{ sku: string | null; title: string }>> {
+  if (!shopifyIsConfigured()) return []
+  try {
+    const computed = await plan()
+    return computed.publish.slice(0, 25).map((item) => ({ sku: item.sku, title: item.title }))
+  } catch {
+    // A reading that cannot be taken is not worth failing the page over.
+    return []
   }
 }
 

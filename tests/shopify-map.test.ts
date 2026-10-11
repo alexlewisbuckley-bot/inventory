@@ -43,6 +43,9 @@ const product = (over: Partial<SyncProduct> = {}): SyncProduct => ({
   sku: '1143',
   title: 'Datejust II Fluted 41',
   status: 'ACTIVE',
+  // In the shop window, which is the ordinary state of a product the sync has
+  // made. The tests that care about the other state say so.
+  publishedAt: '2026-03-17T17:07:37Z',
   seoTitle: null,
   ...over,
 })
