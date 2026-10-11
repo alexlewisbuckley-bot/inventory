@@ -14,6 +14,7 @@ import type { ContentField } from '@/lib/validation'
 export interface ContentRow {
   id: string
   stockNo: number
+  locationName: string
   brandName: string
   model: string
   nickname: string | null
@@ -65,6 +66,21 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
 }) {
   const [term, setTerm] = useState('')
   const [onlyGaps, setOnlyGaps] = useState(false)
+  /**
+   * Where the watch is, because not all of it is worth typing yet.
+   *
+   * A watch still in a courier's bag is not on the website and may not
+   * arrive as described, so filling in its dial colour this afternoon is
+   * work that may have to be done again. Asked for plainly: "we don't need
+   * to update in transit yet".
+   */
+  const [places, setPlaces] = useState<string[]>([])
+
+  const locations = useMemo(() => {
+    const tally = new Map<string, number>()
+    for (const row of rows) tally.set(row.locationName, (tally.get(row.locationName) ?? 0) + 1)
+    return [...tally.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [rows])
 
   const scored = useMemo(() => rows.map((row) => ({
     row,
@@ -76,6 +92,7 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
     return scored
       .filter(({ row, missing }) => {
         if (onlyGaps && missing === 0) return false
+        if (places.length > 0 && !places.includes(row.locationName)) return false
         if (!needle) return true
         return [row.brandName, row.model, row.nickname, String(row.stockNo)]
           .filter(Boolean).join(' ').toLowerCase().includes(needle)
@@ -84,7 +101,7 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
       // read from the top and abandon; sorted by what is missing, the work is
       // where you are looking and the bottom of the list is the finished half.
       .sort((a, b) => b.missing - a.missing || a.row.stockNo - b.row.stockNo)
-  }, [scored, term, onlyGaps])
+  }, [scored, term, onlyGaps, places])
 
   const totalGaps = scored.reduce((sum, entry) => sum + entry.missing, 0)
 
@@ -101,6 +118,35 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
             className="h-10 w-full rounded-md border border-line-subtle bg-surface-raised pl-10 pr-3 text-small text-content-primary placeholder:text-content-muted hover:border-line-strong"
           />
         </label>
+        {locations.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {locations.map(([name, count]) => {
+              const on = places.includes(name)
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPlaces((current) => (
+                    current.includes(name)
+                      ? current.filter((entry) => entry !== name)
+                      : [...current, name]
+                  ))}
+                  className={cn(
+                    'inline-flex h-10 items-center gap-1.5 rounded-pill border px-3.5 text-caption transition-colors',
+                    on
+                      ? 'border-content-primary bg-content-primary text-surface-raised'
+                      : 'border-line-subtle bg-surface-raised text-content-secondary hover:border-line-strong',
+                  )}
+                >
+                  {name}
+                  <span className={cn('tabular-nums', on ? 'opacity-70' : 'text-content-muted')}>{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => setOnlyGaps((value) => !value)}
@@ -124,7 +170,7 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
         {/* Separate borders, not collapsed: a collapsed table draws its
             rules on the cells, and a sticky cell then scrolls out from under
             its own left-hand border. */}
-        <table className="w-full min-w-[1240px] border-separate border-spacing-0 text-small">
+        <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-small">
           <thead>
             <tr className="text-left">
               <th className={cn(HEAD, PINNED, 'left-0 w-[52px]')} />
@@ -270,6 +316,7 @@ function Cell({ row, field, options, flagged, canEdit }: {
   const toast = useToast()
   const [draft, setDraft] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [focused, setFocused] = useState(false)
   const current = valueOf(row, field.key)
 
   const commit = async (next: string) => {
@@ -286,13 +333,20 @@ function Cell({ row, field, options, flagged, canEdit }: {
   }
 
   if (!canEdit) {
-    return <span className="block truncate px-2 py-1.5 text-content-secondary">{current || '—'}</span>
+    return (
+      <span className="block truncate px-2 py-1.5 text-content-secondary" title={current || undefined}>
+        {current || '—'}
+      </span>
+    )
   }
 
   const listId = options?.length ? `choices-${field.key}` : undefined
 
   return (
-    <div className="relative">
+    // A fixed height, because the only child goes absolute when it has the
+    // cursor: a wrapper that collapses takes the row's height with it, and
+    // the expanded field then hangs below the values it is lined up against.
+    <div className="relative h-9">
       {field.options ? (
         <select
           value={current}
@@ -307,25 +361,45 @@ function Cell({ row, field, options, flagged, canEdit }: {
         </select>
       ) : (
         <>
+          {/*
+            A value longer than its column could not be read at all: clipped
+            when resting, and still clipped when you clicked into it, so a
+            reference like 16204BA.OO.1240BA.01 was a guess. Columns cannot be
+            widened enough — the long ones are long — so the cell grows when
+            it has the cursor and lies over its neighbours, which is what a
+            spreadsheet does and the only thing that scales to the one value
+            that is twice everybody else's.
+
+            And a `title`, so the whole of it can be read by hovering without
+            entering edit at all.
+          */}
           <input
             value={draft ?? current}
             disabled={saving}
             list={listId}
+            title={current || undefined}
             inputMode={field.numeric ? 'decimal' : undefined}
             aria-label={`${field.label} for stock ${row.stockNo}`}
             placeholder="—"
             onChange={(event) => setDraft(event.target.value)}
-            onBlur={(event) => void commit(event.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={(event) => { setFocused(false); void commit(event.target.value) }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') { event.preventDefault(); void commit(event.currentTarget.value) }
               if (event.key === 'Escape') { event.preventDefault(); setDraft(null); event.currentTarget.blur() }
             }}
             className={cn(
-              'h-9 w-full border-0 bg-transparent px-2 text-small text-content-primary outline-none',
+              'h-9 border-0 bg-transparent px-2 text-small text-content-primary outline-none',
               'placeholder:text-content-muted hover:bg-surface-subtle',
               'focus:bg-surface-raised focus:ring-2 focus:ring-inset focus:ring-teal-500',
               field.numeric && 'tabular-nums',
-              flagged && 'pr-6',
+              flagged && !focused && 'pr-6',
+              focused
+                // Rightwards over the columns after it, never leftwards: the
+                // eye is already at the left edge of the cell and a field
+                // that grows under the cursor has moved the thing being read.
+                ? 'absolute left-0 top-0 z-30 w-[max(100%,theme(spacing.80))] rounded-sm shadow-overlay'
+                : 'w-full',
             )}
           />
           {listId && (
@@ -373,8 +447,8 @@ interface Field {
  * fields that are two words long. The stock number links out to the record.
  */
 const FIELDS: Field[] = [
-  { key: 'nickname', label: 'Title', width: 170 },
-  { key: 'model', label: 'Reference', width: 118 },
+  { key: 'nickname', label: 'Title', width: 186 },
+  { key: 'model', label: 'Reference', width: 142 },
   { key: 'year', label: 'Year', width: 70, numeric: true },
   { key: 'dial', label: 'Dial', width: 118, list: 'dial' },
   { key: 'caseMaterial', label: 'Material', width: 132, list: 'material' },
