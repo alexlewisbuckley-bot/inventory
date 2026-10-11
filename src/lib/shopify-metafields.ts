@@ -47,8 +47,12 @@ const ALIASES: Record<string, string> = {
   // The inventory system's way of saying a watch has its box and its papers.
   'full set': 'Box & papers',
   'watch only': 'Neither',
-  // A silver dial and a silvered dial are the same dial.
-  silver: 'Silvered',
+  // A silver dial and a silvered dial are the same dial, and the shop now
+  // calls it Silver — one name for one colour, rather than two rows in a
+  // filter that mean the same thing. The alias points the other way than it
+  // used to: records written before the rename still say "Silvered", and
+  // there is no reason to make somebody retype forty of them.
+  silvered: 'Silver',
   /*
     DIAL SHADES, FILED UNDER THEIR COLOUR.
     ---------------------------------------------------------------
@@ -97,9 +101,9 @@ const ALIASES: Record<string, string> = {
   'candy pink': 'Pink',
   'rose pink': 'Pink',
   // A Jubilee motif dial is a silvered dial with a pattern pressed into it.
-  'silver jubilee': 'Silvered',
-  'silver jubilee motif': 'Silvered',
-  'jubilee motif': 'Silvered',
+  'silver jubilee': 'Silver',
+  'silver jubilee motif': 'Silver',
+  'jubilee motif': 'Silver',
   // Spelled out once and then abbreviated, in the same breath. The shop keeps
   // one entry called "Mother of Pearl"; a second one carrying the initials
   // would split the dial between two filters.

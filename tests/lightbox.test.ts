@@ -93,3 +93,32 @@ describe('where you can enlarge a photograph', () => {
     expect(control).toMatch(/event\.preventDefault\(\); event\.stopPropagation\(\)/)
   })
 })
+
+describe('a watch you can recognise without reading it', () => {
+  it('has its photograph in the table, not only in the gallery', () => {
+    // The table knew every fact about a piece and showed none of what it
+    // looks like, so picking one out of four hundred rows meant reading
+    // references. The gallery does show them and gives up every figure to do
+    // it, which is a different screen rather than the same one done better.
+    const list = read('src/components/inventory/InventoryList.tsx')
+    expect(list).toMatch(/\{ key: 'photo', label: 'Photo' \}/)
+    expect(list).toMatch(/photo: 64/)
+    expect(list).toMatch(/<Thumb watch=\{watch\} dimmed=\{sold\} \/>/)
+  })
+
+  it('counts the column width when deciding the table has to scroll', () => {
+    // The widths are summed to a minimum, and a column left out of that sum
+    // is a column the others get squeezed to make room for.
+    const list = read('src/components/inventory/InventoryList.tsx')
+    const sum = list.slice(list.indexOf('const tableMinWidth'))
+    expect(sum.slice(0, 400)).toMatch(/'photo', 'year'/)
+  })
+
+  it('falls back to the trade shot, and says so when there is neither', () => {
+    // On this screen the question is "which watch is this", and the picture
+    // taken on the desk answers it as well as the catalogue one does.
+    const list = read('src/components/inventory/InventoryList.tsx')
+    expect(list).toMatch(/watch\.primaryImageId \?\? watch\.tradeImageId/)
+    expect(list).toMatch(/title="No photograph"/)
+  })
+})
