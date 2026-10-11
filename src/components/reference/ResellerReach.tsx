@@ -4,6 +4,7 @@ import { Check, Copy, ExternalLink, Globe, Loader2, Trash2 } from 'lucide-react'
 import { Button, Modal, TextField, useToast } from '@/components/ui'
 import { setResellerDomainAction } from '@/app/actions/resellers'
 import { checkDomain, looksLikeApex } from '@/lib/domains'
+import { TradeRoomPanel } from './TradeRoomPanel'
 
 /**
  * Where a reseller points their CNAME.
@@ -39,6 +40,7 @@ export function ResellerReach({ reseller, origin, canManage, onClose }: {
     publicToken: string
     customDomain: string | null
     customDomainSeenAt: string | null
+    tradeToken: string | null
   }
   origin: string
   canManage: boolean
@@ -88,6 +90,16 @@ export function ResellerReach({ reseller, origin, canManage, onClose }: {
       footer={<Button variant="ghost" onClick={onClose}>Done</Button>}
     >
       <div className="flex flex-col gap-7">
+        {/* First, because it is the one with a passphrase on it and the one
+            whose photographs are not meant for the public. The three below
+            are all the same shop reached three ways; this is a different
+            room. */}
+        <TradeRoomPanel
+          reseller={{ id: reseller.id, name: reseller.name, tradeToken: reseller.tradeToken }}
+          origin={origin}
+          canManage={canManage}
+        />
+
         <section>
           <h3 className="flex items-center gap-2 text-small font-bold text-content-primary">
             <Globe className="h-4 w-4 text-content-accent" aria-hidden />

@@ -31,6 +31,7 @@ export interface ResellerRow {
   publicToken: string
   customDomain: string | null
   customDomainSeenAt: string | null
+  tradeToken: string | null
   isActive: boolean
   notes: string | null
   navLinks: string | null

@@ -13,6 +13,7 @@ import { sendMail } from './mailer'
 import { parseNavLinks, type NavLink } from '@/lib/validation'
 import type { resellerSchema } from '@/lib/validation'
 import type { SessionUser } from '../auth/session'
+import { hashPassword } from '../auth/password'
 
 type ResellerInput = z.infer<typeof resellerSchema>
 
@@ -47,6 +48,7 @@ export async function listResellers() {
       publicToken: resellers.publicToken,
       customDomain: resellers.customDomain,
       customDomainSeenAt: resellers.customDomainSeenAt,
+      tradeToken: resellers.tradeToken,
       isActive: resellers.isActive,
       notes: resellers.notes,
       navLinks: resellers.navLinks,
@@ -680,4 +682,319 @@ export async function enquiryCounts(): Promise<Record<string, number>> {
     .from(resellerEnquiries)
     .groupBy(resellerEnquiries.resellerId)
   return Object.fromEntries(rows.map((row) => [row.resellerId, Number(row.value)]))
+}
+
+// ---------------------------------------------------------------------------
+// The trade room
+// ---------------------------------------------------------------------------
+
+/**
+ * What a dealer sees, which is the opposite of what a customer sees.
+ *
+ * The shop window shows the catalogue photograph and the retail price. A
+ * dealer wants neither: they want the picture of the actual watch, taken on a
+ * desk with the papers beside it, and they do not want a retail figure in
+ * front of them, because the number they will pay is the one agreed on the
+ * phone and a price on the screen has already made the first offer.
+ *
+ * So no money crosses this boundary at all. Not hidden by the component —
+ * never selected. A page cannot leak a number its query never asked for, and
+ * the next person to add a field to this list should have to notice.
+ */
+export interface TradeItem {
+  id: string
+  brandName: string
+  /** The reference, which is what the model column actually holds. */
+  model: string
+  /** "Submariner Date \"Hulk\" Green 40" — what anybody calls it out loud. */
+  nickname: string | null
+  year: number | null
+  condition: string
+  boxPapers: string
+  caseSizeMm: number | null
+  caseMaterial: string | null
+  dial: string | null
+  bracelet: string | null
+  /** Trade photographs only, in the order they were arranged. */
+  imageIds: string[]
+}
+
+export interface TradeRoom {
+  reseller: {
+    name: string
+    brandColor: string
+    accentColor: string
+    hasLogo: boolean
+  }
+  items: TradeItem[]
+}
+
+/** The secret in a trade URL. Generated exactly as the shop window's is. */
+export function newTradeToken(): string {
+  return randomBytes(24).toString('base64url')
+}
+
+/**
+ * The door itself: is there a trade room here, and what opens it.
+ *
+ * Separate from loading the stock so that the password page costs one small
+ * query rather than the whole book, and so the image route can check the same
+ * thing without reading a catalogue to serve one picture.
+ */
+export async function getTradeDoor(token: string): Promise<{
+  name: string
+  brandColor: string
+  accentColor: string
+  hasLogo: boolean
+  publicToken: string
+  passwordHash: string
+  passwordSetAt: Date | null
+} | null> {
+  // A trade token is only ever a token — never a hostname. The shop window
+  // accepts both because a reseller may point their own domain at it; a
+  // hostname cannot be a secret, and this door is nothing but a secret.
+  if (!token || token.length < 16) return null
+
+  const rows = await db
+    .select({
+      name: resellers.displayName,
+      fallbackName: resellers.name,
+      brandColor: resellers.brandColor,
+      accentColor: resellers.accentColor,
+      hasLogo: sql<boolean>`${resellers.logoData} is not null`,
+      publicToken: resellers.publicToken,
+      passwordHash: resellers.tradePasswordHash,
+      passwordSetAt: resellers.tradePasswordSetAt,
+    })
+    .from(resellers)
+    .where(and(
+      eq(resellers.tradeToken, token),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .limit(1)
+
+  const row = rows[0]
+  // A door with no passphrase is not a door. Issuing a token and setting a
+  // passphrase are two steps, and between them the link must open nothing —
+  // otherwise the gap is a public page showing trade photographs.
+  if (!row || !row.passwordHash) return null
+
+  return {
+    name: row.name || row.fallbackName,
+    brandColor: row.brandColor,
+    accentColor: row.accentColor,
+    hasLogo: row.hasLogo,
+    publicToken: row.publicToken,
+    passwordHash: row.passwordHash,
+    passwordSetAt: row.passwordSetAt,
+  }
+}
+
+/**
+ * The stock behind the door.
+ *
+ * Only watches that have a trade photograph. A dealer list exists to show the
+ * watch as it is; an entry with no picture of it is a line of text claiming
+ * we have something, which is what a spreadsheet is for and is the thing this
+ * page is meant to replace. Asked for plainly as a join rather than filtered
+ * afterwards, so the count on the page and the rows on the page agree.
+ */
+export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
+  const door = await getTradeDoor(token)
+  if (!door) return null
+
+  const stock = await db
+    .select({
+      id: watches.id,
+      brandName: brands.name,
+      model: watches.model,
+      nickname: watches.nickname,
+      year: watches.year,
+      condition: watches.condition,
+      boxPapers: watches.boxPapers,
+      caseSizeMm: watches.caseSizeMm,
+      caseMaterial: watches.caseMaterial,
+      dial: watches.dial,
+      bracelet: watches.bracelet,
+      imageIds: sql<string[]>`coalesce((
+        SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
+        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
+      ), ARRAY[]::text[])`,
+    })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(
+      // Stock we hold and could sell today. Reserved and sale-agreed pieces
+      // are spoken for, and offering one to a dealer is a call that ends in
+      // taking it back.
+      eq(watches.status, 'IN_STOCK'),
+      isNull(watches.deletedAt),
+      sql`EXISTS (
+        SELECT 1 FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
+      )`,
+    ))
+    .orderBy(asc(brands.name), asc(watches.model))
+
+  return {
+    reseller: {
+      name: door.name,
+      brandColor: door.brandColor,
+      accentColor: door.accentColor,
+      hasLogo: door.hasLogo,
+    },
+    items: stock.map((row) => ({ ...row, imageIds: row.imageIds ?? [] })),
+  }
+}
+
+/**
+ * A trade photograph, behind the same door as the page that listed it.
+ *
+ * The kind filter is the access control, exactly as it is on the shop window
+ * and for the mirror image of the reason. There it names the one kind that
+ * may be seen in public; here it names the one kind this room is for, so that
+ * a warranty card — a serial, a date and a dealer's stamp — cannot be fetched
+ * by guessing at the route with an id from somewhere else.
+ */
+export async function getTradeImage(token: string, imageId: string) {
+  if (!token || token.length < 16 || !imageId) return null
+
+  const rows = await db
+    .select({ data: watchImages.data, mime: watchImages.mimeType, size: watchImages.byteSize })
+    .from(watchImages)
+    .innerJoin(watches, eq(watches.id, watchImages.watchId))
+    .innerJoin(resellers, and(
+      eq(resellers.tradeToken, token),
+      isNotNull(resellers.tradePasswordHash),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .where(and(
+      eq(watchImages.id, imageId),
+      eq(watchImages.kind, 'TRADE'),
+      eq(watches.status, 'IN_STOCK'),
+      isNull(watches.deletedAt),
+    ))
+    .limit(1)
+
+  const row = rows[0]
+  if (!row) return null
+  return { data: row.data, mimeType: row.mime, byteSize: row.size }
+}
+
+/**
+ * Open a trade room, or change the passphrase on one.
+ *
+ * Both at once, because they are the same decision: a token with no
+ * passphrase opens nothing, so issuing one without setting the other would
+ * leave a half-made door and a screen that has to explain it. The token is
+ * minted on the first call and kept on every call after, so changing the
+ * passphrase does not break a link that dealers already have — that is what
+ * `rotateTradeToken` is for, and the two are different acts with different
+ * consequences.
+ *
+ * The passphrase is never read back. It is stored hashed and shown to nobody
+ * again, including us: what gets handed to a dealer is whatever was typed
+ * here, and if that is lost the answer is to set a new one, not to recover
+ * the old.
+ */
+export async function setTradeAccess(
+  id: string,
+  passphrase: string,
+  actor: SessionUser,
+): Promise<string> {
+  // Shared secrets get written on a pad and read down a phone, so the staff
+  // password policy — uppercase, digit, no repeats — is the wrong test here;
+  // length is the one that survives being spoken. Long enough not to be
+  // guessable, short enough to dictate.
+  const value = passphrase.trim()
+  if (value.length < 12) {
+    throw new ValidationError('A trade passphrase needs at least 12 characters.')
+  }
+  if (value.length > 200) {
+    throw new ValidationError('That passphrase is longer than anybody will type.')
+  }
+
+  return withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+
+    const tradeToken = existing.tradeToken ?? newTradeToken()
+    await db.update(resellers)
+      .set({
+        tradeToken,
+        tradePasswordHash: await hashPassword(value),
+        tradePasswordSetAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(resellers.id, id))
+
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: existing.tradeToken
+        ? `Reseller ${existing.name}: trade passphrase changed, everyone signed out of the trade room`
+        : `Reseller ${existing.name}: trade room opened`,
+    })
+    return tradeToken
+  })
+}
+
+/**
+ * Shut the trade room.
+ *
+ * Both halves, because either on its own leaves something that reads as
+ * working. Clearing the token alone leaves a passphrase guarding nothing;
+ * clearing the passphrase alone leaves a live-looking URL that now opens
+ * nothing — and somebody would reasonably read that URL still existing as the
+ * access still existing.
+ */
+export async function closeTradeRoom(id: string, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+    if (!existing.tradeToken) return
+
+    await db.update(resellers)
+      .set({
+        tradeToken: null,
+        tradePasswordHash: null,
+        tradePasswordSetAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(resellers.id, id))
+
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Reseller ${existing.name}: trade room closed, the link stopped working`,
+    })
+  })
+}
+
+/**
+ * Issue a new trade link and kill the old one.
+ *
+ * The answer to a link forwarded somewhere it should not have been. Keeps the
+ * passphrase: the thing that leaked is the URL, and making somebody re-learn
+ * a passphrase they still have is a second piece of bad news for no reason.
+ */
+export async function rotateTradeToken(id: string, actor: SessionUser): Promise<string> {
+  return withTransaction(async () => {
+    const rows = await db.select().from(resellers).where(eq(resellers.id, id)).limit(1)
+    const existing = rows[0]
+    if (!existing || existing.deletedAt) throw new NotFoundError('Reseller')
+    if (!existing.tradeToken) throw new ValidationError('This reseller has no trade room yet.')
+
+    const tradeToken = newTradeToken()
+    await db.update(resellers)
+      .set({ tradeToken, updatedAt: new Date() })
+      .where(eq(resellers.id, id))
+
+    await recordAudit({
+      entityType: 'Reseller', entityId: id, action: 'UPDATE', actorId: actor.id,
+      summary: `Reseller ${existing.name}: trade link reissued, the previous one stopped working`,
+    })
+    return tradeToken
+  })
 }

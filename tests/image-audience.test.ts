@@ -47,19 +47,64 @@ describe('the doors that serve photographs outward', () => {
     expect(source).toMatch(/eq\(watchImages\.kind, 'WATCH'\)/)
   })
 
-  it('shows a reseller published photographs and nothing else', () => {
+  it('names exactly one kind in every reseller query, whichever room it is for', () => {
+    // This file now serves two audiences from one table. The shop window is a
+    // public page and gets WATCH; the trade room is behind a passphrase and
+    // gets TRADE. What must never happen is a select with no kind at all —
+    // which is the bug that prompted this file, when the shop window asked
+    // for every photograph a watch had.
+    //
+    // So the rule is not "always WATCH" any more, it is "always exactly one,
+    // and never CARD or DOCUMENT". A warranty card carries a serial, a date
+    // and a dealer's stamp, and neither audience is owed one.
     const source = read('src/server/services/reseller-service.ts')
 
-    // The listing: both the gallery array and the cover.
     const selects = rawImageSelects(source)
     expect(selects.length).toBeGreaterThan(0)
     for (const clause of selects) {
-      expect(clause, clause.trim().slice(0, 90)).toMatch(/i\.kind = 'WATCH'/)
+      const named = clause.match(/i\.kind = '(\w+)'/g) ?? []
+      expect(named, clause.trim().slice(0, 90)).toHaveLength(1)
+      expect(named[0], clause.trim().slice(0, 90)).toMatch(/'(WATCH|TRADE)'/)
     }
 
-    // And the door that hands over the bytes, which is reachable with any id
-    // and so cannot rely on the listing having offered only safe ones.
+    // And the doors that hand over the bytes, each reachable with any id and
+    // so unable to rely on the listing having offered only safe ones.
     expect(source).toMatch(/eq\(watchImages\.kind, 'WATCH'\)/)
+    expect(source).toMatch(/eq\(watchImages\.kind, 'TRADE'\)/)
+  })
+
+  it('puts the trade room behind its passphrase, not just behind its URL', () => {
+    // The shop window's image route is guarded by the token alone, because
+    // the pictures there are meant for the public and the token only decides
+    // whose shop they belong to. The trade room's are the dealer's-eye
+    // photographs: a route that served them on a URL alone would mean the
+    // passphrase guarded the page and nothing on it, and a forwarded image
+    // link would be the whole room.
+    const route = read('src/app/t/[token]/image/[id]/route.ts')
+    expect(route).toMatch(/hasTradePass\(params\.token/)
+    expect(route).toMatch(/404/)
+
+    // And the page itself loads no stock until somebody is through.
+    const page = read('src/app/t/[token]/page.tsx')
+    expect(page).toMatch(/if \(!inside\)/)
+    // The call sites, not the imports: the catalogue query must come after
+    // the check, or a wrong passphrase still costs a read of the whole room.
+    expect(page.indexOf('await hasTradePass(')).toBeLessThan(page.indexOf('await getTradeRoom('))
+  })
+
+  it('never sends a price into the trade room', () => {
+    // Not hidden by the component — never selected. A dealer pays what is
+    // agreed on the phone, and a retail figure on the screen has already made
+    // the first offer. A page cannot leak a number its query never asked for.
+    const source = read('src/server/services/reseller-service.ts')
+    const room = source.slice(source.indexOf('export async function getTradeRoom'))
+    const body = room.slice(0, room.indexOf('export async function getTradeImage'))
+    for (const money of ['estSaleGbp', 'tradePriceGbp', 'purchasePriceGbp', 'price']) {
+      expect(body, money).not.toMatch(new RegExp(`\\b${money}\\b`))
+    }
+    // Nor does the shape it hands to the page have anywhere to put one.
+    const shape = source.slice(source.indexOf('export interface TradeItem'))
+    expect(shape.slice(0, shape.indexOf('}'))).not.toMatch(/price|Gbp/i)
   })
 
   it('pushes only published photographs to Shopify', () => {
