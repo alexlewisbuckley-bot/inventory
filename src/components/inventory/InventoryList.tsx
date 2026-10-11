@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Handshake, LayoutGrid, MoreHorizontal, PackageSearch, Receipt, Rows3, SearchX } from 'lucide-react'
+import { Camera, Handshake, LayoutGrid, MoreHorizontal, PackageSearch, Receipt, Rows3, SearchX } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useListQuery } from '@/hooks/useListQuery'
@@ -14,6 +14,7 @@ import { useTradeShots } from '@/hooks/useTradeShots'
 import {
   Table, THead, TBody, TR, TD, TH, Pagination,
   EmptyState, Button, LinkButton, SkeletonTable, useCurrency,
+  Zoomable,
 } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
 import { parseMoneyInput } from '@/lib/money'
@@ -44,6 +45,12 @@ import type { Capability } from '@/lib/permissions'
  * specific watch, but they crowd the everyday view.
  */
 export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
+  // A watch is a thing you recognise before you read it. The table knew every
+  // fact about a piece and showed none of what it looks like, so picking one
+  // out of four hundred rows meant reading references — and the gallery, which
+  // does show them, gives up the figures to do it. Sixty-four pixels is enough
+  // to know a Daytona from a Datejust, and it opens full size on a click.
+  { key: 'photo', label: 'Photo' },
   { key: 'stockNo', label: 'Stock no', locked: true },
   { key: 'watch', label: 'Reference', locked: true },
   { key: 'year', label: 'Year' },
@@ -70,7 +77,7 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
  * cannot drift apart.
  */
 const COL_WIDTH = {
-  select: 56, stockNo: 84, watch: 176, year: 72, serial: 116, supplier: 140,
+  select: 56, photo: 64, stockNo: 84, watch: 176, year: 72, serial: 116, supplier: 140,
   purchased: 116, cost: 120, trade: 120, estSale: 120, profit: 128, location: 140,
   owner: 140, status: 118, checks: 92, actions: 104,
 } as const
@@ -185,7 +192,7 @@ export function InventoryList({
    */
   const tableMinWidth = `${
     (selectable ? COL_WIDTH.select : 0) + COL_WIDTH.stockNo + COL_WIDTH.watch + COL_WIDTH.actions
-    + (['year', 'serial', 'supplier', 'purchased', 'cost', 'trade', 'estSale', 'profit',
+    + (['photo', 'year', 'serial', 'supplier', 'purchased', 'cost', 'trade', 'estSale', 'profit',
         'location', 'owner', 'status', 'checks'] as const)
       .reduce((sum, key) => sum + (show(key) ? COL_WIDTH[key] : 0), 0)
   }px`
@@ -333,6 +340,9 @@ export function InventoryList({
                     className="h-4 w-4 rounded-xs accent-teal-500"
                   />
                 </TH>
+              )}
+              {show('photo') && (
+                <TH width={`${COL_WIDTH.photo}px`}><span className="sr-only">Photograph</span></TH>
               )}
               <TH width={`${COL_WIDTH.stockNo}px`} sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
               <TH width={`${COL_WIDTH.watch}px`} sortKey="model" sort={sort} onSort={query.sortBy}>Watch</TH>
@@ -696,6 +706,14 @@ function Row({
           />
         </TD>
       )}
+      {show('photo') && (
+        <TD>
+          {/* The trade shot when there is no published photograph: on this
+              screen the question is "which watch is this", and the one taken
+              on the desk answers it as well as the catalogue one. */}
+          <Thumb watch={watch} dimmed={sold} />
+        </TD>
+      )}
       <TD className="truncate font-bold text-navy-700" title={String(watch.stockNo)}>{watch.stockNo}</TD>
       <TD>
         {/* A link, not a button. It goes to a URL — `?watch=…` opens the
@@ -858,5 +876,41 @@ function Row({
         </div>
       </TD>
     </TR>
+  )
+}
+
+/**
+ * A watch, small enough for a table row and openable.
+ *
+ * Deliberately `object-cover` at this size — a 40-pixel square showing the
+ * whole of a portrait photograph is mostly background, and what identifies a
+ * watch across a list is the dial, which is in the middle. The viewer it opens
+ * shows the whole frame uncropped.
+ */
+function Thumb({ watch, dimmed }: { watch: WatchListItem; dimmed: boolean }) {
+  const id = watch.primaryImageId ?? watch.tradeImageId
+  const alt = `${watch.brandName} ${watch.model}, stock ${watch.stockNo}`
+
+  if (!id) {
+    return (
+      <span
+        className="flex h-10 w-10 items-center justify-center rounded-sm bg-surface-subtle text-content-muted"
+        title="No photograph"
+      >
+        <Camera className="h-3.5 w-3.5" aria-hidden />
+      </span>
+    )
+  }
+
+  return (
+    <Zoomable
+      src={`/api/images/${id}`}
+      alt={alt}
+      caption={alt}
+      className={cn(
+        'h-10 w-10 rounded-sm border border-line-subtle object-cover',
+        dimmed && 'opacity-60',
+      )}
+    />
   )
 }
