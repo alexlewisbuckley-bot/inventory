@@ -998,3 +998,34 @@ export async function rotateTradeToken(id: string, actor: SessionUser): Promise<
     return tradeToken
   })
 }
+
+/**
+ * The reseller's mark, found by the trade token rather than the public one.
+ *
+ * The first version of this reused `getShopLogo`, which matches on the shop
+ * window's token or the reseller's own hostname — neither of which is what a
+ * trade URL carries. So it matched nothing and the page drew a broken image
+ * next to the name.
+ *
+ * Passing the public token through to the page to fix that would have been
+ * worse than the bug: it would put the shop window's secret in the markup of
+ * a page shown to dealers, which is the one audience with no business
+ * holding it.
+ */
+export async function getTradeLogo(token: string) {
+  if (!token || token.length < 16) return null
+  const rows = await db
+    .select({ data: resellers.logoData, mime: resellers.logoMime })
+    .from(resellers)
+    .where(and(
+      eq(resellers.tradeToken, token),
+      isNotNull(resellers.tradePasswordHash),
+      eq(resellers.isActive, true),
+      isNull(resellers.deletedAt),
+    ))
+    .limit(1)
+
+  const row = rows[0]
+  if (!row?.data) return null
+  return { data: row.data, mimeType: row.mime }
+}

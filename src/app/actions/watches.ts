@@ -8,7 +8,7 @@ import {
 } from '@/server/services/watch-service'
 import {
   watchCreateSchema, watchUpdateSchema, watchMoveSchema, watchPriceSchema,
-  watchAmendSchema, saleCreateSchema, fieldErrors,
+  watchAmendSchema, saleCreateSchema, fieldErrors, type ContentField,
   type WatchAmendInput,
 } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
@@ -167,7 +167,9 @@ export async function amendWatchAction(input: WatchAmendInput): Promise<ActionSt
           ? { tradeAmount: change.amount, tradeCurrency: change.currency }
           : change.field === 'year'
             ? { year: change.year }
-            : { serial: change.serial }
+            : change.field === 'serial'
+              ? { serial: change.serial }
+              : contentPatch(change.key, change.value)
 
     await updateWatch({ id: change.id, version: current.watch.version, ...patch }, actor)
     refreshInventory()
@@ -438,4 +440,36 @@ export async function voidSaleAction(watchId: string, reason: string): Promise<A
   } catch (error) {
     return toState(error, 'Could not void the sale.')
   }
+}
+
+/**
+ * One cell of a listing, turned into a patch the service will accept.
+ *
+ * The grid sends a string, because that is what a cell holds, and the type
+ * it has to become is a fact about the field rather than about the cell. Put
+ * here rather than in each column so that a column is a label and a width,
+ * and adding one is not an invitation to invent a twelfth way of meaning
+ * "empty".
+ *
+ * Empty always clears. A blank cell in a spreadsheet means "nothing here",
+ * and anything else — refusing it, keeping the old value, writing a zero —
+ * is a surprise in the one interaction this screen exists for.
+ */
+function contentPatch(key: ContentField, raw: string): Record<string, unknown> {
+  const value = raw.trim()
+
+  if (key === 'year' || key === 'caseSizeMm' || key === 'waterResistanceM') {
+    if (!value) return { [key]: null }
+    const number = Number(value)
+    // An unreadable number is left to the service's own validation rather
+    // than silently becoming zero, which would read as a measured value.
+    return { [key]: Number.isFinite(number) ? Math.round(number) : value }
+  }
+
+  // The two closed lists. A cell that is cleared goes back to "not recorded",
+  // which is a real answer and the one the enum keeps a value for.
+  if (key === 'condition') return { condition: value || 'UNKNOWN' }
+  if (key === 'boxPapers') return { boxPapers: value || 'UNKNOWN' }
+
+  return { [key]: value || null }
 }

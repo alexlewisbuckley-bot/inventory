@@ -16,11 +16,10 @@ import { enterTradeRoomAction, type GateState } from '@/app/actions/trade-room'
  * this link by them and a page that looks like somebody else's software is a
  * page they check twice before typing anything into.
  */
-export function TradeGate({ token, name, hasLogo, publicToken, brandColor, accentColor }: {
+export function TradeGate({ token, name, hasLogo, brandColor, accentColor }: {
   token: string
   name: string
   hasLogo: boolean
-  publicToken: string
   brandColor: string
   accentColor: string
 }) {
@@ -41,7 +40,7 @@ export function TradeGate({ token, name, hasLogo, publicToken, brandColor, accen
         {hasLogo ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={`/t/${token}/logo?v=${publicToken.slice(0, 6)}`}
+            src={`/t/${token}/logo`}
             alt={name}
             className="mx-auto mb-8 h-10 w-auto object-contain"
           />

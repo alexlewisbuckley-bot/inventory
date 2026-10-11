@@ -214,6 +214,22 @@ export const watchPriceSchema = z.object({
  * cell and nothing else, so what the action is allowed to touch is visible
  * here rather than inferred from the caller.
  */
+/**
+ * What a listing is made of.
+ *
+ * Everything on this list is read by the Shopify mirror and shown to a
+ * customer: the title, the structured fields the storefront filters on, and
+ * the prose under them. Cost, owner and supplier are deliberately not here —
+ * this is the content side of a watch, and an editor built for speed should
+ * not be a place where a price can be changed by a stray keystroke.
+ */
+export const CONTENT_FIELDS = [
+  'nickname', 'model', 'year', 'dial', 'caseMaterial', 'caseSizeMm',
+  'bracelet', 'movement', 'waterResistanceM', 'condition', 'boxPapers',
+  'description',
+] as const
+export type ContentField = (typeof CONTENT_FIELDS)[number]
+
 export const watchAmendSchema = z.discriminatedUnion('field', [
   z.object({
     field: z.literal('purchase'),
@@ -240,7 +256,27 @@ export const watchAmendSchema = z.discriminatedUnion('field', [
     id: trimmed.min(1),
     serial: optionalText(60),
   }),
+  /**
+   * The fields a listing is made of, amended one cell at a time.
+   *
+   * One variant for eleven fields rather than eleven variants, because they
+   * are one job: filling in what the shop will show. The alternative is a
+   * discriminated union a screen long whose arms differ only in a key, and a
+   * twelfth field meaning a change in four files.
+   *
+   * The value arrives as the string a cell held, and is coerced per key —
+   * which is what lets a grid of mixed types have one save path and one
+   * error message, instead of each column knowing how to talk to the server.
+   */
+  z.object({
+    field: z.literal('content'),
+    id: trimmed.min(1),
+    key: z.enum(CONTENT_FIELDS),
+    value: z.string().max(400, 'That is longer than the shop will show.'),
+  }),
 ])
+
+
 export type WatchAmendInput = z.infer<typeof watchAmendSchema>
 
 export const saleCreateSchema = z.object({

@@ -1,4 +1,5 @@
 import {
+  Table2,
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
   Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
@@ -83,6 +84,11 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
       items: [
         { href: '/inventory?unpricedOnly=true', label: 'Unpriced stock', icon: Coins, capability: 'watch:read', count: counts.unpriced, attention: counts.unpriced > 0 },
         { href: '/reports/ageing', label: 'Ageing stock', icon: Clock, capability: 'report:read', count: counts.ageing, attention: counts.ageing > 0 },
+        // Beside the other two worklists rather than under the shop settings.
+        // It is the same kind of job — a list of stock with something
+        // missing — and the shop page is where the sync is wired up, which is
+        // a thing somebody does twice a year.
+        { href: '/inventory/content', label: 'Shop content', icon: Table2, capability: 'watch:read', match: '/inventory/content' },
       ],
     },
     {

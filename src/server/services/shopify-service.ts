@@ -282,6 +282,18 @@ export async function storeProducts(): Promise<SyncProduct[]> {
  * in a dial colour somebody added that morning.
  */
 export async function loadMetaobjects(): Promise<MetaobjectIndex> {
+  return indexMetaobjects(await metaobjectEntries())
+}
+
+/**
+ * The shop's own words, as it writes them.
+ *
+ * `loadMetaobjects` folds these into an index keyed by a normalised name,
+ * which is right for matching and useless for offering: "mother of pearl" is
+ * not a thing to show somebody filling in a dial colour. The editor needs the
+ * display names, so the entries are kept whole here and indexed there.
+ */
+async function metaobjectEntries(): Promise<Array<{ type: string; displayName: string; id: string }>> {
   const entries: Array<{ type: string; displayName: string; id: string }> = []
 
   for (const type of METAOBJECT_TYPES) {
@@ -308,7 +320,7 @@ export async function loadMetaobjects(): Promise<MetaobjectIndex> {
     } while (cursor)
   }
 
-  return indexMetaobjects(entries)
+  return entries
 }
 
 /**
@@ -1410,4 +1422,55 @@ export async function forgetLinks(watchIds?: string[]): Promise<void> {
   await db.update(watchImages)
     .set({ shopifyMediaId: null })
     .where(scope ? inArray(watchImages.watchId, scope) : sql`true`)
+}
+
+/**
+ * What the editor needs to know about the shop: its vocabulary, and the gaps.
+ *
+ * Two things that have to agree, so they are computed together from the same
+ * two reads rather than twice over.
+ *
+ * `choices` is the shop's own wording per field, to be offered as somebody
+ * types. This is the whole point of the screen: a dial typed as "Aubergine"
+ * is a field filled in and a watch nobody can filter to, because the shop has
+ * no Aubergine. Offering the list turns filling fields in into filling them
+ * in usefully.
+ *
+ * `unmatched` is the same question asked backwards — which values already
+ * recorded have no entry in the shop — and it is deliberately computed by
+ * `resolveMetafields`, the function the push itself uses. Reimplementing the
+ * match here with `normalise` and a Set would have been fewer lines and would
+ * have disagreed with the push the first time somebody added an alias: the
+ * aliases say "Olive green" is the shop's Green, and a second matcher that
+ * did not know would flag a value that pushes perfectly well.
+ */
+export async function shopVocabulary(): Promise<{
+  choices: Record<string, string[]>
+  unmatched: Record<string, string[]>
+}> {
+  const empty = { choices: {}, unmatched: {} }
+  if (!shopifyIsConfigured()) return empty
+  try {
+    const [entries, stock] = await Promise.all([metaobjectEntries(), syncableWatches()])
+    const index = indexMetaobjects(entries)
+
+    const choices: Record<string, string[]> = {}
+    for (const entry of entries) {
+      const list = choices[entry.type] ?? (choices[entry.type] = [])
+      if (!list.includes(entry.displayName)) list.push(entry.displayName)
+    }
+    for (const list of Object.values(choices)) list.sort((a, b) => a.localeCompare(b))
+
+    const unmatched: Record<string, string[]> = {}
+    for (const watch of stock) {
+      const missing = resolveMetafields(watch, index).unmatched.map((miss) => miss.type)
+      if (missing.length) unmatched[watch.id] = missing
+    }
+
+    return { choices, unmatched }
+  } catch {
+    // The shop being unreachable makes the editor less helpful, not unusable:
+    // every field still saves, there is simply nothing to suggest.
+    return empty
+  }
 }

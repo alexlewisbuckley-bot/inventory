@@ -1,11 +1,11 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Search, X } from 'lucide-react'
+import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { leaveTradeRoomAction } from '@/app/actions/trade-room'
 import {
-  BOX_PAPERS_LABELS, CONDITION_LABELS,
-  type BoxPapers, type Condition,
+  BOX_PAPERS_LABELS, CONDITION_LABELS, MENS_MIN_MM, WEARS_LABELS, WOMENS_MAX_MM,
+  type BoxPapers, type Condition, type Wears,
 } from '@/lib/enums'
 
 export interface TradeItem {
@@ -42,10 +42,9 @@ export interface TradeItem {
  * photographs it describes; paging it off the server would cost a round trip
  * per keystroke to save nothing.
  */
-export function TradeRoom({ token, reseller, publicToken, items }: {
+export function TradeRoom({ token, reseller, items }: {
   token: string
   reseller: { name: string; brandColor: string; accentColor: string; hasLogo: boolean }
-  publicToken: string
   items: TradeItem[]
 }) {
   const [term, setTerm] = useState('')
@@ -67,7 +66,7 @@ export function TradeRoom({ token, reseller, publicToken, items }: {
       if (needle && !searchable(item).includes(needle)) return false
       for (const [group, chosen] of Object.entries(picked)) {
         if (chosen.length === 0) continue
-        if (!chosen.includes(valueOf(item, group))) return false
+        if (!holds(item, group, chosen)) return false
       }
       return true
     })
@@ -86,15 +85,15 @@ export function TradeRoom({ token, reseller, publicToken, items }: {
       if (needle && !searchable(item).includes(needle)) return false
       for (const [other, chosen] of Object.entries(picked)) {
         if (other === group.key || chosen.length === 0) continue
-        if (!chosen.includes(valueOf(item, other))) return false
+        if (!holds(item, other, chosen)) return false
       }
       return true
     })
     const tally = new Map<string, number>()
     for (const item of under) {
-      const value = valueOf(item, group.key)
-      if (!value) continue
-      tally.set(value, (tally.get(value) ?? 0) + 1)
+      for (const value of valuesOf(item, group.key)) {
+        tally.set(value, (tally.get(value) ?? 0) + 1)
+      }
     }
     return {
       ...group,
@@ -119,7 +118,7 @@ export function TradeRoom({ token, reseller, publicToken, items }: {
           {reseller.hasLogo ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={`/t/${token}/logo?v=${publicToken.slice(0, 6)}`}
+              src={`/t/${token}/logo`}
               alt={reseller.name}
               className="h-8 w-auto shrink-0 object-contain"
             />
@@ -148,7 +147,7 @@ export function TradeRoom({ token, reseller, publicToken, items }: {
             value={term}
             onChange={(event) => setTerm(event.target.value)}
             placeholder="Reference, model or brand…"
-            className="h-11 w-full border border-black/15 pl-10 pr-3 text-[14px] text-black outline-none placeholder:text-black/35 focus:border-black/50"
+            className="h-11 w-full rounded-full border border-black/12 bg-black/[0.02] pl-10 pr-3 text-[14px] text-black outline-none placeholder:text-black/35 focus:border-black/40 focus:bg-white"
           />
         </label>
 
@@ -279,6 +278,18 @@ const GROUPS = [
       b.count - a.count || a.label.localeCompare(b.label),
   },
   {
+    key: 'dial', label: 'Dial', noun: 'colours',
+    label_: (value: string) => value,
+    order: (a: { count: number; label: string }, b: { count: number; label: string }) =>
+      b.count - a.count || a.label.localeCompare(b.label),
+  },
+  {
+    key: 'wears', label: 'Worn by', noun: 'choices',
+    label_: (value: string) => WEARS_LABELS[value as Wears] ?? value,
+    // Men's first, because it is the larger half of almost every case.
+    order: (a: { value: string }, b: { value: string }) => (a.value === 'MENS' ? -1 : b.value === 'MENS' ? 1 : 0),
+  },
+  {
     key: 'size', label: 'Size', noun: 'sizes',
     label_: (value: string) => value,
     order: (a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label),
@@ -326,10 +337,37 @@ function sizeBand(mm: number | null): string {
   return '44mm and over'
 }
 
+/**
+ * Every answer a watch gives to one question — usually one, sometimes two.
+ *
+ * Who a watch is for is the exception, and it is deliberate: 35 to 37mm is
+ * worn by anyone, and forcing a 36mm Datejust into one list means never
+ * showing it to half the people it suits. The same bands the stock list uses,
+ * so a dealer and the shop agree about what a midsize is.
+ */
+function valuesOf(item: TradeItem, group: string): string[] {
+  if (group !== 'wears') {
+    const value = valueOf(item, group)
+    return value ? [value] : []
+  }
+  const mm = item.caseSizeMm
+  if (mm === null) return []
+  const wears: string[] = []
+  if (mm >= MENS_MIN_MM) wears.push('MENS')
+  if (mm <= WOMENS_MAX_MM) wears.push('WOMENS')
+  return wears
+}
+
+/** Whether a watch answers one of the values chosen in a group. */
+function holds(item: TradeItem, group: string, chosen: string[]): boolean {
+  return valuesOf(item, group).some((value) => chosen.includes(value))
+}
+
 function valueOf(item: TradeItem, group: string): string {
   switch (group) {
     case 'brand': return item.brandName
     case 'family': return familyOf(item)
+    case 'dial': return item.dial ?? ''
     case 'size': return sizeBand(item.caseSizeMm)
     case 'year': return item.year ? String(item.year) : ''
     case 'condition': return item.condition === 'UNKNOWN' ? '' : item.condition
@@ -390,15 +428,15 @@ function Pick({ id, label, summary, open, setOpen, children }: {
         type="button"
         onClick={() => setOpen(isOpen ? null : id)}
         aria-expanded={isOpen}
-        className={`inline-flex h-9 items-center gap-2 border px-3.5 text-[12.5px] transition-colors ${
+        className={`inline-flex h-9 max-w-[260px] items-center gap-2 rounded-full border px-4 text-[12.5px] transition-colors ${
           chosen
             ? 'border-black bg-black text-white'
-            : 'border-black/15 text-black/80 hover:border-black/45'
+            : 'border-black/12 bg-black/[0.02] text-black/75 hover:border-black/35 hover:bg-black/[0.05]'
         }`}
       >
-        <span className={chosen ? 'opacity-60' : 'font-medium'}>{label}</span>
-        {chosen && <span className="font-semibold">{summary}</span>}
-        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
+        <span className={chosen ? 'shrink-0 opacity-55' : 'font-medium'}>{label}</span>
+        {chosen && <span className="truncate font-semibold">{summary}</span>}
+        <ChevronDown className={`h-3 w-3 shrink-0 opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
       </button>
 
       {isOpen && (
@@ -412,7 +450,7 @@ function Pick({ id, label, summary, open, setOpen, children }: {
             onClick={() => setOpen(null)}
             className="fixed inset-0 z-20 cursor-default"
           />
-          <div className="absolute left-0 top-[calc(100%+5px)] z-30 w-[260px] border border-black/15 bg-white p-2 shadow-[0_12px_32px_rgba(0,0,0,0.12)]">
+          <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[268px] rounded-lg border border-black/10 bg-white p-2 shadow-[0_16px_40px_rgba(0,0,0,0.14)]">
             {children}
           </div>
         </>
@@ -426,27 +464,59 @@ function OptionList({ options, chosen, onToggle }: {
   chosen: string[]
   onToggle: (value: string) => void
 }) {
+  const [term, setTerm] = useState('')
+  const needle = term.trim().toLowerCase()
+  // Chosen pinned to the top, so narrowing the search never hides what you
+  // have already picked and then looks as though it was forgotten.
+  const shown = useMemo(() => {
+    const matching = needle
+      ? options.filter((option) => option.label.toLowerCase().includes(needle))
+      : options
+    return [
+      ...matching.filter((option) => chosen.includes(option.value)),
+      ...matching.filter((option) => !chosen.includes(option.value)),
+    ]
+  }, [options, needle, chosen])
+
   return (
-    <div className="max-h-[280px] overflow-y-auto">
-      {options.map((option) => {
+    <div className="flex flex-col gap-1.5">
+      {options.length > 8 && (
+        <label className="relative">
+          <span className="sr-only">Search</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-black/30" aria-hidden />
+          <input
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Search…"
+            autoFocus
+            className="h-8 w-full rounded-[4px] border border-black/12 bg-black/[0.02] pl-8 pr-2 text-[12.5px] text-black outline-none placeholder:text-black/35 focus:border-black/40"
+          />
+        </label>
+      )}
+      <div className="-mr-1 max-h-[260px] overflow-y-auto pr-1">
+        {shown.length === 0 && (
+          <p className="px-2 py-3 text-[12.5px] text-black/40">Nothing matches that.</p>
+        )}
+        {shown.map((option) => {
         const on = chosen.includes(option.value)
         return (
           <button
             key={option.value}
             type="button"
             onClick={() => onToggle(option.value)}
-            className="flex w-full items-center gap-2.5 px-1.5 py-1.5 text-left text-[12.5px] hover:bg-black/[0.04]"
+            className="group/opt flex w-full items-center gap-2.5 rounded-[4px] px-2 py-[7px] text-left text-[12.5px] transition-colors hover:bg-black/[0.045]"
           >
-            <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center border ${
-              on ? 'border-black bg-black' : 'border-black/30'
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+              on ? 'border-black bg-black' : 'border-black/25 group-hover/opt:border-black/50'
             }`}>
-              {on && <X className="h-2.5 w-2.5 rotate-45 text-white" aria-hidden />}
+              {on && <Check className="h-3 w-3 text-white" aria-hidden />}
             </span>
             <span className="min-w-0 flex-1 truncate text-black/85">{option.label}</span>
-            <span className="shrink-0 tabular-nums text-black/40">{option.count}</span>
+            <span className="shrink-0 tabular-nums text-black/35">{option.count}</span>
           </button>
-        )
-      })}
+          )
+        })}
+      </div>
     </div>
   )
 }
