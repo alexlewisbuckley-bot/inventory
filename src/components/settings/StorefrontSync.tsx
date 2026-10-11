@@ -25,7 +25,7 @@ export function StorefrontSync({ health }: {
     unmatched: Array<{ field: string; value: string; count: number }>
     withheld: Array<{ name: string; count: number }>
     invisible: Array<{ sku: string | null; title: string }>
-    channel: { name: string | null; refusal: string | null; seen: string[] }
+    channel: { name: string | null; refusal: string | null; seen: string[]; granted: string[] }
   }
 }) {
   const router = useRouter()
@@ -264,6 +264,26 @@ export function StorefrontSync({ health }: {
                 <span className="font-semibold text-content-primary">Channels this app can see: </span>
                 {health.channel.seen.length ? health.channel.seen.join(', ') : 'none at all'}
               </p>
+              {/* What the shop has actually granted, which is a different
+                  thing from what the app asks for. Shopify approves a newly
+                  released scope when the app is opened, not when the version
+                  is released — so the list in the Dev Dashboard and the list
+                  below can disagree for days while both screens look right. */}
+              <p className="mt-2 text-caption text-content-secondary">
+                <span className="font-semibold text-content-primary">Permissions actually granted: </span>
+                {health.channel.granted.length
+                  ? <code className="font-mono">{health.channel.granted.join(', ')}</code>
+                  : 'could not be read'}
+              </p>
+              {health.channel.granted.length > 0
+                && !health.channel.granted.includes('read_publications') && (
+                <p className="mt-2 text-caption text-content-secondary">
+                  <span className="font-semibold text-content-primary">read_publications is not in that list. </span>
+                  Releasing a version in the Dev Dashboard only asks for a permission; the shop
+                  grants it when the app is next opened. Open the app from Shopify
+                  (Settings → Apps and sales channels → Inventory sync), then press Apply again.
+                </p>
+              )}
             </div>
           )}
 
