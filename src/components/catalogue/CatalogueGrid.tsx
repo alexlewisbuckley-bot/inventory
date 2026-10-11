@@ -1,7 +1,7 @@
 'use client'
 import { PackageSearch } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
-import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH } from '@/components/ui'
+import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH, Zoomable } from '@/components/ui'
 import { formatCurrency } from '@/lib/currency'
 import { cn } from '@/lib/cn'
 import { EnquireButton } from './EnquireButton'
@@ -73,11 +73,10 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
             the whole watch in frame; the padding stops it touching the edge. */}
         <div className="aspect-square w-full bg-surface-subtle">
           {item.imageId ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
+            <Zoomable
               src={`/api/images/${item.imageId}`}
               alt={`${item.brandName} ${item.modelName ?? item.model}`}
-              loading="lazy"
+              caption={`${item.brandName} ${item.modelName ?? item.model}`}
               className="h-full w-full object-contain p-3 sm:p-4"
             />
           ) : (
@@ -189,11 +188,10 @@ function CatalogueTable({ items, currency }: { items: CatalogueItem[]; currency:
                 <TD>
                   <div className="h-11 w-11 overflow-hidden rounded-sm bg-surface-subtle">
                     {item.imageId && (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
+                      <Zoomable
                         src={`/api/images/${item.imageId}`}
-                        alt=""
-                        loading="lazy"
+                        alt={`${item.brandName} ${item.modelName ?? item.model}`}
+                        caption={`${item.brandName} ${item.modelName ?? item.model}`}
                         className="h-full w-full object-contain p-1"
                       />
                     )}

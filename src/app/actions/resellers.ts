@@ -4,6 +4,7 @@ import { requireCapability } from '@/server/auth/session'
 import {
   createReseller, updateReseller, deleteReseller, rotateResellerToken,
   setResellerDomain, setResellerLogo, assertLogoAcceptable,
+  setTradeAccess, closeTradeRoom, rotateTradeToken,
 } from '@/server/services/reseller-service'
 import { headers } from 'next/headers'
 import { hostOf, ownHosts } from '@/lib/domains'
@@ -159,5 +160,56 @@ export async function removeResellerLogoAction(id: string): Promise<ActionState>
     return { ok: true, message: 'Logo removed.' }
   } catch (error) {
     return toState(error, 'Could not remove the logo.')
+  }
+}
+
+/**
+ * Open a reseller's trade room, or change the passphrase on one.
+ *
+ * Returns the token so the page can show the finished link immediately. The
+ * passphrase is not returned, because it is not stored in a form anybody can
+ * read back — what the person typed is the only copy, which is the point of
+ * saying so on the screen before they leave it.
+ */
+export async function setTradeAccessAction(
+  id: string, passphrase: string,
+): Promise<ActionState & { token?: string }> {
+  try {
+    const actor = await requireCapability('reseller:manage')
+    const token = await setTradeAccess(id, passphrase, actor)
+    revalidatePath('/resellers')
+    return {
+      ok: true,
+      token,
+      message: 'Trade room open. Anybody already signed in has been signed out.',
+    }
+  } catch (error) {
+    return toState(error, 'Could not set that passphrase.')
+  }
+}
+
+/** Shut it: the link and the passphrase go together or not at all. */
+export async function closeTradeRoomAction(id: string): Promise<ActionState> {
+  try {
+    const actor = await requireCapability('reseller:manage')
+    await closeTradeRoom(id, actor)
+    revalidatePath('/resellers')
+    return { ok: true, message: 'Trade room closed. The link no longer works.' }
+  } catch (error) {
+    return toState(error, 'Could not close the trade room.')
+  }
+}
+
+/** A new trade URL, keeping the passphrase: it is the link that leaked. */
+export async function rotateTradeTokenAction(
+  id: string,
+): Promise<ActionState & { token?: string }> {
+  try {
+    const actor = await requireCapability('reseller:manage')
+    const token = await rotateTradeToken(id, actor)
+    revalidatePath('/resellers')
+    return { ok: true, token, message: 'New trade link issued. The previous one no longer works.' }
+  } catch (error) {
+    return toState(error, 'Could not reissue the trade link.')
   }
 }

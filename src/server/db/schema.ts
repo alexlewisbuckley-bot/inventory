@@ -206,6 +206,19 @@ export const resellers = pgTable(
     publicToken: text('public_token').notNull(),
 
     /**
+     * The trade room: the same stock, photographed as it really is, no prices.
+     *
+     * Null until somebody opens one, so that a token existing is itself the
+     * record that this reseller was given trade access — rather than every
+     * reseller quietly having a door that nobody decided to give them.
+     */
+    tradeToken: text('trade_token'),
+    /** A shared passphrase, scrypt-hashed exactly as a staff password is. */
+    tradePasswordHash: text('trade_password_hash'),
+    /** Changing the passphrase turns out every browser already holding one. */
+    tradePasswordSetAt: timestamp('trade_password_set_at', { withTimezone: true }),
+
+    /**
      * A hostname of the reseller's own, pointed at this deployment.
      *
      * Where it is set, the host is what the shop is found by and the token

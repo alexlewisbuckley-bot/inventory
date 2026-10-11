@@ -1170,7 +1170,7 @@ export async function syncHealth(): Promise<{
    * reason there isn't one — which is the difference between a day of
    * guessing and a sentence.
    */
-  channel: { name: string | null; refusal: string | null; seen: string[] }
+  channel: { name: string | null; refusal: string | null; seen: string[]; granted: string[] }
 }> {
   const rows = await db
     .select({
@@ -1213,14 +1213,60 @@ export async function syncHealth(): Promise<{
  * usually just changed a permission in Shopify and wants to know whether it
  * took.
  */
-async function channelHealth(): Promise<{ name: string | null; refusal: string | null; seen: string[] }> {
-  if (!shopifyIsConfigured()) return { name: null, refusal: null, seen: [] }
+async function channelHealth(): Promise<{
+  name: string | null
+  refusal: string | null
+  seen: string[]
+  granted: string[]
+}> {
+  if (!shopifyIsConfigured()) return { name: null, refusal: null, seen: [], granted: [] }
   try {
-    cachedPublication = null
-    const { id, denied, seen } = await onlineStorePublication()
-    return { name: id ? 'Online Store' : null, refusal: denied, seen }
+    // Both caches, not just the publication one. The token carries the scopes
+    // it was minted with and lasts a day, so a page that dropped only the
+    // refusal would re-ask the same question with the same stale credentials
+    // and print the same stale answer — to somebody who has just changed a
+    // permission and is looking at this page to find out whether it worked.
+    forgetCredentials()
+    const [channel, granted] = await Promise.all([
+      onlineStorePublication(),
+      grantedScopes(),
+    ])
+    return {
+      name: channel.id ? 'Online Store' : null,
+      refusal: channel.denied,
+      seen: channel.seen,
+      granted,
+    }
   } catch (error) {
-    return { name: null, refusal: (error as Error).message.slice(0, 300), seen: [] }
+    return { name: null, refusal: (error as Error).message.slice(0, 300), seen: [], granted: [] }
+  }
+}
+
+/**
+ * What the shop has actually granted this app, as opposed to what it asks for.
+ *
+ * Shopify's own words: declaring a scope is not the same as having it. A
+ * scope takes effect when the store approves it, which for an app in your own
+ * organisation happens when the app is opened — not when the version carrying
+ * it is released. So the list in the Dev Dashboard and the list the token
+ * carries can disagree for days, and every screen on both sides looks right
+ * while they do.
+ *
+ * This is the one question that settles it, and it needs no scope of its own.
+ * Without it the only evidence was a refusal that named one missing
+ * permission at a time, which answers "why did this fail" and never "what
+ * have I actually got".
+ */
+async function grantedScopes(): Promise<string[]> {
+  try {
+    const data = await admin<{
+      currentAppInstallation: { accessScopes: Array<{ handle: string }> }
+    }>(`{ currentAppInstallation { accessScopes { handle } } }`, {})
+    return data.currentAppInstallation.accessScopes.map((scope) => scope.handle).sort()
+  } catch {
+    // Not worth failing the reading over: the refusal above is the headline,
+    // and this is the detail underneath it.
+    return []
   }
 }
 

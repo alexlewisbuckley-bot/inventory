@@ -114,6 +114,38 @@ describe('being refused a sales channel', () => {
   })
 })
 
+describe('what the shop has actually granted', () => {
+  it('is asked outright, rather than inferred from one refusal at a time', () => {
+    // Shopify's own words: declaring a scope is not the same as having it. A
+    // scope takes effect when the store approves it, which for an app in your
+    // own organisation happens when the app is next opened — not when the
+    // version carrying it is released. So the Dev Dashboard and the token can
+    // disagree for days while both screens look right, and a refusal naming
+    // one missing permission answers "why did this fail" and never "what have
+    // I actually got". This is the question that settles it, and it needs no
+    // permission of its own.
+    const service = read('src/server/services/shopify-service.ts')
+    expect(service).toMatch(/currentAppInstallation \{ accessScopes \{ handle \} \}/)
+    expect(service).toMatch(/async function grantedScopes/)
+
+    const panel = read('src/components/settings/StorefrontSync.tsx')
+    expect(panel).toMatch(/Permissions actually granted/)
+    // And when the missing one is the missing one, the page says what to do
+    // about it rather than leaving somebody to compare two lists by eye.
+    expect(panel).toMatch(/!health\.channel\.granted\.includes\('read_publications'\)/)
+  })
+
+  it('is read with fresh credentials, not yesterday\'s', () => {
+    // A page that dropped only the remembered refusal would re-ask with the
+    // same day-old token and print the same stale answer — to somebody who
+    // has just changed a permission and opened this page to find out whether
+    // it worked.
+    const service = read('src/server/services/shopify-service.ts')
+    const health = service.slice(service.indexOf('async function channelHealth'))
+    expect(health.slice(0, 900)).toMatch(/forgetCredentials\(\)/)
+  })
+})
+
 describe('the page somebody opens to ask why', () => {
   it('shows what the shop is hiding, not only what we withheld', () => {
     const service = read('src/server/services/shopify-service.ts')
