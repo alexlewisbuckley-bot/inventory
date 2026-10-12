@@ -25,10 +25,20 @@ const FIELD_LABELS: Record<string, string> = {
   estSaleCurrency: 'Retail currency',
   estSaleGbp: 'Retail price',
   estSaleUsd: 'Retail price',
+  invoiceNo: 'Invoice number',
   isActive: 'Active',
   legalName: 'Legal entity',
   locationId: 'Location',
   nickname: 'Model',
+  channel: 'Channel',
+  customerCompany: 'Company',
+  customerName: 'Customer',
+  deliveryStatus: 'Delivery',
+  paymentStatus: 'Payment',
+  profitGbp: 'Profit',
+  saleAmountGbp: 'Sale price',
+  saleCurrency: 'Sale currency',
+  saleDate: 'Sale date',
   ownerId: 'Owner',
   caseSizeMm: 'Case size',
   caseMaterial: 'Case material',
@@ -93,7 +103,7 @@ const VALUE_LABELS: Record<string, string> = {
 const MONEY_FIELDS = new Set([
   'purchasePriceGbp', 'purchasePriceUsd',
   'estSaleGbp', 'estSaleUsd',
-  'tradePriceGbp', 'salePriceGbp',
+  'tradePriceGbp', 'saleAmountGbp', 'salePriceGbp', 'profitGbp',
   'valueGbp', 'depositGbp',
 ])
 
@@ -115,5 +125,19 @@ export function changeValue(value: unknown, field?: string): string {
     if (Number.isFinite(minor)) return formatCurrency(minor, BASE_CURRENCY, { decimals: true })
   }
   const text = String(value)
+  /**
+   * A date that has been through JSON on its way here.
+   *
+   * `changes` is stored as JSON, which turns a Date into an ISO string, so the
+   * instanceof check above only ever fires on the way in. Read back out, a
+   * purchase date showed as "2026-04-08T00:00:00.000Z" — technically the
+   * truth and not what anybody came to the page for. Matched on the shape
+   * rather than on a list of field names, because nothing a person types into
+   * this system looks like this.
+   */
+  if (/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(text)) {
+    const date = new Date(text)
+    if (!Number.isNaN(date.getTime())) return date.toLocaleDateString('en-GB')
+  }
   return VALUE_LABELS[text] ?? text
 }

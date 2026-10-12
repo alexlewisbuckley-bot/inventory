@@ -1,19 +1,22 @@
 'use client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
-import { Undo2 } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
-import { Table, THead, TBody, TR, TD, TH, Pagination, Chip, Button } from '@/components/ui'
+import {
+  Table, THead, TBody, TR, TD, TH, Pagination, Chip, IconButton, AnchoredMenu, type MenuItem,
+} from '@/components/ui'
 import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleModal'
+import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
 import { formatPct } from '@/lib/money'
 import { useCurrency } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
 import { SALE_CHANNEL_LABELS } from '@/lib/enums'
 import type { SaleListItem } from '@/server/repositories/sale-repository'
 
-export function SalesTable({ result, showCost = true, canVoid = false }: {
+export function SalesTable({ result, showCost = true, canVoid = false, canAmend = false }: {
   result: { items: SaleListItem[]; total: number; page: number; perPage: number }
   /**
    * Whether the cost side — cost, profit, margin — exists on this table.
@@ -32,10 +35,20 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
    * from.
    */
   canVoid?: boolean
+  /**
+   * Whether this reader may correct a booked sale.
+   *
+   * An invoice number is typed by hand with a customer waiting and then
+   * printed on something they keep. The only remedy for a typo was to void
+   * the sale and book it again, which discards the row their invoice points
+   * at — so people left it wrong instead.
+   */
+  canAmend?: boolean
 }) {
   const query = useListQuery()
   const router = useRouter()
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
+  const [editTarget, setEditTarget] = useState<EditSaleTarget | null>(null)
   // Money renders in whatever currency the header is showing, so the table
   // never disagrees with the summary tiles above it.
   const { money, signed } = useCurrency()
@@ -50,7 +63,11 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
           content — see the note on the Table component. */}
       <Table
         layout="fixed"
-        minWidth={`${844 + 176 + (showCost ? 350 : 0)}px`}
+        // The stated column widths, plus room for the actions control. This
+        // carried 200px of slack for a labelled Void button, which put the
+        // table past the width of a laptop and left the date column clipped
+        // behind a sideways scroll. A menu needs a quarter of that.
+        minWidth={`${(showCost ? 1170 : 820) + 56}px`}
       >
         <THead>
           <TR>
@@ -113,22 +130,34 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
               </>
               )}
               <TD align="right">
-                {canVoid && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<Undo2 className="h-4 w-4" />}
-                    onClick={() => setVoidTarget({
-                      // The watch, not the sale: voiding walks from the watch
-                      // to its one live sale, so that is the handle it takes.
-                      id: sale.watchId,
-                      stockNo: sale.stockNo,
-                      label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
-                    })}
-                  >
-                    Void
-                  </Button>
-                )}
+                <RowActions
+                  sale={sale}
+                  canAmend={canAmend}
+                  canVoid={canVoid}
+                  onCorrect={() => setEditTarget({
+                    id: sale.id,
+                    invoiceNo: sale.invoiceNo,
+                    saleDate: sale.saleDate,
+                    saleAmount: sale.saleAmount,
+                    saleCurrency: sale.saleCurrency,
+                    amountGbp: sale.amountGbp,
+                    channel: sale.channel,
+                    paymentStatus: sale.paymentStatus,
+                    deliveryStatus: sale.deliveryStatus,
+                    customerName: sale.customerName,
+                    customerCompany: sale.customerCompany,
+                    notes: sale.notes,
+                    stockNo: sale.stockNo,
+                    label: `${sale.brandName} ${sale.model}`,
+                  })}
+                  onVoid={() => setVoidTarget({
+                    // The watch, not the sale: voiding walks from the watch
+                    // to its one live sale, so that is the handle it takes.
+                    id: sale.watchId,
+                    stockNo: sale.stockNo,
+                    label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
+                  })}
+                />
               </TD>
             </TR>
           ))}
@@ -144,6 +173,13 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
         onPerPage={(perPage) => query.set('perPage', String(perPage))}
       />
 
+      <EditSaleModal
+        open={editTarget !== null}
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={() => router.refresh()}
+      />
+
       <VoidSaleModal
         open={voidTarget !== null}
         target={voidTarget}
@@ -151,5 +187,72 @@ export function SalesTable({ result, showCost = true, canVoid = false }: {
         onVoided={() => router.refresh()}
       />
     </div>
+  )
+}
+
+/**
+ * The actions available on one row of the ledger.
+ *
+ * Correcting a sale arrived as a second labelled button beside Void, and the
+ * two together pushed this table wider than the window — which put Void, the
+ * destructive one, off the right-hand edge behind a horizontal scroll. The
+ * stock list has long kept its row actions behind a single control; this is
+ * the same kind of row, so it is the same gesture.
+ *
+ * Nothing at all is rendered when the reader may do neither, rather than a
+ * trigger that opens on an empty menu.
+ */
+function RowActions({ sale, canAmend, canVoid, onCorrect, onVoid }: {
+  sale: SaleListItem
+  canAmend: boolean
+  canVoid: boolean
+  onCorrect: () => void
+  onVoid: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef<HTMLButtonElement>(null)
+
+  const items: MenuItem[] = [
+    ...(canAmend ? [{
+      id: 'correct',
+      // The ellipsis promises that something will be asked before anything is
+      // written, the same promise "Mark as sold…" makes on the stock list.
+      label: 'Correct this sale…',
+      onSelect: onCorrect,
+      icon: <Pencil className="h-3.5 w-3.5" />,
+    }] : []),
+    ...(canVoid ? [{
+      id: 'void',
+      label: 'Void the sale…',
+      onSelect: onVoid,
+      icon: <Undo2 className="h-3.5 w-3.5" />,
+      tone: 'danger' as const,
+      separated: canAmend,
+    }] : []),
+  ]
+
+  if (items.length === 0) return null
+
+  const label = `Actions for invoice ${sale.invoiceNo}`
+  return (
+    <>
+      <IconButton
+        ref={anchor}
+        variant="ghost"
+        size="sm"
+        label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        icon={<MoreHorizontal className="h-4 w-4" />}
+      />
+      <AnchoredMenu
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={anchor}
+        items={items}
+        label={label}
+      />
+    </>
   )
 }
