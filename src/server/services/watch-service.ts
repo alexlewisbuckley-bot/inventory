@@ -195,6 +195,31 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.status !== undefined) patch.status = input.status
     if (input.purchaseDate !== undefined) patch.purchaseDate = input.purchaseDate
 
+    /**
+     * Renaming the piece.
+     *
+     * Refused by name rather than by constraint: the unique index would stop
+     * a collision either way, but "duplicate key value violates
+     * watches_stock_no_idx" is not a sentence anybody can act on, and the
+     * useful fact — which watch is already using it — is one query away.
+     *
+     * The storefront follows on the next push. Its SKU is this number, and
+     * the sync matches a page to a watch by the product id it last pushed
+     * to, so the listing is renamed rather than archived and rebuilt.
+     */
+    if (input.stockNo !== undefined && input.stockNo !== existing.stockNo) {
+      const taken = await db.select({ stockNo: watches.stockNo, model: watches.model })
+        .from(watches)
+        .where(and(eq(watches.stockNo, input.stockNo), isNull(watches.deletedAt)))
+        .limit(1)
+      if (taken[0]) {
+        throw new ConflictError(`Stock number ${input.stockNo} is already ${taken[0].model}.`, {
+          stockNo: `Already used by ${taken[0].model}.`,
+        })
+      }
+      patch.stockNo = input.stockNo
+    }
+
     if (input.purchaseAmount !== undefined) {
       const minor = Math.round(input.purchaseAmount * 100)
       patch.purchaseAmount = minor
@@ -257,6 +282,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     }
 
     const changes = diff(existing, patch, [
+      'stockNo',
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
       'tradePriceGbp',

@@ -1,4 +1,5 @@
 'use client'
+import { BASE_CURRENCY } from '@/lib/enums'
 import { useMemo, useState } from 'react'
 import {
   Modal, Button, TextField, SelectField, MoneyField, ComboSelect, Chip, SegmentedField,
@@ -8,7 +9,7 @@ import { recordSaleAction } from '@/app/actions/watches'
 import { quickCreateCustomerAction } from '@/app/actions/crm'
 import { IdDocumentUpload, uploadIdDocument } from '@/components/crm/IdDocumentUpload'
 import { formatMoneyInput, formatPct, parseMoneyInput } from '@/lib/money'
-import { fromBase, toBase } from '@/lib/currency'
+import { fromBase, toBase, moneyPrefix } from '@/lib/currency'
 import { toDateInput } from '@/lib/dates'
 import { UserPlus } from 'lucide-react'
 import {
@@ -574,7 +575,7 @@ export function QuickSellModal({
           {(paymentStatus === 'DEPOSIT' || paymentStatus === 'PENDING') && (
             <TextField
               label="Deposit taken"
-              prefix="£"
+              prefix={moneyPrefix(BASE_CURRENCY)}
               inputMode="decimal"
               value={deposit}
               onChange={(e) => setDeposit(e.target.value)}

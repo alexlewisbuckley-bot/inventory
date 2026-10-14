@@ -79,11 +79,11 @@ export function SalesTable({
         // carried 200px of slack for a labelled Void button, which put the
         // table past the width of a laptop and left the date column clipped
         // behind a sideways scroll. A menu needs a quarter of that.
-        minWidth={`${(showCost ? 1170 : 820) + 110 + 56}px`}
+        minWidth={`${(showCost ? 1184 : 834) + 110 + 56}px`}
       >
         <THead>
           <TR>
-            <TH width="110px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
+            <TH width="124px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
             <TH width="124px">Invoice</TH>
             <TH width="80px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
             {/* Sized like the inventory list, which shows the same reference
@@ -108,7 +108,7 @@ export function SalesTable({
         <TBody>
           {result.items.map((sale) => (
             <TR key={sale.id}>
-              <TD className="text-content-secondary">{formatDate(sale.saleDate)}</TD>
+              <TD className="whitespace-nowrap text-content-secondary">{formatDate(sale.saleDate)}</TD>
               <TD className="font-bold text-navy-700">{sale.invoiceNo}</TD>
               <TD className="text-content-secondary">{sale.stockNo}</TD>
               <TD>

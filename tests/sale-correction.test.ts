@@ -116,7 +116,7 @@ describe('where it is reached from', () => {
     // And the table was narrowed by the slack the buttons used to need.
     // The sum grew by the Sold by column; what matters is that the actions
     // control is still counted, not squeezed out of the others' width.
-    expect(table).toMatch(/\(showCost \? 1170 : 820\) \+ 110 \+ 56/)
+    expect(table).toMatch(/\(showCost \? 1184 : 834\) \+ 110 \+ 56/)
   })
 
   it('offers no trigger at all to a reader who may do neither', () => {

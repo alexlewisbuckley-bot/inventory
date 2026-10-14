@@ -169,7 +169,9 @@ export async function amendWatchAction(input: WatchAmendInput): Promise<ActionSt
             ? { year: change.year }
             : change.field === 'serial'
               ? { serial: change.serial }
-              : contentPatch(change.key, change.value)
+              : change.field === 'stockNo'
+                ? { stockNo: change.stockNo }
+                : contentPatch(change.key, change.value)
 
     await updateWatch({ id: change.id, version: current.watch.version, ...patch }, actor)
     refreshInventory()

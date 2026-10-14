@@ -1,5 +1,7 @@
 'use client'
+import { BASE_CURRENCY } from '@/lib/enums'
 
+import { moneyPrefix } from '@/lib/currency'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
@@ -162,7 +164,7 @@ export function DealFormPanel({
             <TextField
               name="valueGbp"
               label="Value"
-              prefix="£"
+              prefix={moneyPrefix(BASE_CURRENCY)}
               inputMode="decimal"
               value={value}
               onChange={(event) => setValue(event.target.value)}
