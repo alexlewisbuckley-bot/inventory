@@ -178,3 +178,57 @@ describe('where the numbers are set', () => {
     expect(page).toMatch(/label="Commission earned" value=\{money\(totals\.commission\)\} tone="accent"/)
   })
 })
+
+describe('the view against target', () => {
+  const page = read('src/app/(app)/reports/commission/page.tsx')
+  const meter = read('src/components/charts/TargetMeter.tsx')
+
+  it('measures each person against their own retainer, not against each other', () => {
+    // A shared axis would say two people on different retainers were
+    // racing. They are not: each track runs nought to their own hundred.
+    expect(page).toMatch(/const ratio = person\.paid \/ person\.retainer/)
+    expect(meter).toMatch(/Math\.min\(Math\.max\(datum\.ratio, 0\), 1\) \* 100/)
+  })
+
+  it('leaves out anybody who has no target to be measured against', () => {
+    // A full track would say they had cleared something; an empty one would
+    // say they had failed to.
+    expect(page).toMatch(/people\.filter\(\(person\) => person\.retainer > 0\)/)
+  })
+
+  it('marks how far through the month it is, and only while it is running', () => {
+    // Otherwise a meter read on the 3rd looks the same as one read on the
+    // 30th, and every row is a failure for three weeks of every month.
+    expect(page).toMatch(/now >= chosen\.from\.getTime\(\) && now <= chosen\.to\.getTime\(\)/)
+    expect(meter).toMatch(/pace !== undefined && pace > 0 && pace < 1/)
+  })
+
+  it('never leaves a state to colour alone', () => {
+    expect(meter).toMatch(/\{datum\.stateLabel\}/)
+    expect(page).toMatch(/stateLabel: cleared/)
+  })
+
+  it('keeps the two fills to a pair the validator passes', () => {
+    // Green cleared against amber behind is ΔE 12.7 for normal vision and
+    // 5.6 under protanopia. Behind-ness is positional instead.
+    expect(meter).not.toMatch(/bg-state-warning|bg-state-serious|bg-state-critical/)
+    expect(meter).toMatch(/cleared: 'bg-state-good'/)
+  })
+
+  it('offers the figures and the meters as two views of one month', () => {
+    expect(page).toMatch(/searchParams\.view === 'target' \? 'target' : 'figures'/)
+    expect(page).toMatch(/'Against target'/)
+  })
+})
+
+describe('the meter track', () => {
+  const meter = read('src/components/charts/TargetMeter.tsx')
+
+  it('is neutral, because the sequential ramp inverts between themes', () => {
+    // chart-seq-1 is a near-white blue in light and a saturated navy in
+    // dark. As a track on a near-black surface the navy reads as a full
+    // bar, so nought per cent looked like a cleared target.
+    expect(meter).toMatch(/rounded-pill bg-surface-subtle/)
+    expect(meter).not.toMatch(/bg-chart-seq-1/)
+  })
+})
