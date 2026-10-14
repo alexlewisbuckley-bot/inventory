@@ -130,3 +130,19 @@ describe('what the audit trail says about pay', () => {
     expect(fieldLabel('commissionBps')).toBe('Commission share')
   })
 })
+
+describe('which build touches the live database', () => {
+  const setup = read('src/server/db/cli-setup.ts')
+
+  it('leaves it alone on anything but a production deployment', () => {
+    // Preview here shares the production DATABASE_URL, so a push to a branch
+    // was migrating the shop. Once it left the database rebased to dirhams
+    // while the site still ran the dollar code.
+    expect(setup).toMatch(/const target = process\.env\.VERCEL_ENV/)
+    expect(setup).toMatch(/if \(target && target !== 'production'\)/)
+  })
+
+  it('checks before it opens a connection', () => {
+    expect(setup.indexOf('VERCEL_ENV')).toBeLessThan(setup.indexOf("await import('./client')"))
+  })
+})
