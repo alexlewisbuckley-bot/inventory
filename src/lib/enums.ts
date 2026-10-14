@@ -918,3 +918,56 @@ export const TRADE_ENQUIRY_STATUS_TONE: Record<TradeEnquiryStatus, 'accent' | 'g
   DECLINED: 'danger',
   WITHDRAWN: 'neutral',
 }
+
+/**
+ * What a running cost is for.
+ *
+ * A fixed list rather than free text, so the P&L can subtotal without
+ * anybody having to agree on what counts as "admin" — two spellings of
+ * "Rent" would otherwise become two lines of the statement.
+ *
+ * `SALARIES` is for everybody who is not on the sales floor. The
+ * salespeople's retainers are held against each person on Sales people and
+ * read from there, so they are not typed here and cannot be counted twice.
+ */
+export const OVERHEAD_CATEGORIES = [
+  'RENT', 'SALARIES', 'MARKETING', 'SOFTWARE', 'INSURANCE',
+  'UTILITIES', 'PROFESSIONAL', 'TRAVEL', 'FINANCE', 'OTHER',
+] as const
+export type OverheadCategory = (typeof OVERHEAD_CATEGORIES)[number]
+
+export const OVERHEAD_CATEGORY_LABELS: Record<OverheadCategory, string> = {
+  RENT: 'Rent & premises',
+  SALARIES: 'Salaries (non-sales)',
+  MARKETING: 'Marketing',
+  SOFTWARE: 'Software & subscriptions',
+  INSURANCE: 'Insurance',
+  UTILITIES: 'Utilities',
+  PROFESSIONAL: 'Professional fees',
+  TRAVEL: 'Travel',
+  FINANCE: 'Bank & finance charges',
+  OTHER: 'Other',
+}
+
+/**
+ * How often a running cost falls due.
+ *
+ * The amount is stored as it appears on the invoice — a quarter's rent is a
+ * quarter's rent — and the report divides it down to a month. Storing a
+ * third of the figure instead would lose the number anybody could check
+ * against the bill.
+ */
+export const OVERHEAD_CADENCES = ['MONTHLY', 'QUARTERLY', 'ANNUAL', 'ONE_OFF'] as const
+export type OverheadCadence = (typeof OVERHEAD_CADENCES)[number]
+
+export const OVERHEAD_CADENCE_LABELS: Record<OverheadCadence, string> = {
+  MONTHLY: 'Every month',
+  QUARTERLY: 'Every quarter',
+  ANNUAL: 'Every year',
+  ONE_OFF: 'One-off',
+}
+
+/** How many times a year this falls due. A one-off falls due once, ever. */
+export const OVERHEAD_PER_YEAR: Record<OverheadCadence, number> = {
+  MONTHLY: 12, QUARTERLY: 4, ANNUAL: 1, ONE_OFF: 0,
+}

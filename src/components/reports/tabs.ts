@@ -22,5 +22,7 @@ export function reportTabs(role: Role | null | undefined): ReportTab[] {
     { href: '/reports/people', label: 'Sales by person' },
     { href: '/reports/ageing', label: 'Ageing stock' },
     { href: '/reports/commission', label: 'Commission' },
+    { href: '/reports/costs', label: 'Running costs' },
+    { href: '/reports/pnl', label: 'Profit & loss' },
   ]
 }
