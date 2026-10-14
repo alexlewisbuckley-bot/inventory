@@ -146,3 +146,17 @@ describe('which build touches the live database', () => {
     expect(setup.indexOf('VERCEL_ENV')).toBeLessThan(setup.indexOf("await import('./client')"))
   })
 })
+
+describe('where the numbers are set', () => {
+  const page = read('src/app/(app)/reports/commission/page.tsx')
+
+  it('points at the page that sets them', () => {
+    // Every other figure on this report is derived. The two that are typed
+    // are set somewhere else entirely, and nothing on the page said where.
+    expect(page).toMatch(/href="\/sales-people"/)
+  })
+
+  it('says so differently when none is set yet', () => {
+    expect(page).toMatch(/Nobody has a retainer yet/)
+  })
+})
