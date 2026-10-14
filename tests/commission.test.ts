@@ -159,4 +159,22 @@ describe('where the numbers are set', () => {
   it('says so differently when none is set yet', () => {
     expect(page).toMatch(/Nobody has a retainer yet/)
   })
+
+  it('names a retainer nobody has filled in rather than printing a zero', () => {
+    // A recorded zero and an unanswered question look identical in that
+    // column, and they pay out very differently: on zero, commission runs
+    // from the first dirham of profit.
+    expect(page).toMatch(/person\.retainer > 0\s*\n?\s*\? money\(person\.retainer\)/)
+    expect(page).toMatch(/Not set/)
+    expect(page).toMatch(/const missing = people\.filter\(\(person\) => person\.retainer === 0\)/)
+  })
+
+  it('does not call the retainers-plus-commission total "payable"', () => {
+    // It was the biggest figure on the page, in the same accent green as
+    // the commission beside it, and it read as a commission bill five times
+    // the size of the real one.
+    expect(page).not.toMatch(/label="Payable(\s|")/)
+    expect(page).toMatch(/label="Total pay"/)
+    expect(page).toMatch(/label="Commission earned" value=\{money\(totals\.commission\)\} tone="accent"/)
+  })
 })
