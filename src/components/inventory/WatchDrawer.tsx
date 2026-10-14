@@ -4,6 +4,7 @@ import { auditForEntity } from '@/server/services/audit'
 import { listImages } from '@/server/services/image-service'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { WatchDrawerClient } from './WatchDrawerClient'
+import { listSalesPeople } from '@/server/services/reference-service'
 import { watchChecks } from '@/lib/checks'
 import type { Capability } from '@/lib/permissions'
 
@@ -21,13 +22,16 @@ export async function WatchDrawer({ watchId, capabilities }: {
   const record = await getWatchDetail(watchId).catch(() => null)
   if (!record) notFound()
 
-  const [timeline, images, customers, dealsByWatch] = await Promise.all([
+  const [timeline, images, customers, dealsByWatch, salesPeople] = await Promise.all([
     auditForEntity('Watch', watchId, 12),
     listImages(watchId),
     capabilities['customer:read'] ? customerOptions() : Promise.resolve([]),
     capabilities['deal:read']
       ? openDealsByWatch()
       : Promise.resolve({} as Awaited<ReturnType<typeof openDealsByWatch>>),
+    // The drawer opens the same sell dialog the stock list does, so it needs
+    // the same list. It did not, and the field simply was not there.
+    listSalesPeople(),
   ])
 
   return (
@@ -93,6 +97,7 @@ export async function WatchDrawer({ watchId, capabilities }: {
       }))}
       capabilities={capabilities}
       customers={customers}
+      salesPeople={salesPeople}
       deals={dealsByWatch[watchId] ?? []}
     />
   )

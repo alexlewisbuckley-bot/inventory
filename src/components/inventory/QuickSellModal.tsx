@@ -299,17 +299,20 @@ export function QuickSellModal({
             rather than guessing at the person signed in: on a busy day one
             person books in another's sales, and a name credited by accident
             is worse than a blank the report can tell you about. */}
-        {salesPeople.length > 0 && (
-          <SelectField
-            label="Sold by"
-            value={soldById}
-            onChange={(e) => setSoldById(e.target.value)}
-            placeholder="Not recorded"
-            hint="Who closed it, not who is entering it."
-            options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
-            error={errors.soldById}
-          />
-        )}
+        {/* Always rendered. Hiding it when the list is empty seemed careful
+            and was not: the list is seeded, so empty only ever means the
+            prop did not arrive — which is exactly what happened when this
+            dialog turned out to open from two places and only one of them
+            passed it. A field that disappears is a bug you cannot see. */}
+        <SelectField
+          label="Sold by"
+          value={soldById}
+          onChange={(e) => setSoldById(e.target.value)}
+          placeholder="Not recorded"
+          hint="Who closed it, not who is entering it."
+          options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
+          error={errors.soldById}
+        />
       </div>
 
       {/* Who bought it.

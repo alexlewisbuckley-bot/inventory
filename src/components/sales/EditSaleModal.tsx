@@ -63,7 +63,7 @@ export function EditSaleModal({
 }: {
   open: boolean
   target: EditSaleTarget | null
-  /** Who may be credited. Empty hides the field rather than offering nothing. */
+  /** Who may be credited with the sale. */
   salesPeople?: Array<{ id: string; name: string }>
   /**
    * Whether this reader may restate what the watch cost.
@@ -234,16 +234,14 @@ export function EditSaleModal({
           onChange={(event) => setDeliveryStatus(event.target.value)}
           error={errors.deliveryStatus}
         />
-        {salesPeople.length > 0 && (
-          <SelectField
-            label="Sold by"
-            value={soldById}
-            onChange={(event) => setSoldById(event.target.value)}
-            placeholder="Not recorded"
-            options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
-            error={errors.soldById}
-          />
-        )}
+        <SelectField
+          label="Sold by"
+          value={soldById}
+          onChange={(event) => setSoldById(event.target.value)}
+          placeholder="Not recorded"
+          options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
+          error={errors.soldById}
+        />
         <TextField
           label="Customer"
           value={customerName}
