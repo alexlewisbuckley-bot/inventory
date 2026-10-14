@@ -145,7 +145,7 @@ describe('the figures a correction leaves behind', () => {
     const booking = service.slice(service.indexOf('export async function recordSale'))
     expect(booking.slice(0, 4000)).toMatch(/saleMoney\(/)
     const amend = service.slice(service.indexOf('export async function amendSale'))
-    expect(amend.slice(0, 5000)).toMatch(/saleMoney\(/)
+    expect(amend.slice(0, 9000)).toMatch(/saleMoney\(/)
   })
 
   it('keep the rate the sale was booked at', () => {
@@ -154,7 +154,7 @@ describe('the figures a correction leaves behind', () => {
     // move the recorded revenue by however much the rate has drifted — as a
     // side effect of fixing a typo in an invoice number.
     const amend = service.slice(service.indexOf('export async function amendSale'))
-    expect(amend.slice(0, 5000)).toMatch(
+    expect(amend.slice(0, 9000)).toMatch(
       /input\.saleCurrency === sale\.saleCurrency && sale\.saleFxRate\s*\n?\s*\?\s*sale\.saleFxRate/,
     )
   })
@@ -164,14 +164,14 @@ describe('the figures a correction leaves behind', () => {
     // rewrite history rather than correct it, and the sale that replaced it
     // is the row that wants correcting.
     const amend = service.slice(service.indexOf('export async function amendSale'))
-    expect(amend.slice(0, 5000)).toMatch(/if \(sale\.voidedAt\)/)
+    expect(amend.slice(0, 9000)).toMatch(/if \(sale\.voidedAt\)/)
   })
 
   it('let a sale keep its own invoice number', () => {
     // The uniqueness check has to exclude the row being saved, or saving a
     // sale without touching its number collides with itself.
     const amend = service.slice(service.indexOf('export async function amendSale'))
-    expect(amend.slice(0, 5000)).toMatch(/duplicate\[0\]\.id !== sale\.id/)
+    expect(amend.slice(0, 9000)).toMatch(/duplicate\[0\]\.id !== sale\.id/)
   })
 
   it('reach the sale when it is the cost that was corrected', () => {
@@ -187,11 +187,59 @@ describe('the figures a correction leaves behind', () => {
   })
 })
 
+describe('the cost, which is the stock record’s figure', () => {
+  const service = read('src/server/services/watch-service.ts')
+  const amend = service.slice(service.indexOf('export async function amendSale'))
+
+  it('is correctable from the row that prints it beside the profit', () => {
+    // Cost, sale, profit and margin sit side by side on the ledger. Somebody
+    // looking at a margin they do not believe is looking at those numbers
+    // together, and sending them to another screen to fix one of them is how
+    // the margin stays wrong.
+    expect(read('src/lib/validation.ts')).toMatch(/purchaseAmount: z\.union\(\[money\('Cost'\)/)
+    expect(read('src/components/sales/EditSaleModal.tsx')).toMatch(/label="Cost"/)
+  })
+
+  it('stays the owner’s to change, even reached from here', () => {
+    // `sale:update` is a Manager's. The cost is the figure the business is
+    // valued on, and the stock list keeps it behind `watch:amend`, which is
+    // the owner's alone. Reaching it through the invoice screen would be the
+    // same power through a side door.
+    expect(can('MANAGER', 'sale:update')).toBe(true)
+    expect(can('MANAGER', 'watch:amend')).toBe(false)
+    expect(can('OWNER', 'watch:amend')).toBe(true)
+    expect(amend.slice(0, 9000)).toMatch(/if \(!can\(actor\.role, 'watch:amend'\)\) \{\n\s+throw new ForbiddenError/)
+    // And the field is not rendered for them either, so the dialog cannot
+    // send back a figure it never showed.
+    expect(read('src/components/sales/SalesTable.tsx')).toMatch(/canAmendCost=\{canAmendCost\}/)
+    expect(read('src/app/(app)/sales/page.tsx')).toMatch(/canAmendCost=\{can\(user\.role, 'watch:amend'\)\}/)
+  })
+
+  it('is left alone by a correction that does not mention it', () => {
+    // Otherwise a form without the field would blank the cost of every watch
+    // whose invoice anybody tidied up.
+    expect(amend.slice(0, 9000)).toMatch(/if \(input\.purchaseAmount !== null && input\.purchaseAmount !== undefined\)/)
+  })
+
+  it('keeps the rate the watch was bought at', () => {
+    // The same reason the sale keeps the rate it was sold at: a cost agreed
+    // in dirhams should not move because the rate has since drifted.
+    expect(amend.slice(0, 9000)).toMatch(/currency === watch\.purchaseCurrency && watch\.purchaseFxRate/)
+  })
+
+  it('is what the profit is then worked out from', () => {
+    // Not the figure the sale was booked against. Closing the dialog on a
+    // corrected cost and a stale profit would leave the row disagreeing with
+    // itself in plain sight.
+    expect(amend.slice(0, 9000)).toMatch(/saleMoney\(.*input\.saleCurrency, rate, costBase\)/)
+  })
+})
+
 describe('what the correction leaves on the record', () => {
   it('is the old value next to the new one', () => {
     const service = read('src/server/services/watch-service.ts')
     const amend = service.slice(service.indexOf('export async function amendSale'))
-    const body = amend.slice(0, 5000)
+    const body = amend.slice(0, 9000)
     expect(body).toMatch(/diff\(sale, patch, \[/)
     for (const field of ['invoiceNo', 'saleDate', 'saleAmountGbp', 'profitGbp']) {
       expect(body, field).toMatch(new RegExp(`'${field}'`))

@@ -378,6 +378,24 @@ export const saleAmendSchema = z.object({
   customerName: optionalText(120),
   customerCompany: optionalText(160),
   notes: optionalText(1000),
+  /**
+   * What the watch cost, which is the stock record's figure rather than the
+   * sale's.
+   *
+   * It is here because it is on the sales row — cost, sale, profit, margin,
+   * side by side — and that is where somebody reading a margin they do not
+   * believe goes looking for the wrong number. It stays the owner's to
+   * change: the service refuses it without `watch:amend`, which Managers do
+   * not hold, so a Manager correcting an invoice number cannot restate what
+   * the business paid.
+   *
+   * Optional, because a correction that does not mention the cost must leave
+   * it exactly as it was rather than rewriting it with whatever the form
+   * happened to hold.
+   */
+  purchaseAmount: z.union([money('Cost'), z.literal('')]).optional()
+    .transform((v) => (typeof v === 'number' ? v : null)),
+  purchaseCurrency: z.enum(CURRENCIES).optional(),
 })
 export type SaleAmendInput = z.infer<typeof saleAmendSchema>
 

@@ -29,6 +29,10 @@ export interface EditSaleTarget {
   customerName: string | null
   customerCompany: string | null
   notes: string | null
+  /** The watch's cost, as agreed, with the base figure as the fallback. */
+  purchaseAmount: number | null
+  purchaseCurrency: CurrencyCode
+  costGbp: number | null
   stockNo: number
   label: string
 }
@@ -53,9 +57,19 @@ const options = <T extends string>(values: readonly T[], labels: Record<T, strin
  * the customer record, which is editable in the customer book, and a second
  * editable copy of a phone number is how two copies come to disagree.
  */
-export function EditSaleModal({ open, target, onClose, onSaved }: {
+export function EditSaleModal({ open, target, canAmendCost = false, onClose, onSaved }: {
   open: boolean
   target: EditSaleTarget | null
+  /**
+   * Whether this reader may restate what the watch cost.
+   *
+   * Held apart from the rest of the dialog. `sale:update` is a Manager's, and
+   * the cost is the figure the business is valued on — the stock list keeps
+   * it behind `watch:amend`, which is the owner's alone, and reaching it by
+   * way of the invoice screen would be the same power through a side door.
+   * The field is simply absent without it, and the server refuses it too.
+   */
+  canAmendCost?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
@@ -71,6 +85,8 @@ export function EditSaleModal({ open, target, onClose, onSaved }: {
   const [customerName, setCustomerName] = useState('')
   const [customerCompany, setCustomerCompany] = useState('')
   const [notes, setNotes] = useState('')
+  const [cost, setCost] = useState('')
+  const [costCurrency, setCostCurrency] = useState<CurrencyCode>(BASE_CURRENCY)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -93,6 +109,9 @@ export function EditSaleModal({ open, target, onClose, onSaved }: {
     setCustomerName(target.customerName ?? '')
     setCustomerCompany(target.customerCompany ?? '')
     setNotes(target.notes ?? '')
+    const paid = target.purchaseAmount ?? target.costGbp
+    setCostCurrency(target.purchaseAmount === null ? BASE_CURRENCY : target.purchaseCurrency)
+    setCost(paid === null ? '' : formatMoneyInput(String(paid / 100)))
     setErrors({})
   }
 
@@ -113,6 +132,9 @@ export function EditSaleModal({ open, target, onClose, onSaved }: {
       customerName,
       customerCompany,
       notes,
+      // Left out entirely when this reader may not change it, so the dialog
+      // cannot send back a figure it never showed them.
+      ...(canAmendCost ? { purchaseAmount: cost, purchaseCurrency: costCurrency } : {}),
     })
     setBusy(false)
     if (result.ok) {
@@ -162,7 +184,17 @@ export function EditSaleModal({ open, target, onClose, onSaved }: {
           onChange={(event) => setSaleDate(event.target.value)}
           error={errors.saleDate}
         />
-        <div className="sm:col-span-2">
+        {canAmendCost && (
+          <MoneyField
+            label="Cost"
+            amount={cost}
+            currency={costCurrency}
+            onAmountChange={setCost}
+            onCurrencyChange={setCostCurrency}
+            error={errors.purchaseAmount}
+          />
+        )}
+        <div className={canAmendCost ? undefined : 'sm:col-span-2'}>
           <MoneyField
             label="Sale price"
             amount={amount}
@@ -219,8 +251,9 @@ export function EditSaleModal({ open, target, onClose, onSaved }: {
       </div>
 
       <p className="mt-4 text-caption text-content-secondary">
-        Profit and margin are worked out again from the cost as it stands now, and the rate
-        the sale was booked at is kept. The correction is written to the watch&rsquo;s history
+        Profit and margin are worked out again from the cost, and the rates the watch was
+        bought and sold at are kept. Changing the cost changes it on the stock record too —
+        it is one figure, not a copy. The correction is written to the watch&rsquo;s history
         with the old and new values, so what the invoice used to say stays answerable. To move
         this sale to a different watch or a different buyer, void it and record it again —
         that is a different sale, not a typo.

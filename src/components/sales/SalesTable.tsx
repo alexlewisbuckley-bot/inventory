@@ -16,7 +16,9 @@ import { formatDate } from '@/lib/dates'
 import { SALE_CHANNEL_LABELS } from '@/lib/enums'
 import type { SaleListItem } from '@/server/repositories/sale-repository'
 
-export function SalesTable({ result, showCost = true, canVoid = false, canAmend = false }: {
+export function SalesTable({
+  result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
+}: {
   result: { items: SaleListItem[]; total: number; page: number; perPage: number }
   /**
    * Whether the cost side — cost, profit, margin — exists on this table.
@@ -44,6 +46,13 @@ export function SalesTable({ result, showCost = true, canVoid = false, canAmend 
    * at — so people left it wrong instead.
    */
   canAmend?: boolean
+  /**
+   * Whether this reader may restate what a watch cost, which is a stricter
+   * question than whether they may correct the invoice. The stock list keeps
+   * that figure behind the owner's own capability; reaching it through the
+   * sales page would be the same power by another door.
+   */
+  canAmendCost?: boolean
 }) {
   const query = useListQuery()
   const router = useRouter()
@@ -147,6 +156,9 @@ export function SalesTable({ result, showCost = true, canVoid = false, canAmend 
                     customerName: sale.customerName,
                     customerCompany: sale.customerCompany,
                     notes: sale.notes,
+                    purchaseAmount: sale.purchaseAmount,
+                    purchaseCurrency: sale.purchaseCurrency,
+                    costGbp: sale.costGbp,
                     stockNo: sale.stockNo,
                     label: `${sale.brandName} ${sale.model}`,
                   })}
@@ -176,6 +188,7 @@ export function SalesTable({ result, showCost = true, canVoid = false, canAmend 
       <EditSaleModal
         open={editTarget !== null}
         target={editTarget}
+        canAmendCost={canAmendCost}
         onClose={() => setEditTarget(null)}
         onSaved={() => router.refresh()}
       />

@@ -8,8 +8,9 @@ import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
 import { newId } from '@/lib/ids'
-import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors'
 import { marginPct } from '@/lib/money'
+import { can } from '@/lib/permissions'
 import { RATE_SCALE, toBase, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
@@ -526,6 +527,54 @@ export async function amendSale(input: SaleAmendInput, actor: SessionUser): Prom
       ? sale.saleFxRate
       : appliedRate(input.saleCurrency, rates)
 
+    /**
+     * The cost, which is the stock record's figure and not the sale's.
+     *
+     * It is correctable from here because it is printed on this row, beside
+     * the profit it produces: somebody looking at a margin they do not
+     * believe is looking at these two numbers together, and sending them to
+     * another screen to fix one of them is how the margin stays wrong.
+     *
+     * Two guards. It is only touched when the correction actually names a
+     * cost, so a form that does not offer the field cannot blank it. And
+     * changing it needs `watch:amend` — the owner-only capability that
+     * governs the same figure on the stock list — because `sale:update` is
+     * held by Managers, and letting a Manager restate what the business paid
+     * by way of the invoice screen would hand them the one thing that
+     * capability was carved out to withhold.
+     */
+    let costBase = watch.purchasePriceGbp
+    let costPatch: Record<string, unknown> | null = null
+    if (input.purchaseAmount !== null && input.purchaseAmount !== undefined) {
+      const currency = input.purchaseCurrency ?? watch.purchaseCurrency ?? BASE_CURRENCY
+      // The rate the watch was bought at, for the same reason the sale keeps
+      // the rate it was sold at: a cost agreed in dirhams should not move
+      // because the rate has since drifted.
+      const costRate = currency === watch.purchaseCurrency && watch.purchaseFxRate
+        ? watch.purchaseFxRate
+        : appliedRate(currency, rates)
+      const minor = Math.round(input.purchaseAmount * 100)
+      const base = currency === BASE_CURRENCY
+        ? minor
+        : Math.round((minor * RATE_SCALE) / costRate)
+
+      if (base !== watch.purchasePriceGbp || minor !== watch.purchaseAmount) {
+        if (!can(actor.role, 'watch:amend')) {
+          throw new ForbiddenError('Changing what a watch cost is the owner’s to do.')
+        }
+        costBase = base
+        costPatch = {
+          purchaseAmount: minor,
+          purchaseCurrency: currency,
+          purchasePriceGbp: base,
+          purchasePriceUsd: base,
+          purchaseFxRate: costRate,
+          updatedAt: new Date(),
+          version: watch.version + 1,
+        }
+      }
+    }
+
     const patch = {
       invoiceNo: input.invoiceNo,
       saleDate: input.saleDate,
@@ -536,17 +585,26 @@ export async function amendSale(input: SaleAmendInput, actor: SessionUser): Prom
       customerName: input.customerName ?? null,
       customerCompany: input.customerCompany ?? null,
       notes: input.notes ?? null,
-      ...saleMoney(Math.round(input.saleAmount * 100), input.saleCurrency, rate, watch.purchasePriceGbp),
+      // Against the corrected cost, so the profit on the row agrees with the
+      // two figures either side of it the moment the dialog closes.
+      ...saleMoney(Math.round(input.saleAmount * 100), input.saleCurrency, rate, costBase),
       updatedAt: new Date(),
     }
 
     await db.update(sales).set(patch).where(eq(sales.id, sale.id))
+    if (costPatch) await db.update(watches).set(costPatch).where(eq(watches.id, watch.id))
 
-    const changes = diff(sale, patch, [
-      'invoiceNo', 'saleDate', 'saleAmountGbp', 'saleCurrency', 'channel',
-      'paymentStatus', 'deliveryStatus', 'customerName', 'customerCompany', 'notes',
-      'profitGbp',
-    ])
+    const changes = {
+      ...diff(sale, patch, [
+        'invoiceNo', 'saleDate', 'saleAmountGbp', 'saleCurrency', 'channel',
+        'paymentStatus', 'deliveryStatus', 'customerName', 'customerCompany', 'notes',
+        'profitGbp',
+      ]),
+      // The cost belongs to the watch rather than the sale, and this entry is
+      // already written against the watch, so it reads as one event: what the
+      // invoice said, what the watch cost, and what the two made.
+      ...(costPatch ? diff(watch, costPatch, ['purchasePriceGbp']) : {}),
+    }
 
     // Audited against the watch, which is where the history of this piece is
     // read. A sale has no page of its own to put a trail on.
