@@ -5,6 +5,7 @@ import { recordAudit } from './audit'
 import { dressFromLibrary } from './image-service'
 import { newId, slugify } from '@/lib/ids'
 import { toMinor } from '@/lib/money'
+import { ValidationError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
 import { REQUIRED_KEYS, parseHeader } from '@/lib/import-columns'
@@ -53,6 +54,15 @@ export interface ImportRow {
   /** Set when the row matched existing stock — the watch this row is about. */
   watchId: string | null
   stockNo: number | null
+  /**
+   * The number this watch currently carries, when the sheet is changing it.
+   *
+   * Null for every ordinary row. Set only where the sheet gave a stock number
+   * that is not in the book and the serial identified an existing watch — the
+   * renumbering case, which exists because the accounts are the system of
+   * record for what a piece is called and this book has to follow them.
+   */
+  renumberFrom: number | null
   action: ImportAction
   /** Populated for UPDATE rows: exactly what would change, and from what. */
   changes: ImportChange[]
@@ -516,26 +526,64 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
       fail('owner', `Owner "${owner}" does not exist. Create it first, or correct the spelling.`)
     }
 
-    // Which watch is this row about?
-    //
-    // The stock number is the identity the export carries, so it wins. A serial
-    // is the fallback for a sheet typed by hand. Without either, the row is a
-    // new purchase.
+    /**
+     * Which watch is this row about?
+     *
+     * The serial is what a watch *is*; the stock number is what it is
+     * *called*. They used to be ranked the other way round — the number won
+     * and the serial was only consulted when the number was missing — which
+     * made a sheet that renamed a piece unimportable: the new number matched
+     * nothing and the row was rejected, with the serial sitting in the next
+     * column naming the watch beyond doubt.
+     *
+     * So both are looked up, and what happens next depends on whether they
+     * agree.
+     */
     if (stockNo !== null && Number.isNaN(stockNo)) {
       fail('stock no', `Could not read the stock number "${rawStockNo}".`)
     }
-    const matched = stockNo !== null && !Number.isNaN(stockNo)
-      ? byStockNo.get(stockNo) ?? null
-      : serial ? bySerial.get(serial.toLowerCase()) ?? null : null
+    const hasStockNo = stockNo !== null && !Number.isNaN(stockNo)
+    const byNumber = hasStockNo ? byStockNo.get(stockNo!) ?? null : null
+    const bySerialNo = serial ? bySerial.get(serial.toLowerCase()) ?? null : null
 
-    if (stockNo !== null && !Number.isNaN(stockNo)) {
-      if (seenStockNos.has(stockNo)) {
+    /**
+     * The sheet gives a number that is not in the book, and a serial that is.
+     *
+     * That is a rename, and it is the only reading that makes sense: the
+     * watch exists, the sheet is about it, and the number is the one thing
+     * that does not match.
+     */
+    const renumbering = hasStockNo && byNumber === null && bySerialNo !== null
+    const matched = byNumber ?? bySerialNo
+
+    if (hasStockNo) {
+      if (seenStockNos.has(stockNo!)) {
         fail('stock no', `Stock number ${stockNo} appears more than once in this file.`)
       } else {
-        seenStockNos.add(stockNo)
+        seenStockNos.add(stockNo!)
       }
-      if (!matched) {
-        fail('stock no', `Stock number ${stockNo} is not in the inventory. Clear the cell to book it in as new.`)
+
+      /**
+       * The number is in the book, and so is the serial — against a different
+       * watch.
+       *
+       * This is the one that would have done real damage quietly. Taking the
+       * number as identity would have applied this row's reference, price and
+       * specification to whichever watch currently holds the number, while the
+       * watch the serial actually names sat untouched. Two records wrong, no
+       * error, and nothing on screen to say so. Renumbering a book in place
+       * makes it likely rather than exotic: every swap passes through a state
+       * where one piece holds a number another is moving to.
+       */
+      if (byNumber && bySerialNo && byNumber.id !== bySerialNo.id) {
+        fail('stock no', `Stock number ${stockNo} already belongs to a different watch (serial ${byNumber.serial ?? 'not recorded'}). Serial ${serial} is stock ${bySerialNo.stockNo}.`)
+      } else if (!matched) {
+        fail('stock no', serial
+          ? `Stock number ${stockNo} is not in the inventory, and serial ${serial} is not either. Clear the stock number to book it in as new.`
+          // Without a serial there is nothing to recognise the watch by, so a
+          // number that is not in the book could be a rename or a new piece
+          // and the sheet cannot say which.
+          : `Stock number ${stockNo} is not in the inventory and the row has no serial to identify it by. Clear the stock number to book it in as new, or add the serial to rename an existing one.`)
       }
     }
 
@@ -584,12 +632,27 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         spec,
       }
       const changes = matched ? diffAgainstStock(matched, proposed, present) : []
+      // The rename is a change like any other, and shown like one — a preview
+      // that applies a new stock number without having listed it is a preview
+      // that lied about what it was going to do.
+      if (renumbering && matched) {
+        changes.unshift({
+          field: 'stock no',
+          label: 'Stock number',
+          from: String(matched.stockNo),
+          to: String(stockNo),
+        })
+      }
       const action: ImportAction = !matched ? 'CREATE' : changes.length > 0 ? 'UPDATE' : 'UNCHANGED'
 
       rows.push({
         line,
         watchId: matched?.id ?? null,
-        stockNo: matched?.stockNo ?? null,
+        // The number it will have afterwards, so every message about this row
+        // — the preview, the audit summary — names the one the sheet asked
+        // for rather than the one being replaced.
+        stockNo: renumbering ? stockNo : matched?.stockNo ?? null,
+        renumberFrom: renumbering && matched ? matched.stockNo : null,
         action,
         changes,
         ...proposed,
@@ -762,10 +825,33 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
           patch[field === 'modelName' ? 'nickname' : field] = value
         }
 
+        /**
+         * The rename, applied last among the field changes and guarded again
+         * here.
+         *
+         * The parse checked the number was free, but that was against the
+         * book as it stood when the file was read — and between a preview and
+         * its apply somebody else can book a watch in and take the number.
+         * The unique index would catch it either way; this turns a constraint
+         * violation into a sentence naming the row.
+         */
+        if (row.renumberFrom !== null && row.stockNo !== null) {
+          const taken = await db.select({ id: watches.id, stockNo: watches.stockNo })
+            .from(watches).where(eq(watches.stockNo, row.stockNo)).limit(1)
+          if (taken[0] && taken[0].id !== row.watchId) {
+            throw new ValidationError(
+              `Line ${row.line}: stock number ${row.stockNo} was taken by another watch while this sheet was being reviewed.`,
+            )
+          }
+          patch.stockNo = row.stockNo
+        }
+
         await db.update(watches).set(patch).where(eq(watches.id, row.watchId))
         await recordAudit({
           entityType: 'Watch', entityId: row.watchId, action: 'UPDATE', actorId: actor.id,
-          summary: `Stock ${row.stockNo} updated from an imported sheet`,
+          summary: row.renumberFrom !== null
+            ? `Stock ${row.renumberFrom} renumbered to ${row.stockNo} from an imported sheet`
+            : `Stock ${row.stockNo} updated from an imported sheet`,
           changes: Object.fromEntries(
             row.changes.map((c) => [c.field, { from: c.from, to: c.to }]),
           ),
