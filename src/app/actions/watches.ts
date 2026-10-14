@@ -504,3 +504,27 @@ function contentPatch(key: ContentField, raw: string): Record<string, unknown> {
 
   return { [key]: value || null }
 }
+
+/**
+ * Mark the money as received.
+ *
+ * Its own action rather than a trip through the correction dialog: "they
+ * have paid" is the single most common thing that happens to a sale after it
+ * is booked, and routing it through a form with eleven fields is how a
+ * ledger ends up with every invoice still reading "Awaiting payment" six
+ * months later.
+ */
+export async function markSalePaidAction(saleId: string): Promise<ActionState> {
+  const actor = await requireCapability('sale:update')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  try {
+    const { markSalePaid } = await import('@/server/services/watch-service')
+    await markSalePaid(saleId, actor)
+    revalidatePath('/sales')
+    refreshInventory()
+    return { ok: true, message: 'Marked as paid in full.' }
+  } catch (error) {
+    return toState(error, 'Could not record the payment.')
+  }
+}

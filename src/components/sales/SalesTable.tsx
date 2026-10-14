@@ -2,18 +2,20 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
-import { MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
+import { BadgeCheck, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import {
-  Table, THead, TBody, TR, TD, TH, Pagination, Chip, IconButton, AnchoredMenu, type MenuItem,
+  Table, THead, TBody, TR, TD, TH, Pagination, Chip, IconButton, AnchoredMenu, useToast,
+  type MenuItem,
 } from '@/components/ui'
 import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleModal'
 import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
+import { markSalePaidAction } from '@/app/actions/watches'
 import { formatPct } from '@/lib/money'
 import { useCurrency } from '@/components/ui'
 import { formatDate } from '@/lib/dates'
-import { SALE_CHANNEL_LABELS } from '@/lib/enums'
+import { PAYMENT_STATUS_LABELS, SALE_CHANNEL_LABELS } from '@/lib/enums'
 import type { SaleListItem } from '@/server/repositories/sale-repository'
 
 export function SalesTable({
@@ -61,9 +63,20 @@ export function SalesTable({
   const router = useRouter()
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
   const [editTarget, setEditTarget] = useState<EditSaleTarget | null>(null)
+
+  const confirmPaid = async (sale: SaleListItem) => {
+    const result = await markSalePaidAction(sale.id)
+    if (result.ok) {
+      toast.success('Payment recorded', `Invoice ${sale.invoiceNo} is paid in full.`)
+      router.refresh()
+    } else {
+      toast.error('Could not record the payment', result.message)
+    }
+  }
   // Money renders in whatever currency the header is showing, so the table
   // never disagrees with the summary tiles above it.
   const { money, signed } = useCurrency()
+  const toast = useToast()
   const sort = useMemo(
     () => ({ field: query.get('sort') ?? 'saleDate', dir: (query.get('dir') ?? 'desc') as 'asc' | 'desc' }),
     [query],
@@ -79,12 +92,12 @@ export function SalesTable({
         // carried 200px of slack for a labelled Void button, which put the
         // table past the width of a laptop and left the date column clipped
         // behind a sideways scroll. A menu needs a quarter of that.
-        minWidth={`${(showCost ? 1184 : 834) + 110 + 56}px`}
+        minWidth={`${(showCost ? 1212 : 862) + 110 + 56}px`}
       >
         <THead>
           <TR>
             <TH width="124px" sortKey="saleDate" sort={sort} onSort={query.sortBy}>Sale date</TH>
-            <TH width="124px">Invoice</TH>
+            <TH width="152px">Invoice</TH>
             <TH width="80px" sortKey="stockNo" sort={sort} onSort={query.sortBy}>Stock</TH>
             {/* Sized like the inventory list, which shows the same reference
                 and brand: measured at 171px for the longest in stock. */}
@@ -109,7 +122,21 @@ export function SalesTable({
           {result.items.map((sale) => (
             <TR key={sale.id}>
               <TD className="whitespace-nowrap text-content-secondary">{formatDate(sale.saleDate)}</TD>
-              <TD className="font-bold text-navy-700">{sale.invoiceNo}</TD>
+              <TD className="font-bold text-navy-700">
+                {sale.invoiceNo}
+                {/* Only when the money is not in. "Paid in full" is the
+                    ordinary ending and marking every settled invoice with a
+                    badge is how a column of badges stops being read — the
+                    flag has to mean something to be worth looking at. */}
+                {sale.paymentStatus !== 'PAID' && (
+                  <span className={cn(
+                    'mt-0.5 block whitespace-nowrap text-caption font-semibold',
+                    sale.paymentStatus === 'OVERDUE' ? 'text-state-danger' : 'text-state-warning',
+                  )}>
+                    {PAYMENT_STATUS_LABELS[sale.paymentStatus]}
+                  </span>
+                )}
+              </TD>
               <TD className="text-content-secondary">{sale.stockNo}</TD>
               <TD>
                 <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
@@ -153,6 +180,7 @@ export function SalesTable({
                   sale={sale}
                   canAmend={canAmend}
                   canVoid={canVoid}
+                  onPaid={() => { void confirmPaid(sale) }}
                   onCorrect={() => setEditTarget({
                     id: sale.id,
                     invoiceNo: sale.invoiceNo,
@@ -227,17 +255,29 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onVoid }: {
+function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid }: {
   sale: SaleListItem
   canAmend: boolean
   canVoid: boolean
   onCorrect: () => void
+  onPaid: () => void
   onVoid: () => void
 }) {
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
 
   const items: MenuItem[] = [
+    // First, and without an ellipsis: there is nothing to ask. The money
+    // either arrived or it did not, and making somebody confirm a fact they
+    // have just asserted is a dialog that teaches people to click through
+    // dialogs.
+    ...(canAmend && sale.paymentStatus !== 'PAID' ? [{
+      id: 'paid',
+      label: 'Payment received',
+      onSelect: onPaid,
+      icon: <BadgeCheck className="h-3.5 w-3.5" />,
+      tone: 'accent' as const,
+    }] : []),
     ...(canAmend ? [{
       id: 'correct',
       // The ellipsis promises that something will be asked before anything is

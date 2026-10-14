@@ -887,3 +887,41 @@ async function notifyTeam(
     })
   }
 }
+
+/**
+ * Record that a sale has been paid in full.
+ *
+ * Deliberately one-way and deliberately narrow: it sets the payment status
+ * and nothing else. Anything more — a part payment, a refund, a correction to
+ * the figure — is the correction dialog's job, where the whole invoice is in
+ * front of somebody.
+ *
+ * A voided invoice is refused. Money against a sale that was cancelled is a
+ * conversation, not a status change.
+ */
+export async function markSalePaid(saleId: string, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1)
+    const sale = rows[0]
+    if (!sale || sale.deletedAt) throw new NotFoundError('Sale')
+    if (sale.voidedAt) {
+      throw new ValidationError('That invoice was voided. A payment against it needs looking at rather than ticking off.')
+    }
+    // Already paid: nothing to write, and no audit entry claiming something
+    // happened. Two people clicking the same button is not two payments.
+    if (sale.paymentStatus === 'PAID') return
+
+    const watchRows = await db.select({ stockNo: watches.stockNo })
+      .from(watches).where(eq(watches.id, sale.watchId)).limit(1)
+
+    await db.update(sales)
+      .set({ paymentStatus: 'PAID', updatedAt: new Date() })
+      .where(eq(sales.id, saleId))
+
+    await recordAudit({
+      entityType: 'Watch', entityId: sale.watchId, action: 'UPDATE', actorId: actor.id,
+      summary: `Invoice ${sale.invoiceNo} marked paid in full${watchRows[0] ? ` — stock ${watchRows[0].stockNo}` : ''}`,
+      changes: { paymentStatus: { from: sale.paymentStatus, to: 'PAID' } },
+    })
+  })
+}

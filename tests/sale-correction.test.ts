@@ -116,7 +116,7 @@ describe('where it is reached from', () => {
     // And the table was narrowed by the slack the buttons used to need.
     // The sum grew by the Sold by column; what matters is that the actions
     // control is still counted, not squeezed out of the others' width.
-    expect(table).toMatch(/\(showCost \? 1184 : 834\) \+ 110 \+ 56/)
+    expect(table).toMatch(/\(showCost \? 1212 : 862\) \+ 110 \+ 56/)
   })
 
   it('offers no trigger at all to a reader who may do neither', () => {
@@ -256,5 +256,47 @@ describe('what the correction leaves on the record', () => {
     expect(format).toMatch(/invoiceNo: 'Invoice number'/)
     expect(format).toMatch(/saleAmountGbp: 'Sale price'/)
     expect(format).toMatch(/'saleAmountGbp', 'salePriceGbp', 'profitGbp'/)
+  })
+})
+
+describe('whether the money arrived', () => {
+  const table = read('src/components/sales/SalesTable.tsx')
+  const service = read('src/server/services/watch-service.ts')
+
+  it('is flagged on the row, and only when it has not', () => {
+    // "Paid in full" is the ordinary ending. Marking every settled invoice
+    // with a badge is how a column of badges stops being read — a flag has
+    // to mean something to be worth looking at.
+    expect(table).toMatch(/sale\.paymentStatus !== 'PAID' && \(/)
+    expect(table).toMatch(/PAYMENT_STATUS_LABELS\[sale\.paymentStatus\]/)
+    // Overdue is not the same news as awaiting.
+    expect(table).toMatch(/sale\.paymentStatus === 'OVERDUE' \? 'text-state-danger' : 'text-state-warning'/)
+  })
+
+  it('is one click on the row, not a trip through the form', () => {
+    // "They have paid" is the commonest thing that happens to a sale after
+    // it is booked. Routing it through a dialog of eleven fields is how a
+    // ledger ends up with every invoice still reading "Awaiting payment".
+    expect(table).toMatch(/label: 'Payment received'/)
+    // Offered only while there is something to record.
+    expect(table).toMatch(/canAmend && sale\.paymentStatus !== 'PAID'/)
+  })
+
+  it('does not claim a payment twice', () => {
+    // Two people clicking the same button is not two payments, and an audit
+    // entry saying otherwise is a lie about the money.
+    const fn = service.slice(service.indexOf('export async function markSalePaid'))
+    expect(fn.slice(0, 1400)).toMatch(/if \(sale\.paymentStatus === 'PAID'\) return/)
+  })
+
+  it('refuses a payment against a voided invoice', () => {
+    const fn = service.slice(service.indexOf('export async function markSalePaid'))
+    expect(fn.slice(0, 1400)).toMatch(/if \(sale\.voidedAt\)/)
+  })
+
+  it('writes the change to the watch’s history', () => {
+    const fn = service.slice(service.indexOf('export async function markSalePaid'))
+    expect(fn.slice(0, 1600)).toMatch(/marked paid in full/)
+    expect(fn.slice(0, 1600)).toMatch(/paymentStatus: \{ from: sale\.paymentStatus, to: 'PAID' \}/)
   })
 })
