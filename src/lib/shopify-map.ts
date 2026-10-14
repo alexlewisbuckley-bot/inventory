@@ -593,19 +593,56 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
   }
   for (const product of duplicates) plan.remove.push(descr(product))
 
-  const seen = new Set<string>()
+  /**
+   * Which products a watch has claimed, by product id rather than by SKU.
+   *
+   * It was by SKU, which quietly assumed a watch's stock number never
+   * changes. It can: the accounts are the system of record for what a piece
+   * is called, and a sheet from them renumbers it here. Under the old
+   * matching that watch's page was suddenly nobody's — archived at the bottom
+   * of this function, with its photographs, metafields and publication state
+   * — while a fresh page was created under the new number. The storefront
+   * would have lost the listing and its URL to a change of label.
+   *
+   * Claimed in two passes, and a page may be claimed only once.
+   *
+   * The first pass takes the pages whose SKU still names a watch in the book,
+   * because that is the store's own statement about what the page is. The
+   * second gives what is left to whichever watch last pushed to it, which is
+   * how a renamed piece keeps its page.
+   *
+   * One pass preferring the stored id would let two watches claim one page —
+   * a stale pointer on one and a live SKU match on the other — and the two
+   * would rename its SKU past each other on every sync, forever. The id is
+   * what we remember; the SKU is what the store can still see.
+   */
+  const claimed = new Set<string>()
+  const byId = new Map<string, SyncProduct>()
+  for (const product of bySku.values()) byId.set(product.id, product)
+
+  const take = (watch: SyncWatch, product: SyncProduct) => {
+    claimed.add(product.id)
+    plan.update.push({
+      watch, productId: product.id, title: product.title, seoTitle: product.seoTitle,
+    })
+    // Intent on this side, visibility on that side. A watch we mean to sell
+    // whose page is in no sales channel is the silent failure: the product
+    // is right, the sync reported success, and the website does not have it.
+    if (statusFor(watch) === 'ACTIVE' && !product.publishedAt) plan.publish.push(descr(product))
+  }
+
+  const unmatched: SyncWatch[] = []
   for (const watch of watches) {
-    const sku = skuFor(watch.stockNo)
-    seen.add(sku)
-    const existing = bySku.get(sku)
-    if (existing) {
-      plan.update.push({
-        watch, productId: existing.id, title: existing.title, seoTitle: existing.seoTitle,
-      })
-      // Intent on this side, visibility on that side. A watch we mean to sell
-      // whose page is in no sales channel is the silent failure: the product
-      // is right, the sync reported success, and the website does not have it.
-      if (statusFor(watch) === 'ACTIVE' && !existing.publishedAt) plan.publish.push(descr(existing))
+    const existing = bySku.get(skuFor(watch.stockNo))
+    if (existing && !claimed.has(existing.id)) take(watch, existing)
+    else unmatched.push(watch)
+  }
+
+  for (const watch of unmatched) {
+    const existing = watch.shopifyProductId ? byId.get(watch.shopifyProductId) : undefined
+    if (existing && !claimed.has(existing.id)) {
+      take(watch, existing)
+      continue
     }
     // A watch somewhere we do not sell from never gets a page made for it.
     // Asked for plainly: "we don't want to push in transit watches to
@@ -616,17 +653,17 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
     // Only CREATE is skipped, never UPDATE. A watch that was on the shop and
     // then went out on loan has a page already, and leaving that page alone
     // is the one outcome nobody wants: it stays live and buyable for a watch
-    // that is in somebody's bag. Those are in `update` above and go to DRAFT
+    // that is in somebody's bag. Those are claimed above and go to DRAFT
     // through statusFor, which is what actually takes them down.
-    else if (HELD.has(watch.status) && watch.locationPublishes) plan.create.push(watch)
+    if (HELD.has(watch.status) && watch.locationPublishes) plan.create.push(watch)
     // A sold watch with no product never needs one. Nor does one in transit.
   }
 
-  for (const [sku, product] of bySku) {
-    // A product for a stock number that is not in the book at all. Archived
-    // rather than deleted: the likeliest reason is a watch that has since been
-    // sold and tidied away, and an archived page can be brought back.
-    if (!seen.has(sku)) plan.archive.push(descr(product))
+  for (const product of bySku.values()) {
+    // A product no watch claimed. Archived rather than deleted: the likeliest
+    // reason is a watch that has since been sold and tidied away, and an
+    // archived page can be brought back.
+    if (!claimed.has(product.id)) plan.archive.push(descr(product))
   }
 
   return plan
