@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BASE_CURRENCY, CURRENCY_SYMBOLS } from '@/lib/enums'
+import { BASE_CURRENCY } from '@/lib/enums'
+import { markIsCode, moneyPrefix } from '@/lib/currency'
 import { describeClause, operatorsFor, WATCH_FIELDS } from '@/lib/filters'
 
 /**
@@ -108,11 +109,25 @@ describe('choosing a field that has no list of values', () => {
 
 describe('money in a filter', () => {
   it('is never labelled with a currency it is not in', () => {
-    // The fallback beneath any display-currency conversion: the symbol of the
+    // The fallback beneath any display-currency conversion: the mark of the
     // currency the integers are actually stored in.
     expect(describeClause({ field: 'estSaleGbp', operator: 'lt', values: ['7000'] }, WATCH_FIELDS))
-      .toBe(`Retail is under ${CURRENCY_SYMBOLS[BASE_CURRENCY]}7,000`)
+      .toBe(`Retail is under ${moneyPrefix(BASE_CURRENCY)}7,000`)
     expect(read('src/lib/filters.ts')).not.toMatch(/`£\$\{major/)
+  })
+
+  it('does not run a three-letter code into the figure beside it', () => {
+    // "$7,000" is right and "AED7,000" is a word running into a number. It
+    // only became visible when the dirham became the base, and it is decided
+    // by the length of the mark so a fifth currency needs nothing added.
+    expect(moneyPrefix('USD')).toBe('$')
+    expect(moneyPrefix('AED')).toBe('AED\u00a0')
+    expect(markIsCode('AED')).toBe(true)
+    expect(markIsCode('GBP')).toBe(false)
+    // And the input the figure is typed into makes room for the wider mark,
+    // or the number sits underneath it.
+    expect(read('src/components/ui/DataList/FilterChip.tsx'))
+      .toMatch(/markIsCode\(currency\) \? 'pl-11' : 'pl-6'/)
   })
 
   it('is shown in the currency the person switched to', () => {
@@ -122,7 +137,7 @@ describe('money in a filter', () => {
     ]) {
       const source = read(path)
       expect(source, path).toMatch(/useCurrency\(\)/)
-      expect(source, path).toMatch(/CURRENCY_SYMBOLS\[currency\]/)
+      expect(source, path).toMatch(/moneyPrefix\(currency\)/)
       expect(source, path).toMatch(/fromBase\(/)
       // No hard-coded symbol left in anything either of them draws. The
       // comments still name the one that was there, which is the point of them.

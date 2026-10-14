@@ -162,11 +162,13 @@ export function CurrencyRatesForm({ rates, canManage }: { rates: RateView[]; can
           </div>
 
           <p className="text-caption text-content-secondary">
-            Enter how many units of each currency one {BASE_CURRENCY} buys. For example, if
-            $1&nbsp;= 3.67&nbsp;AED, enter 3.67. Changing a rate re-values how existing stock is
-            displayed; it never alters what was recorded. Figures shown in{' '}
-            {BASE_CURRENCY} pass through no rate at all, which is why the base is the one
-            currency with nothing to keep current.
+            Enter how many units of each currency one {BASE_CURRENCY} buys — not the
+            other way round, which is the mistake that costs a factor of thirteen. One
+            dirham buys about 0.27 dollars, so the dollar&rsquo;s rate is{' '}
+            <strong className="font-semibold text-content-primary">0.2723</strong>, not 3.67.
+            Changing a rate re-values how existing stock is displayed; it never alters what
+            was recorded. Figures shown in {BASE_CURRENCY} pass through no rate at all, which
+            is why the base is the one currency with nothing to keep current.
           </p>
         </CardBody>
 

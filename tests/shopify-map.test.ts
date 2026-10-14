@@ -7,7 +7,7 @@ import {
 import type { RateTable } from '@/lib/currency'
 
 // Rates are held scaled by 10,000, so 3.6725 dirhams to the dollar is 36,725.
-const RATES: RateTable = { AED: 36_725, GBP: 7_900, EUR: 9_200 }
+const RATES: RateTable = { USD: 2_723, GBP: 2_047, EUR: 2_505 }
 
 const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   id: 'wch_1',
@@ -102,13 +102,16 @@ describe('what a watch looks like on the storefront', () => {
 
 describe('the price', () => {
   it('converts the base figure into the store’s own currency', () => {
-    // $10,200 held as minor units, quoted in a store that trades in dirhams.
-    expect(priceFor(1020000, 'AED', RATES)).toBe('37459.50')
+    // AED 37,459.50 held as minor units, quoted in a store that trades in
+    // dollars. The storefront's currency is Shopify's business, not ours, so
+    // this conversion is the one thing standing between a dirham base and a
+    // price tag that is wrong by a factor of 3.67.
+    expect(priceFor(3745950, 'USD', RATES)).toBe('10200.22')
   })
 
   it('is absent rather than zero when nothing is set', () => {
-    expect(priceFor(null, 'AED', RATES)).toBeNull()
-    expect(priceFor(0, 'AED', RATES)).toBeNull()
+    expect(priceFor(null, 'USD', RATES)).toBeNull()
+    expect(priceFor(0, 'USD', RATES)).toBeNull()
   })
 })
 
