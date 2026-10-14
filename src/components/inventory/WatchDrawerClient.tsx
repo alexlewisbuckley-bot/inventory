@@ -16,7 +16,9 @@ import type { WatchChecks } from '@/lib/checks'
 import { CheckLight } from '@/components/compliance/CheckLight'
 import { MoveWatchModal } from './MoveWatchModal'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
-import { QuickSellModal, type SellCustomerOption, type SellDealOption } from './QuickSellModal'
+import {
+  QuickSellModal, type SalesPersonOption, type SellCustomerOption, type SellDealOption,
+} from './QuickSellModal'
 
 export interface DrawerRecord {
   id: string
@@ -52,13 +54,14 @@ export interface TimelineEntry {
 
 /** Detail panel: facts, financials, actions and the full change history. */
 export function WatchDrawerClient({
-  record, timeline, images, capabilities, customers = [], deals = [],
+  record, timeline, images, capabilities, customers = [], salesPeople = [], deals = [],
 }: {
   record: DrawerRecord
   timeline: TimelineEntry[]
   images: GalleryImage[]
   capabilities: Record<Capability, boolean>
   customers?: SellCustomerOption[]
+  salesPeople?: SalesPersonOption[]
   deals?: SellDealOption[]
 }) {
   const router = useRouter()
@@ -246,6 +249,7 @@ export function WatchDrawerClient({
           estSaleGbp: record.estSaleGbp,
         }}
         customers={customers}
+        salesPeople={salesPeople}
         deals={deals}
         onSold={() => { router.refresh() }}
       />
