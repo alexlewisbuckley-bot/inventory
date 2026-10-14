@@ -257,29 +257,32 @@ export type CurrencyCode = (typeof CURRENCIES)[number]
  * The currency every amount is stored in. Everything else is converted.
  *
  * A storage unit, not a preference: it is what the integers in the database
- * mean. Dollars, since migration 0018 converted every stored amount and turned
- * the rate table from "units per GBP" into "units per USD".
+ * mean. Dirhams, since migration 0038 converted every stored amount at the
+ * peg of 1 AED = 0.272294 USD and turned the rate table from "units per USD"
+ * into "units per AED". Before that it was dollars (0018) and before that
+ * sterling.
  *
- * Changing this constant on its own re-denominates nothing. It would only stop
- * the conversion happening, which is how every price on every screen quietly
- * becomes wrong by the exchange rate — so it moves with a migration or not at
- * all.
+ * Changing this constant on its own re-denominates nothing. It would only
+ * stop the conversion happening, which is how every price on every screen
+ * quietly becomes wrong by the exchange rate — so it moves with a migration
+ * or not at all.
  *
- * The columns and fields behind it are still named `*_gbp` / `*Gbp` and now
- * hold dollars. That is known debt, recorded in 0018: renaming them is right
- * and needs a single sweep across some 560 identifiers.
+ * The columns and fields behind it are still named `*_gbp` / `*Gbp` and
+ * `*_usd` / `*Usd`, and hold neither. That is known debt, recorded in 0018
+ * and now one base worse: renaming them is right and needs a single sweep
+ * across some 560 identifiers.
  */
-export const BASE_CURRENCY: CurrencyCode = 'USD'
+export const BASE_CURRENCY: CurrencyCode = 'AED'
 
 /**
  * The currency the business reads its own numbers in.
  *
- * Deliberately separate from the one above. This is the default for anybody
- * who has not chosen otherwise, applied at render time over the stored
- * sterling figures; each person can still switch it from the header, and
- * switching rewrites nothing.
+ * Deliberately separate from the one above, and only incidentally the same
+ * today. This is the default for anybody who has not chosen otherwise,
+ * applied at render time over the stored figures; each person can still
+ * switch it from the header, and switching rewrites nothing.
  */
-export const DEFAULT_DISPLAY_CURRENCY: CurrencyCode = 'USD'
+export const DEFAULT_DISPLAY_CURRENCY: CurrencyCode = 'AED'
 
 export const CURRENCY_LABELS: Record<CurrencyCode, string> = {
   GBP: 'British pound',

@@ -194,7 +194,7 @@ describe('description', () => {
       // dollars since 0018 — a price label stating the wrong currency, which
       // understated every budget on the bar by the exchange rate. Anything
       // drawn where somebody has chosen a display currency converts instead.
-      .toBe('Cost is over $10,000')
+      .toBe('Cost is over AED\u00a010,000')
     expect(describeClause({ field: 'estSaleGbp', operator: 'isEmpty', values: [] }, WATCH_FIELDS))
       .toBe('Retail is empty')
   })
@@ -234,7 +234,7 @@ describe('description', () => {
       { field: 'status', operator: 'is', values: ['IN_STOCK'] },
       { field: 'purchasePriceGbp', operator: 'gt', values: ['10000'] },
     ], WATCH_FIELDS)
-    expect(said).toBe('Status is In stock, and Cost is over $10,000')
+    expect(said).toBe('Status is In stock, and Cost is over AED\u00a010,000')
     expect(describeFilters([], WATCH_FIELDS)).toBe('')
   })
 })

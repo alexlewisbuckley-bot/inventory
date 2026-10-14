@@ -1,5 +1,6 @@
+import { moneyPrefix } from './currency'
 import {
-  BASE_CURRENCY, CURRENCY_SYMBOLS,
+  BASE_CURRENCY,
   CONDITIONS, CONDITION_LABELS, CUSTOMER_STATUSES, CUSTOMER_STATUS_LABELS,
   CUSTOMER_TIERS, CUSTOMER_TIER_LABELS, CUSTOMER_TYPES, CUSTOMER_TYPE_LABELS,
   DELIVERY_STATUSES, DELIVERY_STATUS_LABELS, LEAD_SOURCES, LEAD_SOURCE_LABELS,
@@ -473,7 +474,7 @@ function formatValue(field: FieldSpec, value: string): string {
     // `resolve` that converts and formats; this is the fallback beneath that.
     const major = Number(value)
     return Number.isFinite(major)
-      ? `${CURRENCY_SYMBOLS[BASE_CURRENCY]}${major.toLocaleString('en-GB')}`
+      ? `${moneyPrefix(BASE_CURRENCY)}${major.toLocaleString('en-GB')}`
       : value
   }
   if (field.type === 'number' && field.unit) {

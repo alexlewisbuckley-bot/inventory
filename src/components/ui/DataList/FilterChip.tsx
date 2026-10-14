@@ -5,7 +5,7 @@ import { Check, ChevronDown, X } from 'lucide-react'
 import { AnchoredMenu } from '../AnchoredMenu'
 import { useCurrency } from '../CurrencyProvider'
 import { cn } from '@/lib/cn'
-import { fromBase, toBase } from '@/lib/currency'
+import { fromBase, markIsCode, moneyPrefix, toBase } from '@/lib/currency'
 import { CURRENCY_SYMBOLS } from '@/lib/enums'
 import {
   describeClause, operatorsFor, OPERATOR_LABELS, validateClause,
@@ -74,7 +74,7 @@ export function FilterChip({ clause, field, options, draft = false, onChange, on
     const stored = Number(value)
     if (!Number.isFinite(stored)) return value
     const shown = fromBase(Math.round(stored * 100), currency, rates) / 100
-    return `${CURRENCY_SYMBOLS[currency]}${shown.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`
+    return `${moneyPrefix(currency)}${shown.toLocaleString('en-GB', { maximumFractionDigits: 0 })}`
   }
 
   const resolve = (_key: string, value: string) =>
@@ -288,7 +288,10 @@ function ValueEditor({ field, value, currency, rates, onCommit, onCancel }: {
           placeholder={field.type === 'text' ? 'Type to match…' : undefined}
           className={cn(
             'h-9 w-full rounded-sm border border-line-subtle bg-surface-subtle pr-2 text-caption text-content-primary placeholder:text-content-muted',
-            money ? 'pl-6' : 'pl-2',
+            // A three-letter code needs more room than a symbol: with the
+            // dirham as the default, `pl-6` put the figure underneath the
+            // "AED" rather than after it.
+            money ? (markIsCode(currency) ? 'pl-11' : 'pl-6') : 'pl-2',
           )}
         />
       </label>

@@ -5,7 +5,7 @@ import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { applyFilters, parseFilters, WATCH_FIELDS, type FilterClause } from '@/lib/filters'
 import { useCurrency } from '@/components/ui/CurrencyProvider'
-import { fromBase } from '@/lib/currency'
+import { fromBase, moneyPrefix } from '@/lib/currency'
 import { CURRENCY_SYMBOLS } from '@/lib/enums'
 import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositories/watch-repository'
 
@@ -137,7 +137,7 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
   const { currency, rates } = useCurrency()
   const money = useCallback((stored: number) => {
     const shown = fromBase(Math.round(stored * 100), currency, rates) / 100
-    const symbol = CURRENCY_SYMBOLS[currency]
+    const symbol = moneyPrefix(currency)
     // Thousands as "7k" — four digits of precision on a slider handle is
     // precision nobody asked for and it makes the two labels collide.
     return shown >= 1000
