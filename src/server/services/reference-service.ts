@@ -417,6 +417,10 @@ export interface SalesPersonInput {
   name: string
   userId: string | null
   isActive: boolean
+  /** Base minor units, paid monthly whatever they sell. */
+  retainer: number
+  /** Their share above it, in basis points. */
+  commissionBps: number
 }
 
 /** Every salesperson, active or not, with what they have sold. */
@@ -428,6 +432,8 @@ export async function listSalesPeopleAdmin() {
       id: salesPeople.id,
       name: salesPeople.name,
       isActive: salesPeople.isActive,
+      retainer: salesPeople.retainer,
+      commissionBps: salesPeople.commissionBps,
       sortOrder: salesPeople.sortOrder,
       userId: salesPeople.userId,
       userName: users.name,
@@ -474,12 +480,19 @@ export async function saveSalesPerson(
       const before = await db.select().from(salesPeople).where(eq(salesPeople.id, id)).limit(1)
       if (!before[0] || before[0].deletedAt) throw new NotFoundError('Salesperson')
       await db.update(salesPeople)
-        .set({ name, slug: slugify(name), userId: input.userId, isActive: input.isActive, updatedAt: new Date() })
+        .set({
+          name, slug: slugify(name), userId: input.userId, isActive: input.isActive,
+          retainer: input.retainer, commissionBps: input.commissionBps, updatedAt: new Date(),
+        })
         .where(eq(salesPeople.id, id))
       await recordAudit({
         entityType: 'SalesPerson', entityId: id, action: 'UPDATE', actorId: actor.id,
         summary: `${before[0].name} updated`,
-        changes: diff(before[0], { name, userId: input.userId, isActive: input.isActive }, ['name', 'userId', 'isActive']),
+        changes: diff(
+          before[0],
+          { name, userId: input.userId, isActive: input.isActive, retainer: input.retainer, commissionBps: input.commissionBps },
+          ['name', 'userId', 'isActive', 'retainer', 'commissionBps'],
+        ),
       })
       return
     }
@@ -495,6 +508,8 @@ export async function saveSalesPerson(
       slug: slugify(name),
       userId: input.userId,
       isActive: input.isActive,
+      retainer: input.retainer,
+      commissionBps: input.commissionBps,
       sortOrder: Number(last[0]?.max ?? 0) + 10,
     })
     await recordAudit({

@@ -21,5 +21,6 @@ export function reportTabs(role: Role | null | undefined): ReportTab[] {
     { href: '/reports', label: 'Overview' },
     { href: '/reports/people', label: 'Sales by person' },
     { href: '/reports/ageing', label: 'Ageing stock' },
+    { href: '/reports/commission', label: 'Commission' },
   ]
 }

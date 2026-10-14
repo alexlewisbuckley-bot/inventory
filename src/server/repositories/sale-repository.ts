@@ -306,4 +306,72 @@ export async function salesByPerson(from?: Date, to?: Date, onlyPersonId?: strin
     .orderBy(desc(sql`coalesce(sum(${sales.profitGbp}), 0)`))
 }
 
+/**
+ * What each salesperson earned in one month.
+ *
+ * The rule, in one place so it cannot be half-implemented somewhere else: a
+ * retainer every month, and a share of the profit on their own sales above
+ * it. Monthly and fresh — a quiet month earns no commission and owes nothing
+ * forward — and cleared by the profit on the sales with their name on rather
+ * than by the business doing well.
+ *
+ * Paid and unpaid are counted separately and both are returned. Which one a
+ * commission is owed on is a decision about money that belongs to whoever
+ * signs the cheque, not to this function: showing only the paid figure would
+ * hide what is coming, and showing only the total would pay somebody for an
+ * invoice the customer has not settled.
+ *
+ * Everybody active is returned, including the people who sold nothing. A
+ * commission run that lists only the earners is a commission run that
+ * silently drops the person on a retainer and no sales — who is precisely
+ * the one somebody needs to see.
+ */
+export async function commissionForMonth(from: Date, to: Date) {
+  const earned = db
+    .select({
+      personId: sales.soldById,
+      paidProfit: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} = 'PAID'), 0)`.as('paid_profit'),
+      paidCount: sql<number>`count(*) filter (where ${sales.paymentStatus} = 'PAID')`.as('paid_count'),
+      pendingProfit: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} <> 'PAID'), 0)`.as('pending_profit'),
+      pendingCount: sql<number>`count(*) filter (where ${sales.paymentStatus} <> 'PAID')`.as('pending_count'),
+    })
+    .from(sales)
+    .where(and(liveSale(), gte(sales.saleDate, from), lte(sales.saleDate, to)))
+    .groupBy(sales.soldById)
+    .as('earned')
+
+  return db
+    .select({
+      personId: salesPeople.id,
+      name: salesPeople.name,
+      retainer: salesPeople.retainer,
+      commissionBps: salesPeople.commissionBps,
+      paidProfit: sql<number>`coalesce(${earned.paidProfit}, 0)`,
+      paidCount: sql<number>`coalesce(${earned.paidCount}, 0)`,
+      pendingProfit: sql<number>`coalesce(${earned.pendingProfit}, 0)`,
+      pendingCount: sql<number>`coalesce(${earned.pendingCount}, 0)`,
+    })
+    .from(salesPeople)
+    .leftJoin(earned, eq(earned.personId, salesPeople.id))
+    .where(and(eq(salesPeople.isActive, true), isNull(salesPeople.deletedAt)))
+    .orderBy(asc(salesPeople.sortOrder), asc(salesPeople.name))
+}
+
+/**
+ * The commission one month's figures come to.
+ *
+ * Pure arithmetic over the row above, kept out of the component so the one
+ * calculation anybody is paid against can be tested without a browser.
+ *
+ * Rounded half-up at the last step only. Rounding the profit first and the
+ * share second loses a fils per person per month, which is nothing until
+ * somebody reconciles it against the bank and cannot find it.
+ */
+export function commissionOn(
+  profitBase: number, retainerBase: number, bps: number,
+): { above: number; commission: number } {
+  const above = Math.max(0, profitBase - retainerBase)
+  return { above, commission: Math.round((above * bps) / 10_000) }
+}
+
 export { locations }

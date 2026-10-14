@@ -6,12 +6,28 @@
  * migrations are tracked in a ledger, and seeding is skipped entirely once any
  * user exists, so an existing production database is never re-seeded or
  * overwritten by a later build.
+ *
+ * Production builds only. Preview deployments here share the production
+ * DATABASE_URL, so every push to a branch was migrating the live database —
+ * once, memorably, leaving the shop half-rebased to dirhams while the site
+ * still ran the dollar code. A migration should land when the code that needs
+ * it goes live, not when somebody pushes a branch to look at it.
  */
 import { loadEnv } from '@/lib/load-env'
 
 loadEnv()
 
 async function main(): Promise<void> {
+  // Checked before the client is even imported, so a preview build does not
+  // so much as open a connection to it. Unset locally and in CI, which is
+  // where this is also run on purpose.
+  const target = process.env.VERCEL_ENV
+  if (target && target !== 'production') {
+    console.log(`\n  ${target} deployment — leaving the database alone.`)
+    console.log('  Migrations run on the production build, against the database they belong to.\n')
+    return
+  }
+
   const { sql } = await import('./client')
 
   if (!process.env.DATABASE_URL) {

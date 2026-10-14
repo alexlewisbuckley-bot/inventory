@@ -34,6 +34,8 @@ export default async function SalesPeoplePage() {
     id: person.id,
     name: person.name,
     isActive: person.isActive,
+    retainer: person.retainer,
+    commissionBps: person.commissionBps,
     userId: person.userId,
     userName: person.userName,
     userEmail: person.userEmail,

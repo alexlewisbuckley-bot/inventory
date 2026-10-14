@@ -5,15 +5,21 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { Pencil, Trash2, UserPlus } from 'lucide-react'
 import {
   Card, Button, Modal, TextField, SelectField, Checkbox, Chip, ConfirmDialog,
-  Table, THead, TBody, TR, TD, TH, useToast, useCreateFlag,
+  Table, THead, TBody, TR, TD, TH, useToast, useCreateFlag, useCurrency,
 } from '@/components/ui'
 import { saveSalesPersonAction, deleteSalesPersonAction } from '@/app/actions/reference'
 import type { ActionState } from '@/app/actions/auth'
+import { moneyPrefix } from '@/lib/currency'
+import { formatShare } from '@/lib/money'
+import { BASE_CURRENCY } from '@/lib/enums'
 
 export interface SalesPersonRow {
   id: string
   name: string
   isActive: boolean
+  /** Base minor units. */
+  retainer: number
+  commissionBps: number
   userId: string | null
   userName: string | null
   userEmail: string | null
@@ -47,6 +53,7 @@ export function SalesPeopleManager({ people, users, canManage }: {
   canManage: boolean
 }) {
   const toast = useToast()
+  const { money } = useCurrency()
   const [editing, setEditing] = useState<SalesPersonRow | null>(null)
   const create = useCreateFlag()
   const [deleting, setDeleting] = useState<SalesPersonRow | null>(null)
@@ -80,12 +87,14 @@ export function SalesPeopleManager({ people, users, canManage }: {
       )}
 
       <Card className="overflow-hidden">
-        <Table layout="fixed" minWidth="640px">
+        <Table layout="fixed" minWidth="860px">
           <THead>
             <TR>
               <TH width="180px">Name</TH>
               <TH width="240px">Signs in as</TH>
-              <TH width="90px" align="right">Sold</TH>
+              <TH width="140px" align="right">Retainer</TH>
+              <TH width="90px" align="right">Share</TH>
+              <TH width="80px" align="right">Sold</TH>
               <TH width="110px">Status</TH>
               {canManage && <TH align="right"><span className="sr-only">Actions</span></TH>}
             </TR>
@@ -105,6 +114,12 @@ export function SalesPeopleManager({ people, users, canManage }: {
                     // otherwise: this person cannot see their own figures.
                     <span className="text-content-muted">Not linked — cannot see their own sales</span>
                   )}
+                </TD>
+                <TD align="right" className="tabular-nums">
+                  {person.retainer > 0 ? money(person.retainer) : <span className="text-content-muted">None</span>}
+                </TD>
+                <TD align="right" className="tabular-nums text-content-secondary">
+                  {formatShare(person.commissionBps)}
                 </TD>
                 <TD align="right" className="tabular-nums text-content-secondary">{person.soldCount}</TD>
                 <TD>
@@ -201,6 +216,25 @@ function PersonModal({ open, person, users, onClose, onSaved }: {
           error={state.errors?.userId}
           hint="Linking an account lets them see their own sales — and only their own. Leave it blank for somebody who does not sign in."
         />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label="Monthly retainer"
+            name="retainer"
+            inputMode="decimal"
+            prefix={moneyPrefix(BASE_CURRENCY)}
+            defaultValue={person && person.retainer > 0 ? String(person.retainer / 100) : ''}
+            error={state.errors?.retainer}
+            hint="Paid every month whatever they sell."
+          />
+          <TextField
+            label="Share above it"
+            name="commissionPct"
+            inputMode="decimal"
+            defaultValue={person ? String(person.commissionBps / 100) : '25'}
+            error={state.errors?.commissionPct}
+            hint="Of the profit on their own sales, once the month clears the retainer."
+          />
+        </div>
         <Checkbox
           name="isActive"
           defaultChecked={person ? person.isActive : true}

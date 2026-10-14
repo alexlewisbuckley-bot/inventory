@@ -1,4 +1,5 @@
 import { formatCurrency } from './currency'
+import { formatShare } from './money'
 import {
   BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS, ENTITY_TYPE_LABELS, LOCATION_TYPE_LABELS,
   PAYMENT_TERMS_LABELS, PRODUCT_TYPE_LABELS, ROLE_LABELS, SALE_CHANNEL_LABELS, WATCH_STATUS_LABELS,
@@ -26,6 +27,8 @@ const FIELD_LABELS: Record<string, string> = {
   estSaleGbp: 'Retail price',
   estSaleUsd: 'Retail price',
   invoiceNo: 'Invoice number',
+  retainer: 'Monthly retainer',
+  commissionBps: 'Commission share',
   isActive: 'Active',
   legalName: 'Legal entity',
   locationId: 'Location',
@@ -104,8 +107,15 @@ const MONEY_FIELDS = new Set([
   'purchasePriceGbp', 'purchasePriceUsd',
   'estSaleGbp', 'estSaleUsd',
   'tradePriceGbp', 'saleAmountGbp', 'salePriceGbp', 'profitGbp',
-  'valueGbp', 'depositGbp',
+  'valueGbp', 'depositGbp', 'retainer',
 ])
+
+/**
+ * Held in basis points, so the raw value is a hundred times what anybody
+ * agreed to. "2500 → 1250" in the audit of somebody's pay is exactly the
+ * sort of entry that gets read as a hundredfold cut.
+ */
+const SHARE_FIELDS = new Set(['commissionBps'])
 
 export function fieldLabel(field: string): string {
   if (FIELD_LABELS[field]) return FIELD_LABELS[field]
@@ -118,6 +128,10 @@ export function changeValue(value: unknown, field?: string): string {
   if (value === null || value === undefined || value === '') return 'not set'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
   if (value instanceof Date) return value.toLocaleDateString('en-GB')
+  if (field && SHARE_FIELDS.has(field)) {
+    const bps = typeof value === 'number' ? value : Number(value)
+    if (Number.isFinite(bps)) return formatShare(bps)
+  }
   if (field && MONEY_FIELDS.has(field)) {
     // Pence included: the mistake this screen gets opened for is usually a
     // decimal point in the wrong place, and rounding it away hides it.
