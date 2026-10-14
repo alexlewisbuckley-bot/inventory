@@ -79,6 +79,29 @@ export async function deleteCustomerAction(id: string): Promise<ActionState> {
 }
 
 /**
+ * Remove a whole selection.
+ *
+ * Capped, because the only way to ask for ten thousand is a ticked
+ * "everything matching" against a filter somebody did not read.
+ */
+export async function deleteCustomersAction(ids: string[]): Promise<ActionState> {
+  const actor = await requireCapability('customer:delete')
+  if (ids.length === 0) return { ok: false, message: 'Nothing was selected.' }
+  if (ids.length > 200) {
+    return { ok: false, message: 'That is more than 200 people. Narrow the list and do it in batches.' }
+  }
+
+  try {
+    const { deleteCustomers } = await import('@/server/services/crm-service')
+    const { removed } = await deleteCustomers(ids, actor)
+    revalidateCrm()
+    return { ok: true, message: `${removed} ${removed === 1 ? 'customer' : 'customers'} removed.` }
+  } catch (error) {
+    return toState(error, 'Could not remove those customers.')
+  }
+}
+
+/**
  * Create a customer from a name alone.
  *
  * The escape hatch for every picker: you are part-way through opening a deal

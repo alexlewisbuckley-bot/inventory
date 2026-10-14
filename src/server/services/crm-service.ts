@@ -313,6 +313,42 @@ export async function deleteCustomer(id: string, actor: SessionUser): Promise<vo
   })
 }
 
+/**
+ * Remove several customers at once.
+ *
+ * One transaction rather than a loop of them, so a selection either goes or
+ * does not: half a tidy-up is worse than none, because nobody can tell which
+ * half ran.
+ *
+ * Each still gets its own audit line. A single "7 customers removed" entry
+ * would be unreadable later, when the only question anybody asks of this log
+ * is whether one particular person was deleted and by whom.
+ */
+export async function deleteCustomers(
+  ids: string[], actor: SessionUser,
+): Promise<{ removed: number }> {
+  if (ids.length === 0) return { removed: 0 }
+
+  return withTransaction(async () => {
+    const found = await db.select().from(customers)
+      .where(and(inArray(customers.id, ids), isNull(customers.deletedAt)))
+    if (found.length === 0) return { removed: 0 }
+
+    const now = new Date()
+    await db.update(customers)
+      .set({ deletedAt: now, updatedAt: now })
+      .where(inArray(customers.id, found.map((row) => row.id)))
+
+    for (const row of found) {
+      await recordAudit({
+        entityType: 'Customer', entityId: row.id, action: 'DELETE', actorId: actor.id,
+        summary: `${row.firstName} ${row.lastName} removed`,
+      })
+    }
+    return { removed: found.length }
+  })
+}
+
 async function setFavouriteBrands(customerId: string, brandIds: string[]): Promise<void> {
   await db.delete(customerBrands).where(eq(customerBrands.customerId, customerId))
   if (brandIds.length === 0) return

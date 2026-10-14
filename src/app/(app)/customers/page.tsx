@@ -63,7 +63,7 @@ export default async function CustomersPage({ searchParams }: {
         placeholder="Search by name, company, email or phone…"
         options={{ users: owners.map((owner) => ({ value: owner.id, label: owner.name })) }}
       />
-      <CustomerTable result={result} />
+      <CustomerTable result={result} canDelete={can(user.role, 'customer:delete')} />
     </>
   )
 }

@@ -1,11 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { Users2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Trash2, Users2 } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
+import { useSelection } from '@/hooks/useSelection'
+import { deleteCustomersAction } from '@/app/actions/crm'
 import {
-  Avatar, Card, Chip, EmptyState, LinkButton, Pagination, Table, TBody, TD, TH, THead, TR,
-  useCurrency,
+  Avatar, Button, Card, Chip, ConfirmDialog, EmptyState, LinkButton, Pagination, Table,
+  TBody, TD, TH, THead, TR, useCurrency, useToast,
 } from '@/components/ui'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
@@ -29,9 +33,46 @@ const TIER_TONE: Record<CustomerTier, 'gold' | 'accent' | 'neutral'> = {
  * have spent and when anybody last spoke to them — are on the row rather than
  * one click inside it.
  */
-export function CustomerTable({ result }: { result: CustomerListResult }) {
+export function CustomerTable({ result, canDelete = false }: {
+  result: CustomerListResult
+  /**
+   * Whether this reader may remove people from the book.
+   *
+   * The ticks appear only with it. A checkbox whose only action is one the
+   * reader cannot take is a column of furniture.
+   */
+  canDelete?: boolean
+}) {
   const query = useListQuery()
+  const router = useRouter()
+  const toast = useToast()
   const { money } = useCurrency()
+  const selection = useSelection(result.total)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const pageIds = useMemo(() => result.items.map((customer) => customer.id), [result.items])
+  const chosen = pageIds.filter((id) => selection.isSelected(id))
+  const allOnPage = chosen.length > 0 && chosen.length === pageIds.length
+  // Said in the confirmation rather than discovered afterwards: these are the
+  // people whose names are on invoices.
+  const withPurchases = result.items.filter(
+    (customer) => selection.isSelected(customer.id) && customer.purchaseCount > 0,
+  ).length
+
+  const remove = async () => {
+    setBusy(true)
+    const result = await deleteCustomersAction(chosen)
+    setBusy(false)
+    setConfirming(false)
+    if (result.ok) {
+      toast.success(result.message ?? 'Removed')
+      selection.clear()
+      router.refresh()
+    } else {
+      toast.error('Could not remove those customers', result.message)
+    }
+  }
 
   return (
     <>
@@ -62,6 +103,26 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
         })}
       </div>
 
+
+      {canDelete && chosen.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-subtle bg-surface-subtle px-4 py-2.5">
+          <p className="text-small text-content-primary">
+            <span className="font-bold">{chosen.length}</span>
+            {' '}selected on this page
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={selection.clear}>Clear</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              icon={<Trash2 className="h-4 w-4" />}
+              onClick={() => setConfirming(true)}
+            >
+              Remove
+            </Button>
+          </div>
+        </div>
+      )}
 
       {result.items.length === 0 ? (
         <EmptyState
@@ -108,9 +169,20 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
           </ul>
 
           <div className="hidden sm:block">
-            <Table layout="fixed" minWidth="1210px">
+            <Table layout="fixed" minWidth={canDelete ? "1258px" : "1210px"}>
               <THead>
                 <TR>
+                  {canDelete && (
+                    <TH width="48px">
+                      <input
+                        type="checkbox"
+                        checked={allOnPage}
+                        onChange={() => selection.togglePage(pageIds)}
+                        aria-label="Select every customer on this page"
+                        className="h-4 w-4 rounded-xs accent-teal-500"
+                      />
+                    </TH>
+                  )}
                   {/* elastic: the only column without a width */}
                   <TH>Customer</TH>
                   <TH width="90px">Side</TH>
@@ -126,6 +198,22 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
               <TBody>
                 {result.items.map((customer) => (
                   <TR key={customer.id} peek={{ kind: 'contact', id: customer.id }}>
+                    {canDelete && (
+                      <TD>
+                        {/* Stops the click reaching the row, which opens the
+                            person. Ticking somebody and landing on their
+                            record instead is the kind of small betrayal that
+                            makes people stop using a checkbox. */}
+                        <input
+                          type="checkbox"
+                          checked={selection.isSelected(customer.id)}
+                          onChange={() => selection.toggle(customer.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`Select ${customer.firstName} ${customer.lastName}`}
+                          className="h-4 w-4 rounded-xs accent-teal-500"
+                        />
+                      </TD>
+                    )}
                     <TD>
                       <Link href={`/customers/${customer.id}`} className="flex items-center gap-3">
                         <Avatar initials={initialsOf(customer)} id={customer.id} />
@@ -186,7 +274,22 @@ export function CustomerTable({ result }: { result: CustomerListResult }) {
             </Table>
           </div>
 
-          <Pagination
+          <ConfirmDialog
+        open={confirming}
+        title={`Remove ${chosen.length} ${chosen.length === 1 ? 'customer' : 'customers'}?`}
+        message={
+          withPurchases > 0
+            ? `${withPurchases} of them ${withPurchases === 1 ? 'has' : 'have'} bought from you. Their sales stay on the ledger and keep pointing at them — the record is hidden from the book, not erased.`
+            : 'They are hidden from the book rather than erased, so anything that already refers to them still reads.'
+        }
+        confirmLabel="Remove"
+        tone="danger"
+        loading={busy}
+        onConfirm={() => { void remove() }}
+        onCancel={() => setConfirming(false)}
+      />
+
+      <Pagination
             page={result.page}
             perPage={result.perPage}
             total={result.total}
