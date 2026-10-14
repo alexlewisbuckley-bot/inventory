@@ -210,6 +210,11 @@ export default async function ReportsPage() {
               ))}
             </ul>
           )}
+          <div className="border-t border-line-subtle px-6 py-3.5">
+            <Link href="/reports/people" className="inline-flex items-center gap-1 text-small font-bold text-content-accent hover:underline">
+              Sales by person <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Link>
+          </div>
         </Card>
 
         <Card>
