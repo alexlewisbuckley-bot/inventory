@@ -342,6 +342,63 @@ export const saleCreateSchema = z.object({
 })
 export type SaleCreateInput = z.infer<typeof saleCreateSchema>
 
+/**
+ * Correcting a sale that has already been booked.
+ *
+ * The invoice number is typed by hand at the point of sale, against a watch
+ * leaving the building and a customer standing there, and it goes on a piece
+ * of paper. It gets mistyped. Until now the only remedy was to void the sale
+ * and record it again, which discards the row the customer's invoice refers
+ * to, breaks the activity written on to their timeline, and leaves two
+ * entries in the ledger where one thing happened.
+ *
+ * Narrower than `saleCreateSchema` on purpose. This corrects what was written
+ * down about a sale; it does not re-point it at a different watch, invent a
+ * buyer, or take identity documents — those are the sale happening, not the
+ * paperwork being wrong, and a void is the honest answer to getting them
+ * wrong. The customer's own contact details are left out for the same reason:
+ * they live on the customer record, which is editable in the customer book,
+ * and two editable copies of a phone number is how they come to disagree.
+ */
+export const saleAmendSchema = z.object({
+  id: trimmed.min(1),
+  invoiceNo: trimmed.min(1, 'Invoice number is required.').max(40),
+  saleDate: z.coerce.date({ invalid_type_error: 'Enter a valid sale date.' })
+    .max(new Date(Date.now() + 86_400_000), 'Sale date cannot be in the future.'),
+  saleAmount: money('Sale amount'),
+  saleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  channel: z.enum(SALE_CHANNELS),
+  paymentStatus: z.enum(PAYMENT_STATUSES),
+  deliveryStatus: z.enum(DELIVERY_STATUSES),
+  /**
+   * The ledger's own name column, which is not always a customer record: a
+   * walk-in paying cash leaves a name and nothing else, and sales booked
+   * before the customer book existed have only this.
+   */
+  customerName: optionalText(120),
+  customerCompany: optionalText(160),
+  notes: optionalText(1000),
+  /**
+   * What the watch cost, which is the stock record's figure rather than the
+   * sale's.
+   *
+   * It is here because it is on the sales row — cost, sale, profit, margin,
+   * side by side — and that is where somebody reading a margin they do not
+   * believe goes looking for the wrong number. It stays the owner's to
+   * change: the service refuses it without `watch:amend`, which Managers do
+   * not hold, so a Manager correcting an invoice number cannot restate what
+   * the business paid.
+   *
+   * Optional, because a correction that does not mention the cost must leave
+   * it exactly as it was rather than rewriting it with whatever the form
+   * happened to hold.
+   */
+  purchaseAmount: z.union([money('Cost'), z.literal('')]).optional()
+    .transform((v) => (typeof v === 'number' ? v : null)),
+  purchaseCurrency: z.enum(CURRENCIES).optional(),
+})
+export type SaleAmendInput = z.infer<typeof saleAmendSchema>
+
 // --- Reference data --------------------------------------------------------
 
 /**

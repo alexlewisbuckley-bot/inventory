@@ -319,7 +319,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                         {Object.entries(entry.changes).map(([field, change]) => (
                           <li key={field} className="text-caption text-content-secondary">
                             <span className="font-semibold">{fieldLabel(field)}</span>:{' '}
-                            {changeValue(change.from)} → {changeValue(change.to)}
+                            {changeValue(change.from, field)} → {changeValue(change.to, field)}
                           </li>
                         ))}
                       </ul>

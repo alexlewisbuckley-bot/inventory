@@ -8,8 +8,9 @@ import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
 import { newId } from '@/lib/ids'
-import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors'
 import { marginPct } from '@/lib/money'
+import { can } from '@/lib/permissions'
 import { RATE_SCALE, toBase, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
@@ -18,7 +19,9 @@ import {
   type CurrencyCode, type WatchStatus,
 } from '@/lib/enums'
 import type { SessionUser } from '../auth/session'
-import type { WatchCreateInput, WatchUpdateInput, SaleCreateInput } from '@/lib/validation'
+import type {
+  WatchCreateInput, WatchUpdateInput, SaleAmendInput, SaleCreateInput,
+} from '@/lib/validation'
 
 /**
  * The rate the entered amount was converted at to reach the stored base,
@@ -226,6 +229,33 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
 
     await db.update(watches).set(patch).where(eq(watches.id, input.id))
 
+    /**
+     * A corrected cost has to reach the sale it was sold at.
+     *
+     * Profit and margin are stored against the sale so reports can total them
+     * without joining back to stock. That denormalisation goes stale the
+     * moment a cost is corrected after the watch has gone: the ledger keeps
+     * reporting the profit it was booked with, and the stock record disagrees
+     * with it for good. Every other derived figure in this function is kept in
+     * step with the number it comes from; this is the same obligation, one
+     * table over.
+     */
+    if (patch.purchasePriceGbp !== undefined && patch.purchasePriceGbp !== existing.purchasePriceGbp) {
+      const liveRows = await db.select().from(sales)
+        .where(and(eq(sales.watchId, input.id), liveSale())).limit(1)
+      const sale = liveRows[0]
+      if (sale) {
+        const base = sale.saleAmountGbp
+        const profit = base - (patch.purchasePriceGbp as number)
+        await db.update(sales).set({
+          profitGbp: profit,
+          profitUsd: profit,
+          marginBps: Math.round((marginPct(patch.purchasePriceGbp as number, base) ?? 0) * 100),
+          updatedAt: new Date(),
+        }).where(eq(sales.id, sale.id))
+      }
+    }
+
     const changes = diff(existing, patch, [
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
@@ -323,17 +353,18 @@ export async function recordSale(
     // USD columns are kept only so historic exports still reconcile, and since
     // the base is dollars they now hold the same figure rather than a
     // conversion of it.
-    const saleMinor = Math.round(input.saleAmount * 100)
-    const saleGbp = toBase(saleMinor, input.saleCurrency, rates)
-    const saleUsd = saleGbp
-    // Taken from the base column rather than the retained USD one, so cost and
-    // sale are certainly on the same scale and the profit below cannot be a
-    // subtraction across two different currencies.
-    const costUsd = watch.purchasePriceGbp
-    const profitUsd = saleUsd - costUsd
-    const profitGbp = saleGbp - watch.purchasePriceGbp
-    // Margin is taken in the base so it agrees with the profit figure beside it.
-    const margin = marginPct(watch.purchasePriceGbp, saleGbp) ?? 0
+    // Cost is taken from the base column rather than the retained USD one, so
+    // cost and sale are certainly on the same scale and the profit cannot be a
+    // subtraction across two different currencies. Margin comes out of the
+    // same helper, in the base, so it agrees with the profit beside it.
+    const figures = saleMoney(
+      Math.round(input.saleAmount * 100),
+      input.saleCurrency,
+      appliedRate(input.saleCurrency, rates),
+      watch.purchasePriceGbp,
+    )
+    const saleGbp = figures.saleAmountGbp
+    const profitGbp = figures.profitGbp
 
     const id = newId('sal')
     await db.insert(sales).values({
@@ -341,10 +372,7 @@ export async function recordSale(
       watchId: watch.id,
       invoiceNo: input.invoiceNo,
       saleDate: input.saleDate,
-      saleAmountUsd: saleUsd,
-      saleAmountGbp: saleGbp,
-      saleFxRate: appliedRate(input.saleCurrency, rates),
-      saleAmount: saleMinor,
+      ...figures,
       saleCurrency: input.saleCurrency,
       customerName: input.customerName ?? null,
       customerCompany: input.customerCompany ?? null,
@@ -357,9 +385,6 @@ export async function recordSale(
       deliveryStatus: input.deliveryStatus,
       depositGbp: input.depositGbp ?? 0,
       channel: input.channel,
-      profitUsd,
-      profitGbp,
-      marginBps: Math.round(margin * 100),
       notes: input.notes ?? null,
       recordedById: actor.id,
     })
@@ -408,6 +433,189 @@ export async function recordSale(
 
     logger.info('sale recorded', { saleId: id, watchId: watch.id, profitGbp })
     return { id, customerId }
+  })
+}
+
+/**
+ * The figures a sale carries, worked out from the agreed amount and the cost.
+ *
+ * Four stored columns and a margin all derive from two numbers, and every one
+ * of them is read by a report. Kept in one place so a correction cannot
+ * recompute three of them and leave the fourth as it was booked — which is
+ * the sort of disagreement nobody notices until a month-end total is out by
+ * one watch.
+ */
+function saleMoney(
+  agreedMinor: number,
+  currency: CurrencyCode,
+  rate: number,
+  costBase: number,
+): { saleAmount: number; saleAmountGbp: number; saleAmountUsd: number; saleFxRate: number; profitGbp: number; profitUsd: number; marginBps: number } {
+  const base = currency === BASE_CURRENCY
+    ? agreedMinor
+    : Math.round((agreedMinor * RATE_SCALE) / rate)
+  const profit = base - costBase
+  return {
+    saleAmount: agreedMinor,
+    saleAmountGbp: base,
+    // Held only so historic exports still reconcile. The base is dollars, so
+    // this is the same figure rather than a conversion of it.
+    saleAmountUsd: base,
+    saleFxRate: rate,
+    profitGbp: profit,
+    profitUsd: profit,
+    marginBps: Math.round((marginPct(costBase, base) ?? 0) * 100),
+  }
+}
+
+/**
+ * Correct what was written down about a sale.
+ *
+ * The invoice number is typed by hand with a customer in the room, and it is
+ * the one field that then goes on paper and into their records. Getting it
+ * wrong used to mean voiding the sale and booking it again: the row the
+ * customer’s invoice points at is discarded, the activity on their timeline
+ * is orphaned, and the ledger carries two entries for one watch leaving the
+ * building.
+ *
+ * Profit is recomputed from the watch’s cost as it stands now, not as it
+ * stood when the sale was booked. That is deliberate: a cost corrected after
+ * the sale leaves a profit figure that is simply wrong, and anybody opening
+ * this sale to fix something else is better served by the ledger agreeing
+ * with the stock record when they close it.
+ */
+export async function amendSale(input: SaleAmendInput, actor: SessionUser): Promise<string> {
+  const rates = await getRateTable()
+
+  return withTransaction(async () => {
+    const saleRows = await db.select().from(sales).where(eq(sales.id, input.id)).limit(1)
+    const sale = saleRows[0]
+    if (!sale || sale.deletedAt) throw new NotFoundError('Sale')
+    // A voided invoice is a record of something that was cancelled. Editing it
+    // would rewrite history rather than correct it, and the sale it was
+    // replaced by is the row that wants correcting.
+    if (sale.voidedAt) {
+      throw new ValidationError('This sale has been voided. Correct the sale that replaced it.')
+    }
+
+    const watchRows = await db.select().from(watches).where(eq(watches.id, sale.watchId)).limit(1)
+    const watch = watchRows[0]
+    if (!watch) throw new NotFoundError('Watch')
+
+    // Unique among live sales, excluding this one — otherwise saving a sale
+    // without touching its number collides with itself.
+    const duplicate = await db.select({ id: sales.id }).from(sales)
+      .where(and(eq(sales.invoiceNo, input.invoiceNo), liveSale())).limit(1)
+    if (duplicate[0] && duplicate[0].id !== sale.id) {
+      throw new ConflictError('That invoice number is already used by another sale.', {
+        invoiceNo: 'Invoice number must be unique.',
+      })
+    }
+
+    /**
+     * The rate the sale was booked at, not today’s.
+     *
+     * A sale agreed in dirhams six months ago has a base figure derived from
+     * the rate that applied then. Re-deriving it from the current table would
+     * move the recorded revenue by however much the rate has drifted — a
+     * change nobody asked for, arriving as a side effect of fixing a typo in
+     * an invoice number. Where the currency itself is being corrected there
+     * is no booked rate for the new one, so the current table applies and the
+     * new rate is stored as the provenance of the figure.
+     */
+    const rate = input.saleCurrency === sale.saleCurrency && sale.saleFxRate
+      ? sale.saleFxRate
+      : appliedRate(input.saleCurrency, rates)
+
+    /**
+     * The cost, which is the stock record's figure and not the sale's.
+     *
+     * It is correctable from here because it is printed on this row, beside
+     * the profit it produces: somebody looking at a margin they do not
+     * believe is looking at these two numbers together, and sending them to
+     * another screen to fix one of them is how the margin stays wrong.
+     *
+     * Two guards. It is only touched when the correction actually names a
+     * cost, so a form that does not offer the field cannot blank it. And
+     * changing it needs `watch:amend` — the owner-only capability that
+     * governs the same figure on the stock list — because `sale:update` is
+     * held by Managers, and letting a Manager restate what the business paid
+     * by way of the invoice screen would hand them the one thing that
+     * capability was carved out to withhold.
+     */
+    let costBase = watch.purchasePriceGbp
+    let costPatch: Record<string, unknown> | null = null
+    if (input.purchaseAmount !== null && input.purchaseAmount !== undefined) {
+      const currency = input.purchaseCurrency ?? watch.purchaseCurrency ?? BASE_CURRENCY
+      // The rate the watch was bought at, for the same reason the sale keeps
+      // the rate it was sold at: a cost agreed in dirhams should not move
+      // because the rate has since drifted.
+      const costRate = currency === watch.purchaseCurrency && watch.purchaseFxRate
+        ? watch.purchaseFxRate
+        : appliedRate(currency, rates)
+      const minor = Math.round(input.purchaseAmount * 100)
+      const base = currency === BASE_CURRENCY
+        ? minor
+        : Math.round((minor * RATE_SCALE) / costRate)
+
+      if (base !== watch.purchasePriceGbp || minor !== watch.purchaseAmount) {
+        if (!can(actor.role, 'watch:amend')) {
+          throw new ForbiddenError('Changing what a watch cost is the owner’s to do.')
+        }
+        costBase = base
+        costPatch = {
+          purchaseAmount: minor,
+          purchaseCurrency: currency,
+          purchasePriceGbp: base,
+          purchasePriceUsd: base,
+          purchaseFxRate: costRate,
+          updatedAt: new Date(),
+          version: watch.version + 1,
+        }
+      }
+    }
+
+    const patch = {
+      invoiceNo: input.invoiceNo,
+      saleDate: input.saleDate,
+      saleCurrency: input.saleCurrency,
+      channel: input.channel,
+      paymentStatus: input.paymentStatus,
+      deliveryStatus: input.deliveryStatus,
+      customerName: input.customerName ?? null,
+      customerCompany: input.customerCompany ?? null,
+      notes: input.notes ?? null,
+      // Against the corrected cost, so the profit on the row agrees with the
+      // two figures either side of it the moment the dialog closes.
+      ...saleMoney(Math.round(input.saleAmount * 100), input.saleCurrency, rate, costBase),
+      updatedAt: new Date(),
+    }
+
+    await db.update(sales).set(patch).where(eq(sales.id, sale.id))
+    if (costPatch) await db.update(watches).set(costPatch).where(eq(watches.id, watch.id))
+
+    const changes = {
+      ...diff(sale, patch, [
+        'invoiceNo', 'saleDate', 'saleAmountGbp', 'saleCurrency', 'channel',
+        'paymentStatus', 'deliveryStatus', 'customerName', 'customerCompany', 'notes',
+        'profitGbp',
+      ]),
+      // The cost belongs to the watch rather than the sale, and this entry is
+      // already written against the watch, so it reads as one event: what the
+      // invoice said, what the watch cost, and what the two made.
+      ...(costPatch ? diff(watch, costPatch, ['purchasePriceGbp']) : {}),
+    }
+
+    // Audited against the watch, which is where the history of this piece is
+    // read. A sale has no page of its own to put a trail on.
+    await recordAudit({
+      entityType: 'Watch', entityId: watch.id, action: 'UPDATE', actorId: actor.id,
+      summary: `Sale ${sale.invoiceNo} corrected on stock ${watch.stockNo}`,
+      changes,
+    })
+
+    logger.info('sale corrected', { saleId: sale.id, watchId: watch.id, actorId: actor.id })
+    return watch.id
   })
 }
 

@@ -4,12 +4,36 @@ import { liveSale } from '../db/predicates'
 import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { SALE_FIELDS, type FilterClause } from '@/lib/filters'
-import type { SaleChannel } from '@/lib/enums'
+import type {
+  CurrencyCode, DeliveryStatus, PaymentStatus, SaleChannel,
+} from '@/lib/enums'
 
 export interface SaleListItem {
   id: string
   invoiceNo: string
   saleDate: Date
+  /**
+   * The amount and currency as actually agreed, alongside the base figures.
+   *
+   * Carried so a correction opens on what was typed rather than on a
+   * conversion of it: a sale struck at 55,000 dirhams should reappear as
+   * 55,000 dirhams, not as the dollar figure it was converted to and back.
+   * `saleAmount` is null on sales booked before the column existed, where the
+   * base figure is all there is.
+   */
+  saleAmount: number | null
+  saleCurrency: CurrencyCode
+  paymentStatus: PaymentStatus
+  deliveryStatus: DeliveryStatus
+  customerCompany: string | null
+  notes: string | null
+  /**
+   * What the watch cost, as agreed. The base figure is `costGbp`; these two
+   * are what was actually typed, so a correction opens on the same number
+   * rather than on a conversion of it.
+   */
+  purchaseAmount: number | null
+  purchaseCurrency: CurrencyCode
   amountUsd: number
   amountGbp: number
   profitUsd: number
@@ -97,6 +121,10 @@ export async function findSales(query: SaleQuery) {
       amountUsd: sales.saleAmountUsd, amountGbp: sales.saleAmountGbp,
       profitUsd: sales.profitUsd, profitGbp: sales.profitGbp, marginBps: sales.marginBps,
       channel: sales.channel, customerName: sales.customerName,
+      saleAmount: sales.saleAmount, saleCurrency: sales.saleCurrency,
+      paymentStatus: sales.paymentStatus, deliveryStatus: sales.deliveryStatus,
+      customerCompany: sales.customerCompany, notes: sales.notes,
+      purchaseAmount: watches.purchaseAmount, purchaseCurrency: watches.purchaseCurrency,
       stockNo: watches.stockNo, watchId: watches.id, model: watches.model,
       costGbp: watches.purchasePriceGbp, costUsd: watches.purchasePriceUsd,
       estSaleGbp: watches.estSaleGbp,
@@ -122,6 +150,10 @@ export async function findSales(query: SaleQuery) {
     items: rows.map((row): SaleListItem => ({
       ...row,
       channel: row.channel as SaleChannel,
+      saleCurrency: row.saleCurrency as CurrencyCode,
+      paymentStatus: row.paymentStatus as PaymentStatus,
+      deliveryStatus: row.deliveryStatus as DeliveryStatus,
+      purchaseCurrency: row.purchaseCurrency as CurrencyCode,
       vsEstimateGbp: row.estSaleGbp !== null ? row.amountGbp - row.estSaleGbp : null,
     })),
     total, page, perPage,

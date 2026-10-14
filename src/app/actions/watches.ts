@@ -8,7 +8,7 @@ import {
 } from '@/server/services/watch-service'
 import {
   watchCreateSchema, watchUpdateSchema, watchMoveSchema, watchPriceSchema,
-  watchAmendSchema, saleCreateSchema, fieldErrors, type ContentField,
+  watchAmendSchema, saleAmendSchema, saleCreateSchema, fieldErrors, type ContentField,
   type WatchAmendInput,
 } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
@@ -250,6 +250,35 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
     }
   } catch (error) {
     return toState(error, 'Could not record the sale.')
+  }
+}
+
+/**
+ * Correct a sale that has already been booked.
+ *
+ * Behind `sale:update`, which Managers and Owners hold. Both already hold
+ * `sale:delete` — the power to void the sale outright and book it again — so
+ * withholding the lesser, non-destructive version of the same correction from
+ * them would only push them towards the destructive one.
+ */
+export async function amendSaleAction(input: unknown): Promise<ActionState> {
+  const actor = await requireCapability('sale:update')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = saleAmendSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+
+  try {
+    const { amendSale } = await import('@/server/services/watch-service')
+    const watchId = await amendSale(parsed.data, actor)
+    refreshInventory()
+    revalidatePath('/sales')
+    revalidatePath(`/inventory/${watchId}`)
+    // No Shopify push: the watch was sold before and is sold now, so nothing
+    // the storefront can see has changed.
+    return { ok: true, message: 'Sale corrected.' }
+  } catch (error) {
+    return toState(error, 'Could not correct the sale.')
   }
 }
 

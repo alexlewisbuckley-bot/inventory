@@ -138,6 +138,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             result={{ ...result, items }}
             showCost={showCost}
             canVoid={can(user.role, 'sale:delete')}
+            canAmend={can(user.role, 'sale:update')}
+            canAmendCost={can(user.role, 'watch:amend')}
           />
         )}
       </Card>
