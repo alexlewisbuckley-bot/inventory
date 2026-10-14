@@ -20,6 +20,7 @@ const TASKS = [
   { title: 'Undo a sale recorded by mistake', body: 'Click the status chip on the sold row and choose “Void the sale”. The watch returns to stock and the invoice is kept, marked void.', href: '/inventory?status=SOLD' },
   { title: 'Find slow-moving stock', body: 'Reports → Ageing stock lists everything held longer than the warning threshold, oldest first.', href: '/reports/ageing' },
   { title: 'Work out what a salesperson is owed', body: 'Set each person\u2019s monthly retainer and share on Sales people. Reports \u2192 Commission then shows, month by month, the profit on their own sales, how much of it cleared the retainer and the commission that follows. Each month starts again.', href: '/reports/commission' },
+  { title: 'See whether a month actually made money', body: 'Reports \u2192 Profit & loss runs from what you invoiced, down through the cost of the stock, wages, commission and overheads, to what was left. It needs your running costs in first: Reports \u2192 Running costs, where you add the rent, insurance, software and any salaries outside the sales floor.', href: '/reports/pnl' },
   { title: 'Export for the accountant', body: 'Export on the inventory or sales page. You get a spreadsheet, honouring whatever filters you have applied.', href: '/sales' },
 ]
 

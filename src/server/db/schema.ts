@@ -8,7 +8,7 @@ import {
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
   ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
   ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
-  OFFER_STATUSES, OWNER_TYPES,
+  OFFER_STATUSES, OWNER_TYPES, type OverheadCadence, type OverheadCategory,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
@@ -1418,6 +1418,54 @@ void sql
 export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
 export type Session = typeof sessions.$inferSelect
+/**
+ * What the business costs to run, before a single watch is sold.
+ *
+ * Only the costs somebody types in. The sales retainers and the commission
+ * are already held against each salesperson and are read from there, so a
+ * wage cannot be entered twice and this table cannot drift from the
+ * commission report. The guard is structural: there is nowhere here to put
+ * a salesperson's retainer.
+ */
+export const overheads = pgTable(
+  'overheads',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    category: text('category').$type<OverheadCategory>().notNull().default('OTHER'),
+    /**
+     * Base minor units per occurrence, not per month.
+     *
+     * A rent billed quarterly is stored as the quarter's figure and the
+     * report divides it down; storing a third of it would lose the number
+     * anybody could check against the invoice.
+     */
+    amount: integer('amount').notNull(),
+    cadence: text('cadence').$type<OverheadCadence>().notNull().default('MONTHLY'),
+    /**
+     * The months this cost actually applies to.
+     *
+     * Without them, adding the rent today would rewrite every month of
+     * history, and a cost that stopped in March would go on being charged
+     * in October.
+     */
+    startsOn: date('starts_on').notNull(),
+    endsOn: date('ends_on'),
+    notes: text('notes'),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    activeIdx: index('overheads_active_idx').on(t.isActive),
+    periodIdx: index('overheads_period_idx').on(t.startsOn, t.endsOn),
+  }),
+)
+
+export type Overhead = typeof overheads.$inferSelect
+export type NewOverhead = typeof overheads.$inferInsert
 export type UserPreference = typeof userPreferences.$inferSelect
 export type Location = typeof locations.$inferSelect
 export type NewLocation = typeof locations.$inferInsert

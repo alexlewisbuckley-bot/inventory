@@ -358,6 +358,45 @@ export async function commissionForMonth(from: Date, to: Date) {
 }
 
 /**
+ * One month's trading, for the top of the profit and loss.
+ *
+ * Accrual: a sale counts in the month it was invoiced, whether or not the
+ * customer has paid, which is how a P&L reads and how the accounts will
+ * read. What has actually come in is returned alongside rather than instead,
+ * because the gap between the two is the thing a dealer wants to see — a
+ * strong month on paper with nothing banked is a different month.
+ *
+ * Cost of stock is derived from revenue less profit rather than summed from
+ * the watch, so the three lines of the statement are guaranteed to add up.
+ * Joining the watch and summing its cost separately would let a corrected
+ * sale leave gross profit disagreeing with its own arithmetic.
+ */
+export async function tradingForMonth(from: Date, to: Date) {
+  const rows = await db
+    .select({
+      invoiced: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+      profit: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
+      count: sql<number>`count(*)`,
+      received: sql<number>`coalesce(sum(${sales.saleAmountGbp}) filter (where ${sales.paymentStatus} = 'PAID'), 0)`,
+      unpaid: sql<number>`coalesce(sum(${sales.saleAmountGbp}) filter (where ${sales.paymentStatus} <> 'PAID'), 0)`,
+    })
+    .from(sales)
+    .where(and(liveSale(), gte(sales.saleDate, from), lte(sales.saleDate, to)))
+
+  const row = rows[0]
+  const invoiced = Number(row?.invoiced ?? 0)
+  const grossProfit = Number(row?.profit ?? 0)
+  return {
+    invoiced,
+    grossProfit,
+    costOfStock: invoiced - grossProfit,
+    count: Number(row?.count ?? 0),
+    received: Number(row?.received ?? 0),
+    unpaid: Number(row?.unpaid ?? 0),
+  }
+}
+
+/**
  * The commission one month's figures come to.
  *
  * Pure arithmetic over the row above, kept out of the component so the one

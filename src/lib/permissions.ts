@@ -36,6 +36,15 @@ export const CAPABILITIES = [
   'catalogue:read',
   'report:read', 'report:export',
   /**
+   * What the business costs to run, and the net profit that follows from it.
+   *
+   * Reading is `report:read` like any other figure. Changing one is the
+   * owner's alone and has its own capability, because the rent and the
+   * payroll are the numbers a net profit is built on: everybody who may see
+   * a P&L should not thereby be able to rewrite its cost base.
+   */
+  'overhead:manage',
+  /**
    * Your own sales figures, and nobody else's.
    *
    * Held apart from `report:read`, which is the whole business. A
@@ -159,7 +168,9 @@ const MANAGER: Capability[] = [
   'customer:delete', 'deal:delete',
 ]
 
-const OWNER: Capability[] = [...MANAGER, 'user:manage', 'settings:manage', 'watch:amend', 'trade:respond']
+const OWNER: Capability[] = [
+  ...MANAGER, 'user:manage', 'settings:manage', 'watch:amend', 'trade:respond', 'overhead:manage',
+]
 
 /**
  * A dealer we sell to. One capability, and it is a read.
