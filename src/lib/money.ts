@@ -58,6 +58,17 @@ export function formatPct(value: number | null | undefined, decimals = 1): strin
   return `${sign}${value.toFixed(decimals)}%`
 }
 
+/**
+ * A commission share, held in basis points and read as a percentage.
+ *
+ * Basis points so an eighth (1250) is representable at all; trailing zeros
+ * trimmed so the common quarter reads "25%" rather than "25.00%" and the
+ * uncommon eighth still reads "12.5%".
+ */
+export function formatShare(bps: number): string {
+  return `${Number((bps / 100).toFixed(2))}%`
+}
+
 export function currencySymbol(currency: Currency): string {
   return SYMBOL[currency]
 }

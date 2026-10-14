@@ -196,10 +196,24 @@ export async function saveSalesPersonAction(_prev: ActionState, formData: FormDa
 
   try {
     const { saveSalesPerson } = await import('@/server/services/reference-service')
+    // Typed as major units — nobody enters a retainer in fils — and as a
+    // percentage, because "25" is what the agreement says and basis points
+    // are an implementation detail of not losing a fils to rounding.
+    const retainer = Math.round(Number((formData.get('retainer')?.toString() ?? '0').replace(/[^0-9.]/g, '') || '0') * 100)
+    const rate = Number((formData.get('commissionPct')?.toString() ?? '0').replace(/[^0-9.]/g, '') || '0')
+    if (!Number.isFinite(retainer) || retainer < 0) {
+      return { ok: false, errors: { retainer: 'Enter a retainer, or zero.' } }
+    }
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      return { ok: false, errors: { commissionPct: 'Enter a share between 0 and 100.' } }
+    }
+
     await saveSalesPerson(id, {
       name: formData.get('name')?.toString() ?? '',
       userId: formData.get('userId')?.toString() || null,
       isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
+      retainer,
+      commissionBps: Math.round(rate * 100),
     }, actor)
     revalidatePath('/sales-people')
     revalidatePath('/reports/people')

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, Clock, Store, TrendingUp } from 'lucide-react'
+import { ArrowRight, Clock, Store, TrendingUp, Wallet } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import {
   salesByMonth, salesByPerson, summariseSales, supplierPerformance,
@@ -305,6 +305,8 @@ export default async function ReportsPage() {
         <ul className="grid gap-4 px-6 py-5 sm:grid-cols-2">
           <ReportLink href="/reports/ageing" icon={<Clock className="h-4 w-4" />} title="Ageing stock"
             description="Everything held longer than the warning threshold, oldest first." />
+          <ReportLink href="/reports/commission" icon={<Wallet className="h-4 w-4" />} title="Commission"
+            description="Retainers and the share each salesperson has earned above theirs, month by month." />
           <ReportLink href="/inventory?unpricedOnly=true" icon={<Store className="h-4 w-4" />} title="Unpriced stock"
             description="Watches with no estimated sale price, invisible to margin forecasting." />
         </ul>

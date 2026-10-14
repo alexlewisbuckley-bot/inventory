@@ -19,6 +19,7 @@ const TASKS = [
   { title: 'Mark a watch as sold', body: 'Click the status chip on any row and choose “Mark as sold”, or open the watch first. Profit and margin are worked out as you type.', href: '/inventory' },
   { title: 'Undo a sale recorded by mistake', body: 'Click the status chip on the sold row and choose “Void the sale”. The watch returns to stock and the invoice is kept, marked void.', href: '/inventory?status=SOLD' },
   { title: 'Find slow-moving stock', body: 'Reports → Ageing stock lists everything held longer than the warning threshold, oldest first.', href: '/reports/ageing' },
+  { title: 'Work out what a salesperson is owed', body: 'Set each person\u2019s monthly retainer and share on Sales people. Reports \u2192 Commission then shows, month by month, the profit on their own sales, how much of it cleared the retainer and the commission that follows. Each month starts again.', href: '/reports/commission' },
   { title: 'Export for the accountant', body: 'Export on the inventory or sales page. You get a spreadsheet, honouring whatever filters you have applied.', href: '/sales' },
 ]
 

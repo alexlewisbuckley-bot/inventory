@@ -894,6 +894,22 @@ export const salesPeople = pgTable(
      * deleting is for a name typed wrongly.
      */
     isActive: boolean('is_active').notNull().default(true),
+    /**
+     * What they are paid every month regardless, in base minor units.
+     *
+     * Also the threshold their own sales have to clear before any share is
+     * earned — "beyond their retainer" — so it does double duty and is one
+     * number rather than two that could disagree.
+     */
+    retainer: integer('retainer').notNull().default(0),
+    /**
+     * Their share of the profit above the retainer, in basis points.
+     *
+     * 2500 is the quarter everybody is on today. Basis points rather than a
+     * percent so an eighth is representable, and an integer rather than a
+     * float so two people on the same rate cannot disagree in the last fils.
+     */
+    commissionBps: integer('commission_bps').notNull().default(2500),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
