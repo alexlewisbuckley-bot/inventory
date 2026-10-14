@@ -35,6 +35,22 @@ export const CAPABILITIES = [
    */
   'catalogue:read',
   'report:read', 'report:export',
+  /**
+   * Your own sales figures, and nobody else's.
+   *
+   * Held apart from `report:read`, which is the whole business. A
+   * salesperson asking how their month is going is not asking to see the
+   * capital position, the supplier spend or what anybody else sold, and the
+   * answer to the narrow question should not require the wide capability.
+   *
+   * It carries a deliberate, narrow exception to the cost firewall: profit
+   * and margin on the watches this person sold, which cannot be given
+   * without implying what those watches cost. That is a smaller leak than
+   * `cost:read` — it is their own handful of sales rather than the whole
+   * book — and it is the price of a salesperson being able to see whether
+   * they are selling well or merely often.
+   */
+  'report:own',
   'data:import',
   'user:read', 'user:manage',
   'settings:read', 'settings:manage',
@@ -73,6 +89,13 @@ export type Capability = (typeof CAPABILITIES)[number]
 
 const VIEWER: Capability[] = [
   'watch:read', 'sale:read', 'supplier:read', 'location:read', 'owner:read', 'report:read',
+  // Redundant beside `report:read`, which is strictly wider, and held anyway
+  // so that the roles above this one are supersets of the ones beside them.
+  // The matrix test asserts that nobody holds a capability the Owner does
+  // not, and it is right to: a narrow capability invented for one role and
+  // never given to the roles above it is how somebody senior ends up unable
+  // to do something their junior can.
+  'report:own',
   'revenue:read', 'cost:read',
 ]
 
@@ -93,6 +116,10 @@ const SALES: Capability[] = [
   'activity:read', 'activity:create',
   'task:read', 'task:create', 'task:update',
   'request:read', 'request:create', 'request:update',
+  // Their own month, and nobody else's. Not `report:read`: that is the
+  // capital position and the supplier spend, which is not what somebody
+  // asking how they are doing wants to know.
+  'report:own',
 ]
 
 /**
@@ -174,6 +201,20 @@ export function assignableRoles(actorRole: Role): Role[] {
   if (actorRole === 'OWNER') return ['OWNER', 'MANAGER', 'STAFF', 'SALES', 'OPERATIONS', 'VIEWER', 'TRADER']
   if (actorRole === 'MANAGER') return ['STAFF', 'SALES', 'OPERATIONS', 'VIEWER', 'TRADER']
   return []
+}
+
+/**
+ * Whether this role sees the whole book of sales or only their own.
+ *
+ * A named helper rather than two inlined `can(...)` calls, because getting it
+ * backwards — checking the narrow capability first and letting an owner fall
+ * into the scoped view — is a silent failure that looks like working
+ * software.
+ */
+export function salesScope(role: Role | null | undefined): 'all' | 'own' | 'none' {
+  if (can(role, 'report:read')) return 'all'
+  if (can(role, 'report:own')) return 'own'
+  return 'none'
 }
 
 /**

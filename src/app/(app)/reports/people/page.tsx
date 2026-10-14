@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
-import { requireCapability } from '@/server/auth/session'
+import { requireAnyCapability } from '@/server/auth/session'
 import { salesByPerson } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
@@ -12,9 +12,10 @@ import { Bar, type BarDatum } from '@/components/charts/Bar'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
-import { listSalesPeople } from '@/server/services/reference-service'
+import { listSalesPeople, salesPersonForUser } from '@/server/services/reference-service'
 import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { formatPct } from '@/lib/money'
+import { salesScope } from '@/lib/permissions'
 import { formatDate } from '@/lib/dates'
 import { cn } from '@/lib/cn'
 
@@ -115,17 +116,27 @@ function movement(now: number, before: number): { text: string; tone: 'up' | 'do
 export default async function SalesByPersonPage({ searchParams }: {
   searchParams: { period?: string }
 }) {
-  const user = await requireCapability('report:read')
+  // Two legitimate doors: the whole book for a manager, your own month for
+  // somebody who sells. Which one you came through decides what is queried,
+  // not what is hidden afterwards.
+  const user = await requireAnyCapability('report:read', 'report:own')
+  const scope = salesScope(user.role)
 
   const key: PeriodKey = (searchParams.period && searchParams.period in PERIODS)
     ? searchParams.period as PeriodKey
     : 'month'
   const { from, to, prevFrom, prevTo, partial } = windowFor(key)
 
+  const me = scope === 'own' ? await salesPersonForUser(user.id) : null
+  // A scoped reader with no link to a salesperson is asked to be linked
+  // rather than shown an empty leaderboard they would read as "no sales".
+  const onlyMine = scope === 'own' ? me?.id ?? '__unlinked__' : undefined
+
   const [rows, previous, roster, rates, preferences] = await Promise.all([
-    salesByPerson(from, to),
-    key === 'all' ? Promise.resolve([]) : salesByPerson(prevFrom, prevTo),
-    listSalesPeople(),
+    salesByPerson(from, to, onlyMine),
+    key === 'all' ? Promise.resolve([]) : salesByPerson(prevFrom, prevTo, onlyMine),
+    // The roster is who else exists, which is not a scoped reader's business.
+    scope === 'all' ? listSalesPeople() : Promise.resolve([]),
     getRateTable(),
     getPreferencesFor(user.id),
   ])
@@ -184,7 +195,9 @@ export default async function SalesByPersonPage({ searchParams }: {
   // Nobody is dropped for having sold nothing. A leaderboard that lists only
   // the people who sold tells you who is ahead and hides the thing a manager
   // most needs to see.
-  const idle = roster.filter((person) => !people.some((row) => row.id === person.id))
+  const idle = scope === 'all'
+    ? roster.filter((person) => !people.some((row) => row.id === person.id))
+    : []
 
   const bars: BarDatum[] = people
     .filter((person) => person.profit !== 0 || person.sold > 0)
@@ -203,9 +216,17 @@ export default async function SalesByPersonPage({ searchParams }: {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: 'Reports', href: '/reports' }, { label: 'Sales by person' }]}
-        title="Sales by person"
-        description="Ranked on profit, which is the figure the business runs on. Revenue rewards whoever was handed the expensive watches."
+        // No parent crumb for a scoped reader: /reports is behind
+        // `report:read`, which they do not hold, so linking to it offers them
+        // a door that answers with a refusal. This page is the whole of the
+        // reports section as far as they are concerned.
+        breadcrumbs={scope === 'own'
+          ? undefined
+          : [{ label: 'Reports', href: '/reports' }, { label: 'Sales by person' }]}
+        title={scope === 'own' ? 'My sales' : 'Sales by person'}
+        description={scope === 'own'
+          ? 'What you have sold, and what it made. Nobody else\u2019s figures appear here.'
+          : 'Ranked on profit, which is the figure the business runs on. Revenue rewards whoever was handed the expensive watches.'}
       />
 
       <ReportTabs tabs={reportTabs(user.role)} />
@@ -262,7 +283,15 @@ export default async function SalesByPersonPage({ searchParams }: {
         </p>
       )}
 
-      {people.length === 0 ? (
+      {scope === 'own' && !me ? (
+        <Card>
+          <EmptyState
+            icon={<Users className="h-6 w-6" />}
+            title="Your account is not linked to a salesperson yet"
+            description="Until it is, there is no way to tell which sales are yours — so this shows nothing rather than guessing. Ask an owner to link you on the Sales people page."
+          />
+        </Card>
+      ) : people.length === 0 ? (
         <Card>
           <EmptyState
             icon={<Users className="h-6 w-6" />}
@@ -272,7 +301,8 @@ export default async function SalesByPersonPage({ searchParams }: {
           />
         </Card>
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-5">
+        <div className={cn('grid items-start gap-6', scope === 'all' && 'lg:grid-cols-5')}>
+          {scope === 'all' && (
           <ChartFrame
             className="lg:col-span-2"
             title="Realised profit"
@@ -289,8 +319,9 @@ export default async function SalesByPersonPage({ searchParams }: {
               <Bar data={bars} />
             </div>
           </ChartFrame>
+          )}
 
-          <Card className="overflow-hidden lg:col-span-3">
+          <Card className={cn('overflow-hidden', scope === 'all' && 'lg:col-span-3')}>
             <Table layout="fixed" minWidth="620px">
               <THead>
                 <TR>
@@ -365,10 +396,9 @@ export default async function SalesByPersonPage({ searchParams }: {
       )}
 
       <p className="mt-6 text-caption text-content-secondary">
-        A sale counts for whoever is named on it, which is set when it is booked and can be
-        corrected afterwards from the sales ledger. Sales with nobody against them are shown
-        as their own row rather than left out, so these figures always add up to the ledger.
-        Voided invoices count for nobody.
+        {scope === 'own'
+          ? 'A sale counts for you from the moment your name is put on it, which happens when it is booked. If one of yours is missing, ask whoever recorded it to name you on the sales ledger. Voided invoices count for nobody.'
+          : 'A sale counts for whoever is named on it, which is set when it is booked and can be corrected afterwards from the sales ledger. Sales with nobody against them are shown as their own row rather than left out, so these figures always add up to the ledger. Voided invoices count for nobody.'}
       </p>
     </>
   )

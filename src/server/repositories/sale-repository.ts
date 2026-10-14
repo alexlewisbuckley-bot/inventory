@@ -267,10 +267,14 @@ export async function supplierPerformance() {
  * of their own, because a report that quietly drops them makes the totals
  * disagree with the ledger and nobody can see why.
  */
-export async function salesByPerson(from?: Date, to?: Date) {
+export async function salesByPerson(from?: Date, to?: Date, onlyPersonId?: string) {
   const window: (SQL | undefined)[] = [liveSale()]
   if (from) window.push(gte(sales.saleDate, from))
   if (to) window.push(lte(sales.saleDate, to))
+  // Scoped at the query, not filtered after it. A salesperson's own figures
+  // are the only rows that leave the database for them, so there is nothing
+  // in the payload for a filter to fail to remove.
+  if (onlyPersonId) window.push(eq(sales.soldById, onlyPersonId))
 
   return db
     .select({
