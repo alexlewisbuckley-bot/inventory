@@ -213,6 +213,22 @@ export default async function CommissionPage({ searchParams }: {
         </>
       )}
 
+      {people.length > 0 && (
+        <p className="mt-4 text-small text-content-secondary">
+          {/* The two left-hand columns are the only ones on this page that
+              are typed rather than derived, and nothing else here says
+              where. Said plainly when they are all still zero, because
+              then the whole table reads as broken rather than unset. */}
+          {people.every((person) => person.retainer === 0)
+            ? 'Nobody has a retainer yet — set one, and the share above it, on '
+            : 'Retainers and shares are set on '}
+          <Link href="/sales-people" className="font-bold text-content-accent hover:underline">
+            Sales people
+          </Link>
+          .
+        </p>
+      )}
+
       <p className="mt-6 text-caption text-content-secondary">
         Commission is a quarter — or whatever share is set against each person — of the profit
         on the sales with their name on, once that month&rsquo;s profit has cleared their
