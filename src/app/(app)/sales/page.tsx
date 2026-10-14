@@ -15,6 +15,7 @@ import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, SALE_CHANNELS, type SaleChannel } from '@/lib/enums'
 import { can, canSeeCost } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
+import { listSalesPeople } from '@/server/services/reference-service'
 
 export const metadata: Metadata = { title: 'Sales' }
 export const dynamic = 'force-dynamic'
@@ -42,11 +43,12 @@ function parseQuery(searchParams: SearchParams): SaleQuery {
 export default async function SalesPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('sale:read')
   const query = parseQuery(searchParams)
-  const [result, summary, rates, preferences] = await Promise.all([
+  const [result, summary, rates, preferences, salesPeople] = await Promise.all([
     findSales(query),
     summariseSales(query),
     getRateTable(),
     getPreferencesFor(user.id),
+    listSalesPeople(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -140,6 +142,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             canVoid={can(user.role, 'sale:delete')}
             canAmend={can(user.role, 'sale:update')}
             canAmendCost={can(user.role, 'watch:amend')}
+            salesPeople={salesPeople}
           />
         )}
       </Card>

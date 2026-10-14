@@ -339,6 +339,14 @@ export const saleCreateSchema = z.object({
   depositGbp: z.union([money('Deposit'), z.literal('')]).optional()
     .transform((v) => (typeof v === 'number' ? v : null)),
   notes: optionalText(1000),
+  /**
+   * Who sold it, as against who is typing this in.
+   *
+   * Optional, and empty means "not recorded" rather than anybody in
+   * particular. A sale booked in a hurry with the field left alone must not
+   * quietly credit whoever was at the keyboard.
+   */
+  soldById: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
 })
 export type SaleCreateInput = z.infer<typeof saleCreateSchema>
 
@@ -378,6 +386,14 @@ export const saleAmendSchema = z.object({
   customerName: optionalText(120),
   customerCompany: optionalText(160),
   notes: optionalText(1000),
+  /**
+   * Who sold it, as against who is typing this in.
+   *
+   * Optional, and empty means "not recorded" rather than anybody in
+   * particular. A sale booked in a hurry with the field left alone must not
+   * quietly credit whoever was at the keyboard.
+   */
+  soldById: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
   /**
    * What the watch cost, which is the stock record's figure rather than the
    * sale's.

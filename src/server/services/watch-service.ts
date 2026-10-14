@@ -385,6 +385,7 @@ export async function recordSale(
       deliveryStatus: input.deliveryStatus,
       depositGbp: input.depositGbp ?? 0,
       channel: input.channel,
+      soldById: input.soldById ?? null,
       notes: input.notes ?? null,
       recordedById: actor.id,
     })
@@ -584,6 +585,7 @@ export async function amendSale(input: SaleAmendInput, actor: SessionUser): Prom
       deliveryStatus: input.deliveryStatus,
       customerName: input.customerName ?? null,
       customerCompany: input.customerCompany ?? null,
+      soldById: input.soldById ?? null,
       notes: input.notes ?? null,
       // Against the corrected cost, so the profit on the row agrees with the
       // two figures either side of it the moment the dialog closes.
@@ -598,7 +600,7 @@ export async function amendSale(input: SaleAmendInput, actor: SessionUser): Prom
       ...diff(sale, patch, [
         'invoiceNo', 'saleDate', 'saleAmountGbp', 'saleCurrency', 'channel',
         'paymentStatus', 'deliveryStatus', 'customerName', 'customerCompany', 'notes',
-        'profitGbp',
+        'soldById', 'profitGbp',
       ]),
       // The cost belongs to the watch rather than the sale, and this entry is
       // already written against the watch, so it reads as one event: what the

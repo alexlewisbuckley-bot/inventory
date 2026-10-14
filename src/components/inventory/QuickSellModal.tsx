@@ -38,6 +38,11 @@ export interface SellCustomerOption {
   customerType: string
 }
 
+export interface SalesPersonOption {
+  id: string
+  name: string
+}
+
 export interface SellDealOption {
   id: string
   title: string
@@ -53,11 +58,19 @@ export interface SellDealOption {
  * opening the record first. Defaults the sale price to the estimate and the
  * date to today, so the common case is two keystrokes and Enter.
  */
-export function QuickSellModal({ open, watch, customers = [], deals = [], onClose, onSold }: {
+export function QuickSellModal({
+  open, watch, customers = [], deals = [], salesPeople = [], onClose, onSold,
+}: {
   open: boolean
   watch: QuickSellTarget | null
   customers?: SellCustomerOption[]
   deals?: SellDealOption[]
+  /**
+   * Who may be credited with the sale. Empty while nobody has been added,
+   * in which case the field does not appear rather than offering an empty
+   * menu nobody can satisfy.
+   */
+  salesPeople?: SalesPersonOption[]
   onClose: () => void
   onSold: () => void
 }) {
@@ -68,6 +81,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
   const [invoiceNo, setInvoiceNo] = useState('')
   const [saleDate, setSaleDate] = useState(toDateInput(new Date()))
   const [channel, setChannel] = useState('RETAIL')
+  const [soldById, setSoldById] = useState('')
   const [buyerFirst, setBuyerFirst] = useState('')
   const [buyerLast, setBuyerLast] = useState('')
   const [buyerCountry, setBuyerCountry] = useState('')
@@ -115,6 +129,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
       ? formatMoneyInput(String(fromBase(watch.estSaleGbp, display, rates) / 100))
       : '')
     setInvoiceNo('')
+    setSoldById('')
     setSaleDate(toDateInput(new Date()))
     setCustomerName('')
     setCustomerCompany('')
@@ -182,6 +197,7 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
     const minor = parseMoneyInput(amount)
     data.set('watchId', watch.id)
     data.set('invoiceNo', invoiceNo)
+    data.set('soldById', soldById)
     data.set('saleDate', saleDate)
     data.set('saleAmount', minor !== null ? String(minor / 100) : '')
     data.set('saleCurrency', currency)
@@ -279,6 +295,21 @@ export function QuickSellModal({ open, watch, customers = [], deals = [], onClos
           hint={channel === 'TRADE' ? 'Sold to another dealer.' : channel === 'RETAIL' ? 'Sold to an end customer.' : undefined}
           options={SALE_CHANNELS.map((c) => ({ value: c, label: SALE_CHANNEL_LABELS[c] }))}
         />
+        {/* Who sold it, which is not who is typing. Left blank by default
+            rather than guessing at the person signed in: on a busy day one
+            person books in another's sales, and a name credited by accident
+            is worse than a blank the report can tell you about. */}
+        {salesPeople.length > 0 && (
+          <SelectField
+            label="Sold by"
+            value={soldById}
+            onChange={(e) => setSoldById(e.target.value)}
+            placeholder="Not recorded"
+            hint="Who closed it, not who is entering it."
+            options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
+            error={errors.soldById}
+          />
+        )}
       </div>
 
       {/* Who bought it.

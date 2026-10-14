@@ -20,6 +20,7 @@ import { FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
+import { listSalesPeople } from '@/server/services/reference-service'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
 import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
 import { formatPct } from '@/lib/money'
@@ -132,7 +133,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
   const [
     result, summary, locationOptions, ownerOptions, supplierOptions, brandOptions, rates, preferences,
-    unpricedCount, customers, dealsByWatch, savedViews, facets,
+    unpricedCount, customers, dealsByWatch, savedViews, facets, salesPeople,
   ] = await Promise.all([
     findWatches(query),
     summariseInventory(query),
@@ -155,6 +156,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     // query, so one round trip answers both and the bar cannot be a moment
     // out of date with the rows underneath it.
     stockFacets(query),
+    // Who may be credited with a sale. Loaded with the page so the sell
+    // dialog can offer the list without a round trip, like the customers
+    // and deals above it.
+    listSalesPeople(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -294,6 +299,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
             locations={locationOptions}
             capabilities={capabilities}
             customers={customers}
+            salesPeople={salesPeople}
             dealsByWatch={dealsByWatch}
           />
         </Suspense>

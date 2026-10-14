@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
-import { brands, locations, sales, suppliers, users, watches } from '../db/schema'
+import { brands, locations, sales, salesPeople, suppliers, users, watches } from '../db/schema'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { SALE_FIELDS, type FilterClause } from '@/lib/filters'
 import type {
@@ -34,6 +34,13 @@ export interface SaleListItem {
    */
   purchaseAmount: number | null
   purchaseCurrency: CurrencyCode
+  /**
+   * Who sold it, as against `recordedByName`, who typed it in. Null on every
+   * sale booked before the list existed, and the reports say so rather than
+   * guessing.
+   */
+  soldById: string | null
+  soldByName: string | null
   amountUsd: number
   amountGbp: number
   profitUsd: number
@@ -73,6 +80,7 @@ function filters(query: SaleQuery): SQL | undefined {
     clauses.push(or(
       like(sql`lower(${sales.invoiceNo})`, term),
       like(sql`lower(${sales.customerName})`, term),
+      like(sql`lower(${salesPeople.name})`, term),
       like(sql`lower(${watches.model})`, term),
       like(sql`cast(${watches.stockNo} as text)`, term),
     ))
@@ -96,6 +104,7 @@ const SALE_COLUMNS: ColumnMap = {
   saleAmountGbp: { column: sales.saleAmountGbp, kind: 'money' },
   profitGbp: { column: sales.profitGbp, kind: 'money' },
   saleDate: { column: sales.saleDate, kind: 'date' },
+  soldById: { column: sales.soldById, kind: 'enum' },
 }
 
 function order(query: SaleQuery): SQL {
@@ -125,6 +134,7 @@ export async function findSales(query: SaleQuery) {
       paymentStatus: sales.paymentStatus, deliveryStatus: sales.deliveryStatus,
       customerCompany: sales.customerCompany, notes: sales.notes,
       purchaseAmount: watches.purchaseAmount, purchaseCurrency: watches.purchaseCurrency,
+      soldById: sales.soldById, soldByName: salesPeople.name,
       stockNo: watches.stockNo, watchId: watches.id, model: watches.model,
       costGbp: watches.purchasePriceGbp, costUsd: watches.purchasePriceUsd,
       estSaleGbp: watches.estSaleGbp,
@@ -135,6 +145,10 @@ export async function findSales(query: SaleQuery) {
       .innerJoin(brands, eq(brands.id, watches.brandId))
       .innerJoin(suppliers, eq(suppliers.id, watches.supplierId))
       .innerJoin(users, eq(users.id, sales.recordedById))
+      // Left, not inner: a sale with nobody against it is still a sale, and
+      // an inner join would quietly drop every historical row from the
+      // ledger.
+      .leftJoin(salesPeople, eq(salesPeople.id, sales.soldById))
       .where(where)
       .orderBy(order(query))
       .limit(perPage)
@@ -142,6 +156,10 @@ export async function findSales(query: SaleQuery) {
     db.select({ value: count() })
       .from(sales)
       .innerJoin(watches, eq(watches.id, sales.watchId))
+      // The same joins as the page query above: the search clause can name a
+      // salesperson, and a count whose FROM list is narrower than the WHERE
+      // it is given is a query that does not run at all.
+      .leftJoin(salesPeople, eq(salesPeople.id, sales.soldById))
       .where(where),
   ])
 
@@ -185,6 +203,7 @@ export async function summariseSales(query: SaleQuery): Promise<SalesSummary> {
     })
     .from(sales)
     .innerJoin(watches, eq(watches.id, sales.watchId))
+    .leftJoin(salesPeople, eq(salesPeople.id, sales.soldById))
     .where(filters(query))
 
   const row = rows[0]
@@ -238,6 +257,41 @@ export async function supplierPerformance() {
     // matter.
     .having(sql`count(${watches.id}) > 0`)
     .orderBy(desc(sql`coalesce(sum(${watches.purchasePriceGbp}), 0)`))
+}
+
+/**
+ * What each person sold, for the month-end conversation.
+ *
+ * Counts live sales only — a voided invoice is not a sale anybody should be
+ * credited with — and includes the sales nobody is recorded against as a row
+ * of their own, because a report that quietly drops them makes the totals
+ * disagree with the ledger and nobody can see why.
+ */
+export async function salesByPerson(from?: Date, to?: Date) {
+  const window: (SQL | undefined)[] = [liveSale()]
+  if (from) window.push(gte(sales.saleDate, from))
+  if (to) window.push(lte(sales.saleDate, to))
+
+  return db
+    .select({
+      personId: sales.soldById,
+      // Coalesced here rather than in the component, so the sort below puts
+      // the unattributed row where its figures belong rather than at the end.
+      personName: sql<string>`coalesce(${salesPeople.name}, 'Not recorded')`,
+      soldCount: count(sales.id),
+      revenueGbp: sql<number>`coalesce(sum(${sales.saleAmountGbp}), 0)`,
+      profitGbp: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
+      // Weighted by cost rather than a mean of percentages, which would
+      // over-weight the cheap watches — the same way the ledger's own
+      // summary does it, so the two agree.
+      costGbp: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
+    })
+    .from(sales)
+    .innerJoin(watches, eq(watches.id, sales.watchId))
+    .leftJoin(salesPeople, eq(salesPeople.id, sales.soldById))
+    .where(and(...window.filter(Boolean) as SQL[]))
+    .groupBy(sales.soldById, salesPeople.name)
+    .orderBy(desc(sql`coalesce(sum(${sales.profitGbp}), 0)`))
 }
 
 export { locations }

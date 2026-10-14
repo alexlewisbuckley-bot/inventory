@@ -826,6 +826,14 @@ export const sales = pgTable(
     marginBps: integer('margin_bps').notNull(),
     notes: text('notes'),
     recordedById: text('recorded_by_id').notNull().references(() => users.id),
+    /**
+     * Who sold it, which is not the same question as who recorded it.
+     *
+     * Nullable, and it stays nullable: every sale booked before the list
+     * existed has no answer, and inventing one would put a number against a
+     * name that did not earn it.
+     */
+    soldById: text('sold_by_id').references((): AnyPgColumn => salesPeople.id, { onDelete: 'set null' }),
 
     /**
      * A voided sale is kept, not deleted. An invoice that was issued and then
@@ -854,7 +862,46 @@ export const sales = pgTable(
     watchIdx: index('sales_watch_live_idx').on(t.watchId),
     invoiceIdx: index('sales_invoice_live_idx').on(t.invoiceNo),
     dateIdx: index('sales_date_idx').on(t.saleDate),
+    soldByIdx: index('sales_sold_by_idx').on(t.soldById),
     channelIdx: index('sales_channel_idx').on(t.channel),
+  }),
+)
+
+/**
+ * Who sold the watch, as against who typed the sale in.
+ *
+ * A list of its own rather than the user table, because selling does not
+ * require a login: a seat costs money and widens the attack surface, and
+ * somebody on the shop floor who never opens the system still closed the
+ * deal. The link to a user is optional, so the two can be tied together
+ * where both exist.
+ */
+export const salesPeople = pgTable(
+  'sales_people',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    /**
+     * Where this person also signs in. `onDelete: 'set null'` because losing
+     * an account must not take the attribution of every sale they ever made
+     * with it.
+     */
+    userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Somebody who has left stops being offered without their past sales
+     * disappearing from a report. Deactivating is the ordinary act here;
+     * deleting is for a name typed wrongly.
+     */
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('sales_people_slug_idx').on(t.slug),
+    activeIdx: index('sales_people_active_idx').on(t.isActive),
   }),
 )
 

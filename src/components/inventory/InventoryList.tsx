@@ -21,7 +21,8 @@ import { parseMoneyInput } from '@/lib/money'
 import { BulkActionBar } from './BulkActionBar'
 import { ColumnPicker, type ColumnDefinition } from './ColumnPicker'
 import {
-  QuickSellModal, type QuickSellTarget, type SellCustomerOption, type SellDealOption,
+  QuickSellModal, type QuickSellTarget, type SalesPersonOption, type SellCustomerOption,
+  type SellDealOption,
 } from './QuickSellModal'
 import { HoldModal, type HoldTarget } from './HoldModal'
 import { InlinePriceCell } from './InlinePriceCell'
@@ -123,6 +124,7 @@ export interface InventoryListProps {
   capabilities: Record<Capability, boolean>
   /** The customer book, so a sale can be attributed without leaving the row. */
   customers?: SellCustomerOption[]
+  salesPeople?: SalesPersonOption[]
   /** Open deals keyed by watch, so selling one closes the deal it came from. */
   dealsByWatch?: Record<string, SellDealOption[]>
 }
@@ -142,7 +144,7 @@ export interface InventoryListProps {
  * so scroll position and selection survive.
  */
 export function InventoryList({
-  result, locations, capabilities, customers = [], dealsByWatch = {},
+  result, locations, capabilities, customers = [], salesPeople = [], dealsByWatch = {},
 }: InventoryListProps) {
   const query = useListQuery()
   const router = useRouter()
@@ -454,6 +456,7 @@ export function InventoryList({
       />
 
       <QuickSellModal
+        salesPeople={salesPeople}
         open={sellTarget !== null}
         watch={sellTarget}
         customers={customers}

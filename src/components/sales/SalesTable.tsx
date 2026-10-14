@@ -18,6 +18,7 @@ import type { SaleListItem } from '@/server/repositories/sale-repository'
 
 export function SalesTable({
   result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
+  salesPeople = [],
 }: {
   result: { items: SaleListItem[]; total: number; page: number; perPage: number }
   /**
@@ -53,6 +54,8 @@ export function SalesTable({
    * sales page would be the same power by another door.
    */
   canAmendCost?: boolean
+  /** Who may be credited with a sale, for the correction dialog. */
+  salesPeople?: Array<{ id: string; name: string }>
 }) {
   const query = useListQuery()
   const router = useRouter()
@@ -76,7 +79,7 @@ export function SalesTable({
         // carried 200px of slack for a labelled Void button, which put the
         // table past the width of a laptop and left the date column clipped
         // behind a sideways scroll. A menu needs a quarter of that.
-        minWidth={`${(showCost ? 1170 : 820) + 56}px`}
+        minWidth={`${(showCost ? 1170 : 820) + 110 + 56}px`}
       >
         <THead>
           <TR>
@@ -87,6 +90,7 @@ export function SalesTable({
                 and brand: measured at 171px for the longest in stock. */}
             <TH width="176px">Watch</TH>
             <TH width="120px">Customer</TH>
+            <TH width="110px">Sold by</TH>
             <TH width="100px">Channel</TH>
             {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
@@ -114,6 +118,12 @@ export function SalesTable({
                 </Link>
               </TD>
               <TD className="text-content-secondary">{sale.customerName ?? '—'}</TD>
+              {/* "Not recorded" rather than a dash: a blank here is a fact
+                  about every sale booked before the list existed, and it is
+                  worth distinguishing from a customer nobody captured. */}
+              <TD className={cn(!sale.soldByName && 'text-content-muted')}>
+                {sale.soldByName ?? 'Not recorded'}
+              </TD>
               <TD>
                 <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>
               </TD>
@@ -156,6 +166,7 @@ export function SalesTable({
                     customerName: sale.customerName,
                     customerCompany: sale.customerCompany,
                     notes: sale.notes,
+                    soldById: sale.soldById,
                     purchaseAmount: sale.purchaseAmount,
                     purchaseCurrency: sale.purchaseCurrency,
                     costGbp: sale.costGbp,
@@ -189,6 +200,7 @@ export function SalesTable({
         open={editTarget !== null}
         target={editTarget}
         canAmendCost={canAmendCost}
+        salesPeople={salesPeople}
         onClose={() => setEditTarget(null)}
         onSaved={() => router.refresh()}
       />
