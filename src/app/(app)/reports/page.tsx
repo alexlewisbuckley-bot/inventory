@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Clock, Store, TrendingUp } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
-import { salesByMonth, summariseSales, supplierPerformance } from '@/server/repositories/sale-repository'
+import {
+  salesByMonth, salesByPerson, summariseSales, supplierPerformance,
+} from '@/server/repositories/sale-repository'
 import { stockByLocation, summariseInventory, findAgeingStock } from '@/server/repositories/watch-repository'
 import { tradeVsRetail } from '@/server/repositories/crm-repository'
 import { watchQuerySchema } from '@/lib/validation'
@@ -10,6 +12,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader, StatCard, EmptyState } from '@/components/ui'
 import { MonthlyChart } from '@/components/reports/MonthlyChart'
 import { formatPct } from '@/lib/money'
+import { cn } from '@/lib/cn'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
@@ -23,12 +26,14 @@ export default async function ReportsPage() {
 
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
   const [
-    inventory, sales, monthly, suppliers, byLocation, ageing, rates, preferences, segments,
+    inventory, sales, monthly, suppliers, people, byLocation, ageing, rates, preferences,
+    segments,
   ] = await Promise.all([
     summariseInventory(activeQuery),
     summariseSales({}),
     salesByMonth(12),
     supplierPerformance(),
+    salesByPerson(),
     stockByLocation(),
     findAgeingStock(90, 100),
     getRateTable(),
@@ -153,6 +158,60 @@ export default async function ReportsPage() {
       </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
+        {/* Who sold what. Kept beside supplier performance because the two
+            answer the same shape of question from opposite ends — what the
+            stock cost to get in, and who got it back out. */}
+        <Card>
+          <CardHeader
+            title="Sales by person"
+            description={people.length > 0 ? 'Realised profit, best first' : undefined}
+          />
+          {people.length === 0 ? (
+            <CardBody className="text-small text-content-secondary">
+              No sales recorded yet. Once a sale names who closed it, this is where
+              the month adds up.
+            </CardBody>
+          ) : (
+            <ul className="divide-y divide-line-subtle">
+              {people.map((person) => (
+                <li key={person.personId ?? 'unattributed'} className="px-6 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      {/* The unattributed row is deliberately present and
+                          deliberately quiet: dropping it would make these
+                          figures disagree with the ledger with nothing on
+                          screen to explain the gap. */}
+                      <p className={cn(
+                        'truncate text-body font-bold',
+                        person.personId ? 'text-content-primary' : 'text-content-muted',
+                      )}>
+                        {person.personName}
+                      </p>
+                      <p className="text-caption text-content-secondary">
+                        {Number(person.soldCount)} sold · {money(Number(person.revenueGbp))}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className={
+                        Number(person.profitGbp) >= 0
+                          ? 'text-body font-bold tabular-nums text-content-accent'
+                          : 'text-body font-bold tabular-nums text-state-danger'
+                      }>
+                        {signed(Number(person.profitGbp))}
+                      </p>
+                      <p className="text-caption tabular-nums text-content-secondary">
+                        {Number(person.costGbp) > 0
+                          ? `${formatPct((Number(person.profitGbp) / Number(person.costGbp)) * 100)} margin`
+                          : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
         <Card>
           <CardHeader title="Supplier performance" description="Spend against realised profit" />
           <ul className="divide-y divide-line-subtle">

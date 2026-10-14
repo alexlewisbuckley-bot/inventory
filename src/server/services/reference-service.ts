@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, count, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { alias } from 'drizzle-orm/pg-core'
 import { brands, locations, owners, sales, suppliers, users, watches } from '../db/schema'
@@ -372,4 +372,20 @@ export async function createOrFindSupplier(
     })
     return { id, name, created: true }
   })
+}
+
+/**
+ * The people who sell, for a dropdown.
+ *
+ * Active ones only and in their own order: a leaver stops being offered
+ * without their past sales vanishing from a report, which is the whole reason
+ * the list carries `isActive` rather than being deleted from.
+ */
+export async function listSalesPeople(): Promise<Array<{ id: string; name: string }>> {
+  const { salesPeople } = await import('../db/schema')
+  return db
+    .select({ id: salesPeople.id, name: salesPeople.name })
+    .from(salesPeople)
+    .where(and(eq(salesPeople.isActive, true), isNull(salesPeople.deletedAt)))
+    .orderBy(asc(salesPeople.sortOrder), asc(salesPeople.name))
 }

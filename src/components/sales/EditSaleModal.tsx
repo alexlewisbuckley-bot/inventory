@@ -29,6 +29,7 @@ export interface EditSaleTarget {
   customerName: string | null
   customerCompany: string | null
   notes: string | null
+  soldById: string | null
   /** The watch's cost, as agreed, with the base figure as the fallback. */
   purchaseAmount: number | null
   purchaseCurrency: CurrencyCode
@@ -57,9 +58,13 @@ const options = <T extends string>(values: readonly T[], labels: Record<T, strin
  * the customer record, which is editable in the customer book, and a second
  * editable copy of a phone number is how two copies come to disagree.
  */
-export function EditSaleModal({ open, target, canAmendCost = false, onClose, onSaved }: {
+export function EditSaleModal({
+  open, target, canAmendCost = false, salesPeople = [], onClose, onSaved,
+}: {
   open: boolean
   target: EditSaleTarget | null
+  /** Who may be credited. Empty hides the field rather than offering nothing. */
+  salesPeople?: Array<{ id: string; name: string }>
   /**
    * Whether this reader may restate what the watch cost.
    *
@@ -85,6 +90,7 @@ export function EditSaleModal({ open, target, canAmendCost = false, onClose, onS
   const [customerName, setCustomerName] = useState('')
   const [customerCompany, setCustomerCompany] = useState('')
   const [notes, setNotes] = useState('')
+  const [soldById, setSoldById] = useState('')
   const [cost, setCost] = useState('')
   const [costCurrency, setCostCurrency] = useState<CurrencyCode>(BASE_CURRENCY)
   const [busy, setBusy] = useState(false)
@@ -109,6 +115,7 @@ export function EditSaleModal({ open, target, canAmendCost = false, onClose, onS
     setCustomerName(target.customerName ?? '')
     setCustomerCompany(target.customerCompany ?? '')
     setNotes(target.notes ?? '')
+    setSoldById(target.soldById ?? '')
     const paid = target.purchaseAmount ?? target.costGbp
     setCostCurrency(target.purchaseAmount === null ? BASE_CURRENCY : target.purchaseCurrency)
     setCost(paid === null ? '' : formatMoneyInput(String(paid / 100)))
@@ -132,6 +139,7 @@ export function EditSaleModal({ open, target, canAmendCost = false, onClose, onS
       customerName,
       customerCompany,
       notes,
+      soldById,
       // Left out entirely when this reader may not change it, so the dialog
       // cannot send back a figure it never showed them.
       ...(canAmendCost ? { purchaseAmount: cost, purchaseCurrency: costCurrency } : {}),
@@ -226,6 +234,16 @@ export function EditSaleModal({ open, target, canAmendCost = false, onClose, onS
           onChange={(event) => setDeliveryStatus(event.target.value)}
           error={errors.deliveryStatus}
         />
+        {salesPeople.length > 0 && (
+          <SelectField
+            label="Sold by"
+            value={soldById}
+            onChange={(event) => setSoldById(event.target.value)}
+            placeholder="Not recorded"
+            options={salesPeople.map((person) => ({ value: person.id, label: person.name }))}
+            error={errors.soldById}
+          />
+        )}
         <TextField
           label="Customer"
           value={customerName}
