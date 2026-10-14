@@ -1,5 +1,7 @@
 'use client'
+import { BASE_CURRENCY } from '@/lib/enums'
 
+import { moneyPrefix } from '@/lib/currency'
 import { SelectField, TextField, TextareaField } from '@/components/ui'
 import { Composer } from './Composer'
 import { recordEnquiryAction } from '@/app/actions/crm'
@@ -51,7 +53,7 @@ export function EnquiryComposer({ can, requestId, suppliers, label = 'Log a supp
             <TextField
               name="quotedGbp"
               label="Quoted"
-              prefix="£"
+              prefix={moneyPrefix(BASE_CURRENCY)}
               inputMode="decimal"
               hint="Only if they gave a number."
             />

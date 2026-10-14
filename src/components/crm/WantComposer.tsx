@@ -1,5 +1,7 @@
 'use client'
+import { BASE_CURRENCY } from '@/lib/enums'
 
+import { moneyPrefix } from '@/lib/currency'
 import { useState } from 'react'
 import { ComboSelect, SelectField, TextField, TextareaField, useToast } from '@/components/ui'
 import { Composer } from './Composer'
@@ -91,7 +93,7 @@ export function WantComposer({ can, customerId, customers, brands, owners, label
             <TextField
               name="budgetGbp"
               label="Budget"
-              prefix="£"
+              prefix={moneyPrefix(BASE_CURRENCY)}
               inputMode="decimal"
               hint="What they will go to. Leave blank if it has not come up."
               error={state.errors?.budgetGbp}

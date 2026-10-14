@@ -195,6 +195,31 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.status !== undefined) patch.status = input.status
     if (input.purchaseDate !== undefined) patch.purchaseDate = input.purchaseDate
 
+    /**
+     * Renaming the piece.
+     *
+     * Refused by name rather than by constraint: the unique index would stop
+     * a collision either way, but "duplicate key value violates
+     * watches_stock_no_idx" is not a sentence anybody can act on, and the
+     * useful fact — which watch is already using it — is one query away.
+     *
+     * The storefront follows on the next push. Its SKU is this number, and
+     * the sync matches a page to a watch by the product id it last pushed
+     * to, so the listing is renamed rather than archived and rebuilt.
+     */
+    if (input.stockNo !== undefined && input.stockNo !== existing.stockNo) {
+      const taken = await db.select({ stockNo: watches.stockNo, model: watches.model })
+        .from(watches)
+        .where(and(eq(watches.stockNo, input.stockNo), isNull(watches.deletedAt)))
+        .limit(1)
+      if (taken[0]) {
+        throw new ConflictError(`Stock number ${input.stockNo} is already ${taken[0].model}.`, {
+          stockNo: `Already used by ${taken[0].model}.`,
+        })
+      }
+      patch.stockNo = input.stockNo
+    }
+
     if (input.purchaseAmount !== undefined) {
       const minor = Math.round(input.purchaseAmount * 100)
       patch.purchaseAmount = minor
@@ -257,6 +282,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     }
 
     const changes = diff(existing, patch, [
+      'stockNo',
       'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
       'tradePriceGbp',
@@ -860,4 +886,42 @@ async function notifyTeam(
       id: newId('ntf'), userId: recipient.id, type, title, body, entityType, entityId,
     })
   }
+}
+
+/**
+ * Record that a sale has been paid in full.
+ *
+ * Deliberately one-way and deliberately narrow: it sets the payment status
+ * and nothing else. Anything more — a part payment, a refund, a correction to
+ * the figure — is the correction dialog's job, where the whole invoice is in
+ * front of somebody.
+ *
+ * A voided invoice is refused. Money against a sale that was cancelled is a
+ * conversation, not a status change.
+ */
+export async function markSalePaid(saleId: string, actor: SessionUser): Promise<void> {
+  await withTransaction(async () => {
+    const rows = await db.select().from(sales).where(eq(sales.id, saleId)).limit(1)
+    const sale = rows[0]
+    if (!sale || sale.deletedAt) throw new NotFoundError('Sale')
+    if (sale.voidedAt) {
+      throw new ValidationError('That invoice was voided. A payment against it needs looking at rather than ticking off.')
+    }
+    // Already paid: nothing to write, and no audit entry claiming something
+    // happened. Two people clicking the same button is not two payments.
+    if (sale.paymentStatus === 'PAID') return
+
+    const watchRows = await db.select({ stockNo: watches.stockNo })
+      .from(watches).where(eq(watches.id, sale.watchId)).limit(1)
+
+    await db.update(sales)
+      .set({ paymentStatus: 'PAID', updatedAt: new Date() })
+      .where(eq(sales.id, saleId))
+
+    await recordAudit({
+      entityType: 'Watch', entityId: sale.watchId, action: 'UPDATE', actorId: actor.id,
+      summary: `Invoice ${sale.invoiceNo} marked paid in full${watchRows[0] ? ` — stock ${watchRows[0].stockNo}` : ''}`,
+      changes: { paymentStatus: { from: sale.paymentStatus, to: 'PAID' } },
+    })
+  })
 }

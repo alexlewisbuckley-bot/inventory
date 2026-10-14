@@ -190,6 +190,15 @@ export const watchUpdateSchema = watchCreateSchema.partial().extend({
   /** Optimistic-concurrency token read when the form was opened. */
   version: z.coerce.number().int().positive(),
   status: z.enum(WATCH_STATUSES).optional(),
+  /**
+   * The number the piece is called by.
+   *
+   * Absent from the create schema on purpose — it is allocated server-side
+   * inside the transaction so two concurrent intakes cannot claim one — but
+   * correctable afterwards, because the accounts own the numbering and a
+   * figure the business reconciles against cannot be unchangeable here.
+   */
+  stockNo: z.coerce.number().int().min(1).max(9_999_999).optional(),
 })
 export type WatchUpdateInput = z.infer<typeof watchUpdateSchema>
 
@@ -255,6 +264,26 @@ export const watchAmendSchema = z.discriminatedUnion('field', [
     field: z.literal('serial'),
     id: trimmed.min(1),
     serial: optionalText(60),
+  }),
+  /**
+   * The number the piece is called by.
+   *
+   * It used to be unchangeable anywhere — not the form, not a cell, not even
+   * the importer, which refused a number it did not already know. That was
+   * right while nothing else owned the numbering. The accounts do, and a
+   * figure the business is reconciled against has to be correctable here
+   * rather than only by rebuilding the row.
+   *
+   * Not nullable and not blank: every watch has one, and the sequence is
+   * what the stock list is read in.
+   */
+  z.object({
+    field: z.literal('stockNo'),
+    id: trimmed.min(1),
+    stockNo: z.coerce.number({ invalid_type_error: 'Enter a stock number.' })
+      .int('A stock number is a whole number.')
+      .min(1, 'A stock number starts at 1.')
+      .max(9_999_999, 'That stock number is too long.'),
   }),
   /**
    * The fields a listing is made of, amended one cell at a time.

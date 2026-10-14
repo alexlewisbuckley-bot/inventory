@@ -669,6 +669,22 @@ function Row({
    */
   const asInput = (baseMinor: number | null) =>
     baseMinor === null ? '' : String(convert(baseMinor) / 100)
+  /**
+   * Renaming the piece.
+   *
+   * Parsed here rather than trusted to the server's coercion so that "1,502"
+   * and " 1502 " — a number pasted out of a spreadsheet, which is where these
+   * come from — are read as the number they plainly are.
+   */
+  const amendStockNo = async (raw: string) => {
+    const digits = raw.replace(/[^0-9]/g, '')
+    if (!digits) return 'Enter a stock number.'
+    const next = Number(digits)
+    if (next === watch.stockNo) return null
+    const result = await amendWatchAction({ field: 'stockNo', id: watch.id, stockNo: next })
+    return result.ok ? null : (result.errors?.stockNo ?? result.message ?? 'The change was rejected.')
+  }
+
   const amendMoney = (field: 'purchase' | 'trade') => async (raw: string) => {
     const entered = parseMoneyInput(raw)
     if (entered === null) return 'Enter an amount.'
@@ -717,7 +733,23 @@ function Row({
           <Thumb watch={watch} dimmed={sold} />
         </TD>
       )}
-      <TD className="truncate font-bold text-navy-700" title={String(watch.stockNo)}>{watch.stockNo}</TD>
+      {/* The number the piece is called by, and now correctable.
+          It was unchangeable everywhere — no form, no cell, and an importer
+          that refused a number it did not already know. That held while
+          nothing else owned the numbering; the accounts do, and a figure the
+          business is reconciled against cannot be the one thing that can
+          only be fixed by rebuilding the row. Behind the owner's own
+          capability, beside cost and serial, because renaming a piece is at
+          least as consequential as repricing it. */}
+      <TD align="left" className="relative font-bold text-navy-700">
+        <InlineEditCell
+          label="stock number" kind="number" editable={canAmend && !watch.deletedAt}
+          value={String(watch.stockNo)}
+          display={watch.stockNo}
+          placeholder="Set stock number"
+          onSave={amendStockNo}
+        />
+      </TD>
       <TD>
         {/* A link, not a button. It goes to a URL — `?watch=…` opens the
             drawer — so it should be middle-clickable and copyable like every

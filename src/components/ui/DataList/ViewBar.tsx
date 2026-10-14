@@ -238,7 +238,7 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
             label="Call it"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Consignment stock over £20k"
+            placeholder="Consignment stock over 20k"
             hint="Something you would recognise in a row of chips."
             autoFocus
             maxLength={60}

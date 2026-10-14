@@ -92,7 +92,13 @@ export const TextField = forwardRef<HTMLInputElement, InputProps>(function TextF
             required={required}
             aria-invalid={bad || undefined}
             aria-describedby={describedBy}
-            className={cn(control, bad ? invalid : normal, prefix && 'pl-8', isPassword && 'pr-11')}
+            className={cn(
+              control, bad ? invalid : normal,
+              // A three-letter code needs more room than a symbol. At `pl-8`
+              // the figure was typed underneath an "AED".
+              prefix && (prefix.trim().length > 1 ? 'pl-14' : 'pl-8'),
+              isPassword && 'pr-11',
+            )}
             {...rest}
           />
           {isPassword && (

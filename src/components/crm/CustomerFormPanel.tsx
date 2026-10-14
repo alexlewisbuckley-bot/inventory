@@ -1,5 +1,7 @@
 'use client'
+import { BASE_CURRENCY } from '@/lib/enums'
 
+import { moneyPrefix } from '@/lib/currency'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
@@ -277,7 +279,7 @@ export function CustomerFormPanel({
                   <SelectField name="paymentTerms" label="Payment terms"
                     defaultValue={customer?.paymentTerms ?? 'UNKNOWN'}
                     options={PAYMENT_TERMS.map((t) => ({ value: t, label: PAYMENT_TERMS_LABELS[t] }))} />
-                  <TextField name="creditLimitGbp" label="Credit limit" prefix="£" inputMode="decimal"
+                  <TextField name="creditLimitGbp" label="Credit limit" prefix={moneyPrefix(BASE_CURRENCY)} inputMode="decimal"
                     hint="What we are willing to have outstanding at once."
                     defaultValue={customer?.creditLimitGbp ? String(toMajor(customer.creditLimitGbp)) : ''} />
                   <TextField name="registrationNo" label="Company number"
@@ -292,9 +294,9 @@ export function CustomerFormPanel({
                 </>
               ) : (
                 <>
-                  <TextField name="budgetMinGbp" label="Budget from" prefix="£" inputMode="decimal"
+                  <TextField name="budgetMinGbp" label="Budget from" prefix={moneyPrefix(BASE_CURRENCY)} inputMode="decimal"
                     defaultValue={customer?.budgetMinGbp ? String(toMajor(customer.budgetMinGbp)) : ''} />
-                  <TextField name="budgetMaxGbp" label="Budget to" prefix="£" inputMode="decimal"
+                  <TextField name="budgetMaxGbp" label="Budget to" prefix={moneyPrefix(BASE_CURRENCY)} inputMode="decimal"
                     hint="Used to suggest stock they might want."
                     defaultValue={customer?.budgetMaxGbp ? String(toMajor(customer.budgetMaxGbp)) : ''}
                     error={state.errors?.budgetMaxGbp} />
