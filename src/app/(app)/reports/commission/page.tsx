@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Wallet } from 'lucide-react'
+import { Target, Wallet } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { commissionForMonth, commissionOn } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
 import { Card, StatCard, EmptyState, Table, THead, TBody, TR, TD, TH, LinkButton } from '@/components/ui'
+import { ChartFrame } from '@/components/charts/ChartFrame'
+import { TargetMeter, type MeterState } from '@/components/charts/TargetMeter'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { formatShare } from '@/lib/money'
 import { getRateTable } from '@/server/services/fx-service'
@@ -47,12 +49,13 @@ function months(count = 12): Array<{ key: string; label: string; from: Date; to:
  * and lets whoever signs the cheque decide.
  */
 export default async function CommissionPage({ searchParams }: {
-  searchParams: { month?: string }
+  searchParams: { month?: string; view?: string }
 }) {
   const user = await requireCapability('report:read')
 
   const choices = months()
   const chosen = choices.find((month) => month.key === searchParams.month) ?? choices[0]!
+  const view = searchParams.view === 'target' ? 'target' : 'figures'
 
   const [rows, rates, preferences] = await Promise.all([
     commissionForMonth(chosen.from, chosen.to),
@@ -103,6 +106,53 @@ export default async function CommissionPage({ searchParams }: {
   )
   const outstanding = totals.whenSettled - totals.commission
 
+  /**
+   * How far through the month we are, for the mark on each track.
+   *
+   * Only for the month still running. On a month already over the whole
+   * track is the deadline, and a mark part-way along it would suggest there
+   * is still time.
+   */
+  const now = Date.now()
+  const pace = now >= chosen.from.getTime() && now <= chosen.to.getTime()
+    ? (now - chosen.from.getTime()) / (chosen.to.getTime() - chosen.from.getTime())
+    : undefined
+
+  /**
+   * One row per person who has a target to be measured against.
+   *
+   * Somebody with no retainer has no target, so there is no meaningful bar
+   * to draw them — a full track would say they had cleared something and an
+   * empty one would say they had failed to. They are named underneath
+   * instead.
+   */
+  const targets = people.filter((person) => person.retainer > 0).map((person) => {
+    const ratio = person.paid / person.retainer
+    const cleared = person.paid >= person.retainer
+    // Behind is measured against the clock while the month is running, and
+    // against the whole month once it is over. Without the clock, every row
+    // reads as a failure for the first three weeks of every month.
+    const behind = !cleared && (pace === undefined || ratio < pace)
+    const state: MeterState = cleared ? 'cleared' : behind ? 'behind' : 'onTrack'
+    return {
+      person,
+      label: person.name,
+      ratio,
+      display: `${Math.round(Math.max(ratio, 0) * 100)}%`,
+      state,
+      stateLabel: cleared
+        ? `${money(person.commission)} commission`
+        : behind ? 'Behind' : 'On track',
+      caption: cleared
+        ? `${money(person.paid)} profit, ${money(person.above)} above the ${money(person.retainer)} retainer`
+        // "−AED 48,067 of AED 25,000" is not how anybody says a month that
+        // lost money, and the minus sign is easy to miss at caption size.
+        : person.paid < 0
+          ? `${money(-person.paid)} lost against a ${money(person.retainer)} retainer · ${money(person.toClear)} to clear`
+          : `${money(person.paid)} of ${money(person.retainer)} · ${money(person.toClear)} to clear`,
+    }
+  })
+
   return (
     <>
       <PageHeader
@@ -117,7 +167,7 @@ export default async function CommissionPage({ searchParams }: {
         {choices.slice(0, 6).map((month) => (
           <Link
             key={month.key}
-            href={`/reports/commission?month=${month.key}`}
+            href={`/reports/commission?month=${month.key}${view === 'target' ? '&view=target' : ''}`}
             aria-current={month.key === chosen.key ? 'page' : undefined}
             className={cn(
               'rounded-pill border px-3.5 py-1.5 text-caption font-semibold transition-colors',
@@ -127,6 +177,28 @@ export default async function CommissionPage({ searchParams }: {
             )}
           >
             {month.label}
+          </Link>
+        ))}
+      </nav>
+
+      {/* Two readings of one month. The figures are what gets paid; the
+          meters are who is going to clear their retainer, which is the
+          question somebody asks in the middle of the month rather than at
+          the end of it. */}
+      <nav aria-label="View" className="mb-6 flex gap-1.5">
+        {([['figures', 'Figures'], ['target', 'Against target']] as const).map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/reports/commission?month=${chosen.key}${key === 'target' ? '&view=target' : ''}`}
+            aria-current={key === view ? 'page' : undefined}
+            className={cn(
+              'rounded-sm px-3 py-1.5 text-caption font-semibold transition-colors',
+              key === view
+                ? 'bg-surface-subtle text-content-primary'
+                : 'text-content-secondary hover:text-content-primary',
+            )}
+          >
+            {label}
           </Link>
         ))}
       </nav>
@@ -157,6 +229,40 @@ export default async function CommissionPage({ searchParams }: {
             <StatCard label="Total pay" value={money(totals.payable)} caption="retainers plus commission" />
           </section>
 
+          {view === 'target' ? (
+            targets.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon={<Target className="h-6 w-6" />}
+                  title="Nobody has a target yet"
+                  description="A retainer is the target. Give each person theirs and this shows how close they are to clearing it."
+                  action={<LinkButton href="/sales-people">Sales people</LinkButton>}
+                />
+              </Card>
+            ) : (
+              <ChartFrame
+                title={`Profit against retainer, ${chosen.label}`}
+                description={pace === undefined
+                  ? 'The month is over: the whole track is what had to be cleared.'
+                  : `The mark on each track is today — ${Math.round(pace * 100)}% of the way through the month.`}
+                legend={[
+                  { label: 'Cleared — earning commission', swatchClassName: 'bg-state-good' },
+                  { label: 'Still clearing the retainer', swatchClassName: 'bg-chart-seq-4' },
+                ]}
+                table={{
+                  columns: ['Person', 'Profit', 'Retainer', 'Of target', 'Commission'],
+                  rows: targets.map(({ person, label, display }) => ({
+                    label,
+                    values: [
+                      money(person.paid), money(person.retainer), display, money(person.commission),
+                    ],
+                  })),
+                }}
+              >
+                <TargetMeter data={targets} pace={pace} />
+              </ChartFrame>
+            )
+          ) : (
           <Card className="overflow-hidden">
             <Table layout="fixed" minWidth="940px">
               <THead>
@@ -223,6 +329,7 @@ export default async function CommissionPage({ searchParams }: {
               </TBody>
             </Table>
           </Card>
+          )}
         </>
       )}
 
@@ -236,7 +343,7 @@ export default async function CommissionPage({ searchParams }: {
           {missing.length === people.length
             ? 'Nobody has a retainer yet, so everybody here earns commission from the first dirham. Set one, and the share above it, on '
             : missing.length > 0
-              ? `${missing.length === 1 ? `${missing[0]!.name} has` : `${missing.length} people have`} no retainer set, so commission runs from their first dirham of profit. Set one on `
+              ? `${missing.length === 1 ? `${missing[0]!.name} has` : `${missing.length} people have`} no retainer set, so commission runs from their first dirham of profit${view === 'target' ? ' and there is no target to chart them against' : ''}. Set one on `
               : 'Retainers and shares are set on '}
           <Link href="/sales-people" className="font-bold text-content-accent hover:underline">
             Sales people
