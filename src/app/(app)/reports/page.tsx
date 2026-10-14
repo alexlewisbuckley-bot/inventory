@@ -9,6 +9,8 @@ import { stockByLocation, summariseInventory, findAgeingStock } from '@/server/r
 import { tradeVsRetail } from '@/server/repositories/crm-repository'
 import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ReportTabs } from '@/components/reports/ReportTabs'
+import { reportTabs } from '@/components/reports/tabs'
 import { Card, CardBody, CardHeader, StatCard, EmptyState } from '@/components/ui'
 import { MonthlyChart } from '@/components/reports/MonthlyChart'
 import { formatPct } from '@/lib/money'
@@ -63,6 +65,8 @@ export default async function ReportsPage() {
         title="Reports"
         description="How capital is deployed, what it is returning, and where it is sitting still."
       />
+
+      <ReportTabs tabs={reportTabs(user.role)} />
 
       <section aria-label="Headline figures" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="Capital deployed" value={money(inventory.totalCostGbp)} caption={`${inventory.inStockCount} watches held`} />

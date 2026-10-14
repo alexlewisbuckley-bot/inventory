@@ -7,6 +7,8 @@ import { db } from '@/server/db/client'
 import { appSettings } from '@/server/db/schema'
 import { eq } from 'drizzle-orm'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ReportTabs } from '@/components/reports/ReportTabs'
+import { reportTabs } from '@/components/reports/tabs'
 import { Card, Table, THead, TBody, TR, TD, TH, StatCard, EmptyState, Chip } from '@/components/ui'
 import { formatBase, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -52,6 +54,8 @@ export default async function AgeingReportPage() {
         title="Ageing stock"
         description={`Watches held longer than ${threshold} days, oldest first. Capital here is not working.`}
       />
+
+      <ReportTabs tabs={reportTabs(user.role)} />
 
       <section aria-label="Ageing summary" className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-6">
         <StatCard label="Ageing watches" value={rows.length} caption={`over ${threshold} days held`} />
