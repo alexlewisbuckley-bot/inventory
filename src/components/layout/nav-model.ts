@@ -4,7 +4,7 @@ import {
   Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
 } from 'lucide-react'
-import { can, isExternalRole, type Capability } from '@/lib/permissions'
+import { can, isExternalRole, salesScope, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
 
 export interface SidebarCounts {
@@ -98,11 +98,27 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/locations', label: 'Locations', icon: MapPin, capability: 'location:read', match: '/locations' },
         { href: '/owners', label: 'Owners', icon: Landmark, capability: 'owner:read', match: '/owners' },
         { href: '/resellers', label: 'Resellers', icon: Store, capability: 'reseller:read', match: '/resellers' },
+        { href: '/sales-people', label: 'Sales people', icon: Users2, capability: 'user:read', match: '/sales-people' },
         // Under Manage rather than Needs attention: counting the stock is a
         // job somebody schedules, not one the system nags about.
         { href: '/stock-checks', label: 'Stock checks', icon: ClipboardCheck, capability: 'watch:read', match: '/stock-checks' },
         { href: '/insights', label: 'Insights', icon: LayoutDashboard, capability: 'report:read', match: '/insights' },
         { href: '/reports', label: 'Reports', icon: BarChart3, capability: 'report:read', match: '/reports' },
+        /**
+         * Somebody who may see only their own month needs a way in too: the
+         * Reports entry above is behind `report:read`, which they do not
+         * hold, so without this the page exists and nothing points at it —
+         * the same as it not existing.
+         *
+         * Gated on the scope rather than on `report:own`, because the wider
+         * roles hold that capability as well (the matrix requires every role
+         * above to be a superset of the ones below). A capability filter
+         * would therefore put both entries in an owner's rail, pointing at
+         * the same section under two names.
+         */
+        ...(salesScope(role) === 'own'
+          ? [{ href: '/reports/people', label: 'My sales', icon: BarChart3, match: '/reports/people' }]
+          : []),
       ],
     },
     // Settings, Users and Help live in the account menu and the palette, not

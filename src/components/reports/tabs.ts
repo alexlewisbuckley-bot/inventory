@@ -1,4 +1,4 @@
-import { can } from '@/lib/permissions'
+import { salesScope } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
 import type { ReportTab } from './ReportTabs'
 
@@ -11,7 +11,12 @@ import type { ReportTab } from './ReportTabs'
  * worse answer than not drawing it.
  */
 export function reportTabs(role: Role | null | undefined): ReportTab[] {
-  if (!can(role, 'report:read')) return []
+  const scope = salesScope(role)
+  if (scope === 'none') return []
+  // Somebody who may see only their own month gets one view, named for what
+  // it is. The row hides itself at one tab, so they see a page rather than a
+  // navigation implying three they cannot open.
+  if (scope === 'own') return [{ href: '/reports/people', label: 'My sales' }]
   return [
     { href: '/reports', label: 'Overview' },
     { href: '/reports/people', label: 'Sales by person' },

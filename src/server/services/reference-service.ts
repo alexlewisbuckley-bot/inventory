@@ -389,3 +389,150 @@ export async function listSalesPeople(): Promise<Array<{ id: string; name: strin
     .where(and(eq(salesPeople.isActive, true), isNull(salesPeople.deletedAt)))
     .orderBy(asc(salesPeople.sortOrder), asc(salesPeople.name))
 }
+
+/**
+ * The salesperson this account is, if it is one.
+ *
+ * The link is optional in both directions: plenty of people who sell have no
+ * login, and plenty of logins — a bookkeeper, the owner's second account —
+ * are nobody on the shop floor. A reader with no link sees an empty report
+ * and a sentence saying why, which is a better answer than somebody else's
+ * figures or a blank page.
+ */
+export async function salesPersonForUser(userId: string): Promise<{ id: string; name: string } | null> {
+  const { salesPeople } = await import('../db/schema')
+  const rows = await db
+    .select({ id: salesPeople.id, name: salesPeople.name })
+    .from(salesPeople)
+    .where(and(
+      eq(salesPeople.userId, userId),
+      eq(salesPeople.isActive, true),
+      isNull(salesPeople.deletedAt),
+    ))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+export interface SalesPersonInput {
+  name: string
+  userId: string | null
+  isActive: boolean
+}
+
+/** Every salesperson, active or not, with what they have sold. */
+export async function listSalesPeopleAdmin() {
+  const { salesPeople, sales, users } = await import('../db/schema')
+  const { liveSale } = await import('../db/predicates')
+  return db
+    .select({
+      id: salesPeople.id,
+      name: salesPeople.name,
+      isActive: salesPeople.isActive,
+      sortOrder: salesPeople.sortOrder,
+      userId: salesPeople.userId,
+      userName: users.name,
+      userEmail: users.email,
+      soldCount: sql<number>`count(${sales.id})`,
+    })
+    .from(salesPeople)
+    .leftJoin(users, eq(users.id, salesPeople.userId))
+    .leftJoin(sales, and(eq(sales.soldById, salesPeople.id), liveSale()))
+    .where(isNull(salesPeople.deletedAt))
+    .groupBy(salesPeople.id, users.name, users.email)
+    .orderBy(asc(salesPeople.sortOrder), asc(salesPeople.name))
+}
+
+/**
+ * Add or rename somebody who sells.
+ *
+ * One account links to at most one salesperson, enforced here rather than by
+ * a unique index so the message can say who it is already taken by — a
+ * constraint violation surfacing as "duplicate key" is a dead end for
+ * whoever is trying to do the linking.
+ */
+export async function saveSalesPerson(
+  id: string | null, input: SalesPersonInput, actor: SessionUser,
+): Promise<void> {
+  const { salesPeople } = await import('../db/schema')
+  const name = input.name.trim()
+  if (!name) throw new ValidationError('A name is required.', { name: 'Enter a name.' })
+
+  await withTransaction(async () => {
+    if (input.userId) {
+      const taken = await db.select({ id: salesPeople.id, name: salesPeople.name })
+        .from(salesPeople)
+        .where(and(eq(salesPeople.userId, input.userId), isNull(salesPeople.deletedAt)))
+        .limit(1)
+      if (taken[0] && taken[0].id !== id) {
+        throw new ValidationError(`That account is already linked to ${taken[0].name}.`, {
+          userId: `Already linked to ${taken[0].name}.`,
+        })
+      }
+    }
+
+    if (id) {
+      const before = await db.select().from(salesPeople).where(eq(salesPeople.id, id)).limit(1)
+      if (!before[0] || before[0].deletedAt) throw new NotFoundError('Salesperson')
+      await db.update(salesPeople)
+        .set({ name, slug: slugify(name), userId: input.userId, isActive: input.isActive, updatedAt: new Date() })
+        .where(eq(salesPeople.id, id))
+      await recordAudit({
+        entityType: 'SalesPerson', entityId: id, action: 'UPDATE', actorId: actor.id,
+        summary: `${before[0].name} updated`,
+        changes: diff(before[0], { name, userId: input.userId, isActive: input.isActive }, ['name', 'userId', 'isActive']),
+      })
+      return
+    }
+
+    // Appended rather than sorted in: the order is the order they were added,
+    // which is the only order that means anything until somebody says
+    // otherwise.
+    const last = await db.select({ max: sql<number>`coalesce(max(${salesPeople.sortOrder}), 0)` }).from(salesPeople)
+    const newIdent = newId('slp')
+    await db.insert(salesPeople).values({
+      id: newIdent,
+      name,
+      slug: slugify(name),
+      userId: input.userId,
+      isActive: input.isActive,
+      sortOrder: Number(last[0]?.max ?? 0) + 10,
+    })
+    await recordAudit({
+      entityType: 'SalesPerson', entityId: newIdent, action: 'CREATE', actorId: actor.id,
+      summary: `${name} added to the sales team`,
+    })
+  })
+}
+
+/**
+ * Remove somebody who has never sold anything.
+ *
+ * Anybody who has is deactivated instead, whatever was asked: deleting them
+ * would orphan the attribution on every sale they closed, and a report that
+ * silently loses a quarter's sales because somebody tidied up a leaver is
+ * worse than a list with a name on it nobody uses.
+ */
+export async function deleteSalesPerson(id: string, actor: SessionUser): Promise<void> {
+  const { salesPeople, sales } = await import('../db/schema')
+  await withTransaction(async () => {
+    const rows = await db.select().from(salesPeople).where(eq(salesPeople.id, id)).limit(1)
+    const person = rows[0]
+    if (!person || person.deletedAt) throw new NotFoundError('Salesperson')
+
+    const sold = await db.select({ id: sales.id }).from(sales).where(eq(sales.soldById, id)).limit(1)
+    if (sold[0]) {
+      await db.update(salesPeople).set({ isActive: false, updatedAt: new Date() }).where(eq(salesPeople.id, id))
+      await recordAudit({
+        entityType: 'SalesPerson', entityId: id, action: 'UPDATE', actorId: actor.id,
+        summary: `${person.name} deactivated — they have sales against them and cannot be deleted`,
+      })
+      return
+    }
+
+    await db.update(salesPeople).set({ deletedAt: new Date() }).where(eq(salesPeople.id, id))
+    await recordAudit({
+      entityType: 'SalesPerson', entityId: id, action: 'DELETE', actorId: actor.id,
+      summary: `${person.name} removed from the sales team`,
+    })
+  })
+}

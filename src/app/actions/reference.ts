@@ -180,3 +180,46 @@ export async function createSupplierInlineAction(name: string): Promise<ActionSt
     return toState(error, 'Could not add that supplier.')
   }
 }
+
+/**
+ * Add, rename, relink or deactivate somebody who sells.
+ *
+ * Behind `user:manage` rather than a capability of its own. The list decides
+ * whose name goes on a sale and whose account sees its own figures, which is
+ * the same kind of decision as who may sign in — and inventing a tenth
+ * capability for a six-row table is how a permission model becomes
+ * unreadable.
+ */
+export async function saveSalesPersonAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const actor = await requireCapability('user:manage')
+  const id = formData.get('id')?.toString() || null
+
+  try {
+    const { saveSalesPerson } = await import('@/server/services/reference-service')
+    await saveSalesPerson(id, {
+      name: formData.get('name')?.toString() ?? '',
+      userId: formData.get('userId')?.toString() || null,
+      isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
+    }, actor)
+    revalidatePath('/sales-people')
+    revalidatePath('/reports/people')
+    revalidatePath('/inventory')
+    revalidatePath('/sales')
+    return { ok: true, message: id ? 'Saved.' : 'Added to the sales team.' }
+  } catch (error) {
+    return toState(error, 'Could not save that person.')
+  }
+}
+
+export async function deleteSalesPersonAction(id: string): Promise<ActionState> {
+  const actor = await requireCapability('user:manage')
+  try {
+    const { deleteSalesPerson } = await import('@/server/services/reference-service')
+    await deleteSalesPerson(id, actor)
+    revalidatePath('/sales-people')
+    revalidatePath('/reports/people')
+    return { ok: true, message: 'Removed.' }
+  } catch (error) {
+    return toState(error, 'Could not remove that person.')
+  }
+}
