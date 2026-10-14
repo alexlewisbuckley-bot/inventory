@@ -47,10 +47,22 @@ export async function listRates(): Promise<FxRateRow[]> {
   // can never silently omit a currency the app offers.
   return CURRENCIES.map((code) => {
     const row = byCode.get(code)
+    /**
+     * The base reads as exactly 1 whatever the row says.
+     *
+     * `getRateTable` pins it at 1 regardless, so a stored value that has
+     * drifted is already ignored by every conversion in the system. Showing
+     * it here anyway would put a number on screen that nothing uses — and
+     * the way it drifts is a base change, where the currency that used to be
+     * editable keeps the rate it was last given and then becomes the base.
+     */
+    const stored = code === BASE_CURRENCY
+      ? RATE_SCALE
+      : row?.ratePerGbp ?? 0
     return {
       code,
-      ratePerGbp: row?.ratePerGbp ?? (code === BASE_CURRENCY ? RATE_SCALE : 0),
-      rate: (row?.ratePerGbp ?? (code === BASE_CURRENCY ? RATE_SCALE : 0)) / RATE_SCALE,
+      ratePerGbp: stored,
+      rate: stored / RATE_SCALE,
       updatedAt: row?.updatedAt ?? new Date(0),
       updatedByName: row?.updatedByName ?? null,
     }
@@ -118,9 +130,16 @@ export async function updateRates(
   })
 }
 
-/** Ensure the base currency row exists and is exactly 1. */
+/**
+ * Ensure the base currency row exists and is exactly 1.
+ *
+ * Corrects the row rather than leaving it, which matters when the base moves:
+ * the new base already had a rate of its own the day before, and a row saying
+ * the base is worth 3.67 of itself is a trap for whoever reads the table
+ * directly.
+ */
 export async function ensureBaseRate(): Promise<void> {
   await db.insert(fxRates)
     .values({ code: BASE_CURRENCY, ratePerGbp: RATE_SCALE })
-    .onConflictDoNothing()
+    .onConflictDoUpdate({ target: fxRates.code, set: { ratePerGbp: RATE_SCALE } })
 }
