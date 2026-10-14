@@ -4,6 +4,8 @@ import { Users } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { salesByPerson } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ReportTabs } from '@/components/reports/ReportTabs'
+import { reportTabs } from '@/components/reports/tabs'
 import { Card, StatCard, EmptyState, Table, THead, TBody, TR, TD, TH } from '@/components/ui'
 import { ChartFrame } from '@/components/charts/ChartFrame'
 import { Bar, type BarDatum } from '@/components/charts/Bar'
@@ -205,6 +207,8 @@ export default async function SalesByPersonPage({ searchParams }: {
         title="Sales by person"
         description="Ranked on profit, which is the figure the business runs on. Revenue rewards whoever was handed the expensive watches."
       />
+
+      <ReportTabs tabs={reportTabs(user.role)} />
 
       {/* Filters in one row above the figures, as a set of links rather than
           a control that needs JavaScript to change a server-rendered page. */}
