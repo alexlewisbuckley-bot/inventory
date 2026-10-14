@@ -12,6 +12,17 @@ export interface BarDatum {
   href?: string
   /** Chart slot 1–6. Defaults to 1; identity follows the row, never its rank. */
   slot?: 1 | 2 | 3 | 4 | 5 | 6
+  /**
+   * A row that is not one of the named things — the residue, the "other",
+   * the unattributed.
+   *
+   * It needs a mark that is visibly not a slot, because defaulting it to one
+   * puts two different entities in the same colour: a chart ranking six
+   * salespeople plus the sales nobody is recorded against drew that last row
+   * in the same navy as whoever held slot 1, and the two read as the same
+   * person.
+   */
+  neutral?: boolean
 }
 
 const SLOT: Record<number, string> = {
@@ -54,7 +65,11 @@ export function Bar({ data, max }: { data: BarDatum[]; max?: number }) {
             </div>
             <div className="mt-1 h-2 w-full rounded-pill bg-surface-subtle">
               <div
-                className={cn('h-2 rounded-pill', SLOT[datum.slot ?? 1], datum.value === 0 && 'min-w-[2px] opacity-40')}
+                className={cn(
+                  'h-2 rounded-pill',
+                  datum.neutral ? 'bg-content-muted' : SLOT[datum.slot ?? 1],
+                  datum.value === 0 && 'min-w-[2px] opacity-40',
+                )}
                 style={{ width: `${Math.max(width * 100, datum.value === 0 ? 0.5 : 1.5)}%` }}
               />
             </div>

@@ -285,6 +285,14 @@ export async function salesByPerson(from?: Date, to?: Date) {
       // over-weight the cheap watches — the same way the ledger's own
       // summary does it, so the two agree.
       costGbp: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
+      /**
+       * The day each person last closed something.
+       *
+       * On a leaderboard this is the difference between "second place" and
+       * "second place, and nothing since August" — the one column that says
+       * whether a rank is current or a residue of a good quarter.
+       */
+      lastSaleAt: sql<Date | null>`max(${sales.saleDate})`,
     })
     .from(sales)
     .innerJoin(watches, eq(watches.id, sales.watchId))
