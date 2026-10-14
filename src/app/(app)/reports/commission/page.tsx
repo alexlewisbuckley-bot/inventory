@@ -88,6 +88,10 @@ export default async function CommissionPage({ searchParams }: {
     }
   })
 
+  // Said out loud below the table rather than left to be inferred from a
+  // column of zeros.
+  const missing = people.filter((person) => person.retainer === 0)
+
   const totals = people.reduce(
     (sum, person) => ({
       retainer: sum.retainer + person.retainer,
@@ -139,14 +143,18 @@ export default async function CommissionPage({ searchParams }: {
       ) : (
         <>
           <section aria-label="The month" className="mb-6 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-            <StatCard label="Retainers" value={money(totals.retainer)} caption="paid whatever sells" />
-            <StatCard label="Commission earned" value={money(totals.commission)} tone="accent" caption="on invoices already paid" />
+            {/* Commission leads, and is the only figure in accent. The
+                total used to be called "Payable now" and shown in the same
+                green beside it, which read as a commission bill five times
+                the size of the real one. */}
+            <StatCard label="Commission earned" value={money(totals.commission)} tone="accent" caption="a quarter of the profit above each retainer" />
             <StatCard
               label="Waiting on payment"
               value={money(outstanding)}
-              caption={outstanding > 0 ? 'more once the rest settles' : 'nothing outstanding'}
+              caption={outstanding > 0 ? 'more commission once the rest settles' : 'nothing outstanding'}
             />
-            <StatCard label="Payable now" value={money(totals.payable)} tone="accent" caption="retainers plus commission" />
+            <StatCard label="Retainers" value={money(totals.retainer)} caption="paid whatever sells" />
+            <StatCard label="Total pay" value={money(totals.payable)} caption="retainers plus commission" />
           </section>
 
           <Card className="overflow-hidden">
@@ -159,7 +167,7 @@ export default async function CommissionPage({ searchParams }: {
                   <TH width="150px" align="right">Profit (paid)</TH>
                   <TH width="150px" align="right">Above retainer</TH>
                   <TH width="130px" align="right">Commission</TH>
-                  <TH width="130px" align="right">Payable</TH>
+                  <TH width="130px" align="right">Total pay</TH>
                 </TR>
               </THead>
               <TBody>
@@ -167,7 +175,12 @@ export default async function CommissionPage({ searchParams }: {
                   <TR key={person.personId}>
                     <TD className="font-bold text-content-primary">{person.name}</TD>
                     <TD align="right" className="tabular-nums text-content-secondary">
-                      {money(person.retainer)}
+                      {/* A recorded zero and an unanswered question look the
+                          same in this column, and they are not the same: on
+                          zero, commission runs from the first dirham. */}
+                      {person.retainer > 0
+                        ? money(person.retainer)
+                        : <span className="text-content-muted">Not set</span>}
                     </TD>
                     <TD align="right" className="tabular-nums text-content-secondary">
                       {formatShare(person.commissionBps)}
@@ -215,13 +228,16 @@ export default async function CommissionPage({ searchParams }: {
 
       {people.length > 0 && (
         <p className="mt-4 text-small text-content-secondary">
-          {/* The two left-hand columns are the only ones on this page that
-              are typed rather than derived, and nothing else here says
-              where. Said plainly when they are all still zero, because
-              then the whole table reads as broken rather than unset. */}
-          {people.every((person) => person.retainer === 0)
-            ? 'Nobody has a retainer yet — set one, and the share above it, on '
-            : 'Retainers and shares are set on '}
+          {/* Nobody reading a wage figure should have to work out whether a
+              zero is the answer or the absence of one. Somebody with no
+              retainer earns commission from the first dirham, which is a
+              real arrangement and also exactly what an unfinished setup
+              looks like, so the count is said out loud. */}
+          {missing.length === people.length
+            ? 'Nobody has a retainer yet, so everybody here earns commission from the first dirham. Set one, and the share above it, on '
+            : missing.length > 0
+              ? `${missing.length === 1 ? `${missing[0]!.name} has` : `${missing.length} people have`} no retainer set, so commission runs from their first dirham of profit. Set one on `
+              : 'Retainers and shares are set on '}
           <Link href="/sales-people" className="font-bold text-content-accent hover:underline">
             Sales people
           </Link>
@@ -230,12 +246,15 @@ export default async function CommissionPage({ searchParams }: {
       )}
 
       <p className="mt-6 text-caption text-content-secondary">
-        Commission is a quarter — or whatever share is set against each person — of the profit
-        on the sales with their name on, once that month&rsquo;s profit has cleared their
-        retainer. Each month starts again: a month that falls short earns nothing and carries
-        nothing into the next. Only invoices marked paid count towards the figure shown as
-        earned; the rest are listed beside it so you can see what is coming. Voided invoices
-        count for nobody, and the retainer is payable whether anything sells or not.
+        The retainer is paid whatever sells. Commission is a quarter — or whatever share is
+        set against each person — of the profit on the sales with their name on,
+        <em> after</em> that month&rsquo;s profit has cleared their own retainer: on a
+        retainer of AED 15,000 and a month making AED 20,000 of profit, AED 5,000 is above
+        the retainer and the commission is a quarter of it, AED 1,250, for total pay of
+        AED 16,250. Each month starts again, so a month that falls short earns nothing and
+        carries nothing into the next. Only invoices marked paid count towards the figure
+        shown as earned; the rest are listed beside it so you can see what is coming.
+        Voided invoices count for nobody.
       </p>
     </>
   )
