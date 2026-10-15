@@ -77,6 +77,11 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
    * returned and the page says which is which, since two numbers called
    * "commission" that differ is exactly the sort of thing that gets read as
    * a bug.
+   *
+   * What is summed is the part due *above* each retainer. The retainers are
+   * their own line a few lines down, and the retainer is an advance against
+   * the same quarter — so adding the whole quarter here would charge the
+   * business twice for the money it has already paid out.
    */
   const commission = people.reduce((sum, person) => sum
     + commissionOn(Number(person.paidProfit) + Number(person.pendingProfit), person.retainer, person.commissionBps).commission, 0)

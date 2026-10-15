@@ -265,7 +265,7 @@ function statementLines(pnl: PnlMonth): Line[] {
     { label: 'Gross profit', value: pnl.grossProfit, total: true, rule: true },
 
     { label: 'Retainers', value: pnl.retainers, negative: true, caption: 'the sales floor, paid whatever sells' },
-    { label: 'Commission', value: pnl.commission, negative: true, caption: 'a quarter of the profit each person made above their own retainer' },
+    { label: 'Commission', value: pnl.commission, negative: true, caption: 'what is due on top of the retainers, which are an advance against the same quarter' },
     ...[...overheadsByCategory.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([category, amount]) => ({

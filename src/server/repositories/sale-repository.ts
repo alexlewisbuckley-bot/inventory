@@ -399,18 +399,30 @@ export async function tradingForMonth(from: Date, to: Date) {
 /**
  * The commission one month's figures come to.
  *
- * Pure arithmetic over the row above, kept out of the component so the one
- * calculation anybody is paid against can be tested without a browser.
+ * The retainer is an advance against commission, not a slice taken off the
+ * profit first. A quarter of everything the person's own sales made is what
+ * they earn; the retainer has already been paid out of it, so only the part
+ * above the retainer is money they see on top.
  *
- * Rounded half-up at the last step only. Rounding the profit first and the
- * share second loses a fils per person per month, which is nothing until
- * somebody reconciles it against the bank and cannot find it.
+ * On AED 7,500 of profit against a AED 4,085 retainer: the quarter is
+ * AED 1,875, which is 46% of the way to the retainer, so nothing further is
+ * due. Taking the retainer off the profit first and then a quarter of the
+ * remainder would have paid AED 854 — a real payment, for a month that had
+ * not covered the advance.
+ *
+ * Pure arithmetic, kept out of the component so the one calculation
+ * anybody is paid against can be tested without a browser. Rounded half-up
+ * at the last step only: rounding the profit first and the share second
+ * loses a fils per person per month, which is nothing until somebody
+ * reconciles it against the bank and cannot find it.
  */
 export function commissionOn(
   profitBase: number, retainerBase: number, bps: number,
-): { above: number; commission: number } {
-  const above = Math.max(0, profitBase - retainerBase)
-  return { above, commission: Math.round((above * bps) / 10_000) }
+): { earned: number; commission: number } {
+  // A month that lost money earns nothing. It does not earn a negative that
+  // would quietly claw back the retainer.
+  const earned = Math.round((Math.max(0, profitBase) * bps) / 10_000)
+  return { earned, commission: Math.max(0, earned - retainerBase) }
 }
 
 export { locations }

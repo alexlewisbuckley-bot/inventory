@@ -151,7 +151,9 @@ export default async function RunningCostsPage() {
               <dt className="text-small text-content-secondary">
                 Commission
                 <span className="block text-caption text-content-muted">
-                  A quarter of the profit each person makes above their own retainer. Calculated, never typed.
+                  What is due on top of the retainers: each person earns a quarter of the
+                  profit on their own sales, and the retainer is an advance against it.
+                  Calculated, never typed.
                 </span>
               </dt>
               <dd className="text-small font-bold tabular-nums text-content-primary">{money(commission)}</dd>
