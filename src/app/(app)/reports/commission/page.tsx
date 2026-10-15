@@ -37,10 +37,21 @@ function months(count = 12): Array<{ key: string; label: string; from: Date; to:
 /**
  * What each salesperson is owed this month.
  *
- * A retainer every month, and a share of the profit on their own sales above
- * it. Monthly and fresh: a quiet month earns no commission and carries
- * nothing forward, so each column of this table stands on its own and
- * nobody has to hold a running balance in their head.
+ * A retainer every month, advanced against a share of the profit on their
+ * own sales: the share is what they earn, and the retainer has already been
+ * paid out of it, so only the part above the retainer is money on top.
+ *
+ * This was built the other way round first — the retainer taken off the
+ * profit, then a quarter of what was left — which pays somebody AED 854 in
+ * a month whose whole commission came to AED 1,875 against a AED 4,085
+ * advance. Both readings fit "25% of profit beyond their retainer", and the
+ * worked example that was meant to settle it happened to give the same
+ * answer under each.
+ *
+ * Monthly and fresh: a quiet month earns no commission and carries nothing
+ * forward, so each column of this table stands on its own and nobody has to
+ * hold a running balance in their head. Nothing is clawed back either — a
+ * retainer the quarter never covered is simply not recovered.
  *
  * Paid and unpaid are shown apart rather than added together. Commission on
  * an invoice the customer has not settled is money paid out before it came
@@ -84,9 +95,10 @@ export default async function CommissionPage({ searchParams }: {
       pendingCount: Number(row.pendingCount),
       ...earned,
       whenSettled: ifAllPaid.commission,
-      // How much more profit this month needs before anything is earned.
-      // More useful than a zero, which says the same thing and nothing else.
-      toClear: Math.max(0, row.retainer - paid),
+      // How much more the quarter has to come to before anything is due on
+      // top of the retainer. More useful than a zero, which says the same
+      // thing and nothing else.
+      toClear: Math.max(0, row.retainer - earned.earned),
       payable: row.retainer + earned.commission,
     }
   })
@@ -98,11 +110,12 @@ export default async function CommissionPage({ searchParams }: {
   const totals = people.reduce(
     (sum, person) => ({
       retainer: sum.retainer + person.retainer,
+      earned: sum.earned + person.earned,
       commission: sum.commission + person.commission,
       payable: sum.payable + person.payable,
       whenSettled: sum.whenSettled + person.whenSettled,
     }),
-    { retainer: 0, commission: 0, payable: 0, whenSettled: 0 },
+    { retainer: 0, earned: 0, commission: 0, payable: 0, whenSettled: 0 },
   )
   const outstanding = totals.whenSettled - totals.commission
 
@@ -127,8 +140,11 @@ export default async function CommissionPage({ searchParams }: {
    * instead.
    */
   const targets = people.filter((person) => person.retainer > 0).map((person) => {
-    const ratio = person.paid / person.retainer
-    const cleared = person.paid >= person.retainer
+    // The quarter against the retainer, not the profit against it: the
+    // retainer is an advance on commission, so what has to cover it is the
+    // commission, and this bar is literally "1,875 of 4,085".
+    const ratio = person.earned / person.retainer
+    const cleared = person.earned >= person.retainer
     // Behind is measured against the clock while the month is running, and
     // against the whole month once it is over. Without the clock, every row
     // reads as a failure for the first three weeks of every month.
@@ -144,12 +160,12 @@ export default async function CommissionPage({ searchParams }: {
         ? `${money(person.commission)} commission`
         : behind ? 'Behind' : 'On track',
       caption: cleared
-        ? `${money(person.paid)} profit, ${money(person.above)} above the ${money(person.retainer)} retainer`
+        ? `${money(person.earned)} earned on ${money(person.paid)} of profit, ${money(person.commission)} above the retainer`
         // "−AED 48,067 of AED 25,000" is not how anybody says a month that
         // lost money, and the minus sign is easy to miss at caption size.
         : person.paid < 0
           ? `${money(-person.paid)} lost against a ${money(person.retainer)} retainer · ${money(person.toClear)} to clear`
-          : `${money(person.paid)} of ${money(person.retainer)} · ${money(person.toClear)} to clear`,
+          : `${money(person.earned)} of ${money(person.retainer)} · ${money(person.toClear)} to clear`,
     }
   })
 
@@ -158,7 +174,7 @@ export default async function CommissionPage({ searchParams }: {
       <PageHeader
         breadcrumbs={[{ label: 'Reports', href: '/reports' }, { label: 'Commission' }]}
         title="Commission"
-        description="A retainer every month, and a share of the profit on their own sales above it. Each month stands on its own."
+        description="A retainer every month, advanced against a share of the profit on their own sales. Each month stands on its own."
       />
 
       <ReportTabs tabs={reportTabs(user.role)} />
@@ -215,18 +231,19 @@ export default async function CommissionPage({ searchParams }: {
       ) : (
         <>
           <section aria-label="The month" className="mb-6 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-            {/* Commission leads, and is the only figure in accent. The
-                total used to be called "Payable now" and shown in the same
-                green beside it, which read as a commission bill five times
-                the size of the real one. */}
-            <StatCard label="Commission earned" value={money(totals.commission)} tone="accent" caption="a quarter of the profit above each retainer" />
+            {/* Two commission figures, because there are two: what the
+                quarter came to, and what is left of it once each person's
+                retainer — an advance on that same quarter — is covered.
+                Only the second is money anybody is handed. */}
+            <StatCard label="Earned at 25%" value={money(totals.earned)} caption="a quarter of the profit on their own sales" />
             <StatCard
-              label="Waiting on payment"
-              value={money(outstanding)}
-              caption={outstanding > 0 ? 'more commission once the rest settles' : 'nothing outstanding'}
+              label="Due above retainers"
+              value={money(totals.commission)}
+              tone="accent"
+              caption={totals.commission > 0 ? 'on top of the retainers' : 'nobody has covered their advance yet'}
             />
-            <StatCard label="Retainers" value={money(totals.retainer)} caption="paid whatever sells" />
-            <StatCard label="Total pay" value={money(totals.payable)} caption="retainers plus commission" />
+            <StatCard label="Retainers" value={money(totals.retainer)} caption="paid whatever sells, and advanced against the quarter" />
+            <StatCard label="Total pay" value={money(totals.payable)} caption="retainers plus what is due above them" />
           </section>
 
           {view === 'target' ? (
@@ -241,20 +258,21 @@ export default async function CommissionPage({ searchParams }: {
               </Card>
             ) : (
               <ChartFrame
-                title={`Profit against retainer, ${chosen.label}`}
+                title={`Commission against retainer, ${chosen.label}`}
                 description={pace === undefined
                   ? 'The month is over: the whole track is what had to be cleared.'
                   : `The mark on each track is today — ${Math.round(pace * 100)}% of the way through the month.`}
                 legend={[
-                  { label: 'Cleared — earning commission', swatchClassName: 'bg-state-good' },
-                  { label: 'Still clearing the retainer', swatchClassName: 'bg-chart-seq-4' },
+                  { label: 'Covered — commission due on top', swatchClassName: 'bg-state-good' },
+                  { label: 'Still covering the retainer', swatchClassName: 'bg-chart-seq-4' },
                 ]}
                 table={{
-                  columns: ['Person', 'Profit', 'Retainer', 'Of target', 'Commission'],
+                  columns: ['Person', 'Profit', 'Earned at 25%', 'Retainer', 'Of retainer', 'Due above it'],
                   rows: targets.map(({ person, label, display }) => ({
                     label,
                     values: [
-                      money(person.paid), money(person.retainer), display, money(person.commission),
+                      money(person.paid), money(person.earned), money(person.retainer),
+                      display, money(person.commission),
                     ],
                   })),
                 }}
@@ -271,8 +289,8 @@ export default async function CommissionPage({ searchParams }: {
                   <TH width="120px" align="right">Retainer</TH>
                   <TH width="80px" align="right">Share</TH>
                   <TH width="150px" align="right">Profit (paid)</TH>
-                  <TH width="150px" align="right">Above retainer</TH>
-                  <TH width="130px" align="right">Commission</TH>
+                  <TH width="170px" align="right">Earned at their share</TH>
+                  <TH width="130px" align="right">Due above retainer</TH>
                   <TH width="130px" align="right">Total pay</TH>
                 </TR>
               </THead>
@@ -303,14 +321,18 @@ export default async function CommissionPage({ searchParams }: {
                       </span>
                     </TD>
                     <TD align="right" className="tabular-nums">
-                      {person.above > 0 ? money(person.above) : (
-                        // A zero says "none" and nothing else. This says how
-                        // far off the month is, which is the thing somebody
-                        // actually wants to know on the 14th.
-                        <span className="text-content-secondary">
-                          {person.toClear > 0 ? `${money(person.toClear)} to clear` : '—'}
-                        </span>
-                      )}
+                      {money(person.earned)}
+                      {/* The quarter is what the retainer is an advance on,
+                          so what matters beside it is how much of that
+                          advance it has covered. A bare zero would say the
+                          same thing and nothing else. */}
+                      <span className="block text-caption text-content-secondary">
+                        {person.retainer === 0
+                          ? 'no retainer to cover'
+                          : person.toClear > 0
+                            ? `${money(person.toClear)} short of the retainer`
+                            : 'retainer covered'}
+                      </span>
                     </TD>
                     <TD align="right" className={cn(
                       'font-bold tabular-nums',
@@ -353,15 +375,17 @@ export default async function CommissionPage({ searchParams }: {
       )}
 
       <p className="mt-6 text-caption text-content-secondary">
-        The retainer is paid whatever sells. Commission is a quarter — or whatever share is
-        set against each person — of the profit on the sales with their name on,
-        <em> after</em> that month&rsquo;s profit has cleared their own retainer: on a
-        retainer of AED 15,000 and a month making AED 20,000 of profit, AED 5,000 is above
-        the retainer and the commission is a quarter of it, AED 1,250, for total pay of
-        AED 16,250. Each month starts again, so a month that falls short earns nothing and
-        carries nothing into the next. Only invoices marked paid count towards the figure
-        shown as earned; the rest are listed beside it so you can see what is coming.
-        Voided invoices count for nobody.
+        The retainer is paid whatever sells, and it is an advance against commission rather
+        than a slice taken off the profit first. Each person earns a quarter — or whatever
+        share is set against them — of the profit on the sales with their name on, and that
+        quarter has to cover their retainer before anything further is due: on a retainer of
+        AED 15,000 and a month making AED 40,000 of profit, the quarter is AED 10,000, which
+        does not cover it, so pay is the AED 15,000 retainer and nothing more. The same
+        person making AED 80,000 of profit earns AED 20,000, which covers the retainer with
+        AED 5,000 to spare, for total pay of AED 20,000. Each month starts again, so a month
+        that falls short carries nothing into the next and nothing is clawed back. Only
+        invoices marked paid count towards the figure shown as earned; the rest are listed
+        beside it so you can see what is coming. Voided invoices count for nobody.
       </p>
     </>
   )

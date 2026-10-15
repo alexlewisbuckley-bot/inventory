@@ -15,50 +15,77 @@ import { changeValue, fieldLabel } from '@/lib/audit-format'
  */
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
-describe('the share above the retainer', () => {
+describe('the retainer as an advance against the share', () => {
   const RETAINER = 1_000_000 // AED 10,000
   const QUARTER = 2500
 
-  it('pays a quarter of what clears the retainer', () => {
-    // AED 30,000 profit against a AED 10,000 retainer: 20,000 clears it,
-    // and a quarter of that is 5,000.
-    const { above, commission } = commissionOn(3_000_000, RETAINER, QUARTER)
-    expect(above).toBe(2_000_000)
-    expect(commission).toBe(500_000)
+  /**
+   * The rule, in one line: a quarter of the profit is what they earn, and
+   * the retainer has already been paid out of it.
+   *
+   * It was built the other way round first — retainer off the profit, then
+   * a quarter of the remainder — because both readings fit "25% of profit
+   * beyond their retainer" and the worked example meant to settle it gave
+   * the same answer under each. The two only diverge on real numbers, and
+   * when they did, the wrong one paid a month that had not covered its own
+   * advance.
+   */
+  it('pays nothing until the quarter covers the retainer', () => {
+    // The row that caught it: AED 7,500 of profit against a AED 4,085
+    // retainer earns AED 1,875 — 46% of the advance, so nothing on top.
+    // The old arithmetic paid AED 854 for the same month.
+    const { earned, commission } = commissionOn(750_000, 408_500, QUARTER)
+    expect(earned).toBe(187_500)
+    expect(commission).toBe(0)
   })
 
-  it('pays nothing on a month that does not clear it', () => {
-    // And owes nothing forward: fresh each month, so a quiet February does
-    // not raise March's threshold.
-    expect(commissionOn(400_000, RETAINER, QUARTER)).toEqual({ above: 0, commission: 0 })
+  it('pays what is left of the quarter once it does', () => {
+    // AED 80,000 of profit on a AED 10,000 retainer: the quarter is
+    // AED 20,000, the advance takes 10,000 of it, 10,000 is due on top.
+    const { earned, commission } = commissionOn(8_000_000, RETAINER, QUARTER)
+    expect(earned).toBe(2_000_000)
+    expect(commission).toBe(1_000_000)
+  })
+
+  it('is a quarter of the whole profit, not of the part above the retainer', () => {
+    // The distinction the two readings turn on. A quarter of 30,000 is
+    // 7,500, not a quarter of (30,000 − 10,000).
+    expect(commissionOn(3_000_000, RETAINER, QUARTER).earned).toBe(750_000)
+    // And 750,000 does not cover the 1,000,000 advance, so nothing on top.
+    expect(commissionOn(3_000_000, RETAINER, QUARTER).commission).toBe(0)
+  })
+
+  it('pays nothing extra when the quarter lands exactly on the retainer', () => {
+    expect(commissionOn(4_000_000, RETAINER, QUARTER)).toEqual({ earned: 1_000_000, commission: 0 })
   })
 
   it('never goes negative when the month loses money', () => {
     // A watch sold under cost is a real thing, and it must not turn into a
-    // negative commission that quietly claws back the retainer.
-    expect(commissionOn(-800_000, RETAINER, QUARTER)).toEqual({ above: 0, commission: 0 })
+    // negative that quietly claws back the retainer already paid.
+    expect(commissionOn(-800_000, RETAINER, QUARTER)).toEqual({ earned: 0, commission: 0 })
   })
 
-  it('pays nothing extra at exactly the retainer', () => {
-    expect(commissionOn(RETAINER, RETAINER, QUARTER)).toEqual({ above: 0, commission: 0 })
+  it('claws nothing back from a month the quarter never covered', () => {
+    // Fresh each month: a quiet February leaves no debt against March.
+    expect(commissionOn(400_000, RETAINER, QUARTER).commission).toBe(0)
   })
 
-  it('pays the whole share when there is no retainer to clear', () => {
-    expect(commissionOn(2_000_000, 0, QUARTER).commission).toBe(500_000)
+  it('pays the whole share when there is no retainer to cover', () => {
+    expect(commissionOn(2_000_000, 0, QUARTER)).toEqual({ earned: 500_000, commission: 500_000 })
   })
 
   it('rounds once, at the end', () => {
-    // Rounding the profit first and the share second loses a fils per person
-    // per month — nothing, until somebody reconciles against the bank and
-    // cannot find it.
-    expect(commissionOn(1_000_003, 0, QUARTER).commission).toBe(250_001)
-    expect(commissionOn(1_000_001, 0, QUARTER).commission).toBe(250_000)
+    // Rounding the profit first and the share second loses a fils per
+    // person per month — nothing, until somebody reconciles against the
+    // bank and cannot find it.
+    expect(commissionOn(1_000_003, 0, QUARTER).earned).toBe(250_001)
+    expect(commissionOn(1_000_001, 0, QUARTER).earned).toBe(250_000)
   })
 
   it('handles a rate that is not a quarter', () => {
     // Basis points so an eighth is representable at all.
-    expect(commissionOn(2_000_000, 0, 1250).commission).toBe(250_000)
-    expect(commissionOn(2_000_000, 0, 10_000).commission).toBe(2_000_000)
+    expect(commissionOn(2_000_000, 0, 1250).earned).toBe(250_000)
+    expect(commissionOn(2_000_000, 0, 10_000).earned).toBe(2_000_000)
   })
 })
 
@@ -175,7 +202,11 @@ describe('where the numbers are set', () => {
     // the size of the real one.
     expect(page).not.toMatch(/label="Payable(\s|")/)
     expect(page).toMatch(/label="Total pay"/)
-    expect(page).toMatch(/label="Commission earned" value=\{money\(totals\.commission\)\} tone="accent"/)
+    // What is actually handed over leads, in the only accent on the row:
+    // the quarter earned is context for it, not the payment.
+    expect(page).toMatch(/label="Due above retainers"/)
+    expect(page).toMatch(/value=\{money\(totals\.commission\)\}\s*\n?\s*tone="accent"/)
+    expect(page).toMatch(/label="Earned at 25%" value=\{money\(totals\.earned\)\}/)
   })
 })
 
@@ -186,7 +217,7 @@ describe('the view against target', () => {
   it('measures each person against their own retainer, not against each other', () => {
     // A shared axis would say two people on different retainers were
     // racing. They are not: each track runs nought to their own hundred.
-    expect(page).toMatch(/const ratio = person\.paid \/ person\.retainer/)
+    expect(page).toMatch(/const ratio = person\.earned \/ person\.retainer/)
     expect(meter).toMatch(/Math\.min\(Math\.max\(datum\.ratio, 0\), 1\) \* 100/)
   })
 
