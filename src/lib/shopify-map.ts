@@ -60,6 +60,14 @@ export interface SyncWatch {
       is already holding of each. */
   images: WatchPhotograph[]
   shopifyProductId: string | null
+  /**
+   * What the last successful push said about this watch.
+   *
+   * Null for a watch never pushed, or one pushed before this column existed,
+   * and a null always counts as "needs pushing" — the safe answer when we do
+   * not know. See `fingerprintFor`.
+   */
+  shopifyFingerprint?: string | null
 }
 
 /** A product as the store has it now. */
@@ -543,6 +551,8 @@ export interface SyncPlan {
     productId: string
     title: string
     seoTitle: string | null
+    /** What makes this one worth sending. Empty is never pushed. */
+    reasons: UpdateReason[]
   }>
   /** Products for stock we no longer hold. */
   archive: Array<{ productId: string; sku: string | null; title: string }>
@@ -566,6 +576,73 @@ export interface SyncPlan {
 }
 
 /**
+ * Everything one push would say about this watch, in a single short string.
+ *
+ * The plan used to list every watch that had a page as needing an update,
+ * which is not a difference — it is a headcount. It read "143 to update"
+ * before a push and "143 to update" after one, because pushing had never been
+ * what the number was counting. So Apply re-sent the entire book every time,
+ * the run took minutes it did not need, and the one question the screen
+ * exists to answer — did that work? — had no answer on it.
+ *
+ * A watch is now compared against what was last sent for it. Everything the
+ * push writes goes in here: the price, the status, the quantity, the titles,
+ * the photographs by the media row the shop holds for each, and the resolved
+ * structured fields. Change any of them and the string changes; change
+ * something the shop never sees — a cost price, a private note — and it does
+ * not, which is the point.
+ *
+ * Not a cryptographic hash and not trying to be. It is only ever compared
+ * with the previous value for the same watch, so all that is asked of it is
+ * that a changed input changes the output.
+ */
+export function fingerprintFor(
+  watch: SyncWatch,
+  price: string | null,
+  /** The metaobject ids resolved for this watch, in a stable order. */
+  metafieldValues: string[],
+): string {
+  const parts = [
+    skuFor(watch.stockNo),
+    statusFor(watch),
+    String(quantityFor(watch)),
+    price ?? '',
+    titleFor(watch),
+    seoTitleFor(watch),
+    seoDescriptionFor(watch),
+    descriptionHtmlFor(watch),
+    // By the shop's own media row, so a replaced photograph reads as a change
+    // and a re-ordered one does too.
+    watch.images.map((image) => `${image.id}:${image.mediaId ?? ''}`).join(','),
+    [...metafieldValues].sort().join(','),
+  ]
+  return digest(parts.join('\u0000'))
+}
+
+/**
+ * FNV-1a, twice, with different seeds.
+ *
+ * Thirty-two bits is a one-in-four-billion chance of two different payloads
+ * agreeing, which would show up as a watch that quietly stops being pushed.
+ * Two rounds make that number stop mattering, and the whole thing is eight
+ * lines with no dependency.
+ */
+function digest(text: string): string {
+  const round = (seed: number) => {
+    let h = seed
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    return (h >>> 0).toString(36)
+  }
+  return `${round(2166136261)}${round(2166136263)}`
+}
+
+/** Why a watch is on the update list. Shown, so the number can be believed. */
+export type UpdateReason = 'record' | 'status' | 'renumbered' | 'invisible' | 'unknown'
+
+/**
  * What it would take to make the store match the book.
  *
  * Computed whole, before anything is sent, so the irreversible half can be
@@ -578,7 +655,18 @@ export interface SyncPlan {
  * odd it looks; a duplicate SKU keeps the first product and removes the rest,
  * because two live pages for one watch is the thing that sells it twice.
  */
-export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPlan {
+export function planSync(
+  watches: SyncWatch[],
+  products: SyncProduct[],
+  /**
+   * What a push would say about a watch right now, for comparison with what
+   * the last one said. Omit it and every page is re-sent, which is what this
+   * did before fingerprints existed and is still the right answer when the
+   * caller cannot work out the desired state — a shop that cannot be read,
+   * a taxonomy that would not load.
+   */
+  desiredFingerprint?: (watch: SyncWatch) => string,
+): SyncPlan {
   const plan: SyncPlan = { create: [], update: [], archive: [], remove: [], publish: [] }
 
   const bySku = new Map<string, SyncProduct>()
@@ -620,11 +708,41 @@ export function planSync(watches: SyncWatch[], products: SyncProduct[]): SyncPla
   const byId = new Map<string, SyncProduct>()
   for (const product of bySku.values()) byId.set(product.id, product)
 
+  /**
+   * Why this page is not already right.
+   *
+   * Three of the four answers come from the shop rather than from us, and
+   * that is deliberate: a fingerprint only knows what we last sent, so on its
+   * own it would never notice a product somebody archived, renamed or
+   * unpublished by hand in the admin. Those are the cases where the book and
+   * the shop have genuinely drifted, and they are exactly the ones a mirror
+   * has to catch.
+   */
+  const reasonsFor = (watch: SyncWatch, product: SyncProduct): UpdateReason[] => {
+    const reasons: UpdateReason[] = []
+    // Nothing to compare against: never pushed, or pushed before any of this.
+    // Treated as changed, so the first run after this lands does the whole
+    // book once and every run after it does only what moved.
+    if (!desiredFingerprint) return ['unknown']
+    if (!watch.shopifyFingerprint) reasons.push('unknown')
+    else if (watch.shopifyFingerprint !== desiredFingerprint(watch)) reasons.push('record')
+    if (product.status !== statusFor(watch)) reasons.push('status')
+    if (product.sku !== skuFor(watch.stockNo)) reasons.push('renumbered')
+    if (statusFor(watch) === 'ACTIVE' && !product.publishedAt) reasons.push('invisible')
+    return reasons
+  }
+
   const take = (watch: SyncWatch, product: SyncProduct) => {
     claimed.add(product.id)
-    plan.update.push({
-      watch, productId: product.id, title: product.title, seoTitle: product.seoTitle,
-    })
+    const reasons = reasonsFor(watch, product)
+    // A page that already says what we would say is left alone. That is the
+    // whole saving: a quiet week is a handful of watches rather than the
+    // entire catalogue re-uploaded, photographs and all.
+    if (reasons.length) {
+      plan.update.push({
+        watch, productId: product.id, title: product.title, seoTitle: product.seoTitle, reasons,
+      })
+    }
     // Intent on this side, visibility on that side. A watch we mean to sell
     // whose page is in no sales channel is the silent failure: the product
     // is right, the sync reported success, and the website does not have it.

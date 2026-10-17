@@ -586,6 +586,17 @@ export const watches = pgTable(
      */
     shopifyProductId: text('shopify_product_id'),
     shopifySyncedAt: timestamp('shopify_synced_at', { withTimezone: true }),
+    /**
+     * What the last successful push said about this watch.
+     *
+     * The one thing that lets the sync tell a watch that has changed from one
+     * that merely exists. Without it the plan could only count pages, so it
+     * offered to update all of them on every run, for ever. See
+     * `fingerprintFor` in src/lib/shopify-map.ts for what goes into it.
+     *
+     * Null means "we do not know", which always counts as needing a push.
+     */
+    shopifyFingerprint: text('shopify_fingerprint'),
     /** Why the last push failed, where somebody looking at the watch will see it. */
     shopifyError: text('shopify_error'),
   },

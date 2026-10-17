@@ -156,9 +156,12 @@ describe('planning the sync', () => {
 
   it('updates the product whose SKU matches', () => {
     const plan = planSync([watch()], [product()])
+    // No fingerprint function passed, so the plan cannot tell what has
+    // changed and says so: 'unknown' is the answer that gets the watch
+    // pushed. See the fingerprint tests for the case where it can tell.
     expect(plan.update).toEqual([{
       watch: watch(), productId: 'gid://shopify/Product/1', title: 'Datejust II Fluted 41',
-      seoTitle: null,
+      seoTitle: null, reasons: ['unknown'],
     }])
     expect(plan.create).toEqual([])
     expect(plan.remove).toEqual([])
