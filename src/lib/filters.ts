@@ -193,6 +193,18 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   // passed every check and then had all its values stripped on the way to
   // the query, so the filter silently returned the whole book.
   { key: 'family', label: 'Model', type: 'reference', optionSource: 'families', group: 'what' },
+  // Dial and metal, asked the way a customer asks them: "a green one", "white
+  // gold". References rather than enums for the same reason as family — the
+  // answers are whatever is in the case this morning, and an enum would have
+  // its values stripped on the way to the query and quietly return the book.
+  //
+  // Both are coarsened before they are offered. The records hold a sentence —
+  // "Pink, diamond-set", "Oyster (72419)" — and a filter wants the thing:
+  // Pink, Oyster. See HEAD_SQL in the watch repository, which does the
+  // cutting, and `withoutDescription` in shopify-metafields, which does the
+  // same job for the storefront.
+  { key: 'dial', label: 'Dial', type: 'reference', optionSource: 'dials', group: 'what' },
+  { key: 'material', label: 'Metal', type: 'reference', optionSource: 'materials', group: 'what' },
   { key: 'year', label: 'Year', type: 'number', group: 'what' },
   // Across the case, excluding the crown. A number, not bands: somebody says
   // "about 36" and means a range around it, which four fixed brackets cannot
