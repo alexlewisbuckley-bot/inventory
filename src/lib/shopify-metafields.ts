@@ -163,24 +163,34 @@ export const METAOBJECT_TYPES = [
  * is a gap, not a disagreement, and filling it cannot produce two entries
  * meaning the same thing.
  *
- * A model family is not on the list either, and for a sharper reason: the name
- * this system can offer is the whole variant — "Submariner Date Green Hulk" —
- * and creating that would give the shop a family of one watch, six times over,
- * where it wanted Submariner. A family it does not already have is reported so
- * somebody can name it properly.
+ * A model family is on it, but only through `creatableName`, which refuses
+ * the thing that made it dangerous. The name this system can offer is the
+ * whole variant — "Submariner Date Green Hulk" — and creating that would give
+ * the shop a family of one watch, six times over, where it wanted Submariner.
+ * So a family is offered only when it is short enough and plain enough to be
+ * a family: three words at most, no reference number in it. "Air-King" is
+ * created; "Submariner Date Green Hulk 41" is still reported for somebody to
+ * name properly.
  *
  * Dials and bracelets join them, but only because they are trimmed to the
  * thing itself first — see `withoutDescription`. "Pink" is a colour and can
  * be added; "Pink, diamond-set" is a sentence and would split the filter.
  *
- * Everything else is a curated vocabulary and is deliberately left alone. The
- * shop calls a material "Two-tone Everose Rolesor"; this system calls the same
- * metal "Oystersteel and Everose gold". Creating the second would not fill a
- * gap — it would split one material into two filters, each with half the
- * watches, and nobody would notice until a customer did. Those are reported
- * instead, so somebody who knows which is which decides.
+ * Materials are on the list at Alex's word: "the push should be creating
+ * these new fields in Shopify". The reservation above is real and worth
+ * keeping in mind — the shop says "Two-tone Everose Rolesor" where this
+ * system says "Oystersteel and Everose gold", and adding the second gives one
+ * metal two filters — but a Titanium the shop has never heard of is a gap,
+ * not a disagreement, and leaving the watch out of every material filter is
+ * the worse of the two failures. Anything created is named in the run's
+ * report, so a duplicate can be merged in Shopify the same day it appears.
+ *
+ * The brand list, the condition grades and box-and-papers stay off it. Those
+ * are short, closed and already complete: a new entry in any of them means
+ * this system has spelled something differently, never that the shop is
+ * missing a value.
  */
-export const CREATABLE_TYPES = ['year', 'case_size'] as const
+export const CREATABLE_TYPES = ['year', 'case_size', 'material', 'model'] as const
 
 /** The field each type keeps its name in. */
 export const NAME_FIELD: Record<string, string> = {
@@ -193,7 +203,33 @@ export function nameFieldFor(type: string): string {
 }
 
 export function isCreatable(want: DesiredMetaobject): boolean {
-  return want.canCreate === true || (CREATABLE_TYPES as readonly string[]).includes(want.type)
+  if (want.canCreate !== true && !(CREATABLE_TYPES as readonly string[]).includes(want.type)) {
+    return false
+  }
+  return creatableName(want) !== null
+}
+
+/**
+ * The name to add to the shop's list, or null if it should be reported instead.
+ *
+ * A filter entry is a label people browse by, so it has to be the thing and
+ * not a description of this particular watch. Everything creatable is already
+ * trimmed at the comma and the bracket (see `withoutDescription`); this is the
+ * second gate, for the values that survive trimming and still are not names.
+ *
+ * Four words or more is a sentence. A reference number is an identifier, and
+ * one watch has it. Either way the shop gets told about it rather than given
+ * a filter nobody will ever click twice.
+ */
+export function creatableName(want: DesiredMetaobject): string | null {
+  const name = want.name.trim()
+  if (name.length < 2 || name.length > 40) return null
+  // A year or a case size is a number and is meant to be.
+  if (want.type === 'year' || want.type === 'case_size') return name
+  // Anything with a run of digits long enough to be a reference is one.
+  if (/\d{4,}/.test(name)) return null
+  if (name.split(/\s+/).length > 3) return null
+  return name
 }
 
 /** One structured field the shop could hold for this watch. */

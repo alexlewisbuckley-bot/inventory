@@ -397,7 +397,10 @@ export function StorefrontSync({ health }: {
                 icon={<RefreshCw className="h-3.5 w-3.5" />}
                 tone="neutral"
                 title={`${plan.update.length} to update`}
-                items={plan.update.map((c) => `${c.stockNo} · ${c.title}`)}
+                items={plan.update.map((c) => `${c.stockNo} · ${c.title} — ${c.why}`)}
+                note={'Only what has actually moved since its last push. A watch whose page '
+                  + 'already says the same thing is left alone, which is why this number '
+                  + 'should fall to nothing once a run finishes.'}
               />
               <Group
                 icon={<Archive className="h-3.5 w-3.5" />}
