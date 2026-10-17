@@ -9,7 +9,7 @@ import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
 import { newId } from '@/lib/ids'
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors'
-import { marginPct } from '@/lib/money'
+import { askingPrice, marginPct } from '@/lib/money'
 import { can } from '@/lib/permissions'
 import { RATE_SCALE, toBase, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
@@ -53,7 +53,9 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
   const purchaseMinor = Math.round(input.purchaseAmount * 100)
   const priceGbp = toBase(purchaseMinor, input.purchaseCurrency, rates)
   const estMinor = input.estSaleAmount ? Math.round(Number(input.estSaleAmount) * 100) : null
-  const estGbp = estMinor === null ? null : toBase(estMinor, input.estSaleCurrency, rates)
+  // Asking prices sit on the AED 250 ladder. The base is what the shop and
+  // every report read, so that is what is snapped.
+  const estGbp = askingPrice(estMinor === null ? null : toBase(estMinor, input.estSaleCurrency, rates))
   const tradeMinor = input.tradeAmount ? Math.round(Number(input.tradeAmount) * 100) : null
   const tradeBase = tradeMinor === null ? null : toBase(tradeMinor, input.tradeCurrency, rates)
 
@@ -233,7 +235,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
       patch.estSaleAmount = minor
       patch.estSaleCurrency = input.estSaleCurrency ?? BASE_CURRENCY
       // Keep the base in step, or every report silently ignores the change.
-      patch.estSaleGbp = minor === null ? null : toBase(minor, patch.estSaleCurrency, rates)
+      patch.estSaleGbp = askingPrice(minor === null ? null : toBase(minor, patch.estSaleCurrency, rates))
       patch.estSaleUsd = patch.estSaleGbp
     }
     if (input.tradeAmount !== undefined) {

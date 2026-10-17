@@ -4,7 +4,7 @@ import { brands, locations, owners, suppliers, watches, stockMovements } from '.
 import { recordAudit } from './audit'
 import { dressFromLibrary } from './image-service'
 import { newId, slugify } from '@/lib/ids'
-import { toMinor } from '@/lib/money'
+import { askingPrice, toMinor } from '@/lib/money'
 import { ValidationError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { parseCsv } from '@/lib/csv'
@@ -315,7 +315,7 @@ export function diffAgainstStock(
       majorString(existing.purchasePriceGbp), majorString(proposedCost))
   }
 
-  const proposedRetail = proposed.estSaleGbp === null ? null : toMinor(proposed.estSaleGbp)
+  const proposedRetail = proposed.estSaleGbp === null ? null : askingPrice(toMinor(proposed.estSaleGbp))
   if (present.retail && proposedRetail !== existing.estSaleGbp) {
     add('retail', 'Retail', majorString(existing.estSaleGbp), majorString(proposedRetail))
   }
@@ -1028,7 +1028,11 @@ export function estimateFromSheet(
   estimateMajor: number | null,
 ): { gbp: number | null; usd: number | null } {
   if (estimateMajor === null) return { gbp: null, usd: null }
-  const base = toMinor(estimateMajor)
+  // Snapped onto the AED 250 ladder like any other asking price. Rounded
+  // here, where the sheet becomes a stored figure, so the preview's
+  // comparison below sees the same number the write will make — rounding
+  // only on write would show "retail changed" on every import, for ever.
+  const base = askingPrice(toMinor(estimateMajor))!
   // One figure in two columns. The estimate arrives already converted into the
   // base, and the base is dollars, so the retained USD column holds the same
   // number; converting it again would put a third onto every forecast.

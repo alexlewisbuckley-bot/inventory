@@ -70,7 +70,14 @@ describe('imported estimates reach the reporting base', () => {
    * before the base moved.
    */
   it('stores the sheet value in the base and the retained dollar column alike', () => {
-    expect(estimateFromSheet(14_980)).toEqual({ gbp: 1_498_000, usd: 1_498_000 })
+    expect(estimateFromSheet(15_000)).toEqual({ gbp: 1_500_000, usd: 1_500_000 })
+  })
+
+  it('puts an off-ladder sheet price onto the AED 250 ladder, upward', () => {
+    // A sheet is as likely as a person to carry AED 14,980, and an asking
+    // price is an asking price however it arrived.
+    expect(estimateFromSheet(14_980)).toEqual({ gbp: 1_500_000, usd: 1_500_000 })
+    expect(estimateFromSheet(74_749.99)).toEqual({ gbp: 7_475_000, usd: 7_475_000 })
   })
 
   it('keeps a missing estimate null rather than turning it into zero', () => {
@@ -253,7 +260,7 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
     model: '126711CHNR',
     purchaseDate: new Date('2026-04-08T00:00:00.000Z'),
     purchasePriceGbp: 1_310_551,
-    estSaleGbp: 1_498_000,
+    estSaleGbp: 1_500_000,
     brandName: 'Rolex',
     supplierName: 'GB Luxury Limited',
     locationName: 'Own inventory',
@@ -275,7 +282,7 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
     owner: 'Bluecroft Traders Limited',
     purchaseDate: '2026-04-08T00:00:00.000Z',
     purchasePriceGbp: 13_105.51,
-    estSaleGbp: 14_980,
+    estSaleGbp: 15_000,
   }
   const ALL = { serial: true, owner: true, retail: true, trade: true, type: true }
 
@@ -286,7 +293,7 @@ describe('a sheet sent back is matched against stock, not re-added', () => {
   it('reports only the field that actually moved', () => {
     const changes = diffAgainstStock(stored, { ...sheet, estSaleGbp: 16_500 }, ALL)
     expect(changes).toHaveLength(1)
-    expect(changes[0]).toMatchObject({ field: 'retail', from: '14980.00', to: '16500.00' })
+    expect(changes[0]).toMatchObject({ field: 'retail', from: '15000.00', to: '16500.00' })
   })
 
   it('does not mistake a re-formatted date for an edit', () => {
