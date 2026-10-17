@@ -69,6 +69,31 @@ export function formatShare(bps: number): string {
   return `${Number((bps / 100).toFixed(2))}%`
 }
 
+/**
+ * The ladder every asking price sits on: AED 250, always upward.
+ *
+ * Two problems, one rule. Watches are priced on round numbers and a shop
+ * window reading "AED 74,749.99" looks like a mistake, which is what the
+ * dollar-era conversions left behind — a figure that was AED 74,750 before
+ * the rebase came back a fil short, and a round $20,000 became AED
+ * 73,450.02, correctly and uselessly.
+ *
+ * Upward rather than nearest, so rounding never quietly takes money off an
+ * asking price. The most it ever adds is AED 249.99.
+ *
+ * Retail only. A purchase price is what was actually paid and a sale is
+ * what was actually agreed; rounding either would be inventing a number
+ * that no invoice says.
+ */
+export const PRICE_STEP = 25_000
+
+/** An asking price, snapped up onto the ladder. Null and zero pass through. */
+export function askingPrice(baseMinor: number | null | undefined): number | null {
+  if (baseMinor === null || baseMinor === undefined) return null
+  if (!Number.isFinite(baseMinor) || baseMinor <= 0) return baseMinor
+  return Math.ceil(baseMinor / PRICE_STEP) * PRICE_STEP
+}
+
 export function currencySymbol(currency: Currency): string {
   return SYMBOL[currency]
 }

@@ -291,7 +291,7 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
             currency={values.estSaleCurrency}
             onAmountChange={setField('estSaleAmount')}
             onCurrencyChange={(code: CurrencyCode) => setValues((c) => ({ ...c, estSaleCurrency: code }))}
-            hint="Leave blank and the watch is flagged as needing a price."
+            hint="Rounded up to the nearest AED 250. Leave blank and the watch is flagged as needing a price."
             error={state.errors?.estSaleAmount}
           />
           <SelectField
