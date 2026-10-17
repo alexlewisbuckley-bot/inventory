@@ -21,7 +21,7 @@ import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositor
  *
  * So: one row, five controls, each closed until it is asked a question.
  *
- *   Brand ▾   Model ▾   Budget ▾   Size ▾   For ▾        118 watches
+ *   Brand ▾   Model ▾   Dial ▾   Metal ▾   Budget ▾   Size ▾   For ▾   118 watches
  *
  * A trigger carries its own answer — "Rolex", "2 brands" — so the row reads
  * as the current question even while every menu is shut, and the whole thing
@@ -160,6 +160,33 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
       >
         <OptionList options={facets.families} chosen={chosen('family')} onToggle={(v) => toggle('family', v)} />
       </Pick>
+
+      {/* Dial and metal sit next to Model rather than at the end, because
+          they answer the same question — what is it — and the two after
+          them answer how much and how big. Hidden when the case holds only
+          one of a thing: a filter with a single option filters nothing and
+          costs a slot on a row that has to stay readable on a laptop. */}
+      {facets.dials.length > 1 && (
+        <Pick
+          id="dial" label="Dial" open={open} setOpen={setOpen}
+          summary={summarise(facets.dials, chosen('dial'), 'dial')}
+        >
+          <OptionList options={facets.dials} chosen={chosen('dial')} onToggle={(v) => toggle('dial', v)} />
+        </Pick>
+      )}
+
+      {facets.materials.length > 1 && (
+        <Pick
+          id="material" label="Metal" open={open} setOpen={setOpen}
+          summary={summarise(facets.materials, chosen('material'), 'metal')}
+        >
+          <OptionList
+            options={facets.materials}
+            chosen={chosen('material')}
+            onToggle={(v) => toggle('material', v)}
+          />
+        </Pick>
+      )}
 
       {facets.price && (
         <Pick
