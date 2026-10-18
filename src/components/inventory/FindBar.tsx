@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Check, ChevronDown, Search, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { applyFilters, parseFilters, WATCH_FIELDS, type FilterClause } from '@/lib/filters'
+import { pluralOf } from '@/lib/plural'
 import { useCurrency } from '@/components/ui/CurrencyProvider'
 import { fromBase, moneyPrefix } from '@/lib/currency'
 import { CURRENCY_SYMBOLS } from '@/lib/enums'
@@ -244,7 +245,7 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
 function summarise(options: FacetOption[], chosen: string[], noun: string): string | null {
   if (chosen.length === 0) return null
   if (chosen.length === 1) return options.find((option) => option.value === chosen[0])?.label ?? '1'
-  return `${chosen.length} ${noun}s`
+  return `${chosen.length} ${pluralOf(noun)}`
 }
 
 /**
