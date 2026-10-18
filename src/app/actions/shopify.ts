@@ -75,11 +75,16 @@ export async function previewSyncAction(): Promise<ActionState & { plan?: PlanSu
  * live. Run whole, it was killed by the platform part-way through and the
  * button span until the person gave up, having been told nothing.
  *
- * Twenty is small enough to finish well inside the limit on a slow day, and
- * large enough that the whole book is half a dozen rounds. The caller presses
- * on until there is no cursor left.
+ * The real guard is the clock, not this number: runSync stops a batch after
+ * BATCH_SECONDS whatever is left, so this is a ceiling rather than a target.
+ * That makes a small number pure cost — every extra round trip rebuilds the
+ * whole plan, which means paging the shop's entire product list and reading
+ * its taxonomy again. At twenty, the book was seven of those; at sixty it is
+ * two or three, and a fast run simply gets further before the deadline bites.
+ *
+ * The caller presses on until there is no cursor left.
  */
-const BATCH = 20
+const BATCH = 60
 
 export interface ApplyResult extends ActionState {
   /** Where the next press should carry on from, or null when it is finished. */
