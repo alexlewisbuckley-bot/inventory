@@ -185,15 +185,28 @@ export function StorefrontSync({ health }: {
                   rather than as starting. It is the longest wait of the run:
                   the plan has to be read off the shop first. Say what is
                   happening instead of reporting a zero. */}
+              {/* "Leave the page open" was the whole message and it read as
+                  an instruction to babysit a phone for several minutes. The
+                  run does stop if the page goes away — the loop lives in this
+                  browser, and a locked phone suspends it — but every batch is
+                  written before it answers, so stopping costs the rest of the
+                  run and nothing that was already done. Say that, because the
+                  useful thing to know is that you can walk away and pick it
+                  up, not that you must sit here. */}
               <p className="text-small text-content-secondary">
                 {progress
                   ? <>
                     Pushing to the shop —{' '}
                     <b className="tabular-nums text-content-primary">{progress.done}</b>
                     {progress.total ? <> of <span className="tabular-nums">{progress.total}</span></> : null}
-                    . Leave the page open.
+                    .
                   </>
-                  : <>Reading the shop to work out what has changed. This is the slow part; leave the page open.</>}
+                  : <>Reading the shop to work out what has changed. This is the slow part.</>}
+              </p>
+              <p className="mt-1 text-caption text-content-muted">
+                Keep this page open to let it finish. If you close it or your phone locks, the
+                run stops where it is — everything pushed is already saved, and Apply picks up
+                from there.
               </p>
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-surface-subtle">
                 <div
