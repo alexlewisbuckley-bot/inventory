@@ -15,11 +15,25 @@ export function CardHeader({ title, description, action, className }: {
   title: ReactNode; description?: ReactNode; action?: ReactNode; className?: string
 }) {
   return (
-    <div className={cn('flex items-start justify-between gap-4 px-6 py-5 border-b border-line-subtle', className)}>
-      <div className="min-w-0">
-        <h2 className="text-h3 font-extrabold text-content-primary truncate">{title}</h2>
-        {description && <p className="mt-1 text-small text-content-secondary">{description}</p>}
-      </div>
+    // Stacked on a phone, side by side from 640px — the same lesson CardFooter
+    // learned below, and this header never did. A row with a shrink-0 action
+    // in it cannot give way: two buttons are wider than a phone on their own,
+    // so the text beside them was squeezed to a column about one word across
+    // and the buttons still ran off the edge of the card.
+    <div className={cn(
+      'flex flex-col gap-3 px-6 py-5 border-b border-line-subtle',
+      'sm:flex-row sm:items-start sm:justify-between sm:gap-4',
+      className,
+    )}>
+      {(title || description) && (
+        <div className="min-w-0">
+          {/* Wraps on a phone rather than truncating. A heading cut off at
+              the edge of a 390px screen loses the half of it that says which
+              card this is. */}
+          {title && <h2 className="text-h3 font-extrabold text-content-primary sm:truncate">{title}</h2>}
+          {description && <p className="mt-1 text-small text-content-secondary">{description}</p>}
+        </div>
+      )}
       {action && <div className="shrink-0">{action}</div>}
     </div>
   )
