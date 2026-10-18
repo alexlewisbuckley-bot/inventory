@@ -124,11 +124,15 @@ export function StorefrontSync({ health }: {
   return (
     <>
       <Card>
+        {/* No title and no description: the page header directly above says
+            "Online shop" and the same sentence about mirroring. Two of each
+            is tolerable on a desktop and on a phone it is the whole first
+            screen — you scroll past the heading twice to reach the button. */}
         <CardHeader
-          title="Online shop"
-          description="The shop mirrors this system. Stock, prices and photographs are pushed out; nothing is read back."
+          title={null}
           action={
-            <div className="flex items-center gap-2">
+            // Wraps, because two buttons side by side are wider than a phone.
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"
                 icon={<RefreshCw className="h-3.5 w-3.5" />}
