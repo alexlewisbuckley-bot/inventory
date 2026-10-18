@@ -5,12 +5,13 @@ import { getRateTable } from './fx-service'
 import { logger } from '@/lib/logger'
 import { ValidationError } from '@/lib/errors'
 import {
-  descriptionHtmlFor, mediaFilesFor, planSync, priceFor, quantityFor, seoDescriptionFor, seoIsOurs,
+  descriptionHtmlFor, fingerprintFor, mediaFilesFor, planSync, priceFor, quantityFor,
+  seoDescriptionFor, seoIsOurs,
   seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
-  type SyncPlan, type SyncProduct, type SyncWatch,
+  type SyncPlan, type SyncProduct, type SyncWatch, type WatchPhotograph,
 } from '@/lib/shopify-map'
 import {
-  desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
+  creatableName, desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
   normalise, resolveMetafields, type MetaobjectIndex,
 } from '@/lib/shopify-metafields'
 import { HELD_STATUSES, type CurrencyCode } from '@/lib/enums'
@@ -202,6 +203,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       boxPapers: watches.boxPapers,
       description: watches.description,
       shopifyProductId: watches.shopifyProductId,
+      shopifyFingerprint: watches.shopifyFingerprint,
       // Photographs of the watch only. A warranty card carries a serial, a
       // date and a dealer's stamp, and the storefront is the last place any of
       // that should appear.
@@ -326,10 +328,12 @@ async function metaobjectEntries(): Promise<Array<{ type: string; displayName: s
 /**
  * Add the entries the shop is simply missing.
  *
- * Only for the types where a missing value is a gap rather than a judgement —
- * a year, a case size, a model family. The shop's own wording wins everywhere
- * else: see CREATABLE_TYPES for why inventing a material would split a filter
- * in two rather than complete it.
+ * Only for the types where a missing value is a gap rather than a judgement,
+ * and only for names that are names: see CREATABLE_TYPES for the list and
+ * `creatableName` for the gate every value passes through. The shop's own
+ * wording still wins for brands, grades and box-and-papers, where a value we
+ * do not recognise means we have spelled something differently rather than
+ * that the shop is short of one.
  *
  * Needs `write_metaobjects`. Without it every create is refused, which is not
  * a failure of the sync: the values are reported as unmatched exactly as they
@@ -344,9 +348,14 @@ export async function createMissing(
   for (const watch of watches) {
     for (const want of desiredMetaobjects(watch)) {
       if (!isCreatable(want)) continue
-      if (index.get(want.type)?.has(normalise(want.name))) continue
+      // The name the shop should get, which is not always the one we hold:
+      // a family has to be a family and not a whole variant. Null means
+      // report it instead, and isCreatable has already said as much.
+      const name = creatableName(want)
+      if (!name) continue
+      if (index.get(want.type)?.has(normalise(name))) continue
       // One entry per distinct name, however many watches want it.
-      wanted.set(`${want.type}:${normalise(want.name)}`, want)
+      wanted.set(`${want.type}:${normalise(name)}`, { ...want, name })
     }
   }
 
@@ -400,7 +409,37 @@ export async function createMissing(
 /** What it would take to make the store match the book. */
 export async function plan(): Promise<SyncPlan> {
   const [stock, products] = await Promise.all([syncableWatches(), storeProducts()])
-  return planSync(stock, products)
+  return planSync(stock, products, await fingerprinter())
+}
+
+/**
+ * What a push would say about a watch, as the plan needs to ask it.
+ *
+ * Built once per plan and handed in, rather than computed inside planSync,
+ * which is a pure function of two lists and is tested as one. The price needs
+ * the day's rates and the structured fields need the shop's own taxonomy, so
+ * both are network reads and neither belongs in there.
+ *
+ * If either read fails the plan falls back to no fingerprint at all, and
+ * every page is offered for update exactly as it was before this existed. A
+ * sync that re-sends too much is wasteful; one that skips a watch because it
+ * could not read the rate table is wrong.
+ */
+async function fingerprinter(): Promise<((watch: SyncWatch) => string) | undefined> {
+  try {
+    const { currency } = config()
+    const [rates, taxonomy] = await Promise.all([getRateTable(), loadMetaobjects()])
+    return (watch: SyncWatch) => fingerprintFor(
+      watch,
+      priceFor(watch.estSaleGbp, currency, rates),
+      metafieldsFor(watch, taxonomy).map((field) => `${field.key}=${field.value}`),
+    )
+  } catch (error) {
+    logger.info('sync fingerprint unavailable, planning a full push', {
+      reason: (error as Error).message?.slice(0, 200),
+    })
+    return undefined
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +481,7 @@ export async function pushWatch(
   existingTitle?: string,
   /** And the search title, which is protected on exactly the same terms. */
   existingSeoTitle?: string | null,
-): Promise<{ productId: string; warning: string | null }> {
+): Promise<{ productId: string; warning: string | null; fingerprint: string | null }> {
   const { currency, locationId, origin } = config()
   const sku = skuFor(watch.stockNo)
   const price = priceFor(watch.estSaleGbp, currency, rates)
@@ -530,9 +569,34 @@ export async function pushWatch(
   const id = data.productSet.product?.id
   if (!id) throw new Error('Shopify accepted the product but returned no id.')
 
-  await rememberMedia(watch, data.productSet.product?.media.nodes ?? [], files !== null)
+  const images = await rememberMedia(
+    watch, data.productSet.product?.media.nodes ?? [], files !== null,
+  )
 
   await writeMetafields(id, watch, taxonomy)
+
+  /**
+   * What this push said, for the next plan to compare against.
+   *
+   * Taken from the photographs as they now stand rather than as they stood a
+   * moment ago. This push is where a picture first gets a media row, so
+   * recording the state we arrived with would leave a fingerprint that never
+   * matches again — and a watch that offers itself for update on every run
+   * for ever, which is the exact fault this column was added to end.
+   *
+   * Null when the taxonomy could not be read, because then the structured
+   * fields are not part of what was sent and the string would understate it,
+   * and null when the photographs that went out could not be matched to the
+   * rows that came back. Null reads as "we do not know", so the watch is
+   * simply pushed again.
+   */
+  const fingerprint = taxonomy && images
+    ? fingerprintFor(
+      { ...watch, images },
+      price,
+      metafieldsFor(watch, taxonomy).map((field) => `${field.key}=${field.value}`),
+    )
+    : null
 
   // Live means visible. A product that is ACTIVE but attached to no sales
   // channel is in the admin and nowhere else, which looks from the outside
@@ -544,7 +608,7 @@ export async function pushWatch(
     ? await publishToOnlineStore(id)
     : null
 
-  return { productId: id, warning }
+  return { productId: id, warning, fingerprint }
 }
 
 /**
@@ -572,8 +636,19 @@ async function rememberMedia(
   watch: SyncWatch,
   media: Array<{ id: string; status: string }>,
   sentFiles: boolean,
-): Promise<void> {
-  if (!sentFiles || media.length !== watch.images.length) return
+): Promise<WatchPhotograph[] | null> {
+  // Nothing was sent, so what the record already says is what the shop has.
+  if (!sentFiles) return watch.images
+  // Pictures went out and could not be matched to what came back. Null, so
+  // the caller declines to fingerprint this push: the state is genuinely
+  // unknown and the next run should send them again, which is what happened
+  // before fingerprints existed and is still the right answer here.
+  if (media.length !== watch.images.length) return null
+
+  const paired = watch.images.map((photograph, index) => ({
+    ...photograph,
+    mediaId: media[index]!.status === 'FAILED' ? null : media[index]!.id,
+  }))
 
   const changed = watch.images
     .map((photograph, index) => ({
@@ -584,11 +659,12 @@ async function rememberMedia(
       mediaId: media[index]!.status === 'FAILED' ? null : media[index]!.id,
     }))
     .filter(({ photograph, mediaId }) => photograph.mediaId !== mediaId)
-  if (changed.length === 0) return
+  if (changed.length === 0) return paired
 
   await Promise.all(changed.map(({ photograph, mediaId }) => db.update(watchImages)
     .set({ shopifyMediaId: mediaId })
     .where(eq(watchImages.id, photograph.id))))
+  return paired
 }
 
 /**
@@ -648,14 +724,20 @@ async function allowedChoices(): Promise<Map<string, string[]>> {
  * record, so re-asserting them costs one call and repairs anything that has
  * drifted or been lost.
  */
-async function writeMetafields(
-  productId: string,
+/**
+ * Every field this system would write for a watch, before the shop's own
+ * validation has a say.
+ *
+ * One definition because two things need the same answer: the write below,
+ * and the fingerprint that decides whether the write is worth making. Those
+ * two drifting apart is not a cosmetic bug — a fingerprint that leaves out a
+ * field somebody edits is a field that silently stops reaching the shop.
+ */
+export function metafieldsFor(
   watch: SyncWatch,
   taxonomy?: MetaobjectIndex,
-): Promise<void> {
-  const choices = await allowedChoices()
-
-  const metafields = [
+): Array<{ namespace: string; key: string; type: string; value: string }> {
+  return [
     { namespace: 'custom', key: 'reference', type: 'single_line_text_field', value: watch.model },
     ...(watch.serial
       ? [{ namespace: 'custom', key: 'serial', type: 'single_line_text_field', value: watch.serial }]
@@ -669,6 +751,16 @@ async function writeMetafields(
     // watch is there at all. The shop does not need to know the room.
     ...(taxonomy ? resolveMetafields(watch, taxonomy).metafields : []),
   ]
+}
+
+async function writeMetafields(
+  productId: string,
+  watch: SyncWatch,
+  taxonomy?: MetaobjectIndex,
+): Promise<void> {
+  const choices = await allowedChoices()
+
+  const metafields = metafieldsFor(watch, taxonomy)
     // A field with a fixed list of choices takes one of them or nothing. This
     // system's own vocabulary is not the shop's — a location here is a room,
     // and over there it is a country — so a value the field will not accept is
@@ -1058,12 +1150,17 @@ export async function runSync({ apply = false, after = null, limit }: {
       // The plan's product id wins over the one cached on the row: the plan
       // was built from what the store has now, and the cache may be pointing
       // at a page somebody deleted by hand.
-      const { productId, warning } = await pushWatch(
+      const { productId, warning, fingerprint } = await pushWatch(
         { ...watch, shopifyProductId: existing }, rates, taxonomy, title, seoTitle,
       )
       if (warning) refused.add(warning)
       await db.update(watches)
-        .set({ shopifyProductId: productId, shopifySyncedAt: new Date(), shopifyError: null })
+        .set({
+          shopifyProductId: productId,
+          shopifySyncedAt: new Date(),
+          shopifyFingerprint: fingerprint,
+          shopifyError: null,
+        })
         .where(eq(watches.id, watch.id))
       if (existing) outcome.updated += 1
       else outcome.created += 1

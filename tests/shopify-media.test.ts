@@ -47,7 +47,7 @@ describe('pushing a watch', () => {
     // The other half of the fix. The column existed and was never filled in,
     // so even once pictures were sent on every push, every push would have
     // re-uploaded all of them.
-    expect(source).toMatch(/rememberMedia\(watch, /)
+    expect(source).toMatch(/rememberMedia\(\s*watch, /)
     expect(source).toMatch(/shopifyMediaId: mediaId/)
     // Which needs the ids back out of the mutation.
     expect(source).toMatch(/media\(first: 50\) \{ nodes \{ id status \} \}/)

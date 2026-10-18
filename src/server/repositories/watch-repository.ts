@@ -4,7 +4,7 @@ import { liveSale } from '../db/predicates'
 import {
   brands, locations, owners, purchaseInvoices, sales, suppliers, users, watchImages, watches,
 } from '../db/schema'
-import { alias } from 'drizzle-orm/pg-core'
+import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { WATCH_FIELDS } from '@/lib/filters'
 import {
@@ -37,6 +37,34 @@ import {
  * the first place the trade side has had it.
  */
 const FAMILY_SQL = sql`nullif(btrim(regexp_replace(regexp_replace(${watches.nickname}, '\\s*[“”"–—].*$', ''), '\\s+(2[0-9]|[3-5][0-9]|60)(\\s*mm)?$', '', 'i')), '')`
+
+/**
+ * The thing itself, without the sentence about it.
+ *
+ * A dial is recorded as "Pink, diamond-set" and a bracelet as "Oyster
+ * (72419)". Those are true, and useless as filters: picking Pink would find
+ * the plain ones and miss the diamond-set one, and a menu of forty dials
+ * each holding a single watch is a menu nobody opens twice.
+ *
+ * So the head of the value is what gets counted and matched — everything up
+ * to the first comma, bracket or " with ". Never trimmed away to nothing: a
+ * value that is all description is better offered whole than offered blank.
+ *
+ * Deliberately the same cut as `withoutDescription` in shopify-metafields,
+ * which does this for the storefront's own filters. Stated twice because one
+ * is Postgres and the other is TypeScript and neither can call the other;
+ * tests/stock-facets.test.ts holds them to the same answers.
+ */
+const headOf = (column: AnyPgColumn) => sql<string>`nullif(btrim(
+  case
+    when length(btrim(regexp_replace(${column}, '(,|\\(| with ).*$', '', 'i'))) >= 2
+      then regexp_replace(${column}, '(,|\\(| with ).*$', '', 'i')
+    else ${column}
+  end
+), '')`
+
+const DIAL_SQL = headOf(watches.dial)
+const MATERIAL_SQL = headOf(watches.caseMaterial)
 import type { WatchQuery } from '@/lib/validation'
 import type {
   EntityType, IdCheckStatus, ProductType, RegisterCheckStatus, VatCheckStatus, WatchStatus,
@@ -335,6 +363,23 @@ const WATCH_COLUMNS: ColumnMap = {
     match: (value) => sql`${FAMILY_SQL} = ${value}`,
   },
 
+  /**
+   * The dial and the metal, coarsened to the thing being asked for.
+   *
+   * Derived rather than plain text columns because the stored value is a
+   * description and the question is not: somebody filtering for a green dial
+   * means every green dial, not the ones whose record happens to stop at the
+   * word. See headOf.
+   */
+  dial: {
+    kind: 'derived',
+    match: (value) => sql`${DIAL_SQL} = ${value}`,
+  },
+  material: {
+    kind: 'derived',
+    match: (value) => sql`${MATERIAL_SQL} = ${value}`,
+  },
+
   missing: {
     kind: 'derived',
     match: (value) => value === 'OWNER'
@@ -380,6 +425,8 @@ export interface RangeFacet {
 export interface StockFacetData {
   brands: FacetOption[]
   families: FacetOption[]
+  dials: FacetOption[]
+  materials: FacetOption[]
   price: RangeFacet | null
   size: RangeFacet | null
   wears: FacetOption[]
@@ -422,7 +469,8 @@ export async function stockFacets(query: WatchQuery): Promise<StockFacetData> {
     f: (query.f ?? []).filter((clause) => !fields.includes(clause.field)),
   })
 
-  const [brandRows, familyRows, priceRows, sizeRows, wearsRow] = await Promise.all([
+  const [brandRows, familyRows, dialRows, materialRows, priceRows, sizeRows, wearsRow]
+    = await Promise.all([
     db.select({ value: brands.id, label: brands.name, count: count() })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
@@ -434,6 +482,18 @@ export async function stockFacets(query: WatchQuery): Promise<StockFacetData> {
       .innerJoin(brands, eq(brands.id, watches.brandId))
       .where(and(without('family'), sql`${FAMILY_SQL} is not null`))
       .groupBy(FAMILY_SQL),
+
+    db.select({ value: sql<string>`${DIAL_SQL}`, count: count() })
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(and(without('dial'), sql`${DIAL_SQL} is not null`))
+      .groupBy(DIAL_SQL),
+
+    db.select({ value: sql<string>`${MATERIAL_SQL}`, count: count() })
+      .from(watches)
+      .innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(and(without('material'), sql`${MATERIAL_SQL} is not null`))
+      .groupBy(MATERIAL_SQL),
 
     db.select({ value: watches.estSaleGbp })
       .from(watches)
@@ -465,6 +525,8 @@ export async function stockFacets(query: WatchQuery): Promise<StockFacetData> {
   return {
     brands: rank(brandRows.map((row) => ({ value: row.value, label: row.label, count: Number(row.count) }))),
     families: rank(familyRows.map((row) => ({ value: row.value, label: row.value, count: Number(row.count) }))),
+    dials: rank(dialRows.map((row) => ({ value: row.value, label: row.value, count: Number(row.count) }))),
+    materials: rank(materialRows.map((row) => ({ value: row.value, label: row.value, count: Number(row.count) }))),
     // Pence to pounds: the slider is dragged in the units the labels are in.
     price: spread(priceRows.map((row) => Math.round(Number(row.value) / 100))),
     size: spread(sizeRows.map((row) => Number(row.value))),

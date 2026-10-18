@@ -9,9 +9,27 @@ import type { ActionState } from './auth'
 
 export interface PlanSummary {
   create: Array<{ stockNo: number; title: string }>
-  update: Array<{ stockNo: number; title: string }>
+  /** With what makes each one worth sending, so the number can be believed. */
+  update: Array<{ stockNo: number; title: string; why: string }>
   archive: Array<{ sku: string | null; title: string }>
   remove: Array<{ sku: string | null; title: string }>
+}
+
+/**
+ * Why a watch is being pushed, in words rather than in a field name.
+ *
+ * The list used to be a wall of stock numbers with a count on top and no way
+ * to tell whether the count meant anything — it said the same number before
+ * and after every push, because it was counting pages rather than
+ * differences. Saying what moved is what makes the new number checkable:
+ * read one line, recognise the change you made this morning, press Apply.
+ */
+const WHY: Record<string, string> = {
+  record: 'changed here',
+  status: 'the shop disagrees about whether it is live',
+  renumbered: 'renumbered',
+  invisible: 'in no sales channel',
+  unknown: 'never pushed',
 }
 
 function toState(error: unknown, fallback: string): ActionState {
@@ -36,7 +54,9 @@ export async function previewSyncAction(): Promise<ActionState & { plan?: PlanSu
       plan: {
         create: result.create.map((w) => ({ stockNo: w.stockNo, title: `${w.brandName} ${w.model}` })),
         update: result.update.map((u) => ({
-          stockNo: u.watch.stockNo, title: `${u.watch.brandName} ${u.watch.model}`,
+          stockNo: u.watch.stockNo,
+          title: `${u.watch.brandName} ${u.watch.model}`,
+          why: u.reasons.map((reason) => WHY[reason]).join(', '),
         })),
         archive: result.archive.map((a) => ({ sku: a.sku, title: a.title })),
         remove: result.remove.map((r) => ({ sku: r.sku, title: r.title })),

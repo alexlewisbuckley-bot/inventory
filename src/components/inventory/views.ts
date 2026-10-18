@@ -25,12 +25,50 @@ import type { BuiltInView } from '@/components/ui/DataList'
  */
 export const AVAILABLE_QUERY = 'f=status%3AisNot%3ASOLD'
 
+/** Available stock standing in one place. */
+export function locationQuery(locationId: string): string {
+  return `${AVAILABLE_QUERY}&f=${encodeURIComponent(`locationId:is:${locationId}`)}`
+}
+
+/**
+ * The views, with the house on the front when there is one.
+ *
+ * The list opens on the stock that is actually in the shop, because that is
+ * the question being asked nearly every time somebody opens it: what can I
+ * put in front of the person standing here. Everything else — in transit, out
+ * on loan, at a workshop — is real stock and a different question.
+ *
+ * A view and not a hidden default, for the same reason the sold filter is a
+ * view: the clause shows as a chip you can take off, the URL still describes
+ * what is on the screen, and "All locations" is one click away. A default
+ * that narrows the list without saying so is how somebody concludes a watch
+ * has gone missing.
+ *
+ * Which location counts as the house is the first active store in the
+ * Locations list, so it follows the order set there rather than a name
+ * written into the code.
+ */
+export function inventoryViews(
+  house: { id: string; name: string } | null,
+): readonly BuiltInView[] {
+  if (!house) return INVENTORY_VIEWS
+  return [
+    {
+      id: 'house',
+      label: house.name,
+      query: locationQuery(house.id),
+      description: `Stock you hold at ${house.name}`,
+    },
+    ...INVENTORY_VIEWS,
+  ]
+}
+
 export const INVENTORY_VIEWS: readonly BuiltInView[] = [
   {
     id: 'all',
-    label: 'All stock (available)',
+    label: 'All locations',
     query: AVAILABLE_QUERY,
-    description: 'Everything you hold — sold stock has its own view',
+    description: 'Everything you hold, wherever it is — sold stock has its own view',
   },
   {
     id: 'sold',

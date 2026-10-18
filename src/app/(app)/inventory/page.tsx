@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, isNull } from 'drizzle-orm'
 import { Download, Inbox, Plus } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import { db } from '@/server/db/client'
@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { AVAILABLE_QUERY, INVENTORY_VIEWS } from '@/components/inventory/views'
+import { inventoryViews, locationQuery, AVAILABLE_QUERY } from '@/components/inventory/views'
 import { FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
@@ -63,6 +63,32 @@ function parseQuery(searchParams: SearchParams) {
   })
 }
 
+/**
+ * Where the stock list opens.
+ *
+ * The first active store in the Locations list, which on this book is One
+ * Street Watches. Read from the order set in Locations rather than from a
+ * name written in here, so moving the shop or opening a second one is an
+ * afternoon in the admin and not a deployment.
+ *
+ * Null when there is no store at all — a new book, or every location a
+ * workshop — and then nothing is narrowed and the list opens as it always
+ * did.
+ */
+async function houseLocation(): Promise<{ id: string; name: string } | null> {
+  const [row] = await db
+    .select({ id: locations.id, name: locations.name })
+    .from(locations)
+    .where(and(
+      isNull(locations.deletedAt),
+      eq(locations.isActive, true),
+      eq(locations.type, 'STORE'),
+    ))
+    .orderBy(asc(locations.sortOrder), asc(locations.name))
+    .limit(1)
+  return row ?? null
+}
+
 export default async function InventoryPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('watch:read')
 
@@ -78,8 +104,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
    * Only a completely bare URL redirects. /inventory?supplierId=… is somebody
    * asking a specific question, and answering a different one would be wrong.
    */
+  const house = await houseLocation()
   if (Object.keys(searchParams).length === 0) {
-    redirect(`/inventory?${AVAILABLE_QUERY}`)
+    redirect(`/inventory?${house ? locationQuery(house.id) : AVAILABLE_QUERY}`)
   }
 
   /**
@@ -273,7 +300,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         )}
       </section>
 
-      <ViewBar object="watch" builtIn={INVENTORY_VIEWS} saved={savedViews} />
+      <ViewBar object="watch" builtIn={inventoryViews(house)} saved={savedViews} />
 
       <FilterBar
         fields={WATCH_FIELDS}
