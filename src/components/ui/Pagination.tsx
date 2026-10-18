@@ -1,6 +1,7 @@
 'use client'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/cn'
+import { plural } from '@/lib/plural'
 
 export interface PaginationProps {
   page: number
@@ -22,13 +23,13 @@ export function Pagination({ page, perPage, total, onPage, onPerPage, noun = 're
   const pages = Math.max(1, Math.ceil(total / perPage))
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
-  const plural = total === 1 ? noun : `${noun}s`
+  const counted = plural(noun, total)
 
   return (
     <div className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-4">
         <p className="text-small text-content-secondary" aria-live="polite">
-          {total === 0 ? `No ${plural}` : `Showing ${from}–${to} of ${total.toLocaleString()} ${plural}`}
+          {total === 0 ? `No ${counted}` : `Showing ${from}–${to} of ${total.toLocaleString()} ${counted}`}
         </p>
         {onPerPage && total > PER_PAGE_OPTIONS[0]! && (
           <label className="relative hidden items-center text-small text-content-secondary sm:flex">
