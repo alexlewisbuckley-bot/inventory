@@ -1,7 +1,7 @@
 import {
   commissionForMonth, commissionOn, tradingForMonth, unattributedForMonth,
 } from '../repositories/sale-repository'
-import { overheadsInMonth } from '../repositories/overhead-repository'
+import { overheadCoverage, overheadsInMonth } from '../repositories/overhead-repository'
 import type { OverheadCadence, OverheadCategory } from '@/lib/enums'
 
 export interface OverheadLine {
@@ -58,8 +58,18 @@ export interface PnlMonth {
     peopleWithoutRetainer: number
     /** Of how many altogether. */
     peopleTotal: number
-    /** Running costs charged to this month. Zero means the rent is not in. */
+    /** Running costs charged to this month. */
     overheadCount: number
+    /** How many exist at all, which is not the same number. */
+    overheadsRecorded: number
+    /**
+     * Costs entered correctly whose first month has not come round yet.
+     *
+     * The case that started this: a rent dated to begin next month is a real
+     * cost this month charges nothing for, and the only sign of it was a dash
+     * in a table nobody reading a profit figure would open.
+     */
+    startingLater: Array<{ name: string; startsOn: string }>
   }
 }
 
@@ -79,11 +89,12 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
   const monthStart = isoDate(from)
   const monthEnd = isoDate(to)
 
-  const [trading, people, costs, unattributed] = await Promise.all([
+  const [trading, people, costs, unattributed, coverage] = await Promise.all([
     tradingForMonth(from, to),
     commissionForMonth(from, to),
     overheadsInMonth(monthStart, monthEnd),
     unattributedForMonth(from, to),
+    overheadCoverage(monthStart, monthEnd),
   ])
 
   const retainers = people.reduce((sum, person) => sum + person.retainer, 0)
@@ -143,6 +154,8 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
       peopleWithoutRetainer: people.filter((person) => person.retainer === 0).length,
       peopleTotal: people.length,
       overheadCount: costs.length,
+      overheadsRecorded: coverage.recorded,
+      startingLater: coverage.startingLater,
     },
   }
 }

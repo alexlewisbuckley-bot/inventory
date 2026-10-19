@@ -142,16 +142,46 @@ export default async function PnlPage({ searchParams }: { searchParams: { month?
             Each of these makes the figure below better than the month really was.
           </p>
           <ul className="mt-4 flex flex-col gap-3">
-            {statement.blindSpots.overheadCount === 0 && (
+            {/* Two different failures that look identical on the bottom
+                line. Nothing entered is a gap somebody has to fill; entered
+                but dated to start later is a cost that is already correct
+                and simply is not this month's — and saying "none recorded"
+                about it would send somebody hunting for a row that is
+                already there. */}
+            {statement.blindSpots.overheadCount === 0
+              && statement.blindSpots.overheadsRecorded === 0 && (
               <li className="text-small text-content-secondary">
                 <span className="font-semibold text-content-primary">
-                  No running costs are recorded for this month.
+                  No running costs are recorded at all.
                 </span>{' '}
                 Rent, insurance and salaries are charged from{' '}
                 <Link href="/reports/costs" className="font-bold text-content-accent hover:underline">
                   Running costs
                 </Link>
                 , and with nothing entered the business appears to have none.
+              </li>
+            )}
+            {statement.blindSpots.startingLater.length > 0 && (
+              <li className="text-small text-content-secondary">
+                <span className="font-semibold text-content-primary">
+                  {statement.blindSpots.startingLater.length === 1
+                    ? `${statement.blindSpots.startingLater[0]!.name} is recorded but does not start until `
+                    : `${statement.blindSpots.startingLater.length} running costs are recorded but do not start until `}
+                  {statement.blindSpots.startingLater
+                    .map((cost) => new Date(`${cost.startsOn}T00:00:00`)
+                      .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }))
+                    .filter((month, index, all) => all.indexOf(month) === index)
+                    .join(' and ')}
+                  .
+                </span>{' '}
+                {statement.blindSpots.startingLater.length === 1 ? 'Nothing is' : 'None of it is'}{' '}
+                charged to {chosen.label}, so this month shows the business paying
+                {statement.blindSpots.overheadCount === 0 ? ' no overheads whatever' : ' less than it will'}.
+                If {statement.blindSpots.startingLater.length === 1 ? 'it has' : 'they have'} been
+                running longer than that, correct the start date on{' '}
+                <Link href="/reports/costs" className="font-bold text-content-accent hover:underline">
+                  Running costs
+                </Link>.
               </li>
             )}
             {statement.blindSpots.peopleWithoutRetainer > 0 && (
