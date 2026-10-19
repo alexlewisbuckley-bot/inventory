@@ -41,6 +41,35 @@ export function appliesInMonth(
   return true
 }
 
+/**
+ * How many running costs exist, against how many this month actually charges.
+ *
+ * The two are not the same number and the gap is where a month quietly looks
+ * cheap. A rent recorded as starting next month is a real cost, correctly
+ * entered, that this month charges nothing for — and the only sign of it was
+ * a dash in a table. Somebody reading a profit figure has no reason to go
+ * looking at that table at all.
+ */
+export async function overheadCoverage(monthStart: string, monthEnd: string) {
+  const rows = await db
+    .select()
+    .from(overheads)
+    .where(and(isNull(overheads.deletedAt), eq(overheads.isActive, true)))
+
+  return {
+    recorded: rows.length,
+    applying: rows.filter((row) => appliesInMonth(row, monthStart, monthEnd)).length,
+    /** Entered, but their first month has not come round yet. */
+    startingLater: rows
+      .filter((row) => row.startsOn > monthEnd)
+      .map((row) => ({ name: row.name, startsOn: row.startsOn })),
+    /** Entered, and already finished. */
+    ended: rows
+      .filter((row) => row.endsOn !== null && row.endsOn < monthStart)
+      .map((row) => ({ name: row.name, endsOn: row.endsOn as string })),
+  }
+}
+
 /** Every running cost still on the books, in the order the report lists them. */
 export async function listOverheads() {
   return db

@@ -104,7 +104,12 @@ export default async function RunningCostsPage() {
         />
       </section>
 
-      <RunningCostsManager costs={costs} canManage={canManage} />
+      <RunningCostsManager
+        costs={costs}
+        canManage={canManage}
+        monthStart={monthStart}
+        monthEnd={monthEnd}
+      />
 
       <section aria-label="Where it goes" className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="p-6">

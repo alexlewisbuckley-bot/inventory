@@ -47,9 +47,12 @@ const INITIAL: ActionState = { ok: false }
  * against each person on Sales people and read from there, so a wage cannot
  * be entered twice and the P&L cannot drift from the commission report.
  */
-export function RunningCostsManager({ costs, canManage }: {
+export function RunningCostsManager({ costs, canManage, monthStart, monthEnd }: {
   costs: CostRow[]
   canManage: boolean
+  /** The month on screen, as `YYYY-MM-DD`, so a row can say which way it misses. */
+  monthStart: string
+  monthEnd: string
 }) {
   const toast = useToast()
   const { money } = useCurrency()
@@ -118,7 +121,21 @@ export function RunningCostsManager({ costs, canManage }: {
                 <TD align="right" className="tabular-nums font-bold">
                   {/* A quarter's rent is stored as the quarter's figure, so
                       this column is the only one that can be added up. */}
-                  {cost.current ? money(cost.monthly) : <span className="font-normal text-content-muted">—</span>}
+                  {/* A dash said "not counted" and nothing else, which on
+                      the one cost a business cannot forget — the rent — read
+                      as a glitch rather than as the reason the month looked
+                      cheap. Say which way it misses. */}
+                  {cost.current
+                    ? money(cost.monthly)
+                    : (
+                      <span className="font-normal text-content-muted">
+                        {cost.startsOn > monthEnd
+                          ? `from ${formatDay(cost.startsOn)}`
+                          : cost.endsOn !== null && cost.endsOn < monthStart
+                            ? `ended ${formatDay(cost.endsOn)}`
+                            : !cost.isActive ? 'paused' : '—'}
+                      </span>
+                    )}
                 </TD>
                 <TD>
                   {!cost.isActive ? (
