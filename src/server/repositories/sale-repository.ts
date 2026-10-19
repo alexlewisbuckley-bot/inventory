@@ -358,6 +358,36 @@ export async function commissionForMonth(from: Date, to: Date) {
 }
 
 /**
+ * The month's sales with nobody's name on them.
+ *
+ * Commission is worked out per salesperson, so a sale with no salesperson
+ * attached earns none — and the month's wage bill comes out lower than it
+ * really is while the profit comes out higher. Nothing on the report said
+ * so, which makes it the kind of error that reads as good news.
+ *
+ * Counted separately rather than folded into the commission figure, because
+ * guessing who sold it would be worse: the fix is to put a name on the sale,
+ * and the report's job is to say that one is missing.
+ */
+export async function unattributedForMonth(from: Date, to: Date) {
+  const rows = await db
+    .select({
+      count: sql<number>`count(*)`,
+      profit: sql<number>`coalesce(sum(${sales.profitGbp}), 0)`,
+    })
+    .from(sales)
+    .where(and(
+      liveSale(), isNull(sales.soldById),
+      gte(sales.saleDate, from), lte(sales.saleDate, to),
+    ))
+
+  return {
+    count: Number(rows[0]?.count ?? 0),
+    profit: Number(rows[0]?.profit ?? 0),
+  }
+}
+
+/**
  * One month's trading, for the top of the profit and loss.
  *
  * Accrual: a sale counts in the month it was invoiced, whether or not the

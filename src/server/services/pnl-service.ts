@@ -1,4 +1,6 @@
-import { commissionForMonth, commissionOn, tradingForMonth } from '../repositories/sale-repository'
+import {
+  commissionForMonth, commissionOn, tradingForMonth, unattributedForMonth,
+} from '../repositories/sale-repository'
 import { overheadsInMonth } from '../repositories/overhead-repository'
 import type { OverheadCadence, OverheadCategory } from '@/lib/enums'
 
@@ -40,6 +42,25 @@ export interface PnlMonth {
   netProfit: number
   /** Net profit as basis points of revenue. Null when nothing was invoiced. */
   netMarginBps: number | null
+
+  /**
+   * What the figures above could not see.
+   *
+   * A profit and loss built on blanks still prints a number, and the number
+   * is always too good: a cost nobody entered is a cost this cannot charge.
+   * These three say which inputs were missing so the bottom line can be read
+   * for what it is rather than taken on trust.
+   */
+  blindSpots: {
+    /** Sales with no salesperson on them, so no commission was charged. */
+    unattributed: { count: number; profit: number }
+    /** Active salespeople whose retainer is still zero. */
+    peopleWithoutRetainer: number
+    /** Of how many altogether. */
+    peopleTotal: number
+    /** Running costs charged to this month. Zero means the rent is not in. */
+    overheadCount: number
+  }
 }
 
 /**
@@ -58,10 +79,11 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
   const monthStart = isoDate(from)
   const monthEnd = isoDate(to)
 
-  const [trading, people, costs] = await Promise.all([
+  const [trading, people, costs, unattributed] = await Promise.all([
     tradingForMonth(from, to),
     commissionForMonth(from, to),
     overheadsInMonth(monthStart, monthEnd),
+    unattributedForMonth(from, to),
   ])
 
   const retainers = people.reduce((sum, person) => sum + person.retainer, 0)
@@ -116,6 +138,12 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
     netMarginBps: trading.invoiced > 0
       ? Math.round((netProfit / trading.invoiced) * 10_000)
       : null,
+    blindSpots: {
+      unattributed,
+      peopleWithoutRetainer: people.filter((person) => person.retainer === 0).length,
+      peopleTotal: people.length,
+      overheadCount: costs.length,
+    },
   }
 }
 

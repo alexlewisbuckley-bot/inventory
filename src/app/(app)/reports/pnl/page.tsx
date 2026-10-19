@@ -121,6 +121,71 @@ export default async function PnlPage({ searchParams }: { searchParams: { month?
         />
       </section>
 
+      {/*
+        What the bottom line could not see.
+
+        A profit and loss built on blanks still prints a number, and the
+        number is always too good — a cost nobody entered is a cost this
+        cannot charge, and a sale with no name on it earns no commission.
+        Read before the statement rather than footnoted after it, because
+        somebody who has been told the month made money has already stopped
+        reading.
+      */}
+      {(statement.blindSpots.unattributed.count > 0
+        || statement.blindSpots.peopleWithoutRetainer > 0
+        || statement.blindSpots.overheadCount === 0) && (
+        <Card className="mb-6 border-state-warning/40 bg-state-warning/5 p-6">
+          <h2 className="text-small font-bold text-content-primary">
+            What this month cannot see
+          </h2>
+          <p className="mt-0.5 text-caption text-content-secondary">
+            Each of these makes the figure below better than the month really was.
+          </p>
+          <ul className="mt-4 flex flex-col gap-3">
+            {statement.blindSpots.overheadCount === 0 && (
+              <li className="text-small text-content-secondary">
+                <span className="font-semibold text-content-primary">
+                  No running costs are recorded for this month.
+                </span>{' '}
+                Rent, insurance and salaries are charged from{' '}
+                <Link href="/reports/costs" className="font-bold text-content-accent hover:underline">
+                  Running costs
+                </Link>
+                , and with nothing entered the business appears to have none.
+              </li>
+            )}
+            {statement.blindSpots.peopleWithoutRetainer > 0 && (
+              <li className="text-small text-content-secondary">
+                <span className="font-semibold text-content-primary">
+                  {statement.blindSpots.peopleWithoutRetainer} of{' '}
+                  {statement.blindSpots.peopleTotal} salespeople have no retainer recorded.
+                </span>{' '}
+                A retainer of zero is charged as zero, so their wages are missing from the
+                costs below. Set them on{' '}
+                <Link href="/sales-people" className="font-bold text-content-accent hover:underline">
+                  Sales people
+                </Link>.
+              </li>
+            )}
+            {statement.blindSpots.unattributed.count > 0 && (
+              <li className="text-small text-content-secondary">
+                <span className="font-semibold text-content-primary">
+                  {statement.blindSpots.unattributed.count}{' '}
+                  {statement.blindSpots.unattributed.count === 1 ? 'sale has' : 'sales have'}{' '}
+                  no salesperson on {statement.blindSpots.unattributed.count === 1 ? 'it' : 'them'}.
+                </span>{' '}
+                Commission is worked out per person, so the{' '}
+                {money(statement.blindSpots.unattributed.profit)} of profit on{' '}
+                {statement.blindSpots.unattributed.count === 1 ? 'it' : 'those'} has had none
+                charged against it. Put a name on{' '}
+                {statement.blindSpots.unattributed.count === 1 ? 'the sale' : 'each sale'} and
+                this month will cost more than it currently says.
+              </li>
+            )}
+          </ul>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
         <Card className="p-6">
           <h2 className="text-small font-bold text-content-primary">{chosen.label}</h2>
@@ -168,6 +233,15 @@ export default async function PnlPage({ searchParams }: { searchParams: { month?
           </dl>
 
           <p className="mt-4 border-t border-line-subtle pt-4 text-caption text-content-secondary">
+            Cost of stock is what each watch was bought for and nothing else. Servicing,
+            polishing, shipping, duty and card fees are not in it, so gross profit is the
+            margin on the metal rather than the cost of getting it sold. Put those in{' '}
+            <Link href="/reports/costs" className="font-bold text-content-accent hover:underline">
+              Running costs
+            </Link>{' '}
+            if you want them against the month.
+          </p>
+          <p className="mt-2 text-caption text-content-secondary">
             {statement.unpaid > 0 ? (
               <>
                 <span className="font-semibold text-content-primary">{money(statement.received)}</span>
