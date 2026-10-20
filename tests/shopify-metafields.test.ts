@@ -27,10 +27,12 @@ const INDEX = indexMetaobjects([
   { type: 'dial', displayName: 'Green', id: 'gid://d/6' },
   { type: 'dial', displayName: 'Grey', id: 'gid://d/7' },
   { type: 'bracelet', displayName: 'Oyster', id: 'gid://br/1' },
-  { type: 'material', displayName: 'Oystersteel', id: 'gid://m/1' },
-  { type: 'material', displayName: '18k White Gold', id: 'gid://m/2' },
-  { type: 'material', displayName: 'Two-tone White Rolesor', id: 'gid://m/3' },
-  { type: 'material', displayName: 'Titanium and Platinum', id: 'gid://m/4' },
+  // The nine the shop filters on, since the fourteen were collapsed. See
+  // MATERIAL_GROUPS and tests/material-groups.test.ts.
+  { type: 'material', displayName: 'Steel', id: 'gid://m/1' },
+  { type: 'material', displayName: 'White Gold', id: 'gid://m/2' },
+  { type: 'material', displayName: 'Steel & White Gold', id: 'gid://m/3' },
+  { type: 'material', displayName: 'Titanium', id: 'gid://m/4' },
   { type: 'model', displayName: 'Datejust', id: 'gid://mo/dj' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/1' },
   { type: 'case_size', displayName: '41mm', id: 'gid://c/2' },
@@ -137,8 +139,9 @@ describe('what the shop should say about a watch', () => {
       // is what makes them safe to add to the shop's lists.
       { type: 'dial', name: 'White', canCreate: true },
       { type: 'bracelet', name: 'Oyster', canCreate: true },
-      // 116334 ends in 4: a White Rolesor, whatever the free text said.
-      { type: 'material', name: 'Two-tone White Rolesor', canCreate: true },
+      // 116334 ends in 4: a White Rolesor, whatever the free text said, and
+      // White Rolesor is filed under Steel & White Gold.
+      { type: 'material', name: 'Steel & White Gold', canCreate: true },
       { type: 'case_size', name: '41mm' },
       { type: 'year', name: '2016' },
       { type: 'condition', name: 'Excellent' },
@@ -166,7 +169,7 @@ describe('what the shop should say about a watch', () => {
     // the metal leaves the typed words to be translated.
     expect(desiredMetaobjects(watch({
       brandName: 'Hermès', model: 'Birkin 30', caseMaterial: '18ct white gold',
-    }))).toContainEqual({ type: 'material', name: '18k White Gold' })
+    }))).toContainEqual({ type: 'material', name: 'White Gold', canCreate: true })
   })
 
   it('leaves the model alone', () => {
@@ -188,8 +191,9 @@ describe('resolving against the shop', () => {
   })
 
   it('takes the metal from the reference, not from the typed words', () => {
-    // 116334 ends in 4. The record says "Oystersteel"; the reference says it
-    // is a White Rolesor, and the reference is the one both houses agree on.
+    // 116334 ends in 4. The record says "Oystersteel", which would file it
+    // under Steel; the reference says White Rolesor, which is Steel & White
+    // Gold, and the reference is the one both houses agree on.
     const { metafields } = resolveMetafields(watch({ caseMaterial: 'Oystersteel' }), INDEX)
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/3',
@@ -219,6 +223,7 @@ describe('resolving against the shop', () => {
       watch({ brandName: 'Audemars Piguet', model: '26579IO.OO.1225IO.01', caseMaterial: 'Titanium & Platinum' }),
       INDEX,
     )
+    // Two metals named, and the case wins: Titanium, not Platinum.
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/4',
     })
