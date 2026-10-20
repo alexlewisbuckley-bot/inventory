@@ -142,6 +142,87 @@ export function withoutDescription(value: string): string {
 }
 
 /**
+ * The metals the shop filters on, and nothing else.
+ *
+ * The filter had fourteen entries because it was showing the trade's own
+ * vocabulary: Oystersteel and Stainless Steel as two different things, three
+ * kinds of Rolesor, four golds separated by carat, and a Rolesium holding one
+ * watch. That is how a dealer files a case and not how anybody shops for one
+ * — somebody wants a gold watch, or a two-tone, and the carat is a detail
+ * they read on the product page once they are already interested.
+ *
+ * Nine, chosen by Alex. Steel & White Gold is the one he did not list and
+ * agreed to: White Rolesor is twenty-nine watches, exactly the same kind of
+ * thing as the other two two-tones, and folding it into Steel would have made
+ * Steel the biggest bucket on the site by losing the distinction people pay
+ * for.
+ */
+export const MATERIAL_GROUPS = [
+  'Yellow Gold',
+  'Rose Gold',
+  'White Gold',
+  'Platinum',
+  'Titanium',
+  'Steel',
+  'Steel & Yellow Gold',
+  'Steel & Rose Gold',
+  'Steel & White Gold',
+] as const
+
+/**
+ * One of those nine, from whatever the record or the reference calls it.
+ *
+ * Read in this order on purpose. A two-tone names two metals, so testing for
+ * gold first would file every Rolesor under gold; and "Titanium and Platinum"
+ * names two, so the titanium has to win before the platinum is seen.
+ *
+ * Null rather than a guess for anything unrecognised. An unmatched material
+ * is already reported as a gap somebody can fill, and a wrong one is a watch
+ * filed under a metal it is not made of.
+ */
+export function materialGroup(value: string | null | undefined): string | null {
+  if (!value) return null
+  const v = value.trim().toLowerCase()
+  if (!v) return null
+
+  // Already grouped — idempotent, so running this twice cannot drift.
+  const exact = MATERIAL_GROUPS.find((group) => group.toLowerCase() === v)
+  if (exact) return exact
+
+  const rose = /everose|\brose\b|pink/.test(v)
+  const white = /\bwhite\b|\bgrey\b|\bgray\b/.test(v)
+  const yellow = /\byellow\b/.test(v)
+  const steel = /steel|acier|rolesor/.test(v)
+  const gold = /gold|\bor\b/.test(v)
+
+  // Two metals in one case. Rolesor is Rolex's word for exactly this.
+  if (/rolesor/.test(v) || (steel && gold)) {
+    if (rose) return 'Steel & Rose Gold'
+    if (white) return 'Steel & White Gold'
+    if (yellow) return 'Steel & Yellow Gold'
+    // A two-tone whose second metal we cannot read is not worth guessing at.
+    return null
+  }
+
+  // Steel case, platinum bezel. Filed under the metal that distinguishes it,
+  // at Alex's word — somebody filtering Platinum is looking for this watch.
+  if (/rolesium/.test(v)) return 'Platinum'
+
+  // Before platinum, so "Titanium and Platinum" lands on the case metal.
+  if (/titanium|titane/.test(v)) return 'Titanium'
+  if (/platinum|platine/.test(v)) return 'Platinum'
+
+  if (gold || rose || white || yellow) {
+    if (rose) return 'Rose Gold'
+    if (white) return 'White Gold'
+    if (yellow) return 'Yellow Gold'
+  }
+
+  if (steel) return 'Steel'
+  return null
+}
+
+/**
  * Every metaobject type this system can fill in.
  *
  * Declared once, beside the function that asks for them, because the loader
@@ -228,6 +309,10 @@ export function creatableName(want: DesiredMetaobject): string | null {
   if (want.type === 'year' || want.type === 'case_size') return name
   // Anything with a run of digits long enough to be a reference is one.
   if (/\d{4,}/.test(name)) return null
+  // The nine metals are a closed list this system chose, so they are names by
+  // definition — and three of them are four words long, which the rule below
+  // would otherwise refuse.
+  if ((MATERIAL_GROUPS as readonly string[]).includes(name)) return name
   if (name.split(/\s+/).length > 3) return null
   return name
 }
@@ -277,11 +362,14 @@ export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
     // description both systems can agree on without either giving way: the
     // record says "Oystersteel and Everose gold", the shop says "Two-tone
     // Everose Rolesor", and 126711 says which metal without an opinion.
-    derivedMaterial
-      ? { type: 'material', name: derivedMaterial, canCreate: true }
-      : watch.caseMaterial
-        ? { type: 'material', name: alias(watch.caseMaterial) }
-        : null,
+    // Grouped to the nine the shop filters on, from whichever source we have.
+    // The reference is tried first because it cannot be typed wrongly, but
+    // both ends arrive at the same nine words, so a watch described in the
+    // record and one read off its reference file together.
+    (() => {
+      const metal = materialGroup(derivedMaterial) ?? materialGroup(watch.caseMaterial)
+      return metal ? { type: 'material', name: metal, canCreate: true } : null
+    })(),
     watch.caseSizeMm ? { type: 'case_size', name: `${watch.caseSizeMm}mm` } : null,
     watch.year ? { type: 'year', name: String(watch.year) } : null,
     watch.condition && watch.condition !== 'UNKNOWN'
