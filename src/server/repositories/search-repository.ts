@@ -82,7 +82,7 @@ export async function search(
   if (can(role, 'customer:read')) jobs.push(contactHits(like, numeric, query))
   if (can(role, 'supplier:read')) jobs.push(supplierHits(like, numeric))
   if (can(role, 'deal:read')) jobs.push(dealHits(like, query, display))
-  if (can(role, 'sale:read')) jobs.push(saleHits(like, query, display))
+  if (can(role, 'sale:read')) jobs.push(saleHits(like, numeric, query, display))
   if (can(role, 'task:read')) jobs.push(taskHits(like))
 
   const found = (await Promise.all(jobs)).flat()
@@ -121,6 +121,15 @@ async function watchHits(
     FROM watches w
     JOIN brands b ON b.id = w.brand_id
     WHERE w.deleted_at IS NULL
+      -- Sold stock is not what somebody searching for a watch means.
+      --
+      -- Every piece the business has ever handled accumulates here for ever,
+      -- so on a long enough run the Watches group becomes a history of the
+      -- firm with the five watches you can actually sell buried in it. A sold
+      -- piece is still findable, and by the same reference or serial, under
+      -- Sales — see saleHits, which matches on the watch as well as on the
+      -- invoice precisely so that nothing is lost by this line.
+      AND w.status <> 'SOLD'
       AND (
         w.model ILIKE ${like}
         OR w.serial ILIKE ${like}
@@ -241,17 +250,41 @@ async function dealHits(like: string, query: string, display: DisplayMoney): Pro
   }))
 }
 
-async function saleHits(like: string, query: string, display: DisplayMoney): Promise<SearchHit[]> {
+/**
+ * A sale, found by its paperwork or by the watch it was.
+ *
+ * It used to match only the invoice number and the customer, which was
+ * tolerable while sold watches also answered to their own reference in the
+ * Watches group. They no longer do, so everything that used to find a sold
+ * piece has to find it here instead: the reference, the serial, the stock
+ * number and the maison, all of which are already joined.
+ */
+async function saleHits(
+  like: string,
+  numeric: string | null,
+  query: string,
+  display: DisplayMoney,
+): Promise<SearchHit[]> {
   const gbp = shortMoney(display)
+  const exactStock = /^\d+$/.test(query) ? Number(query) : null
   const rows = await db.execute(sql`
     SELECT s.id, s.invoice_no, s.sale_amount_gbp, s.sale_date, s.updated_at, s.watch_id,
-           b.name AS brand_name, w.model, w.stock_no,
-           (upper(s.invoice_no) = upper(${query})) AS exact
+           b.name AS brand_name, w.model, w.stock_no, w.serial,
+           (upper(s.invoice_no) = upper(${query}) OR w.stock_no = ${exactStock}) AS exact
     FROM sales s
     JOIN watches w ON w.id = s.watch_id
     JOIN brands b ON b.id = w.brand_id
     WHERE s.deleted_at IS NULL AND s.voided_at IS NULL
-      AND (s.invoice_no ILIKE ${like} OR s.customer_name ILIKE ${like} OR s.customer_company ILIKE ${like})
+      AND (
+        s.invoice_no ILIKE ${like}
+        OR s.customer_name ILIKE ${like}
+        OR s.customer_company ILIKE ${like}
+        OR w.model ILIKE ${like}
+        OR w.serial ILIKE ${like}
+        OR w.nickname ILIKE ${like}
+        OR b.name ILIKE ${like}
+        OR (${numeric}::text IS NOT NULL AND w.stock_no::text ILIKE ${numeric})
+      )
     ORDER BY exact DESC NULLS LAST, s.updated_at DESC
     LIMIT ${PER_KIND}
   `)
@@ -260,7 +293,13 @@ async function saleHits(like: string, query: string, display: DisplayMoney): Pro
     kind: 'sale' as const,
     id: String(row.id),
     title: String(row.invoice_no),
-    subtitle: `${row.brand_name} ${row.model} · stock ${row.stock_no}`,
+    // The serial, for the same reason a watch row carries it: two of one
+    // reference sold to two people are one list you cannot choose from.
+    subtitle: [
+      `${row.brand_name} ${row.model}`,
+      `stock ${row.stock_no}`,
+      row.serial ? `serial ${row.serial}` : null,
+    ].filter(Boolean).join(' · '),
     meta: gbp(Number(row.sale_amount_gbp)),
     href: `/sales?invoice=${row.invoice_no}`,
     exact: row.exact === true,
