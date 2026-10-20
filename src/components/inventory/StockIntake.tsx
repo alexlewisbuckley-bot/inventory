@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { FileSpreadsheet, FileText, ImagePlus, Inbox, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Button, Card } from '@/components/ui'
@@ -80,14 +81,30 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
    * something.
    */
   const [rejected, setRejected] = useState<string | null>(null)
+  /**
+   * The rest of the drop, still in hand.
+   *
+   * A spreadsheet of new stock and the photographs of it arrive together,
+   * and the page asked "which first?" while keeping only the answer — pick
+   * the spreadsheet and the photographs were gone, so booking in a delivery
+   * meant finding the same folder twice. They are kept now, and offered the
+   * moment the first flow is out of the way.
+   */
+  const [queue, setQueue] = useState<Batch[]>([])
   const input = useRef<HTMLInputElement | null>(null)
+  const router = useRouter()
 
   const allowed = (route: Route) => (route === 'photographs' ? canPhotograph : canImport)
+
+  /** One file offered as two readings, rather than two kinds of file. */
+  const ambiguous = choices !== null && choices.length === 2
+    && choices[0]!.files === choices[1]!.files
 
   const take = (list: FileList | File[] | null) => {
     const files = Array.from(list ?? [])
     if (!files.length) return
     setRejected(null)
+    setQueue([])
 
     const groups = new Map<Route, File[]>()
     const unknown: File[] = []
@@ -158,7 +175,23 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
     }
   })
 
-  const startOver = () => { setBatch(null); setChoices(null); setRejected(null) }
+  const startOver = () => { setBatch(null); setChoices(null); setRejected(null); setQueue([]) }
+
+  /**
+   * On to the next kind of file in the same drop.
+   *
+   * Refreshed first, because the usual order is a spreadsheet and then its
+   * photographs: the watches the import has just created do not exist in the
+   * candidate list this page was rendered with, and matching pictures
+   * against a list that predates them would report every one as unmatched.
+   * PhotoIntake is keyed on the length of that list below, so it rebuilds
+   * its matches once the longer one arrives.
+   */
+  const continueWith = (next: Batch) => {
+    router.refresh()
+    setQueue((rest) => rest.filter((item) => item !== next))
+    setBatch(next)
+  }
 
   if (batch) {
     const { label } = WHAT[batch.route]
@@ -175,9 +208,32 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
           </Button>
         </div>
 
+        {queue.length > 0 && (
+          <Card className="flex flex-wrap items-center justify-between gap-3 border-content-accent/30 bg-content-accent/5 px-5 py-3">
+            <p className="text-small text-content-secondary">
+              <span className="font-semibold text-content-primary">Still in hand: </span>
+              {queue.map((item) => item.files.length === 1
+                ? item.files[0]!.name
+                : `${item.files.length} ${WHAT[item.route].label.toLowerCase().replace(/^.*the /, '')}`).join(', ')}
+              {' '}— these came in the same drop and are waiting.
+            </p>
+            <Button size="sm" onClick={() => continueWith(queue[0]!)}>
+              {WHAT[queue[0]!.route].label}
+            </Button>
+          </Card>
+        )}
+
         {batch.route === 'invoice' && <InvoiceDropZone aiEnabled={aiEnabled} initialFile={batch.files[0]} />}
         {batch.route === 'sheet' && <ImportWizard locationNames={locationNames} initialFile={batch.files[0]} />}
-        {batch.route === 'photographs' && <PhotoIntake candidates={candidates} initialFiles={batch.files} />}
+        {/* Keyed on the candidate list so that stock created by an import a
+            moment ago is matched against, rather than reported missing. */}
+        {batch.route === 'photographs' && (
+          <PhotoIntake
+            key={candidates.length}
+            candidates={candidates}
+            initialFiles={batch.files}
+          />
+        )}
       </div>
     )
   }
@@ -234,7 +290,7 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
             <p className="text-small font-semibold text-content-primary">
               {choices[0]?.files === choices[1]?.files
                 ? 'One image — what is it?'
-                : 'More than one kind of file. Which first?'}
+                : 'More than one kind of file. Which first? The rest stay in hand.'}
             </p>
           </div>
           <ul>
@@ -244,7 +300,14 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
                 <li key={route}>
                   <button
                     type="button"
-                    onClick={() => { setBatch({ route, files }); setChoices(null) }}
+                    onClick={() => {
+                      setBatch({ route, files })
+                      // One image offered as two readings is a question
+                      // about the same file, so the other reading is not
+                      // work still to do. Several kinds of file are.
+                      setQueue(ambiguous ? [] : choices.filter((other) => other.route !== route))
+                      setChoices(null)
+                    }}
                     className="flex w-full items-center gap-3 border-t border-line-subtle px-5 py-3 text-left first:border-t-0 hover:bg-surface-subtle"
                   >
                     <Icon className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
