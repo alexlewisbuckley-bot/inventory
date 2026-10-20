@@ -11,7 +11,8 @@ import {
   type SyncPlan, type SyncProduct, type SyncWatch, type WatchPhotograph,
 } from '@/lib/shopify-map'
 import {
-  creatableName, desiredMetaobjects, indexMetaobjects, isCreatable, METAOBJECT_TYPES, nameFieldFor,
+  creatableName, desiredMetaobjects, indexMetaobjects, isCreatable, MATERIAL_GROUPS,
+  METAOBJECT_TYPES, nameFieldFor,
   normalise, resolveMetafields, type MetaobjectIndex,
 } from '@/lib/shopify-metafields'
 import { HELD_STATUSES, type CurrencyCode } from '@/lib/enums'
@@ -1557,6 +1558,22 @@ export async function shopVocabulary(): Promise<{
       if (!list.includes(entry.displayName)) list.push(entry.displayName)
     }
     for (const list of Object.values(choices)) list.sort((a, b) => a.localeCompare(b))
+
+    /**
+     * Material is this system's list now, not the shop's.
+     *
+     * Everything written to a product goes through `materialGroup` and comes
+     * out as one of nine, so suggesting the shop's own entries here would
+     * offer words that cannot survive a push: pick "Oystersteel" off the list
+     * and the product ends up filed under Steel, which is right and is not
+     * what the editor said would happen. The nine are offered instead, in the
+     * order they are declared rather than alphabetically — the golds together,
+     * then the single metals, then the two-tones.
+     *
+     * Suggestions, not a rule. The field is still free text, and anything
+     * typed into it is grouped on the way out exactly as before.
+     */
+    choices.material = [...MATERIAL_GROUPS]
 
     const unmatched: Record<string, string[]> = {}
     for (const watch of stock) {
