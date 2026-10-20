@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { FileSpreadsheet, FileText, ImagePlus, Inbox, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -69,6 +70,16 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
   /** Groups a mixed drop left for somebody to choose between. */
   const [choices, setChoices] = useState<Batch[] | null>(null)
   const [dragging, setDragging] = useState(false)
+  /**
+   * Why the last drop did nothing.
+   *
+   * A drop this page cannot use used to clear the state and return, which
+   * from the other side of the screen is a page that ignored you. Dropping a
+   * file and having nothing whatever happen is indistinguishable from the
+   * page being broken, and it is the one outcome that must always say
+   * something.
+   */
+  const [rejected, setRejected] = useState<string | null>(null)
   const input = useRef<HTMLInputElement | null>(null)
 
   const allowed = (route: Route) => (route === 'photographs' ? canPhotograph : canImport)
@@ -76,6 +87,7 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
   const take = (list: FileList | File[] | null) => {
     const files = Array.from(list ?? [])
     if (!files.length) return
+    setRejected(null)
 
     const groups = new Map<Route, File[]>()
     const unknown: File[] = []
@@ -101,6 +113,16 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
     if (usable.length === 0) {
       setChoices(null)
       setBatch(null)
+      // Name the files and say which of the three things they were not.
+      // "Nothing happened" is the only report this page must never give.
+      const names = unknown.length ? unknown : files
+      const listed = names.length === 1
+        ? names[0]!.name
+        : `${names.length} files`
+      setRejected(unknown.length === files.length
+        ? `${listed} — not a PDF, a spreadsheet or an image, so there is nothing this page can do with `
+          + `${names.length === 1 ? 'it' : 'them'}.`
+        : `${listed} — your account cannot import ${canPhotograph ? 'invoices or spreadsheets' : 'files'} here.`)
       return
     }
     if (usable.length === 1) { setBatch(usable[0]!); setChoices(null); return }
@@ -136,7 +158,7 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
     }
   })
 
-  const startOver = () => { setBatch(null); setChoices(null) }
+  const startOver = () => { setBatch(null); setChoices(null); setRejected(null) }
 
   if (batch) {
     const { label } = WHAT[batch.route]
@@ -189,6 +211,22 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
           />
         </div>
       </Card>
+
+      {rejected && (
+        <Card className="border-state-warning/40 bg-state-warning/5 px-5 py-4">
+          <p className="text-small text-content-primary">
+            <span className="font-semibold">Nothing to do with that. </span>
+            {rejected}
+          </p>
+          <p className="mt-1 text-caption text-content-secondary">
+            A PDF is read as an invoice, a spreadsheet as stock, and images as photographs.
+            To type a watch in by hand, use{' '}
+            <Link href="/inventory/new" className="font-bold text-content-accent hover:underline">
+              Add an item
+            </Link>.
+          </p>
+        </Card>
+      )}
 
       {choices ? (
         <Card>

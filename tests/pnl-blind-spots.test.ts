@@ -28,7 +28,14 @@ describe('what the month cannot see', () => {
 
   it('notices a month with no running costs at all', () => {
     expect(service).toMatch(/overheadCount: costs\.length/)
-    expect(page).toMatch(/No running costs are recorded for this month/)
+    expect(page).toMatch(/No running costs are recorded at all/)
+  })
+
+  it('separates that from a cost entered but not yet started', () => {
+    // The real case: a rent dated to begin next month. Telling somebody
+    // "none recorded" about it sends them hunting for a row already there.
+    expect(service).toMatch(/startingLater/)
+    expect(page).toMatch(/does not start until/)
   })
 
   it('says so above the statement, not under it', () => {
