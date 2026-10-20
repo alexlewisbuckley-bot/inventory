@@ -93,7 +93,9 @@ export default async function ShopContentPage() {
       <p className="mt-4 text-caption text-content-secondary">
         A warning triangle means the value is recorded and the shop has no entry for it, so
         nobody can browse by it. Add the entry in Shopify under Settings → Custom data, or
-        change the wording here to match. The{' '}
+        change the wording here to match. Material is the exception: it is a fixed list of
+        nine, and whatever is typed is filed under one of them on the way to the shop — so a
+        watch recorded as Oystersteel reaches the website as Steel. The{' '}
         <Link href="/settings/storefront" className="font-semibold text-content-primary underline underline-offset-2">
           Online shop
         </Link>
