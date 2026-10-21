@@ -183,7 +183,10 @@ export function InventoryList({
     [query],
   )
 
+  // Broadcasting is a reason to pick rows, the same as moving or deleting
+  // them — and the only one of the three anybody does from a phone.
   const selectable = capabilities['watch:move'] || capabilities['watch:delete']
+    || capabilities['watch:broadcast']
 
   /**
    * How wide the table needs to be for every column to hold its stated width.
@@ -297,6 +300,9 @@ export function InventoryList({
             <MobileRow
               key={watch.id}
               watch={watch}
+              selectable={selectable}
+              selected={selection.isSelected(watch.id)}
+              onToggle={() => toggleOne(watch.id)}
               canEditStatus={capabilities['watch:update']}
               canSell={capabilities['sale:create']}
               canVoid={capabilities['sale:delete']}
@@ -483,8 +489,14 @@ export function InventoryList({
  * reason anyone opens this list — is off-screen. The card keeps the identity,
  * both figures and the status visible, and the whole card opens the record.
  */
-function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid, canHold, onHold }: {
+function MobileRow({
+  watch, canEditStatus, canSell, canVoid, onSell, onVoid, canHold, onHold,
+  selectable, selected, onToggle,
+}: {
   watch: WatchListItem
+  selectable: boolean
+  selected: boolean
+  onToggle: () => void
   canEditStatus: boolean
   canSell: boolean
   canVoid: boolean
@@ -501,8 +513,23 @@ function MobileRow({ watch, canEditStatus, canSell, canVoid, onSell, onVoid, can
   const profit = sold ? watch.actualProfitGbp : watch.estProfitGbp
 
   return (
-    <li className={cn('px-4 py-3.5', watch.deletedAt && 'opacity-50')}>
+    <li className={cn('px-4 py-3.5', watch.deletedAt && 'opacity-50', selected && 'bg-surface-subtle')}>
       <div className="flex items-start justify-between gap-3">
+        {/* The phone had no way to pick a row at all, so sending a handful of
+            watches to a group — the one bulk job anybody does standing up —
+            could only be started from a desk. A thumb-sized target rather
+            than the table's 16px box. */}
+        {selectable && (
+          <label className="-m-2 shrink-0 cursor-pointer p-2">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggle}
+              aria-label={`Select stock number ${watch.stockNo}`}
+              className="h-5 w-5 rounded-xs accent-teal-500"
+            />
+          </label>
+        )}
         <button
           type="button"
           onClick={() => query.set('watch', watch.id)}

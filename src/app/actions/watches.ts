@@ -17,6 +17,7 @@ import { BASE_CURRENCY, WATCH_STATUSES, WATCH_STATUS_LABELS, type CurrencyCode, 
 import { completeSourcing } from '@/server/services/sourcing-service'
 import { pushWatchById } from '@/server/services/shopify-service'
 import type { ActionState } from './auth'
+import type { GroupPostBatch } from '@/lib/group-post'
 
 /** Convert a thrown error into the serialisable shape forms expect. */
 function toState(error: unknown, fallback: string): ActionState {
@@ -203,6 +204,28 @@ export async function useLibraryImageAction(
     return { ok: true, message: 'Photograph added.', id: image.id }
   } catch (error) {
     return toState(error, 'Could not use that photograph.')
+  }
+}
+
+/**
+ * The selected watches, written out for a dealer group.
+ *
+ * A read rather than a mutation, but still an action: the capability is the
+ * point. `watch:broadcast` is the owner's alone, and this hands back trade
+ * prices for a whole selection at once — so it is asserted here rather than
+ * trusted to the button being hidden.
+ */
+export async function groupPostsAction(
+  watchIds: string[],
+): Promise<{ ok: true; batch: GroupPostBatch } | { ok: false; message: string }> {
+  const actor = await requireCapability('watch:broadcast')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    const { buildGroupPosts } = await import('@/server/services/group-post-service')
+    return { ok: true, batch: await buildGroupPosts(watchIds) }
+  } catch (error) {
+    logger.error('group posts failed', { error: (error as Error).message })
+    return { ok: false, message: 'Could not prepare those watches.' }
   }
 }
 
