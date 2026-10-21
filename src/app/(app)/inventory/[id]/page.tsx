@@ -11,6 +11,7 @@ import { WhoMightWant } from '@/components/crm/WhoMightWant'
 import { listImages } from '@/server/services/image-service'
 import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { WhatsAppPost } from '@/components/inventory/WhatsAppPost'
+import { pickPostImage } from '@/lib/whatsapp-post'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody, CardFooter, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
 import { formatPct } from '@/lib/money'
@@ -63,18 +64,9 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   ])
   const { watch, brand, supplier, location, owner, sale, invoice, registerCheckedByName } = record
 
-  /**
-   * The photograph that goes into a group post.
-   *
-   * The first watch shot, or the trade shot where there is no watch shot.
-   * Never the warranty card or a document: a card carries a serial and a
-   * dealer stamp, and a message that can be forwarded on is the last place
-   * for either. `listImages` already orders by kind then sort order, so the
-   * first match is the one somebody put at the front.
-   */
-  const postImageId = images.find((image) => image.kind === 'WATCH')?.id
-    ?? images.find((image) => image.kind === 'TRADE')?.id
-    ?? null
+  // Trade shot first, then the watch shot, never a card or a document. The
+  // rule lives in one place so this and the drawer cannot disagree.
+  const postImageId = pickPostImage(images)
 
   // Both lights, computed on the server so the table, the drawer and this page
   // cannot disagree about what green means.
@@ -123,7 +115,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
             {/* The owner's alone. Everybody selling can read the trade price;
                 putting it into a group chat that can be forwarded on is a
                 different act, so it has its own capability. */}
-            {can(user.role, 'watch:broadcast') && (
+            {can(user.role, 'watch:broadcast') && watch.status !== 'SOLD' && (
               <WhatsAppPost
                 watch={{
                   brandName: brand.name,

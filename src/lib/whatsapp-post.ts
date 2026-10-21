@@ -91,3 +91,24 @@ export function postFilename(watch: PostableWatch, mimeType: string): string {
     .replace(/^-|-$/g, '')
   return `${stem || 'watch'}.${extension}`
 }
+
+/**
+ * Which photograph goes to the group.
+ *
+ * The trade shot first. That is the one prepared for sending — framed,
+ * cropped, often already carrying the dealer's own treatment — and it is the
+ * picture somebody reaches for when posting. The main watch shot is the
+ * fallback for a record that has no trade shot yet.
+ *
+ * Never a warranty card or a document. Both carry a serial, a date and a
+ * dealer's stamp, and this message can be forwarded on by anybody who
+ * receives it. Decided here rather than at each call site so the record and
+ * the drawer cannot come to different conclusions about it.
+ */
+export function pickPostImage<T extends { id: string; kind: string }>(
+  images: readonly T[],
+): string | null {
+  return images.find((image) => image.kind === 'TRADE')?.id
+    ?? images.find((image) => image.kind === 'WATCH')?.id
+    ?? null
+}

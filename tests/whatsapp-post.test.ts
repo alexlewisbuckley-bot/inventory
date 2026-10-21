@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { postFilename, postTitle, whatsappPost } from '@/lib/whatsapp-post'
+import { pickPostImage, postFilename, postTitle, whatsappPost } from '@/lib/whatsapp-post'
 import { can } from '@/lib/permissions'
 import { ROLES } from '@/lib/enums'
 
@@ -97,7 +97,7 @@ describe('the record page gates and feeds the button', () => {
   const page = readFileSync('src/app/(app)/inventory/[id]/page.tsx', 'utf8')
 
   it('renders it behind the capability', () => {
-    expect(page).toMatch(/can\(user\.role, 'watch:broadcast'\) && \(/)
+    expect(page).toMatch(/can\(user\.role, 'watch:broadcast'\) &&/)
   })
 
   it('prices it in dirhams, not in whatever the reader prefers', () => {
@@ -106,13 +106,10 @@ describe('the record page gates and feeds the button', () => {
     expect(page).toMatch(/formatBase\(watch\.tradePriceGbp, BASE_CURRENCY, rates\)/)
   })
 
-  it('never sends a warranty card or a document', () => {
-    // Both carry a serial and a dealer stamp, and the message can be
-    // forwarded on by anybody who receives it.
-    expect(page).toMatch(/images\.find\(\(image\) => image\.kind === 'WATCH'\)/)
-    expect(page).toMatch(/images\.find\(\(image\) => image\.kind === 'TRADE'\)/)
-    expect(page).not.toMatch(/kind === 'CARD'/)
-    expect(page).not.toMatch(/kind === 'DOCUMENT'/)
+  it('picks the photograph through the shared rule', () => {
+    // One rule, so the record and the drawer cannot disagree about which
+    // picture goes out.
+    expect(page).toMatch(/pickPostImage\(images\)/)
   })
 })
 
@@ -130,7 +127,7 @@ describe('two machines, two ways of handing it over', () => {
     // A watch photograph is a JPEG and every browser refuses to clipboard
     // anything but PNG, so handing the blob over unchanged always fails.
     expect(component).toMatch(/toBlob\(.*'image\/png'\)/s)
-    expect(component).toMatch(/new ClipboardItem\(\{ 'image\/png': png \}\)/)
+    expect(component).toMatch(/new ClipboardItem\(\{ 'image\/png': await toPng\(file\) \}\)/)
   })
 
   it('never tries to put the photo and the caption on the clipboard at once', () => {
@@ -143,9 +140,10 @@ describe('two machines, two ways of handing it over', () => {
     expect(component).toMatch(/AbortError/)
   })
 
-  it('shows the message before it is sent', () => {
-    // Somebody should be able to read what they are about to post.
-    expect(component).toMatch(/\{message\}/)
+  it('shows the message, so nobody pastes something they have not read', () => {
+    // It rides on the toast now that the panel is gone — same guarantee,
+    // without a screen to dismiss first.
+    expect(component).toMatch(/description: message/)
   })
 })
 
@@ -167,5 +165,88 @@ describe('the share sheet is only used where WhatsApp is in it', () => {
 
   it('guards against matchMedia being absent before calling it', () => {
     expect(component).toMatch(/typeof window\.matchMedia !== 'function'\) return false/)
+  })
+})
+
+describe('which photograph goes out', () => {
+  const trade = { id: 'img_trade', kind: 'TRADE' }
+  const shot = { id: 'img_watch', kind: 'WATCH' }
+  const card = { id: 'img_card', kind: 'CARD' }
+  const doc = { id: 'img_doc', kind: 'DOCUMENT' }
+
+  it('prefers the trade shot — the one prepared for sending', () => {
+    expect(pickPostImage([shot, trade])).toBe('img_trade')
+    expect(pickPostImage([trade, shot])).toBe('img_trade')
+  })
+
+  it('falls back to the watch shot when there is no trade shot', () => {
+    expect(pickPostImage([shot])).toBe('img_watch')
+  })
+
+  it('never sends a warranty card or a document', () => {
+    // Both carry a serial, a date and a dealer's stamp, and this message can
+    // be forwarded on by anybody who receives it.
+    expect(pickPostImage([card, doc])).toBeNull()
+    expect(pickPostImage([card, doc, shot])).toBe('img_watch')
+  })
+
+  it('returns null for a watch with no photographs', () => {
+    expect(pickPostImage([])).toBeNull()
+  })
+})
+
+describe('one click, not a panel', () => {
+  const component = readFileSync('src/components/inventory/WhatsAppPost.tsx', 'utf8')
+
+  it('no longer opens a modal to walk somebody through it', () => {
+    // Speed is the whole point: a panel with two buttons was two clicks and
+    // two pastes before anything reached a group.
+    expect(component).not.toMatch(/<Modal/)
+  })
+
+  it('offers the caption on the toast rather than as a required step', () => {
+    expect(component).toMatch(/label: 'Copy caption'/)
+  })
+
+  it('still puts the words somewhere when the photo copy fails', () => {
+    // Failing silently would leave somebody pasting nothing into a group.
+    expect(component).toMatch(/clipboard\.writeText\(message\)/)
+  })
+})
+
+describe('the drawer can post without opening the record', () => {
+  const drawer = readFileSync('src/components/inventory/WatchDrawerClient.tsx', 'utf8')
+  const server = readFileSync('src/components/inventory/WatchDrawer.tsx', 'utf8')
+
+  it('renders the button behind the owner capability', () => {
+    expect(drawer).toMatch(/capabilities\['watch:broadcast'\] &&/)
+    expect(drawer).toMatch(/<WhatsAppPost/)
+  })
+
+  it('is handed the name and the trade price it needs', () => {
+    // Neither was on the drawer record before; without them the post would
+    // have shown the brand alone and no price.
+    expect(server).toMatch(/nickname: record\.watch\.nickname/)
+    expect(server).toMatch(/tradePriceGbp: record\.watch\.tradePriceGbp/)
+  })
+
+  it('prices it in dirhams rather than the viewer\'s display currency', () => {
+    expect(drawer).toMatch(/formatCurrency\(record\.tradePriceGbp, BASE_CURRENCY\)/)
+  })
+
+  it('uses the same photograph rule as the record', () => {
+    expect(drawer).toMatch(/pickPostImage\(images\)/)
+  })
+})
+
+describe('a sold watch is not offered to a group', () => {
+  const drawer = readFileSync('src/components/inventory/WatchDrawerClient.tsx', 'utf8')
+  const page = readFileSync('src/app/(app)/inventory/[id]/page.tsx', 'utf8')
+
+  it('hides the button once the watch is gone', () => {
+    // Posting a sold piece at a trade price into a dealer group is the kind
+    // of mistake the application should not make easy.
+    expect(drawer).toMatch(/capabilities\['watch:broadcast'\] && !sold/)
+    expect(page).toMatch(/can\(user\.role, 'watch:broadcast'\) && watch\.status !== 'SOLD'/)
   })
 })
