@@ -5,6 +5,7 @@ import { login, logout, changePassword } from '@/server/services/auth-service'
 import { getSessionUser, requireUser } from '@/server/auth/session'
 import { loginSchema, changePasswordSchema, fieldErrors } from '@/lib/validation'
 import { isAppError } from '@/lib/errors'
+import { describeSignInFault } from '@/server/auth/fault'
 import { logger } from '@/lib/logger'
 
 export interface ActionState {
@@ -41,8 +42,16 @@ export async function loginAction(_prev: ActionState, formData: FormData): Promi
     await login(parsed.data)
   } catch (error) {
     if (isAppError(error)) return { ok: false, message: error.message }
-    logger.error('login action failed', { error: (error as Error).message })
-    return { ok: false, message: 'Something went wrong signing you in. Please try again.' }
+    // Not a wrong password — the plumbing failed. Say which part, because
+    // "please try again" told the one person who could fix it nothing, and
+    // told them to suspect their own password while they did it.
+    const fault = describeSignInFault(error)
+    logger.error('login action failed', {
+      fault: fault.code,
+      transient: fault.transient,
+      error: (error as Error).message,
+    })
+    return { ok: false, message: `${fault.message} (${fault.code})` }
   }
   redirect(parsed.data.redirectTo ?? '/')
 }
