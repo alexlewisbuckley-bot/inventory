@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { describeSignInFault } from '@/server/auth/fault'
+import { AppError, RateLimitError, waitFor } from '@/lib/errors'
 
 /**
  * The symptom these exist for: the owner of the business was shown
@@ -121,5 +122,32 @@ describe('the login action reports the fault it classified', () => {
   it('logs the fault code alongside the underlying error', () => {
     expect(source).toMatch(/fault: fault\.code/)
     expect(source).toMatch(/logger\.error\('login action failed'/)
+  })
+})
+
+describe('a rate-limited person is told how long to wait', () => {
+  it('turns seconds into a wait anybody can act on', () => {
+    expect(waitFor(1)).toBe('about a minute')
+    expect(waitFor(60)).toBe('about a minute')
+    expect(waitFor(61)).toBe('about 2 minutes')
+    expect(waitFor(540)).toBe('about 9 minutes')
+    // Rounded up: refusing somebody at 59 seconds of a "one minute" wait is
+    // the same failure over again.
+    expect(waitFor(541)).toBe('about 10 minutes')
+  })
+
+  it('puts the wait in the message, not only in the details', () => {
+    const error = new RateLimitError(540)
+    expect(error.message).toBe('Too many attempts. Please wait about 9 minutes and try again.')
+    // "Please slow down" was advice nobody could follow.
+    expect(error.message).not.toMatch(/slow down/i)
+    expect(error.status).toBe(429)
+    expect(error.details).toEqual({ retryAfterSeconds: 540 })
+  })
+
+  it('is still an application error, so the form shows it rather than a crash', () => {
+    // A lockout must never reach the catch-all and read as "something went wrong".
+    expect(describeSignInFault(new RateLimitError(60)).code).toBe('UNKNOWN')
+    expect(new RateLimitError(60)).toBeInstanceOf(AppError)
   })
 })
