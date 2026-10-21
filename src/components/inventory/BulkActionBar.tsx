@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowRightLeft, Download, Trash2, X } from 'lucide-react'
 import { Button, Modal, SelectField, TextareaField, ConfirmDialog, useToast } from '@/components/ui'
 import { moveWatchesAction, deleteWatchAction, restoreWatchAction } from '@/app/actions/watches'
+import { GroupPostBatch } from './GroupPostBatch'
 import type { Capability } from '@/lib/permissions'
 
 /**
@@ -134,6 +135,14 @@ export function BulkActionBar({
           <span className="max-w-[220px] text-caption text-content-secondary">
             Moving and deleting work on rows you have picked. Narrow the filter, or select a page.
           </span>
+        )}
+
+        {/* First, because a selection made from the list is most often made
+            in order to put those pieces out. Picked rows only: a batch has
+            to be walked through one tap at a time, so "everything matching
+            the filter" is not a thing anybody wants to start. */}
+        {!allMatching && capabilities['watch:broadcast'] && (
+          <GroupPostBatch watchIds={watchIds} onDone={onClear} />
         )}
 
         {!allMatching && capabilities['watch:move'] && (
