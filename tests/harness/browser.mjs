@@ -58,7 +58,9 @@ export async function signIn(ctx, { email = EMAIL, password = PASSWORD, attempt 
     })
   } catch (error) {
     const body = await page.locator('body').innerText().catch(() => '')
-    const limited = /too many requests/i.test(body)
+    // Matches both wordings: the limiter used to say "Too many requests.
+    // Please slow down." and now names the wait instead.
+    const limited = /too many (requests|attempts)/i.test(body)
     await page.close()
     if (limited && attempt <= 3) {
       const wait = attempt * 45_000

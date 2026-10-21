@@ -10,6 +10,7 @@ import { interestInWatch, ownershipHistory, whoMightWant } from '@/server/reposi
 import { WhoMightWant } from '@/components/crm/WhoMightWant'
 import { listImages } from '@/server/services/image-service'
 import { ImageGallery } from '@/components/inventory/ImageGallery'
+import { WhatsAppPost } from '@/components/inventory/WhatsAppPost'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardBody, CardFooter, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
 import { formatPct } from '@/lib/money'
@@ -62,6 +63,19 @@ export default async function WatchDetailPage({ params }: { params: { id: string
   ])
   const { watch, brand, supplier, location, owner, sale, invoice, registerCheckedByName } = record
 
+  /**
+   * The photograph that goes into a group post.
+   *
+   * The first watch shot, or the trade shot where there is no watch shot.
+   * Never the warranty card or a document: a card carries a serial and a
+   * dealer stamp, and a message that can be forwarded on is the last place
+   * for either. `listImages` already orders by kind then sort order, so the
+   * first match is the one somebody put at the front.
+   */
+  const postImageId = images.find((image) => image.kind === 'WATCH')?.id
+    ?? images.find((image) => image.kind === 'TRADE')?.id
+    ?? null
+
   // Both lights, computed on the server so the table, the drawer and this page
   // cannot disagree about what green means.
   const checks = watchChecks({
@@ -104,9 +118,30 @@ export default async function WatchDetailPage({ params }: { params: { id: string
             {watch.serial && <span>· Serial {watch.serial}</span>}
           </span>
         }
-        actions={can(user.role, 'watch:update')
-          ? <LinkButton href={`/inventory/${watch.id}/edit`} variant="secondary" icon={<Pencil className="h-4 w-4" />}>Edit</LinkButton>
-          : undefined}
+        actions={
+          <>
+            {/* The owner's alone. Everybody selling can read the trade price;
+                putting it into a group chat that can be forwarded on is a
+                different act, so it has its own capability. */}
+            {can(user.role, 'watch:broadcast') && (
+              <WhatsAppPost
+                watch={{
+                  brandName: brand.name,
+                  model: watch.model,
+                  nickname: watch.nickname,
+                  year: watch.year,
+                }}
+                tradePrice={watch.tradePriceGbp
+                  ? formatBase(watch.tradePriceGbp, BASE_CURRENCY, rates)
+                  : null}
+                imageId={postImageId}
+              />
+            )}
+            {can(user.role, 'watch:update') && (
+              <LinkButton href={`/inventory/${watch.id}/edit`} variant="secondary" icon={<Pencil className="h-4 w-4" />}>Edit</LinkButton>
+            )}
+          </>
+        }
       />
 
       {/* Cost and margin leave the server only for roles that may see them.

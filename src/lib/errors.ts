@@ -51,9 +51,31 @@ export class ConflictError extends AppError {
   }
 }
 
+/**
+ * How long to wait, in words rather than seconds.
+ *
+ * "Please slow down" is advice nobody can follow: it does not say whether to
+ * try again now, in a minute, or tomorrow. The limiter already knows — it
+ * computes the remaining window to throw it — and the number was being
+ * carried in `details`, where only an API client ever saw it.
+ *
+ * Rounded up, because telling somebody to wait a minute and refusing them at
+ * fifty-nine seconds is the same failure again.
+ */
+export function waitFor(seconds: number): string {
+  if (seconds <= 60) return 'about a minute'
+  const minutes = Math.ceil(seconds / 60)
+  return minutes === 1 ? 'about a minute' : `about ${minutes} minutes`
+}
+
 export class RateLimitError extends AppError {
   constructor(retryAfterSeconds: number) {
-    super('Too many requests. Please slow down.', 429, 'RATE_LIMITED', { retryAfterSeconds })
+    super(
+      `Too many attempts. Please wait ${waitFor(retryAfterSeconds)} and try again.`,
+      429,
+      'RATE_LIMITED',
+      { retryAfterSeconds },
+    )
   }
 }
 

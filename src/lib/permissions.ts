@@ -60,6 +60,17 @@ export const CAPABILITIES = [
    * they are selling well or merely often.
    */
   'report:own',
+  /**
+   * Putting a watch out to a dealer group, picture and price together.
+   *
+   * The owner's alone, and deliberately not implied by `watch:read` or
+   * `watch:price`. Everybody selling can see the trade figure; posting it
+   * into a WhatsApp group is a different act, because the message leaves the
+   * building, carries the trade price in it and can be forwarded on by
+   * anybody who receives it. Who broadcasts the book is a decision about the
+   * business, not about a screen.
+   */
+  'watch:broadcast',
   'data:import',
   'user:read', 'user:manage',
   'settings:read', 'settings:manage',
@@ -170,6 +181,7 @@ const MANAGER: Capability[] = [
 
 const OWNER: Capability[] = [
   ...MANAGER, 'user:manage', 'settings:manage', 'watch:amend', 'trade:respond', 'overhead:manage',
+  'watch:broadcast',
 ]
 
 /**

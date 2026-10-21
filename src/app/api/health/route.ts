@@ -11,11 +11,18 @@ export const dynamic = 'force-dynamic'
  * rather than from a wall of "relation does not exist" errors.
  */
 export async function GET() {
-  const { ok, migrated } = await checkDatabase()
+  const { ok, migrated, code } = await checkDatabase()
 
   if (!ok) {
     return NextResponse.json(
-      { status: 'unhealthy', database: 'unreachable', hint: 'Check DATABASE_URL and that the database accepts connections.' },
+      {
+        status: 'unhealthy',
+        database: 'unreachable',
+        // Named, so the response says which of the three it is rather than
+        // sending whoever is reading it off to the host's logs.
+        code,
+        hint: 'Check DATABASE_URL and that the database accepts connections.',
+      },
       { status: 503 },
     )
   }
