@@ -148,3 +148,24 @@ describe('two machines, two ways of handing it over', () => {
     expect(component).toMatch(/\{message\}/)
   })
 })
+
+describe('the share sheet is only used where WhatsApp is in it', () => {
+  const component = readFileSync('src/components/inventory/WhatsAppPost.tsx', 'utf8')
+
+  it('requires a touch device, not merely a browser that can share', () => {
+    // macOS has a share sheet and will take the file, but WhatsApp Desktop
+    // does not register as a share target — the sheet opens onto AirDrop,
+    // Mail and Notes, with the caption dropped. Asking canShare() alone sent
+    // every Mac down a path that could not reach WhatsApp.
+    expect(component).toMatch(/isTouchDevice\(\) && typeof navigator\.share === 'function'/)
+  })
+
+  it('decides by pointer type rather than sniffing the user agent', () => {
+    expect(component).toMatch(/matchMedia\('\(pointer: coarse\)'\)\.matches/)
+    expect(component).not.toMatch(/userAgent/)
+  })
+
+  it('guards against matchMedia being absent before calling it', () => {
+    expect(component).toMatch(/typeof window\.matchMedia !== 'function'\) return false/)
+  })
+})
