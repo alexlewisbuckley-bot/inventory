@@ -8,7 +8,7 @@ import { formatPct } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
-  accessoriesLabel, AUDIT_ACTION_LABELS, BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_LABELS,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_LABELS,
   type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import type { Capability } from '@/lib/permissions'
@@ -16,6 +16,9 @@ import type { WatchChecks } from '@/lib/checks'
 import { CheckLight } from '@/components/compliance/CheckLight'
 import { MoveWatchModal } from './MoveWatchModal'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
+import { WhatsAppPost } from './WhatsAppPost'
+import { pickPostImage } from '@/lib/whatsapp-post'
+import { formatCurrency } from '@/lib/currency'
 import {
   QuickSellModal, type SalesPersonOption, type SellCustomerOption, type SellDealOption,
 } from './QuickSellModal'
@@ -24,6 +27,8 @@ export interface DrawerRecord {
   id: string
   stockNo: number
   model: string
+  /** The name — "Submariner Date 40". `model` holds the reference. */
+  nickname: string | null
   serial: string | null
   status: string
   version: number
@@ -35,6 +40,7 @@ export interface DrawerRecord {
   purchaseDate: string
   purchasePriceGbp: number
   estSaleGbp: number | null
+  tradePriceGbp: number | null
   brandName: string
   supplierName: string
   locationName: string
@@ -113,6 +119,27 @@ export function WatchDrawerClient({
               <Button size="sm" variant="secondary" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => setMoveOpen(true)}>
                 Move
               </Button>
+            )}
+            {/* Here rather than only on the full record: putting a piece
+                into a group is something done while working the list, and
+                making somebody open the record first was the slow part. */}
+            {/* Not once it is gone. Offering to post a sold watch at a
+                trade price into a dealer group is an embarrassment the
+                application should not hold the door open for. */}
+            {capabilities['watch:broadcast'] && !sold && (
+              <WhatsAppPost
+                size="sm"
+                watch={{
+                  brandName: record.brandName,
+                  model: record.model,
+                  nickname: record.nickname,
+                  year: record.year,
+                }}
+                tradePrice={record.tradePriceGbp
+                  ? formatCurrency(record.tradePriceGbp, BASE_CURRENCY)
+                  : null}
+                imageId={pickPostImage(images)}
+              />
             )}
             {capabilities['watch:update'] && (
               <LinkButton href={`/inventory/${record.id}/edit`} size="sm" variant="ghost" icon={<Pencil className="h-4 w-4" />}>

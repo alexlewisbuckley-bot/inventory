@@ -1,216 +1,113 @@
 'use client'
 import { useState } from 'react'
-import { Check, Copy, Image as ImageIcon, Send } from 'lucide-react'
-import { Button, Modal, useToast } from '@/components/ui'
+import { Check, Send } from 'lucide-react'
+import { Button, useToast } from '@/components/ui'
 import { postFilename, whatsappPost, type PostableWatch } from '@/lib/whatsapp-post'
 
 /**
- * Put a watch into a dealer group, picture and all.
+ * Put a watch into a dealer group, in one click.
  *
- * One constraint shapes the whole of this: a clipboard holds one thing at a
- * time, and WhatsApp wants two. `ClipboardItem` will carry an image and some
- * text together, but the receiving application picks a single representation
- * and WhatsApp picks the image — so a lone "copy" button silently drops the
- * reference and the price, which are the entire point of the message.
+ * This is a speed tool. Somebody is working a list, sees a piece worth
+ * putting out, and wants it in the group before the thought has finished —
+ * so the measure of this component is clicks, and the first version failed
+ * it: a panel, two buttons, two pastes, and only reachable from the full
+ * record.
  *
- * There are two different answers to that, for two different machines.
+ * What one click can be is decided by the machine, because the ceiling is
+ * different on each and neither can be argued with:
  *
- * On a phone the share sheet sidesteps it completely: `navigator.share` with
- * a file and some text hands WhatsApp an image carrying that text as its
- * caption, in one tap. That is the whole interaction, and it is where these
- * groups mostly get posted to.
+ *  - A phone has WhatsApp in its share sheet, so `navigator.share` with a
+ *    file and some text is the whole job: tap, pick the group, send. The
+ *    text rides along as the caption.
+ *  - A laptop cannot do that. WhatsApp Desktop is not a share target, and a
+ *    clipboard holds one thing — so the photograph goes on it and the
+ *    caption is offered on the toast for the people who want it. One click,
+ *    one paste, and a second click only if the words are wanted.
  *
- * A laptop has no share sheet, and WhatsApp Desktop takes a pasted image by
- * opening a preview with a caption box under it — photograph first, caption
- * second, two pastes. So rather than pretend otherwise, the desktop path
- * opens a small panel that hands over one, then the other, in that order,
- * and says so. Two clicks and two pastes is not one tap, but it is the real
- * shape of the application being pasted into.
+ * No web page can post into a WhatsApp group by itself; there is no API for
+ * it, groups are not addressable even from the Business API. One click and
+ * one paste is the floor, and this is at it.
  */
-export function WhatsAppPost({ watch, tradePrice, imageId }: {
+export function WhatsAppPost({ watch, tradePrice, imageId, size = 'md' }: {
   watch: PostableWatch
-  /** Formatted on the server — "AED 48,500" — or null if none is set. */
+  /** Formatted AED — "AED 48,500" — or null where none is set. */
   tradePrice: string | null
-  /** The photograph to send. Null where the watch has none yet. */
+  /** The trade shot, or the watch shot. Null where there is neither. */
   imageId: string | null
+  size?: 'sm' | 'md'
 }) {
   const toast = useToast()
-  const [sharing, setSharing] = useState(false)
-  const [panel, setPanel] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
 
   const message = whatsappPost(watch, { tradePrice })
 
-  async function start() {
-    // The phone path — and only the phone path. A Mac has a share sheet and
-    // will happily accept the file, but WhatsApp Desktop does not register
-    // as a macOS share target, so the sheet opens onto AirDrop, Mail and
-    // Notes with no WhatsApp in it and the caption silently dropped. Asking
-    // whether the browser *can* share is therefore the wrong question; the
-    // right one is whether this is the kind of device where WhatsApp is a
-    // share target at all.
-    if (imageId && isTouchDevice() && typeof navigator.share === 'function') {
-      setSharing(true)
-      try {
-        const file = await fetchImage(imageId, watch)
-        if (file && navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], text: message })
-          return
-        }
-      } catch (error) {
-        // Dismissing the sheet rejects with AbortError. That is somebody
-        // changing their mind, not a failure.
-        if ((error as Error)?.name === 'AbortError') return
-      } finally {
-        setSharing(false)
-      }
-    }
-    setPanel(true)
+  function flash() {
+    setDone(true)
+    setTimeout(() => setDone(false), 2500)
   }
 
-  return (
-    <>
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={start}
-        loading={sharing}
-        icon={<Send className="h-4 w-4" />}
-      >
-        Send to group
-      </Button>
-
-      <Modal
-        open={panel}
-        onClose={() => setPanel(false)}
-        title="Send to a WhatsApp group"
-        description="WhatsApp takes the photo first and the caption second, so this hands them over in that order."
-        size="md"
-      >
-        <div className="flex flex-col gap-5">
-          <Step
-            number={1}
-            title="Copy the photo, then paste it into the group"
-            detail={imageId
-              ? 'WhatsApp opens a preview with a caption box underneath.'
-              : 'This watch has no photograph yet — skip to the caption.'}
-          >
-            <CopyPhoto imageId={imageId} watch={watch} onFail={(m) => toast.error('Could not copy the photo', m)} />
-          </Step>
-
-          <Step
-            number={2}
-            title="Copy the caption, then paste it into that box"
-            detail="Press send once both are in."
-          >
-            <CopyText value={message} onFail={() => toast.error('Could not copy', 'Select the text and copy it by hand.')} />
-          </Step>
-
-          {/* Shown rather than hidden behind the button: somebody should be
-              able to read what they are about to post before they post it,
-              and retype a word of it if they want to. */}
-          <pre className="whitespace-pre-wrap rounded-md border border-line-subtle bg-surface-subtle px-4 py-3 text-small text-content-primary">
-            {message}
-          </pre>
-        </div>
-      </Modal>
-    </>
-  )
-}
-
-function Step({ number, title, detail, children }: {
-  number: number
-  title: string
-  detail: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex gap-3">
-      <span
-        aria-hidden
-        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-subtle text-caption font-semibold text-content-secondary"
-      >
-        {number}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-        <div>
-          <p className="text-body font-semibold text-content-primary">{title}</p>
-          <p className="text-small text-content-secondary">{detail}</p>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-/**
- * The photograph onto the clipboard.
- *
- * Re-encoded to PNG first. Browsers will only put an image on the clipboard
- * as PNG, and a watch photograph is a JPEG, so handing the blob over
- * unchanged fails on every one of them. Falls back to a download where the
- * clipboard refuses entirely, which is better than a dead button.
- */
-function CopyPhoto({ imageId, watch, onFail }: {
-  imageId: string | null
-  watch: PostableWatch
-  onFail: (message: string) => void
-}) {
-  const [done, setDone] = useState(false)
-  const [busy, setBusy] = useState(false)
-
-  if (!imageId) return null
-
-  async function run() {
+  async function send() {
     setBusy(true)
     try {
-      const file = await fetchImage(imageId!, watch)
-      if (!file) throw new Error('no image')
-      const png = await toPng(file)
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
-      setDone(true)
-      setTimeout(() => setDone(false), 3000)
-    } catch {
-      try {
-        const file = await fetchImage(imageId!, watch)
-        if (file) {
-          download(file)
-          onFail('Downloaded it instead — drag it into WhatsApp.')
-          return
-        }
-      } catch {
-        // Falls through to the message below.
+      const file = imageId ? await fetchImage(imageId, watch) : null
+
+      // The phone: one tap, picture and caption together. Gated on a coarse
+      // pointer rather than on `canShare`, because a Mac answers yes to that
+      // and then offers a sheet with no WhatsApp in it.
+      if (file && isTouchDevice() && typeof navigator.share === 'function'
+        && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text: message })
+        flash()
+        return
       }
-      onFail('Open the photograph from the gallery and copy it by hand.')
+
+      if (!file) {
+        await navigator.clipboard.writeText(message)
+        toast.success('Caption copied', 'No photograph on this one yet.')
+        flash()
+        return
+      }
+
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': await toPng(file) })])
+      toast.toast({
+        tone: 'success',
+        title: 'Photo copied — paste into the group',
+        description: message,
+        // The caption is one click away rather than a step everybody has to
+        // walk through. Most posts are the picture; the words are a choice.
+        action: {
+          label: 'Copy caption',
+          onClick: () => { void navigator.clipboard.writeText(message) },
+        },
+        duration: 10_000,
+      })
+      flash()
+    } catch (error) {
+      // Dismissing the share sheet rejects with AbortError. Somebody changing
+      // their mind is not a failure to report back to them.
+      if ((error as Error)?.name === 'AbortError') return
+      try {
+        await navigator.clipboard.writeText(message)
+        toast.error('Could not copy the photo', 'The caption is on the clipboard — attach the photo by hand.')
+      } catch {
+        toast.error('Could not copy', 'Open the photograph from the gallery and copy it by hand.')
+      }
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Button type="button" variant="secondary" size="sm" onClick={run} loading={busy}
-      icon={done ? <Check className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}>
-      {done ? 'Photo copied' : 'Copy photo'}
-    </Button>
-  )
-}
-
-function CopyText({ value, onFail }: { value: string; onFail: () => void }) {
-  const [done, setDone] = useState(false)
-
-  async function run() {
-    try {
-      await navigator.clipboard.writeText(value)
-      setDone(true)
-      setTimeout(() => setDone(false), 3000)
-    } catch {
-      onFail()
-    }
-  }
-
-  return (
-    <Button type="button" variant="secondary" size="sm" onClick={run}
-      icon={done ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}>
-      {done ? 'Caption copied' : 'Copy caption'}
+    <Button
+      type="button"
+      variant="secondary"
+      size={size}
+      onClick={send}
+      loading={busy}
+      icon={done ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+    >
+      {done ? 'Copied' : 'Send to group'}
     </Button>
   )
 }
@@ -219,9 +116,9 @@ function CopyText({ value, onFail }: { value: string; onFail: () => void }) {
  * A phone or a tablet, rather than a laptop with a share sheet it cannot use.
  *
  * Pointer type rather than user agent: a coarse pointer is a finger, which is
- * the same thing as "this operating system treats WhatsApp as somewhere you
- * can share to". A Mac with a touchscreen monitor does not exist; an iPad
- * with a keyboard still reports coarse, which is the right answer for it.
+ * the same population as "this operating system treats WhatsApp as somewhere
+ * you can share to". An iPad with a keyboard still reports coarse, which is
+ * the right answer for it, and no Mac reports coarse at all.
  */
 function isTouchDevice(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
@@ -250,15 +147,4 @@ async function toPng(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('encode failed'))), 'image/png')
   })
-}
-
-function download(file: File): void {
-  const url = URL.createObjectURL(file)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = file.name
-  link.click()
-  // Revoked on the next tick rather than immediately: Safari has not started
-  // reading the blob by the time click() returns.
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

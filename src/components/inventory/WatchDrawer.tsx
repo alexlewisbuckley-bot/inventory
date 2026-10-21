@@ -40,6 +40,8 @@ export async function WatchDrawer({ watchId, capabilities }: {
         id: record.watch.id,
         stockNo: record.watch.stockNo,
         model: record.watch.model,
+        // The name, for the group post. `model` is the reference number.
+        nickname: record.watch.nickname,
         serial: record.watch.serial,
         status: record.watch.status,
         version: record.watch.version,
@@ -51,6 +53,7 @@ export async function WatchDrawer({ watchId, capabilities }: {
         purchaseDate: record.watch.purchaseDate.toISOString(),
         purchasePriceGbp: record.watch.purchasePriceGbp,
         estSaleGbp: record.watch.estSaleGbp,
+        tradePriceGbp: record.watch.tradePriceGbp,
         brandName: record.brand.name,
         supplierName: record.supplier.name,
         locationName: record.location.name,
