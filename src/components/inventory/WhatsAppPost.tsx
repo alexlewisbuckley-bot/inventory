@@ -41,9 +41,14 @@ export function WhatsAppPost({ watch, tradePrice, imageId }: {
   const message = whatsappPost(watch, { tradePrice })
 
   async function start() {
-    // The phone path. `canShare` is asked with the actual file, because a
-    // browser can support sharing text and still refuse files.
-    if (imageId && typeof navigator.share === 'function') {
+    // The phone path — and only the phone path. A Mac has a share sheet and
+    // will happily accept the file, but WhatsApp Desktop does not register
+    // as a macOS share target, so the sheet opens onto AirDrop, Mail and
+    // Notes with no WhatsApp in it and the caption silently dropped. Asking
+    // whether the browser *can* share is therefore the wrong question; the
+    // right one is whether this is the kind of device where WhatsApp is a
+    // share target at all.
+    if (imageId && isTouchDevice() && typeof navigator.share === 'function') {
       setSharing(true)
       try {
         const file = await fetchImage(imageId, watch)
@@ -208,6 +213,19 @@ function CopyText({ value, onFail }: { value: string; onFail: () => void }) {
       {done ? 'Caption copied' : 'Copy caption'}
     </Button>
   )
+}
+
+/**
+ * A phone or a tablet, rather than a laptop with a share sheet it cannot use.
+ *
+ * Pointer type rather than user agent: a coarse pointer is a finger, which is
+ * the same thing as "this operating system treats WhatsApp as somewhere you
+ * can share to". A Mac with a touchscreen monitor does not exist; an iPad
+ * with a keyboard still reports coarse, which is the right answer for it.
+ */
+function isTouchDevice(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(pointer: coarse)').matches
 }
 
 /** The photograph, as a file the share sheet will accept. */
