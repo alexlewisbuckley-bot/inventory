@@ -142,16 +142,30 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   return getDb().transaction(async (tx) => transactionContext.run(tx, fn))
 }
 
-/** Verify connectivity and that migrations have been applied. */
-export async function checkDatabase(): Promise<{ ok: boolean; migrated: boolean }> {
+/**
+ * Verify connectivity and that migrations have been applied.
+ *
+ * On failure the driver's own code is handed back as well. The probe existed
+ * to make a broken deployment diagnosable from its response, and it half did:
+ * it would say the database was unreachable but not why, so finding out still
+ * meant going to the host's logs. The code is the difference between "the
+ * database is asleep" (ECONNREFUSED), "our credentials are stale" (28P01) and
+ * "it is there but slow" (CONNECT_TIMEOUT) — three different fixes.
+ *
+ * The code only. The driver's message can carry a host name, a role and a
+ * database name, and this endpoint is public.
+ */
+export async function checkDatabase(): Promise<{ ok: boolean; migrated: boolean; code?: string }> {
   try {
     const rows = await sql`
       SELECT to_regclass('public.users') IS NOT NULL AS migrated
     `
     return { ok: true, migrated: Boolean(rows[0]?.migrated) }
   } catch (error) {
-    logger.error('database unreachable', { error: (error as Error).message })
-    return { ok: false, migrated: false }
+    const raw = (error as { code?: unknown }).code
+    const code = typeof raw === 'string' ? raw : 'UNKNOWN'
+    logger.error('database unreachable', { code, error: (error as Error).message })
+    return { ok: false, migrated: false, code }
   }
 }
 

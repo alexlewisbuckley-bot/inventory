@@ -151,3 +151,29 @@ describe('a rate-limited person is told how long to wait', () => {
     expect(new RateLimitError(60)).toBeInstanceOf(AppError)
   })
 })
+
+describe('the health probe names the failure it found', () => {
+  const client = readFileSync('src/server/db/client.ts', 'utf8')
+  const route = readFileSync('src/app/api/health/route.ts', 'utf8')
+
+  it('carries the driver code out of checkDatabase', () => {
+    expect(client).toMatch(/checkDatabase\(\): Promise<\{ ok: boolean; migrated: boolean; code\?: string \}>/)
+    expect(client).toMatch(/return \{ ok: false, migrated: false, code \}/)
+  })
+
+  it('reports that code on an unhealthy response', () => {
+    expect(route).toMatch(/const \{ ok, migrated, code \} = await checkDatabase\(\)/)
+    expect(route).toMatch(/database: 'unreachable',\s*\n(\s*\/\/.*\n)*\s*code,/)
+  })
+
+  it('never puts the driver\'s message on a public endpoint', () => {
+    // The code is safe to publish; the message can name a host, role and database.
+    expect(route).not.toMatch(/error\)\.message/)
+    expect(route).not.toMatch(/\bmessage:\s*\(/)
+  })
+
+  it('leaves a healthy response alone', () => {
+    // No code field when there is no fault — the shape other callers rely on.
+    expect(route).toMatch(/status: 'ok', database: 'ok'/)
+  })
+})
