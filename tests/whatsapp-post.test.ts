@@ -115,3 +115,36 @@ describe('the record page gates and feeds the button', () => {
     expect(page).not.toMatch(/kind === 'DOCUMENT'/)
   })
 })
+
+describe('two machines, two ways of handing it over', () => {
+  const component = readFileSync('src/components/inventory/WhatsAppPost.tsx', 'utf8')
+
+  it('uses the share sheet when the browser has one', () => {
+    // The phone path: one tap, image with the text as its caption.
+    expect(component).toMatch(/navigator\.share\(\{ files: \[file\], text: message \}\)/)
+    // Asked with the actual file — a browser can share text and refuse files.
+    expect(component).toMatch(/navigator\.canShare\?\.\(\{ files: \[file\] \}\)/)
+  })
+
+  it('re-encodes to PNG before putting a photo on the clipboard', () => {
+    // A watch photograph is a JPEG and every browser refuses to clipboard
+    // anything but PNG, so handing the blob over unchanged always fails.
+    expect(component).toMatch(/toBlob\(.*'image\/png'\)/s)
+    expect(component).toMatch(/new ClipboardItem\(\{ 'image\/png': png \}\)/)
+  })
+
+  it('never tries to put the photo and the caption on the clipboard at once', () => {
+    // The trap this whole component exists to avoid: WhatsApp would pick the
+    // image and the reference and price would vanish without a word.
+    expect(component).not.toMatch(/ClipboardItem\(\{[^}]*image\/png[^}]*text\/plain/s)
+  })
+
+  it('treats a dismissed share sheet as a change of mind, not a failure', () => {
+    expect(component).toMatch(/AbortError/)
+  })
+
+  it('shows the message before it is sent', () => {
+    // Somebody should be able to read what they are about to post.
+    expect(component).toMatch(/\{message\}/)
+  })
+})
