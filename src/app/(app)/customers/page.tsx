@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { requireCapability } from '@/server/auth/session'
+import { requireAnyCapability } from '@/server/auth/session'
 import { findCustomers } from '@/server/repositories/crm-repository'
 import { assignableUsers } from '@/server/services/crm-service'
 import { customerQuerySchema } from '@/lib/validation'
@@ -11,7 +11,7 @@ import { CONTACT_FIELDS, parseFilters, toSearchParams } from '@/lib/filters'
 import { db } from '@/server/db/client'
 import { brands, suppliers } from '@/server/db/schema'
 import { asc, isNull } from 'drizzle-orm'
-import { can } from '@/lib/permissions'
+import { can, customerScope } from '@/lib/permissions'
 
 export const metadata: Metadata = { title: 'Customers' }
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,8 @@ const list = (value: string | string[] | undefined): string[] | undefined => {
 export default async function CustomersPage({ searchParams }: {
   searchParams: Record<string, string | string[] | undefined>
 }) {
-  const user = await requireCapability('customer:read')
+  const user = await requireAnyCapability('customer:read', 'customer:own')
+  const scope = customerScope(user.role)
 
   const query = customerQuerySchema.parse({
     q: searchParams.q,
@@ -42,7 +43,9 @@ export default async function CustomersPage({ searchParams }: {
   })
 
   const [result, owners, brandRows, supplierRows] = await Promise.all([
-    findCustomers(query),
+    // Scoped in SQL. A salesperson sees the clients they own and nothing
+    // else, whatever the address bar asks for.
+    findCustomers(query, scope === 'own' ? user.id : null),
     assignableUsers(),
     db.select({ id: brands.id, name: brands.name }).from(brands).orderBy(asc(brands.name)),
     db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)

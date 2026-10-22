@@ -160,7 +160,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </main>
         </div>
       </div>
-      <BottomBar />
+      <BottomBar role={user.role} />
       <KeyboardShortcuts canCreate={can(user.role, 'watch:create')} />
       </LiveNotifications>
       </DensityProvider>

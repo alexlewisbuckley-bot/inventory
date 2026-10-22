@@ -94,8 +94,18 @@ const customerColumns = {
   )`,
 } as const
 
-function customerFilters(query: CustomerQuery): SQL | undefined {
+/**
+ * `ownedBy` is not a filter.
+ *
+ * The list already takes an `ownerId` filter from the address bar, and a
+ * filter is a default somebody removes by editing the URL. This is a second
+ * clause the caller cannot express and the query cannot be talked out of:
+ * where it is set, no row with another owner can come back, whatever else
+ * the query asks for.
+ */
+function customerFilters(query: CustomerQuery, ownedBy?: string | null): SQL | undefined {
   const clauses: (SQL | undefined)[] = [isNull(customers.deletedAt)]
+  if (ownedBy) clauses.push(eq(customers.ownerId, ownedBy))
 
   if (query.q) {
     const needle = `%${query.q}%`
@@ -136,8 +146,12 @@ const CONTACT_COLUMNS: ColumnMap = {
   lastContactedAt: { column: customers.lastContactedAt, kind: 'date' },
 }
 
-export async function findCustomers(query: CustomerQuery): Promise<CustomerListResult> {
-  const where = customerFilters(query)
+export async function findCustomers(
+  query: CustomerQuery,
+  /** Narrow to one person's clients. Applied in SQL, not on the screen. */
+  ownedBy?: string | null,
+): Promise<CustomerListResult> {
+  const where = customerFilters(query, ownedBy)
   const direction = query.dir === 'asc' ? asc : desc
 
   const order = query.sort === 'name' ? [direction(customers.lastName), direction(customers.firstName)]

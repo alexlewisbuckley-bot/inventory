@@ -31,7 +31,10 @@ export const maxDuration = 60
  * is missing; this is where it gets typed.
  */
 export default async function ShopContentPage() {
-  const user = await requireCapability('watch:read')
+  // Merchandising, not reference. The page is a working surface for what
+  // the shop says about a watch, and every action on it already requires
+  // being able to change one — so reading it asks the same.
+  const user = await requireCapability('watch:update')
 
   // Everything held, in one go. A hundred and forty rows of short text is a
   // smaller payload than one of the photographs beside it, and paging a
