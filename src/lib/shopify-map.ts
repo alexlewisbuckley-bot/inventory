@@ -553,6 +553,16 @@ export interface SyncPlan {
     seoTitle: string | null
     /** What makes this one worth sending. Empty is never pushed. */
     reasons: UpdateReason[]
+    /**
+     * This push takes the page down rather than bringing it into line.
+     *
+     * A sold watch is still a matched product, so it lands here rather than
+     * in `archive` — and calling that "update" described the mechanism
+     * instead of the outcome. Somebody looking at two sold watches filed
+     * under "to update" has no way to tell the website is about to lose
+     * them, which is the one thing they wanted to know.
+     */
+    hiding: boolean
   }>
   /** Products for stock we no longer hold. */
   archive: Array<{ productId: string; sku: string | null; title: string }>
@@ -741,6 +751,9 @@ export function planSync(
     if (reasons.length) {
       plan.update.push({
         watch, productId: product.id, title: product.title, seoTitle: product.seoTitle, reasons,
+        // Archived is what the shop calls a page nobody can reach, which is
+        // what a sold watch's page becomes.
+        hiding: statusFor(watch) === 'ARCHIVED',
       })
     }
     // Intent on this side, visibility on that side. A watch we mean to sell

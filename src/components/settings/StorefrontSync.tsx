@@ -422,9 +422,17 @@ export function StorefrontSync({ health }: {
               <Group
                 icon={<Archive className="h-3.5 w-3.5" />}
                 tone="neutral"
-                title={`${plan.archive.length} to hide`}
-                items={plan.archive.map((c) => `${c.sku ?? '—'} · ${c.title}`)}
-                note="Stock that has left the book. Hidden, and reversible."
+                title={`${plan.archive.length + plan.hide.length} to hide`}
+                /* Both kinds of take-down in one list, because the
+                   difference between them is a detail of our record-keeping
+                   and not of what the website is about to do. A sold watch
+                   whose page we still point at used to be filed under "to
+                   update", where nobody could see it was coming down. */
+                items={[
+                  ...plan.hide.map((c) => `${c.stockNo} · ${c.title} — ${c.why}`),
+                  ...plan.archive.map((c) => `${c.sku ?? '—'} · ${c.title} — no longer in the book`),
+                ]}
+                note="Pages coming off the website: stock that has sold or otherwise left the book. Hidden, and reversible."
               />
               <Group
                 icon={<Trash2 className="h-3.5 w-3.5" />}
