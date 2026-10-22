@@ -1,7 +1,8 @@
 import {
-  commissionForMonth, commissionOn, tradingForMonth, unattributedForMonth,
+  commissionOn, tradingForMonth, unattributedForMonth,
 } from '../repositories/sale-repository'
 import { overheadCoverage, overheadsInMonth } from '../repositories/overhead-repository'
+import { brokerageTotals, commissionBaseForMonth } from './brokerage-service'
 import type { OverheadCadence, OverheadCategory } from '@/lib/enums'
 
 export interface OverheadLine {
@@ -20,6 +21,9 @@ export interface PnlMonth {
   invoiced: number
   costOfStock: number
   grossProfit: number
+  /** Fees earned selling other people's watches. Income, not trading. */
+  brokerage: number
+  brokerageCount: number
   saleCount: number
   /** Of that invoiced figure, what has actually been settled. */
   received: number
@@ -89,12 +93,15 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
   const monthStart = isoDate(from)
   const monthEnd = isoDate(to)
 
-  const [trading, people, costs, unattributed, coverage] = await Promise.all([
+  const [trading, people, costs, unattributed, coverage, brokered] = await Promise.all([
     tradingForMonth(from, to),
-    commissionForMonth(from, to),
+    // Includes brokerage, so the commission charged here is the commission
+    // the report pays out.
+    commissionBaseForMonth(from, to),
     overheadsInMonth(monthStart, monthEnd),
     unattributedForMonth(from, to),
     overheadCoverage(monthStart, monthEnd),
+    brokerageTotals(from, to),
   ])
 
   const retainers = people.reduce((sum, person) => sum + person.retainer, 0)
@@ -123,9 +130,19 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
 
   const overheads = costs.reduce((sum, cost) => sum + cost.monthly, 0)
   const totalCosts = retainers + commission + overheads
-  const netProfit = trading.grossProfit - totalCosts
+  /*
+   * Fees are income, not trading revenue.
+   *
+   * Nothing was bought and nothing left the shelf, so a brokered deal has
+   * no cost of stock and no margin, and folding it into the trading lines
+   * would quietly inflate both. It is added after gross profit, on its own
+   * line, which is also where somebody reading this would look for it.
+   */
+  const netProfit = trading.grossProfit + brokered.total - totalCosts
 
   return {
+    brokerage: brokered.total,
+    brokerageCount: brokered.count,
     invoiced: trading.invoiced,
     costOfStock: trading.costOfStock,
     grossProfit: trading.grossProfit,

@@ -116,7 +116,10 @@ describe('where the wages come from', () => {
   it('reads retainers and commission rather than letting them be typed', () => {
     // The one guard against paying somebody twice on paper. A salary field
     // on the overheads table would make double counting a typo away.
-    expect(service).toMatch(/commissionForMonth/)
+    // Either name: the commission base now includes brokerage fees, so the
+    // P&L reads commissionBaseForMonth. What the guard is about is that the
+    // figure is read from the sales people, not typed into a cost row.
+    expect(service).toMatch(/commission(Base)?ForMonth/)
     expect(service).toMatch(/person\.retainer/)
     // No column to put one in, so double counting is not a typo away. The
     // migration mentions retainers only to say they are read from

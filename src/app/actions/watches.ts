@@ -2,6 +2,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
+import { brokerageSchema } from '@/lib/validation'
 import {
   createWatch, updateWatch, moveWatches, recordSale, deleteWatch, restoreWatch,
   setWatchStatus, voidSale,
@@ -286,6 +287,46 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
  * withholding the lesser, non-destructive version of the same correction from
  * them would only push them towards the destructive one.
  */
+/**
+ * Record a fee earned selling somebody else's watch.
+ *
+ * Behind `sale:create`: it is the same act commercially — somebody sold
+ * something and the business was paid — and the same people should be able
+ * to book it in.
+ */
+export async function recordBrokerageAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const actor = await requireCapability('sale:create')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = brokerageSchema.safeParse({
+    description: formData.get('description'),
+    soldFor: formData.get('soldFor'),
+    soldTo: formData.get('soldTo'),
+    customerId: formData.get('customerId'),
+    brokeredOn: formData.get('brokeredOn'),
+    reference: formData.get('reference'),
+    // Taken in major units on the form and stored in minor, as every other
+    // money field on the system is.
+    feeAmount: Math.round(Number(formData.get('feeAmount') ?? 0) * 100),
+    feeCurrency: formData.get('feeCurrency') || undefined,
+    paymentStatus: formData.get('paymentStatus') || undefined,
+    soldById: formData.get('soldById'),
+    notes: formData.get('notes'),
+  })
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+
+  try {
+    const { recordBrokerage } = await import('@/server/services/brokerage-service')
+    const id = await recordBrokerage(parsed.data, actor)
+    revalidatePath('/sales')
+    revalidatePath('/reports/pnl')
+    revalidatePath('/reports/commission')
+    return { ok: true, message: 'Commission recorded.', id }
+  } catch (error) {
+    return toState(error, 'Could not record the commission.')
+  }
+}
+
 export async function amendSaleAction(input: unknown): Promise<ActionState> {
   const actor = await requireCapability('sale:update')
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })

@@ -16,6 +16,8 @@ import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, SALE_CHANNELS, type SaleChanne
 import { can, canSeeCost } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
+import { brokerageTotals, listBrokerages } from '@/server/services/brokerage-service'
+import { BrokerageSection } from '@/components/sales/BrokerageSection'
 
 export const metadata: Metadata = { title: 'Sales' }
 export const dynamic = 'force-dynamic'
@@ -43,12 +45,22 @@ function parseQuery(searchParams: SearchParams): SaleQuery {
 export default async function SalesPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('sale:read')
   const query = parseQuery(searchParams)
-  const [result, summary, rates, preferences, salesPeople] = await Promise.all([
+  /*
+   * Commission is shown for the same window the sales table is filtered to,
+   * so the two add up to what the period actually earned. With no dates
+   * chosen that is everything, which matches the table above it.
+   */
+  const brokerFrom = query.from ? new Date(query.from) : undefined
+  const brokerTo = query.to ? new Date(query.to) : undefined
+
+  const [result, summary, rates, preferences, salesPeople, brokerages, brokerTotals] = await Promise.all([
     findSales(query),
     summariseSales(query),
     getRateTable(),
     getPreferencesFor(user.id),
     listSalesPeople(),
+    listBrokerages(brokerFrom, brokerTo),
+    brokerageTotals(brokerFrom, brokerTo),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -148,6 +160,16 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       </Card>
         </>
       )}
+
+      {/* Outside the first-run branch on purpose: a business that has not
+          sold its own stock yet may still have brokered a deal, and that is
+          precisely when it needs somewhere to put it. */}
+      <BrokerageSection
+        rows={brokerages}
+        total={brokerTotals.total}
+        people={salesPeople}
+        canRecord={can(user.role, 'sale:create')}
+      />
     </>
   )
 }

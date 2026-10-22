@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Target, Wallet } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
-import { commissionForMonth, commissionOn } from '@/server/repositories/sale-repository'
+import { commissionOn } from '@/server/repositories/sale-repository'
+import { commissionBaseForMonth } from '@/server/services/brokerage-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
@@ -69,7 +70,7 @@ export default async function CommissionPage({ searchParams }: {
   const view = searchParams.view === 'target' ? 'target' : 'figures'
 
   const [rows, rates, preferences] = await Promise.all([
-    commissionForMonth(chosen.from, chosen.to),
+    commissionBaseForMonth(chosen.from, chosen.to),
     getRateTable(),
     getPreferencesFor(user.id),
   ])
