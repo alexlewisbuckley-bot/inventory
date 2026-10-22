@@ -6,7 +6,7 @@ import { recordAudit } from './audit'
 import { getRateTable } from './fx-service'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
-import { commissionForMonth } from '../repositories/sale-repository'
+import { commissionForMonth, salesByPerson } from '../repositories/sale-repository'
 import type { SessionUser } from '../auth/session'
 
 /**
@@ -247,4 +247,84 @@ export async function commissionBaseForMonth(from: Date, to: Date) {
       pendingCount: Number(row.pendingCount) + fees.pendingCount,
     }
   })
+}
+
+/**
+ * Sales by person, with brokered deals counted in.
+ *
+ * Same shape as `salesByPerson`, plus `stockProfit` — the profit on their
+ * own stock, kept apart so the margin beside it stays a margin. A fee has
+ * no cost under it, so adding it to profit without adding anything to cost
+ * would inflate every percentage on the page.
+ */
+export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPersonId?: string) {
+  const [ledger, fees] = await Promise.all([
+    salesByPerson(from, to, onlyPersonId),
+    brokerageByPersonDetailed(from, to, onlyPersonId),
+  ])
+
+  const rows = ledger.map((row) => ({
+    ...row,
+    soldCount: Number(row.soldCount),
+    revenueGbp: Number(row.revenueGbp),
+    profitGbp: Number(row.profitGbp),
+    costGbp: Number(row.costGbp),
+    /** Profit on their own stock, which is what a margin is measured on. */
+    stockProfitGbp: Number(row.profitGbp),
+  }))
+  const byId = new Map(rows.map((row) => [row.personId ?? 'none', row]))
+
+  for (const fee of fees) {
+    const key = fee.personId ?? 'none'
+    const existing = byId.get(key)
+    if (existing) {
+      existing.soldCount += fee.count
+      existing.revenueGbp += fee.total
+      existing.profitGbp += fee.total
+      // Not stockProfit, and not cost: a fee has neither.
+      if (!existing.lastSaleAt || (fee.lastAt && fee.lastAt > existing.lastSaleAt)) {
+        existing.lastSaleAt = fee.lastAt
+      }
+      continue
+    }
+    // Somebody whose only earnings this period were brokered. Without this
+    // they would be missing from a report that is meant to list everybody.
+    const row = {
+      personId: fee.personId,
+      personName: fee.personName ?? 'Not recorded',
+      soldCount: fee.count,
+      revenueGbp: fee.total,
+      profitGbp: fee.total,
+      costGbp: 0,
+      stockProfitGbp: 0,
+      lastSaleAt: fee.lastAt,
+    }
+    rows.push(row as typeof rows[number])
+    byId.set(key, row as typeof rows[number])
+  }
+
+  return rows
+}
+
+/** Brokerage per person, with the name and the latest date. */
+async function brokerageByPersonDetailed(from?: Date, to?: Date, onlyPersonId?: string) {
+  const window = [live()]
+  if (from) window.push(gte(brokerages.brokeredOn, from))
+  if (to) window.push(lte(brokerages.brokeredOn, to))
+  if (onlyPersonId) window.push(eq(brokerages.soldById, onlyPersonId))
+
+  const rows = await db
+    .select({
+      personId: brokerages.soldById,
+      personName: salesPeople.name,
+      count: sql<number>`count(*)`,
+      total: sql<number>`coalesce(sum(${brokerages.feeBase}), 0)`,
+      lastAt: sql<Date | null>`max(${brokerages.brokeredOn})`,
+    })
+    .from(brokerages)
+    .leftJoin(salesPeople, eq(salesPeople.id, brokerages.soldById))
+    .where(and(...window))
+    .groupBy(brokerages.soldById, salesPeople.name)
+
+  return rows.map((row) => ({ ...row, count: Number(row.count), total: Number(row.total) }))
 }
