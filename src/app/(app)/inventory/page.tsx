@@ -248,7 +248,17 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
                 ...(capabilities['data:import'] || capabilities['watch:update']
                   ? [{ id: 'add', label: 'Bring stock in', href: '/inventory/add', icon: <Inbox className="h-3.5 w-3.5" /> }]
                   : []),
-
+                // The header hides this below sm on the understanding that it
+                // folds in here, and it never did — so the whole stock list
+                // could not be exported from a phone at all.
+                // "This view", not "Export": the default view is one
+                // location, so on a phone — where the location tabs are a
+                // scroll away — a file of 22 of your 37 live watches would
+                // otherwise look like the lot. Switch to All locations first
+                // and the same button exports everything.
+                ...(capabilities['report:export']
+                  ? [{ id: 'export', label: 'Export this view', href: exportHref, download: true, icon: <Download className="h-3.5 w-3.5" /> }]
+                  : []),
               ]}
               primary={capabilities['watch:create']
                 ? <LinkButton href="/inventory/new" icon={<Plus className="h-4 w-4" />}>Add item</LinkButton>
