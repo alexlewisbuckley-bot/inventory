@@ -90,21 +90,57 @@ describe('the role matrix', () => {
     }
   })
 
-  it('keeps cost prices away from Sales, everywhere cost exists', () => {
-    // The rule the role exists for. A salesperson quotes asking prices all
-    // day and never needs to know what the watch cost; in this trade, cost
-    // prices leaving with a departing salesperson is a real and expensive
-    // event.
-    expect(canSeeCost('SALES')).toBe(false)
+  it('gives Sales all three prices, by the owner\'s instruction', () => {
+    // This reverses what the role was originally built around. Cost used to
+    // be withheld precisely so it could not leave with a departing
+    // salesperson; the owner has decided the lookup is worth more than that
+    // protection, so who holds the role is now the control.
+    expect(canSeeCost('SALES')).toBe(true)
     expect(can('SALES', 'revenue:read')).toBe(true)
-    // But selling still works end to end.
-    for (const needed of ['customer:read', 'deal:create', 'sale:create', 'task:create', 'watch:price'] as const) {
+  })
+
+  it('lets Sales look everything up and change nothing', () => {
+    // The reference seat: search, filter and read, across stock and the
+    // commercial side.
+    for (const needed of [
+      'watch:read', 'sale:read', 'customer:read', 'deal:read',
+      'task:read', 'location:read', 'supplier:read',
+    ] as const) {
       expect(can('SALES', needed), `SALES lacks ${needed}`).toBe(true)
     }
-    // And the surfaces made entirely of cost figures are simply not theirs.
+  })
+
+  it('holds no write of any kind', () => {
+    // The half that has to be exhaustive. A role defined as read-only is
+    // only read-only for as long as nobody adds a verb to it, so this reads
+    // the whole capability list rather than a hand-written sample — a new
+    // `thing:create` landing in Sales fails here on the day it is written.
+    const writes = CAPABILITIES.filter((capability) =>
+      /:(create|update|delete|manage|move|restore|amend|import|export|price|broadcast|respond|enquire)$/
+        .test(capability))
+    for (const write of writes) {
+      expect(can('SALES', write), `SALES can ${write}`).toBe(false)
+    }
+    // Named explicitly as well, because these are the two the owner asked
+    // for by name and a regex is a poor place to read intent from.
+    expect(can('SALES', 'sale:create')).toBe(false)
+    expect(can('SALES', 'watch:create')).toBe(false)
+    expect(can('SALES', 'watch:update')).toBe(false)
+    expect(can('SALES', 'watch:price')).toBe(false)
+  })
+
+  it('withholds the business\'s own account of itself', () => {
+    // Reading a price list is not a reason to be shown the capital
+    // position, the supplier spend or the profit and loss.
     expect(can('SALES', 'report:read')).toBe(false)
     expect(can('SALES', 'report:export')).toBe(false)
     expect(can('SALES', 'data:import')).toBe(false)
+    expect(can('SALES', 'overhead:manage')).toBe(false)
+    expect(can('SALES', 'audit:read')).toBe(false)
+    expect(can('SALES', 'user:read')).toBe(false)
+    expect(can('SALES', 'settings:read')).toBe(false)
+    // Their own figures stay: that is their performance, not the business's.
+    expect(can('SALES', 'report:own')).toBe(true)
   })
 
   it('keeps all money and the whole customer book away from Operations', () => {
@@ -182,7 +218,8 @@ describe('the role matrix', () => {
       MANAGER: { cost: true, revenue: true },
       STAFF: { cost: true, revenue: true },
       VIEWER: { cost: true, revenue: true },
-      SALES: { cost: false, revenue: true },
+      // Cost opened to Sales at the owner's instruction — see above.
+      SALES: { cost: true, revenue: true },
       OPERATIONS: { cost: false, revenue: false },
       // A trade partner reads their prices off the catalogue, which serves
       // them without consulting either grade. Both false, so nothing they
