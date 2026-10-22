@@ -1438,6 +1438,56 @@ export type Session = typeof sessions.$inferSelect
  * commission report. The guard is structural: there is nowhere here to put
  * a salesperson's retainer.
  */
+/**
+ * A fee earned selling somebody else's watch.
+ *
+ * No stock behind it: we never bought the watch, so there is no cost, no
+ * margin and nothing to mark as sold. Its own table rather than a nullable
+ * `watchId` on `sales`, because seven queries inner-join sales to watches
+ * and a null would quietly drop these rows from the sales list, the
+ * customer's history and the reports — while the queries that did show them
+ * would be averaging a sale price and a margin over a thing that was never
+ * stock.
+ *
+ * The whole fee is the profit, which is why a salesperson's commission can
+ * be worked out on it exactly as it is on the profit of a stock sale.
+ */
+export const brokerages = pgTable(
+  'brokerages',
+  {
+    id: text('id').primaryKey(),
+    /** What was sold, in words — there is no watch record to point at. */
+    description: text('description').notNull(),
+    /** Whose watch it was, and who bought it. Neither is necessarily ours. */
+    soldFor: text('sold_for'),
+    soldTo: text('sold_to'),
+    customerId: text('customer_id').references((): AnyPgColumn => customers.id),
+    brokeredOn: timestamp('brokered_on', { withTimezone: true }).notNull(),
+    reference: text('reference'),
+    /** The fee as agreed, in the currency it was agreed in. */
+    feeAmount: integer('fee_amount').notNull(),
+    feeCurrency: text('fee_currency', { enum: CURRENCIES }).notNull().default('AED'),
+    feeFxRate: integer('fee_fx_rate'),
+    /** The same fee in base minor units, which is what the reports add up. */
+    feeBase: integer('fee_base').notNull(),
+    paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PAID'),
+    soldById: text('sold_by_id').references((): AnyPgColumn => salesPeople.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    recordedById: text('recorded_by_id').notNull().references(() => users.id),
+    /** Voided rather than deleted, as a sale is. */
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedById: text('voided_by_id').references(() => users.id, { onDelete: 'set null' }),
+    voidReason: text('void_reason'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    dateIdx: index('brokerages_date_idx').on(t.brokeredOn),
+    personIdx: index('brokerages_person_idx').on(t.soldById, t.brokeredOn),
+  }),
+)
+
 export const overheads = pgTable(
   'overheads',
   {

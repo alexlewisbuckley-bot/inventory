@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { requireCapability } from '@/server/auth/session'
 import { can } from '@/lib/permissions'
 import { listOverheads, monthlyCost, appliesInMonth } from '@/server/repositories/overhead-repository'
-import { commissionForMonth, commissionOn } from '@/server/repositories/sale-repository'
+import { commissionOn } from '@/server/repositories/sale-repository'
+import { commissionBaseForMonth } from '@/server/services/brokerage-service'
 import { isoDate } from '@/server/services/pnl-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
@@ -44,7 +45,7 @@ export default async function RunningCostsPage() {
 
   const [all, people, rates, preferences] = await Promise.all([
     listOverheads(),
-    commissionForMonth(from, to),
+    commissionBaseForMonth(from, to),
     getRateTable(),
     getPreferencesFor(user.id),
   ])

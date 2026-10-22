@@ -785,6 +785,29 @@ export const customerQuerySchema = z.object({
 })
 export type CustomerQuery = z.infer<typeof customerQuerySchema>
 
+/**
+ * A fee earned selling somebody else's watch.
+ *
+ * `description` is required and the rest is not: the one thing that makes
+ * the row mean anything a year later is what the watch was. The amount is
+ * taken in the currency it was agreed in — most of this trade is quoted in
+ * dollars — and converted once on the way in.
+ */
+export const brokerageSchema = z.object({
+  description: z.string().trim().min(1, 'Say what was sold — "Rolex Daytona 116500LN".').max(200),
+  soldFor: z.string().trim().max(140).optional().or(z.literal('')).transform((v) => v || null),
+  soldTo: z.string().trim().max(140).optional().or(z.literal('')).transform((v) => v || null),
+  customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  brokeredOn: z.coerce.date(),
+  reference: z.string().trim().max(60).optional().or(z.literal('')).transform((v) => v || null),
+  feeAmount: z.coerce.number().int().positive('Enter the commission you were paid.'),
+  feeCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  paymentStatus: z.enum(PAYMENT_STATUSES).default('PAID'),
+  soldById: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  notes: z.string().trim().max(2000).optional().or(z.literal('')).transform((v) => v || null),
+})
+export type BrokerageFormInput = z.infer<typeof brokerageSchema>
+
 export const dealSchema = z.object({
   title: z.string().trim().min(1, 'Give the deal a name you would recognise in a list.').max(140),
   customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
