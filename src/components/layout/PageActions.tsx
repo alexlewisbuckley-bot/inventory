@@ -10,6 +10,16 @@ export interface SecondaryAction {
   label: string
   href: string
   icon?: ReactNode
+  /**
+   * The href produces a file rather than a page.
+   *
+   * `router.push` is a client-side navigation and cannot start a download —
+   * pointed at an API route it goes nowhere at all, which is how the stock
+   * export came to be unreachable on a phone: hidden from the header and
+   * listed in this menu as an item that did nothing. A file is handed to the
+   * browser instead, which is the one thing that knows what to do with it.
+   */
+  download?: boolean
 }
 
 /**
@@ -32,7 +42,10 @@ export function PageActions({ secondary, primary }: {
     id: action.id,
     label: action.label,
     icon: action.icon,
-    onSelect: () => router.push(action.href),
+    onSelect: () => {
+      if (action.download) window.location.href = action.href
+      else router.push(action.href)
+    },
   }))
 
   return (
