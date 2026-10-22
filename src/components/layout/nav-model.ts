@@ -4,7 +4,7 @@ import {
   Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
 } from 'lucide-react'
-import { can, isExternalRole, salesScope, type Capability } from '@/lib/permissions'
+import { can, canAny, isExternalRole, salesScope, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
 
 export interface SidebarCounts {
@@ -24,6 +24,15 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   capability?: Capability
+  /**
+   * Several capabilities, any one of which opens the item.
+   *
+   * For a page with two legitimate doors: the customer book reads whole for
+   * a manager and scoped to their own for a salesperson, and both arrive at
+   * the same screen. Without this the narrow role reached the page by typing
+   * the address and found no link to it.
+   */
+  anyOf?: Capability[]
   /** Also highlight for nested routes under this path. */
   match?: string
   /** Rendered as a muted count, or an amber pill when it needs attention. */
@@ -70,7 +79,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
       heading: 'Sell',
       items: [
         { href: '/deals', label: 'Deals', icon: KanbanSquare, capability: 'deal:read', match: '/deals', count: counts.openDeals },
-        { href: '/customers', label: 'Customers', icon: Users2, capability: 'customer:read', match: '/customers' },
+        { href: '/customers', label: 'Customers', icon: Users2, anyOf: ['customer:read', 'customer:own'], match: '/customers' },
         { href: '/requests', label: 'Wanted', icon: Search, capability: 'request:read', match: '/requests', count: counts.openRequests },
         // The trade's own door. Under Sell because answering one is selling,
         // and it carries an attention badge: a dealer waiting on an answer is
@@ -88,7 +97,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         // It is the same kind of job — a list of stock with something
         // missing — and the shop page is where the sync is wired up, which is
         // a thing somebody does twice a year.
-        { href: '/inventory/content', label: 'Shop content', icon: Table2, capability: 'watch:read', match: '/inventory/content' },
+        { href: '/inventory/content', label: 'Shop content', icon: Table2, capability: 'watch:update', match: '/inventory/content' },
       ],
     },
     {
@@ -133,6 +142,7 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         // "Today" carries no capability because every member of staff has it.
         // An outside party is not staff: they get their own page and nothing
         // that reports on the business running around them.
+        if (item.anyOf) return canAny(role, item.anyOf)
         if (!item.capability) return !isExternalRole(role)
         return can(role, item.capability)
       }),

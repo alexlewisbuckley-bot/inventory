@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { asc, isNull } from 'drizzle-orm'
 import { AtSign, CalendarHeart, Globe2, Phone, ShieldAlert, Watch } from 'lucide-react'
-import { requireCapability } from '@/server/auth/session'
+import { requireAnyCapability } from '@/server/auth/session'
+import { customerScope } from '@/lib/permissions'
 import { db } from '@/server/db/client'
 import { brands, suppliers } from '@/server/db/schema'
 import {
@@ -49,9 +50,19 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
  * else — addresses, consent, risk notes — sits under those.
  */
 export default async function CustomerPage({ params }: { params: { id: string } }) {
-  const user = await requireCapability('customer:read')
+  const user = await requireAnyCapability('customer:read', 'customer:own')
   const row = await getCustomer(params.id)
   if (!row) notFound()
+
+  /*
+   * A deep link is the way round a scoped list.
+   *
+   * The list is narrowed in SQL, which is the right place for it, but the
+   * record has its own address and somebody can be sent one. Not found
+   * rather than forbidden: whether a customer exists is itself part of the
+   * book, and "you may not see this one" confirms there is one to see.
+   */
+  if (customerScope(user.role) === 'own' && row.customer.ownerId !== user.id) notFound()
 
   const { customer, ownerName, idCheckedByName } = row
 

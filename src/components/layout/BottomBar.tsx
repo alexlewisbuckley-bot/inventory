@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { canAny, type Capability } from '@/lib/permissions'
+import type { Role } from '@/lib/enums'
 import { KanbanSquare, LayoutDashboard, Search, Users2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
@@ -23,15 +25,30 @@ import { cn } from '@/lib/cn'
  * thumb, and a missed tap here navigates somewhere wrong rather than doing
  * nothing.
  */
-const ITEMS = [
+/**
+ * Every item carries what it takes to open it.
+ *
+ * This bar had no capability check at all, so it offered Deals and Contacts
+ * to roles that are refused both — four tabs on a phone, two of them doors
+ * into "Not part of your role". Today and Search need nothing: both exist
+ * for anybody who can sign in.
+ */
+const ITEMS: ReadonlyArray<{
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  match: string
+  anyOf?: Capability[]
+}> = [
   { href: '/today', label: 'Today', icon: LayoutDashboard, match: '/today' },
   { href: '/search', label: 'Search', icon: Search, match: '/search' },
-  { href: '/deals', label: 'Deals', icon: KanbanSquare, match: '/deals' },
-  { href: '/customers', label: 'Contacts', icon: Users2, match: '/customers' },
-] as const
+  { href: '/deals', label: 'Deals', icon: KanbanSquare, match: '/deals', anyOf: ['deal:read'] },
+  { href: '/customers', label: 'Contacts', icon: Users2, match: '/customers', anyOf: ['customer:read', 'customer:own'] },
+]
 
-export function BottomBar() {
+export function BottomBar({ role }: { role: Role | null }) {
   const pathname = usePathname()
+  const items = ITEMS.filter((item) => !item.anyOf || canAny(role, item.anyOf))
 
   return (
     <nav
@@ -39,7 +56,7 @@ export function BottomBar() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line-subtle bg-surface-raised pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <ul className="flex">
-        {ITEMS.map((item) => {
+        {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.match}/`)
           const Icon = item.icon
           return (

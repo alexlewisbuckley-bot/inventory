@@ -79,6 +79,17 @@ export const CAPABILITIES = [
   // commercial detail on a deal and the ability to delete a relationship are
   // not: a viewer is usually someone shown the stock, not the client list.
   'customer:read', 'customer:create', 'customer:update', 'customer:delete',
+  /**
+   * The customers you own, and nobody else's.
+   *
+   * Held apart from `customer:read`, which is the whole book. A salesperson
+   * looking up the client in front of them is not asking to read the firm's
+   * entire contact list, and in this trade a contact list is the asset most
+   * worth walking out of the door with. Enforced in the query by owner id
+   * rather than by a filter on the screen — a filter is a default, and a
+   * default is removed by editing the address bar.
+   */
+  'customer:own',
   'deal:read', 'deal:create', 'deal:update', 'deal:delete',
   'activity:read', 'activity:create',
   'task:read', 'task:create', 'task:update',
@@ -116,6 +127,9 @@ const VIEWER: Capability[] = [
   // never given to the roles above it is how somebody senior ends up unable
   // to do something their junior can.
   'report:own',
+  // Same reason as `report:own` above: redundant beside `customer:read`,
+  // which is strictly wider, and held so the roles above remain supersets.
+  'customer:own',
   'revenue:read', 'cost:read',
 ]
 
@@ -144,14 +158,12 @@ const VIEWER: Capability[] = [
  * price list is not a reason to be shown them.
  */
 const SALES: Capability[] = [
-  'watch:read', 'sale:read', 'supplier:read', 'location:read', 'owner:read',
+  'watch:read', 'location:read', 'owner:read',
   // All three prices: what it cost, what the trade pays, what it is asking.
   'revenue:read', 'cost:read',
-  // Reads across the commercial side, so a piece can be looked up against
-  // the client asking for it. No create, no update, no delete anywhere.
-  'customer:read', 'deal:read', 'activity:read', 'task:read', 'request:read',
-  // Their own figures, and nobody else's — not the business's.
-  'report:own',
+  // Their own clients and their own figures. Not the firm's contact list,
+  // not the pipeline, not the sales ledger.
+  'customer:own', 'report:own',
 ]
 
 /**
@@ -259,6 +271,20 @@ export function salesScope(role: Role | null | undefined): 'all' | 'own' | 'none
  * asked at every read boundary that returns money, and a grep for
  * `canSeeCost` is how the next person audits that every one of them asks it.
  */
+/**
+ * How much of the customer book this role may read.
+ *
+ * Mirrors `salesScope`. 'own' is narrowed in the query by owner id, which is
+ * the only place it can be done safely: the list already takes an `ownerId`
+ * filter from the address bar, and a filter somebody can delete is not an
+ * access control.
+ */
+export function customerScope(role: Role | null | undefined): 'all' | 'own' | 'none' {
+  if (can(role, 'customer:read')) return 'all'
+  if (can(role, 'customer:own')) return 'own'
+  return 'none'
+}
+
 export function canSeeCost(role: Role | null | undefined): boolean {
   return can(role, 'cost:read')
 }

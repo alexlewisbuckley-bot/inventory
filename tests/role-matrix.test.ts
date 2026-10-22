@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ROLES, type Role } from '@/lib/enums'
 import {
-  assignableRoles, can, canSeeCost, isExternalRole, CAPABILITIES, ROLE_CAPABILITIES,
+  assignableRoles, can, canSeeCost, customerScope, isExternalRole, CAPABILITIES, ROLE_CAPABILITIES,
 } from '@/lib/permissions'
 
 /**
@@ -99,15 +99,34 @@ describe('the role matrix', () => {
     expect(can('SALES', 'revenue:read')).toBe(true)
   })
 
-  it('lets Sales look everything up and change nothing', () => {
-    // The reference seat: search, filter and read, across stock and the
-    // commercial side.
-    for (const needed of [
-      'watch:read', 'sale:read', 'customer:read', 'deal:read',
-      'task:read', 'location:read', 'supplier:read',
-    ] as const) {
+  it('lets Sales look up stock, and their own clients', () => {
+    // The reference seat, narrowed: the stock list and the people they
+    // personally own. Nothing else about the firm.
+    for (const needed of ['watch:read', 'location:read', 'owner:read', 'customer:own'] as const) {
       expect(can('SALES', needed), `SALES lacks ${needed}`).toBe(true)
     }
+    expect(customerScope('SALES')).toBe('own')
+  })
+
+  it('keeps the firm\'s own lists away from Sales', () => {
+    // Each of these was taken away by name. The contact book is the asset
+    // most worth walking out of the door with, so `customer:read` — the
+    // whole of it — is the one that matters most here.
+    for (const withheld of [
+      'customer:read', 'deal:read', 'task:read', 'request:read',
+      'supplier:read', 'sale:read', 'activity:read',
+    ] as const) {
+      expect(can('SALES', withheld), `SALES still has ${withheld}`).toBe(false)
+    }
+  })
+
+  it('still lets the roles above read the whole book', () => {
+    // Narrowing Sales must not narrow anybody else.
+    for (const role of ['STAFF', 'MANAGER', 'OWNER'] as const) {
+      expect(customerScope(role), role).toBe('all')
+    }
+    expect(customerScope('OPERATIONS')).toBe('none')
+    expect(customerScope('TRADER')).toBe('none')
   })
 
   it('holds no write of any kind', () => {
