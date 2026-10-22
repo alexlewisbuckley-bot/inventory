@@ -120,25 +120,37 @@ const VIEWER: Capability[] = [
 ]
 
 /**
- * Sells, without seeing the cost side.
+ * Looks everything up, changes nothing.
  *
- * Everything a Staff member does with customers, deals and tasks — but no
- * cost, profit or margin anywhere: not on the inventory list, not on a sold
- * row, not in a report. The capability is enforced at the read boundary, so
- * the figures are absent from what the server sends, not hidden by CSS.
+ * A reference seat rather than a working one. The job is to stand in front
+ * of a client and answer "what have we got, and what can it go for" — so the
+ * whole stock list is open, with search, filters and all three prices on it,
+ * cost included.
+ *
+ * It holds no write at all. Not a sale, not a price, not a customer, not a
+ * task. That is deliberate and it is the easier half to get right: a role
+ * that cannot write cannot be talked into writing by a screen that forgot to
+ * check, and every button that would have done so is already gated on the
+ * capability it no longer has.
+ *
+ * `cost:read` is here at the owner's instruction, and it reverses the rule
+ * this role was originally built around — that cost prices should not leave
+ * with a departing salesperson. The figure now reaches anybody holding this
+ * role, so who holds it is the control, and removing somebody's account is
+ * the only thing that takes it back.
+ *
+ * Still not `report:read`: the capital position, the supplier spend and the
+ * profit and loss are the business's own account of itself, and reading a
+ * price list is not a reason to be shown them.
  */
 const SALES: Capability[] = [
-  'watch:read', 'sale:read', 'sale:create', 'supplier:read', 'location:read', 'owner:read',
-  'revenue:read',
-  'watch:price',
-  'customer:read', 'customer:create', 'customer:update',
-  'deal:read', 'deal:create', 'deal:update',
-  'activity:read', 'activity:create',
-  'task:read', 'task:create', 'task:update',
-  'request:read', 'request:create', 'request:update',
-  // Their own month, and nobody else's. Not `report:read`: that is the
-  // capital position and the supplier spend, which is not what somebody
-  // asking how they are doing wants to know.
+  'watch:read', 'sale:read', 'supplier:read', 'location:read', 'owner:read',
+  // All three prices: what it cost, what the trade pays, what it is asking.
+  'revenue:read', 'cost:read',
+  // Reads across the commercial side, so a piece can be looked up against
+  // the client asking for it. No create, no update, no delete anywhere.
+  'customer:read', 'deal:read', 'activity:read', 'task:read', 'request:read',
+  // Their own figures, and nobody else's — not the business's.
   'report:own',
 ]
 
