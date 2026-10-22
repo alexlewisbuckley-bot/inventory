@@ -121,7 +121,7 @@ export const userPreferences = pgTable('user_preferences', {
    * What this person reads figures in, not what they are stored in — see
    * BASE_CURRENCY. Converted at render time, so changing it rewrites nothing.
    */
-  displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('USD'),
+  displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('AED'),
   defaultLocationId: text('default_location_id').references(() => locations.id, { onDelete: 'set null' }),
   emailNotifications: boolean('email_notifications').notNull().default(true),
   inAppNotifications: boolean('in_app_notifications').notNull().default(true),
@@ -231,7 +231,7 @@ export const resellers = pgTable(
 
     isActive: boolean('is_active').notNull().default(true),
     /** Our retail price, converted into what their customers are quoted in. */
-    displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('USD'),
+    displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('AED'),
 
     notes: text('notes'),
     sortOrder: integer('sort_order').notNull().default(0),

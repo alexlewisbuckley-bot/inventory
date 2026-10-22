@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
 import { requireAnyCapability } from '@/server/auth/session'
-import { salesByPerson } from '@/server/repositories/sale-repository'
+import { salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
@@ -133,8 +133,11 @@ export default async function SalesByPersonPage({ searchParams }: {
   const onlyMine = scope === 'own' ? me?.id ?? '__unlinked__' : undefined
 
   const [rows, previous, roster, rates, preferences] = await Promise.all([
-    salesByPerson(from, to, onlyMine),
-    key === 'all' ? Promise.resolve([]) : salesByPerson(prevFrom, prevTo, onlyMine),
+    // Includes brokered deals: a commission is a sale the person made and
+    // the fee is profit they earned, so a leaderboard that left it out
+    // would rank them on part of their month.
+    salesByPersonWithBrokerage(from, to, onlyMine),
+    key === 'all' ? Promise.resolve([]) : salesByPersonWithBrokerage(prevFrom, prevTo, onlyMine),
     // The roster is who else exists, which is not a scoped reader's business.
     scope === 'all' ? listSalesPeople() : Promise.resolve([]),
     getRateTable(),
@@ -166,7 +169,15 @@ export default async function SalesByPersonPage({ searchParams }: {
       revenue: Number(row.revenueGbp),
       profit: Number(row.profitGbp),
       cost,
-      margin: cost > 0 ? (Number(row.profitGbp) / cost) * 100 : null,
+      /*
+       * Margin is measured on stock only, as it is on the sales ledger.
+       *
+       * `profitGbp` now includes brokered fees, which have no cost under
+       * them — dividing that by a cost that never moved would inflate
+       * every percentage on this page. `stockProfitGbp` is the part a
+       * margin can honestly be taken of.
+       */
+      margin: cost > 0 ? (Number(row.stockProfitGbp) / cost) * 100 : null,
       average: Number(row.soldCount) > 0 ? Number(row.revenueGbp) / Number(row.soldCount) : 0,
       lastSaleAt: row.lastSaleAt,
       priorProfit: prior ? Number(prior.profitGbp) : 0,

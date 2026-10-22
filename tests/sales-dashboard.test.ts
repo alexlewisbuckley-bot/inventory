@@ -79,7 +79,12 @@ describe('what it refuses to hide', () => {
   it('scopes at the query rather than filtering the answer', () => {
     // A filter applied after the fact leaves the other people's figures in
     // the payload, and the payload is the thing that leaks.
-    expect(page).toMatch(/salesByPerson\(from, to, onlyMine\)/)
+    expect(page).toMatch(/salesByPerson(WithBrokerage)?\(from, to, onlyMine\)/)
+    // The brokered side is scoped the same way, in its own WHERE rather
+    // than by trimming the result — otherwise a scoped reader's payload
+    // would carry everybody else's fees.
+    const service = read('src/server/services/brokerage-service.ts')
+    expect(service).toMatch(/if \(onlyPersonId\) window\.push\(eq\(brokerages\.soldById, onlyPersonId\)\)/)
   })
 
   it('never lets a wide reader fall into the narrow view', () => {
