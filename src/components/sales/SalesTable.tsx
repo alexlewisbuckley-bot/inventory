@@ -22,7 +22,7 @@ export function SalesTable({
   result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
   salesPeople = [],
 }: {
-  result: { items: SaleListItem[]; total: number; page: number; perPage: number }
+  result: { items: Array<SaleListItem & { kind?: 'SALE' | 'COMMISSION' }>; total: number; page: number; perPage: number }
   /**
    * Whether the cost side — cost, profit, margin — exists on this table.
    * The page has already nulled the figures for roles without `cost:read`;
@@ -137,12 +137,22 @@ export function SalesTable({
                   </span>
                 )}
               </TD>
-              <TD className="text-content-secondary">{sale.stockNo}</TD>
+              {/* A commission has no stock number and no watch to open:
+                  the watch was never ours. A dash and plain text rather
+                  than a zero and a link to nothing. */}
+              <TD className="text-content-secondary">{sale.kind === 'COMMISSION' ? '—' : sale.stockNo}</TD>
               <TD>
-                <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
-                  <span className="block font-bold text-content-primary">{sale.model}</span>
-                  <span className="block text-caption text-content-secondary">{sale.brandName}</span>
-                </Link>
+                {sale.kind === 'COMMISSION' ? (
+                  <div>
+                    <span className="block font-bold text-content-primary">{sale.model}</span>
+                    <Chip tone="navy">Commission</Chip>
+                  </div>
+                ) : (
+                  <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
+                    <span className="block font-bold text-content-primary">{sale.model}</span>
+                    <span className="block text-caption text-content-secondary">{sale.brandName}</span>
+                  </Link>
+                )}
               </TD>
               <TD className="text-content-secondary">{sale.customerName ?? '—'}</TD>
               {/* "Not recorded" rather than a dash: a blank here is a fact
@@ -152,9 +162,21 @@ export function SalesTable({
                 {sale.soldByName ?? 'Not recorded'}
               </TD>
               <TD>
-                <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>
+                {/* Retail or trade is a question about how we sold our own
+                    stock. A brokered deal has no answer to it, and showing
+                    one invites filtering on a value that means nothing. */}
+                {sale.kind === 'COMMISSION'
+                  ? <span className="text-content-secondary">—</span>
+                  : <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>}
               </TD>
-              {showCost && <TD align="right" className="text-content-secondary">{money(sale.costGbp)}</TD>}
+              {/* Nothing was bought, so there is no cost — and a margin on
+                  no cost is undefined rather than infinite. Both print a
+                  dash, which is also what stops them being averaged. */}
+              {showCost && (
+                <TD align="right" className="text-content-secondary">
+                  {sale.kind === 'COMMISSION' ? '—' : money(sale.costGbp)}
+                </TD>
+              )}
               <TD align="right" className="font-bold">{money(sale.amountGbp)}</TD>
               {showCost && (
               <>
@@ -163,7 +185,7 @@ export function SalesTable({
               </TD>
               <TD align="right">
                 <span className={cn('font-bold', sale.marginBps >= 0 ? 'text-content-primary' : 'text-state-danger')}>
-                  {formatPct(sale.marginBps / 100)}
+                  {sale.kind === 'COMMISSION' ? '—' : formatPct(sale.marginBps / 100)}
                 </span>
                 {sale.vsEstimateGbp !== null && sale.vsEstimateGbp !== 0 && (
                   // On one line: "vs est." wrapping alone under the figure read

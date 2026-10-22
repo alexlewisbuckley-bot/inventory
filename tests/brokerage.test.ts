@@ -104,25 +104,57 @@ describe('where the money lands', () => {
 
 describe('recording one', () => {
   const action = read('src/app/actions/watches.ts')
-  const section = read('src/components/sales/BrokerageSection.tsx')
+  const ledger = read('src/server/services/sales-ledger.ts')
 
   it('is behind sale:create, the same door as booking a sale', () => {
     expect(action).toMatch(/recordBrokerageAction/)
     expect(action).toMatch(/requireCapability\('sale:create'\)/)
   })
 
-  it('shows the agreed figure where it was not agreed in dirhams', () => {
-    // Somebody reconciling against the paperwork is looking for the number
-    // on the paperwork.
-    expect(section).toMatch(/row\.feeCurrency !== BASE_CURRENCY/)
-    expect(section).toMatch(/as agreed/)
+  it('lands in the sales ledger rather than a list of its own', () => {
+    const page = read('src/app/(app)/sales/page.tsx')
+    expect(page).toMatch(/findSalesLedger\(query\)/)
+    expect(ledger).toMatch(/kind: 'COMMISSION'/)
   })
 
-  it('sits on the Sales page outside the first-run branch', () => {
+  it('is offered even before the first stock sale', () => {
     // A business that has not sold its own stock yet may still have
     // brokered a deal, and that is exactly when it needs somewhere to go.
     const page = read('src/app/(app)/sales/page.tsx')
-    expect(page).toMatch(/<BrokerageSection/)
-    expect(page).toMatch(/\{\/\* Outside the first-run branch on purpose/)
+    expect(page).toMatch(/<RecordCommission/)
+    expect(page).toMatch(/Always offered, including on a first run/)
+  })
+
+  it('drops out of a view filtered to stock sales', () => {
+    // Channel, a stock number, a supplier: a brokered deal has none of
+    // them, so showing one in that view answers a different question.
+    expect(ledger).toMatch(/const stockOnly = Boolean\(query\.channel\?\.length \|\| query\.q \|\| query\.f\?\.length\)/)
+  })
+
+  it('prints a dash for cost and margin rather than a zero', () => {
+    // Margin on something with no cost is undefined, not 100%, and a zero
+    // would be averaged into the weighted margin above the table.
+    const table = read('src/components/sales/SalesTable.tsx')
+    expect(table).toMatch(/sale\.kind === 'COMMISSION' \? '—' : money\(sale\.costGbp\)/)
+    expect(table).toMatch(/sale\.kind === 'COMMISSION' \? '—' : formatPct/)
+  })
+
+  it('never fails silently on a rejected form', () => {
+    // It did: it rejected on two fields the form does not render and the
+    // panel printed nothing, so the button looked dead.
+    const action = read('src/app/actions/watches.ts')
+    expect(action).toMatch(/message: 'Check the highlighted fields and try again\.'/)
+    const modal = read('src/components/sales/RecordCommission.tsx')
+    expect(modal).toMatch(/useEffect\(\(\) => \{/)
+    // Closing from the render body is a state update during render; React
+    // refuses it and the panel sits open looking broken.
+    expect(modal).not.toMatch(/if \(state\.ok && open\) \{/)
+  })
+
+  it('tolerates form fields that are absent entirely', () => {
+    // formData.get() returns null, and optional() accepts undefined only.
+    const validation = read('src/lib/validation.ts')
+    expect(validation).toMatch(/customerId: z\.string\(\)\.trim\(\)\.nullish\(\)/)
+    expect(validation).toMatch(/reference: z\.string\(\)\.trim\(\)\.max\(60\)\.nullish\(\)/)
   })
 })

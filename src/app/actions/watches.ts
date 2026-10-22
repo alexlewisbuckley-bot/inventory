@@ -313,7 +313,22 @@ export async function recordBrokerageAction(_prev: ActionState, formData: FormDa
     soldById: formData.get('soldById'),
     notes: formData.get('notes'),
   })
-  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+  if (!parsed.success) {
+    /*
+     * A rejection always carries a sentence, not only field errors.
+     *
+     * This form rejected on `customerId` and `reference` — two fields it
+     * does not render — and showed nothing at all, because the panel only
+     * printed `message`. A form that can refuse silently is broken whatever
+     * the underlying rule was.
+     */
+    logger.warn('brokerage rejected', { errors: parsed.error.flatten().fieldErrors })
+    return {
+      ok: false,
+      message: 'Check the highlighted fields and try again.',
+      errors: fieldErrors(parsed.error),
+    }
+  }
 
   try {
     const { recordBrokerage } = await import('@/server/services/brokerage-service')

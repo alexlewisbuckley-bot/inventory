@@ -795,16 +795,25 @@ export type CustomerQuery = z.infer<typeof customerQuerySchema>
  */
 export const brokerageSchema = z.object({
   description: z.string().trim().min(1, 'Say what was sold — "Rolex Daytona 116500LN".').max(200),
-  soldFor: z.string().trim().max(140).optional().or(z.literal('')).transform((v) => v || null),
-  soldTo: z.string().trim().max(140).optional().or(z.literal('')).transform((v) => v || null),
-  customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
+  /*
+   * `nullish`, not `optional`.
+   *
+   * `formData.get('x')` returns null for a field the form does not render,
+   * and `optional()` accepts undefined but not null — so two fields that
+   * were not even on the screen failed validation and the whole submission
+   * was rejected. Form data is nullable by construction; the schema has to
+   * say so.
+   */
+  soldFor: z.string().trim().max(140).nullish().transform((v) => v || null),
+  soldTo: z.string().trim().max(140).nullish().transform((v) => v || null),
+  customerId: z.string().trim().nullish().transform((v) => v || null),
   brokeredOn: z.coerce.date(),
-  reference: z.string().trim().max(60).optional().or(z.literal('')).transform((v) => v || null),
+  reference: z.string().trim().max(60).nullish().transform((v) => v || null),
   feeAmount: z.coerce.number().int().positive('Enter the commission you were paid.'),
   feeCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
   paymentStatus: z.enum(PAYMENT_STATUSES).default('PAID'),
-  soldById: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),
-  notes: z.string().trim().max(2000).optional().or(z.literal('')).transform((v) => v || null),
+  soldById: z.string().trim().nullish().transform((v) => v || null),
+  notes: z.string().trim().max(2000).nullish().transform((v) => v || null),
 })
 export type BrokerageFormInput = z.infer<typeof brokerageSchema>
 
