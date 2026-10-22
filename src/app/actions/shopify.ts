@@ -5,12 +5,21 @@ import { plan as computePlan, runSync, syncHealth } from '@/server/services/shop
 import { recordAudit } from '@/server/services/audit'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
+import { WATCH_STATUS_LABELS, type WatchStatus } from '@/lib/enums'
 import type { ActionState } from './auth'
 
 export interface PlanSummary {
   create: Array<{ stockNo: number; title: string }>
   /** With what makes each one worth sending, so the number can be believed. */
   update: Array<{ stockNo: number; title: string; why: string }>
+  /**
+   * Pages this push takes down because the watch has gone.
+   *
+   * Split out of `update` for the reader rather than for the sync: both are
+   * the same call underneath, but "the website is about to lose this" and
+   * "this page needs bringing into line" are different news.
+   */
+  hide: Array<{ stockNo: number; title: string; why: string }>
   archive: Array<{ sku: string | null; title: string }>
   remove: Array<{ sku: string | null; title: string }>
 }
@@ -53,10 +62,17 @@ export async function previewSyncAction(): Promise<ActionState & { plan?: PlanSu
       ok: true,
       plan: {
         create: result.create.map((w) => ({ stockNo: w.stockNo, title: `${w.brandName} ${w.model}` })),
-        update: result.update.map((u) => ({
+        update: result.update.filter((u) => !u.hiding).map((u) => ({
           stockNo: u.watch.stockNo,
           title: `${u.watch.brandName} ${u.watch.model}`,
           why: u.reasons.map((reason) => WHY[reason]).join(', '),
+        })),
+        hide: result.update.filter((u) => u.hiding).map((u) => ({
+          stockNo: u.watch.stockNo,
+          title: `${u.watch.brandName} ${u.watch.model}`,
+          // The status is the news, not the fingerprint. "Never pushed"
+          // against a sold watch answered a question nobody asked.
+          why: WATCH_STATUS_LABELS[u.watch.status as WatchStatus]?.toLowerCase() ?? 'no longer held',
         })),
         archive: result.archive.map((a) => ({ sku: a.sku, title: a.title })),
         remove: result.remove.map((r) => ({ sku: r.sku, title: r.title })),

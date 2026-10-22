@@ -161,7 +161,9 @@ describe('planning the sync', () => {
     // pushed. See the fingerprint tests for the case where it can tell.
     expect(plan.update).toEqual([{
       watch: watch(), productId: 'gid://shopify/Product/1', title: 'Datejust II Fluted 41',
-      seoTitle: null, reasons: ['unknown'],
+      // A watch still in stock: the page is being brought into line, not
+      // taken down.
+      seoTitle: null, reasons: ['unknown'], hiding: false,
     }])
     expect(plan.create).toEqual([])
     expect(plan.remove).toEqual([])
@@ -534,5 +536,28 @@ describe('the photographs we send to the shop', () => {
     expect(statusFor(sold)).toBe('ARCHIVED')
     expect(mediaFilesFor(sold, ORIGIN)).toBeNull()
     expect(mediaFilesFor(watch({ status: 'SOLD', images: [] }), ORIGIN)).toBeNull()
+  })
+})
+
+describe('a page that is coming down says so', () => {
+  it('marks a sold watch as hiding, not merely updating', () => {
+    // The complaint this came from: two sold watches filed under "to
+    // update" with "never pushed" beside them, and nothing to say the
+    // website was about to lose them.
+    const sold = { ...watch(), status: 'SOLD' as const }
+    const plan = planSync([sold], [product()])
+    expect(plan.update).toHaveLength(1)
+    expect(plan.update[0]!.hiding).toBe(true)
+  })
+
+  it('leaves a watch still in stock as an ordinary update', () => {
+    const plan = planSync([watch()], [product()])
+    expect(plan.update[0]!.hiding).toBe(false)
+  })
+
+  it('still hides a product no watch claims at all', () => {
+    // The other kind of take-down, which was already right.
+    const plan = planSync([], [product()])
+    expect(plan.archive).toHaveLength(1)
   })
 })
