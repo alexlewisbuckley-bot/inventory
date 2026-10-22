@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Download, Receipt, SearchX } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
-import { findSales, summariseSales, type SaleQuery } from '@/server/repositories/sale-repository'
+import { summariseSales, type SaleQuery } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SalesTable } from '@/components/sales/SalesTable'
 import { SalesFilterBar } from '@/components/sales/SalesFilterBar'
@@ -16,8 +16,9 @@ import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, SALE_CHANNELS, type SaleChanne
 import { can, canSeeCost } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
-import { brokerageTotals, listBrokerages } from '@/server/services/brokerage-service'
-import { BrokerageSection } from '@/components/sales/BrokerageSection'
+import { brokerageTotals } from '@/server/services/brokerage-service'
+import { findSalesLedger } from '@/server/services/sales-ledger'
+import { RecordCommission } from '@/components/sales/RecordCommission'
 
 export const metadata: Metadata = { title: 'Sales' }
 export const dynamic = 'force-dynamic'
@@ -53,13 +54,15 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const brokerFrom = query.from ? new Date(query.from) : undefined
   const brokerTo = query.to ? new Date(query.to) : undefined
 
-  const [result, summary, rates, preferences, salesPeople, brokerages, brokerTotals] = await Promise.all([
-    findSales(query),
+  const [result, summary, rates, preferences, salesPeople, brokerTotals] = await Promise.all([
+    // One ledger: watches we sold, and fees we earned selling other
+    // people's. Kept in the same list because that is how a month's
+    // earnings are read.
+    findSalesLedger(query),
     summariseSales(query),
     getRateTable(),
     getPreferencesFor(user.id),
     listSalesPeople(),
-    listBrokerages(brokerFrom, brokerTo),
     brokerageTotals(brokerFrom, brokerTo),
   ])
 
@@ -89,12 +92,30 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     <>
       <PageHeader
         title="Sales"
-        description={summary.count > 0
-          ? `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'} in this view · ${money(summary.revenueGbp)} revenue`
+        /*
+         * Counted separately in the sentence, because the table holds both
+         * now and a header reading "11 sales" over fourteen rows is the
+         * kind of small lie that costs trust in every other figure.
+         */
+        description={summary.count > 0 || brokerTotals.count > 0
+          ? [
+              summary.count > 0 && `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'}`,
+              brokerTotals.count > 0 && `${brokerTotals.count} ${brokerTotals.count === 1 ? 'commission' : 'commissions'}`,
+            ].filter(Boolean).join(' and ') + ` in this view · ${money(summary.revenueGbp)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
-        actions={exportable && !isFirstRun
-          ? <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export</LinkButton>
-          : undefined}
+        actions={
+          <>
+            {/* Always offered, including on a first run: a business that has
+                not sold its own stock yet may still have brokered a deal,
+                and that is exactly when it needs somewhere to put it. */}
+            {can(user.role, 'sale:create') && (
+              <RecordCommission people={salesPeople} />
+            )}
+            {exportable && !isFirstRun && (
+              <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export</LinkButton>
+            )}
+          </>
+        }
       />
 
       {/* A first-run page shows nothing but the way in. Four £0 tiles and a
@@ -112,7 +133,18 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       ) : (
         <>
       <section aria-label="Sales summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-        <StatCard label="Sales" value={summary.count} caption="in the current view" />
+        <StatCard label="Sales" value={summary.count} caption="watches from our own stock" />
+        {/* Its own tile rather than folded into revenue: a fee has no cost
+            under it, so adding it to the trading figures would lift the
+            weighted margin beside it on stock that never existed. */}
+        {brokerTotals.count > 0 && (
+          <StatCard
+            label="Commission earned"
+            value={money(brokerTotals.total)}
+            caption={`${brokerTotals.count} brokered for other people`}
+            tone="accent"
+          />
+        )}
         <StatCard label="Revenue" value={money(summary.revenueGbp)} caption="gross, excluding fees" />
         {showCost && (
           <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
@@ -160,16 +192,6 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       </Card>
         </>
       )}
-
-      {/* Outside the first-run branch on purpose: a business that has not
-          sold its own stock yet may still have brokered a deal, and that is
-          precisely when it needs somewhere to put it. */}
-      <BrokerageSection
-        rows={brokerages}
-        total={brokerTotals.total}
-        people={salesPeople}
-        canRecord={can(user.role, 'sale:create')}
-      />
     </>
   )
 }
