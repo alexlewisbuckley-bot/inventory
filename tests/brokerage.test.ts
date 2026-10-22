@@ -158,3 +158,35 @@ describe('recording one', () => {
     expect(validation).toMatch(/reference: z\.string\(\)\.trim\(\)\.max\(60\)\.nullish\(\)/)
   })
 })
+
+describe('a commission counts as a sale, and as profit', () => {
+  const page = read('src/app/(app)/sales/page.tsx')
+
+  it('is in the sales count', () => {
+    expect(page).toMatch(/value=\{summary\.count \+ brokerTotals\.count\}/)
+  })
+
+  it('is in revenue', () => {
+    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total\)/)
+  })
+
+  it('is in realised profit', () => {
+    expect(page).toMatch(/formatBaseSigned\(summary\.profitGbp \+ brokerTotals\.total, currency, rates\)/)
+  })
+
+  it('is not in the weighted margin, and the caption says so', () => {
+    // Margin is profit over cost. A fee has no cost under it, so it has no
+    // margin — undefined rather than a hundred per cent — and folding it
+    // in would replace the figure with one that cannot be compared to last
+    // month's.
+    expect(page).toMatch(/value=\{formatPct\(summary\.avgMarginBps \/ 100\)\}/)
+    expect(page).toMatch(/'on stock sold'/)
+  })
+
+  it('leaves the header agreeing with the tiles', () => {
+    // A header counting them apart from the rows they sit beside would be
+    // describing a different table.
+    expect(page).toMatch(/\$\{summary\.count \+ brokerTotals\.count\} \$\{summary\.count \+ brokerTotals\.count === 1 \? 'sale' : 'sales'\}/)
+    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total\)\} revenue/)
+  })
+})

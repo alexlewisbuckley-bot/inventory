@@ -93,15 +93,13 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       <PageHeader
         title="Sales"
         /*
-         * Counted separately in the sentence, because the table holds both
-         * now and a header reading "11 sales" over fourteen rows is the
-         * kind of small lie that costs trust in every other figure.
+         * One count and one revenue, both including brokerage. A brokered
+         * deal is a sale, so a header that counted it apart from the rows
+         * it sits beside would be describing a different table.
          */
-        description={summary.count > 0 || brokerTotals.count > 0
-          ? [
-              summary.count > 0 && `${summary.count} ${summary.count === 1 ? 'sale' : 'sales'}`,
-              brokerTotals.count > 0 && `${brokerTotals.count} ${brokerTotals.count === 1 ? 'commission' : 'commissions'}`,
-            ].filter(Boolean).join(' and ') + ` in this view · ${money(summary.revenueGbp)} revenue`
+        description={summary.count + brokerTotals.count > 0
+          ? `${summary.count + brokerTotals.count} ${summary.count + brokerTotals.count === 1 ? 'sale' : 'sales'} in this view`
+            + ` · ${money(summary.revenueGbp + brokerTotals.total)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
         actions={
           <>
@@ -133,29 +131,51 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       ) : (
         <>
       <section aria-label="Sales summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-        <StatCard label="Sales" value={summary.count} caption="watches from our own stock" />
-        {/* Its own tile rather than folded into revenue: a fee has no cost
-            under it, so adding it to the trading figures would lift the
-            weighted margin beside it on stock that never existed. */}
-        {brokerTotals.count > 0 && (
-          <StatCard
-            label="Commission earned"
-            value={money(brokerTotals.total)}
-            caption={`${brokerTotals.count} brokered for other people`}
-            tone="accent"
-          />
-        )}
-        <StatCard label="Revenue" value={money(summary.revenueGbp)} caption="gross, excluding fees" />
+        {/* A brokered deal is a sale and the fee is profit, so all three
+            of these count it. Margin is the exception below, and for a
+            reason rather than an omission. */}
+        <StatCard
+          label="Sales"
+          value={summary.count + brokerTotals.count}
+          caption={brokerTotals.count > 0
+            ? `${summary.count} from stock · ${brokerTotals.count} brokered`
+            : 'in the current view'}
+        />
+        <StatCard
+          label="Revenue"
+          value={money(summary.revenueGbp + brokerTotals.total)}
+          caption={brokerTotals.count > 0
+            ? `including ${money(brokerTotals.total)} commission`
+            : 'gross, excluding fees'}
+        />
         {showCost && (
-          <StatCard label="Realised profit" value={formatBaseSigned(summary.profitGbp, currency, rates)} tone="accent" caption="sale price minus purchase cost" />
+          <StatCard
+            label="Realised profit"
+            value={formatBaseSigned(summary.profitGbp + brokerTotals.total, currency, rates)}
+            tone="accent"
+            caption={brokerTotals.count > 0
+              ? `including ${money(brokerTotals.total)} commission, which has no cost`
+              : 'sale price minus purchase cost'}
+          />
         )}
         {showCost && (
         <StatCard
           label="Weighted margin"
           value={formatPct(summary.avgMarginBps / 100)}
-          caption={summary.bestMarginBps !== null
-            ? `best ${formatPct(summary.bestMarginBps / 100)} · worst ${formatPct(summary.worstMarginBps! / 100)}`
-            : undefined}
+          /*
+           * The one figure that stays stock-only, and says so.
+           *
+           * Margin is profit over cost. A brokered fee has no cost under
+           * it, so it has no margin — not a hundred per cent, undefined —
+           * and folding it in would not enrich this number, it would
+           * replace it with one that cannot be compared to last month's.
+           */
+          caption={[
+            brokerTotals.count > 0 ? 'on stock sold' : null,
+            summary.bestMarginBps !== null
+              ? `best ${formatPct(summary.bestMarginBps / 100)} · worst ${formatPct(summary.worstMarginBps! / 100)}`
+              : null,
+          ].filter(Boolean).join(' · ') || undefined}
           tone="accent"
         />
         )}
