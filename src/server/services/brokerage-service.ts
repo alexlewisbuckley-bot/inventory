@@ -166,6 +166,11 @@ export async function voidBrokerage(id: string, reason: string, actor: SessionUs
 export interface BrokerageRow {
   id: string
   description: string
+  /** The watch of ours, where one is linked. Null for somebody else's. */
+  watchId: string | null
+  stockNo: number | null
+  brandName: string | null
+  model: string | null
   soldFor: string | null
   soldTo: string | null
   brokeredOn: Date
@@ -198,9 +203,17 @@ export async function listBrokerages(from?: Date, to?: Date, limit = 100): Promi
       paymentStatus: brokerages.paymentStatus,
       soldByName: salesPeople.name,
       notes: brokerages.notes,
+      // The linked watch, so the row can carry a stock number and a link
+      // into the record like every other row in the ledger.
+      watchId: brokerages.watchId,
+      stockNo: watches.stockNo,
+      brandName: brands.name,
+      model: watches.model,
     })
     .from(brokerages)
     .leftJoin(salesPeople, eq(salesPeople.id, brokerages.soldById))
+    .leftJoin(watches, eq(watches.id, brokerages.watchId))
+    .leftJoin(brands, eq(brands.id, watches.brandId))
     .where(and(...window))
     .orderBy(desc(brokerages.brokeredOn))
     .limit(limit)

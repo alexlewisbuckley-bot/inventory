@@ -299,3 +299,29 @@ describe('voiding is about the sale, not the watch', () => {
     expect(service).toMatch(/left as \$\{watch\.status\}/)
   })
 })
+
+describe('a linked commission shows its watch', () => {
+  const service = read('src/server/services/brokerage-service.ts')
+  const ledger = read('src/server/services/sales-ledger.ts')
+  const table = read('src/components/sales/SalesTable.tsx')
+
+  it('reads the watch back out of the database', () => {
+    // The link was recorded and then thrown away on the way to the screen:
+    // the query never selected it.
+    expect(service).toMatch(/watchId: brokerages\.watchId/)
+    expect(service).toMatch(/leftJoin\(watches, eq\(watches\.id, brokerages\.watchId\)\)/)
+  })
+
+  it('carries it onto the ledger row instead of hardcoding blanks', () => {
+    expect(ledger).toMatch(/stockNo: row\.stockNo \?\? 0/)
+    expect(ledger).toMatch(/watchId: row\.watchId \?\? ''/)
+    expect(ledger).toMatch(/model: row\.model \?\? row\.description/)
+  })
+
+  it('opens the watch when there is one, and does not when there is not', () => {
+    // A fee on somebody else's watch has no record to open, so it must not
+    // render a link to nowhere.
+    expect(table).toMatch(/sale\.kind === 'COMMISSION' && !sale\.watchId \? '—' : sale\.stockNo/)
+    expect(table).toMatch(/\{sale\.watchId \? \(/)
+  })
+})
