@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
-import { Button, Modal, SelectField, TextField, TextareaField, useToast } from '@/components/ui'
+import { Button, ComboSelect, Modal, SelectField, TextField, TextareaField, useToast } from '@/components/ui'
 import { recordBrokerageAction } from '@/app/actions/watches'
 import { BASE_CURRENCY, CURRENCIES, PAYMENT_STATUSES } from '@/lib/enums'
 
@@ -13,26 +13,32 @@ import { BASE_CURRENCY, CURRENCIES, PAYMENT_STATUSES } from '@/lib/enums'
  * A button beside Export rather than a section of its own: the rows land
  * in the sales ledger with everything else, so this is just the way in.
  */
-export function RecordCommission({ people }: { people: Array<{ id: string; name: string }> }) {
+export function RecordCommission({ people, stock }: {
+  people: Array<{ id: string; name: string }>
+  /** Watches still on the book, for a fee earned on one of ours. */
+  stock: Array<{ id: string; label: string }>
+}) {
   const [open, setOpen] = useState(false)
   return (
     <>
       <Button variant="secondary" icon={<Plus className="h-4 w-4" />} onClick={() => setOpen(true)}>
         Record a commission
       </Button>
-      <RecordModal open={open} onClose={() => setOpen(false)} people={people} />
+      <RecordModal open={open} onClose={() => setOpen(false)} people={people} stock={stock} />
     </>
   )
 }
 
-function RecordModal({ open, onClose, people }: {
+function RecordModal({ open, onClose, people, stock }: {
   open: boolean
   onClose: () => void
   people: Array<{ id: string; name: string }>
+  stock: Array<{ id: string; label: string }>
 }) {
   const toast = useToast()
   const router = useRouter()
   const [state, action] = useFormState(recordBrokerageAction, { ok: false })
+  const [watchId, setWatchId] = useState('')
 
   /*
    * In an effect, not in the render.
@@ -70,6 +76,23 @@ function RecordModal({ open, onClose, people }: {
             {state.message}
           </p>
         )}
+
+        {/* Most fees are on a watch that was never ours, so this is empty
+            by default. Choosing one marks it sold, which is what takes it
+            out of the stock list and off the website — the thing that
+            otherwise has to be remembered separately and is not. */}
+        <ComboSelect
+          name="watchId"
+          label="One of ours? (optional)"
+          placeholder="A watch from our stock"
+          options={stock.map((item) => ({ value: item.id, label: item.label }))}
+          value={watchId}
+          onChange={setWatchId}
+          hint={watchId
+            ? 'This watch will be marked sold and come off the website.'
+            : 'Leave empty for a fee on somebody else\'s watch.'}
+          emptyMessage="No stock matches."
+        />
 
         <TextField
           name="description"

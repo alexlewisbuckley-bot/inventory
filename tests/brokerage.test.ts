@@ -190,3 +190,75 @@ describe('a commission counts as a sale, and as profit', () => {
     expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total\)\} revenue/)
   })
 })
+
+describe('a fee on one of our own watches', () => {
+  const service = read('src/server/services/brokerage-service.ts')
+  const migration = read('src/server/db/migrations/0047_commission_on_our_own.sql')
+
+  it('takes the watch off the shelf in the same transaction', () => {
+    // A fee recorded while the watch stayed in stock is the failure this
+    // exists to prevent: the piece is gone, the website still offers it,
+    // and the stock list still counts its capital.
+    expect(service).toMatch(/await withTransaction\(async \(\) => \{/)
+    expect(service).toMatch(/\.set\(\{ status: 'SOLD', updatedAt: new Date\(\) \}\)/)
+  })
+
+  it('refuses a watch that already has a sale', () => {
+    // Two records of one event. The message points at the conversion,
+    // which is the thing they actually wanted.
+    expect(service).toMatch(/already has a sale recorded against it/)
+    expect(service).toMatch(/Record as commission/)
+  })
+
+  it('refuses a second fee on the same watch', () => {
+    expect(service).toMatch(/already has a commission recorded against it/)
+    // Belt and braces: the database will not hold two either.
+    expect(migration).toMatch(/CREATE UNIQUE INDEX IF NOT EXISTS brokerages_watch_idx/)
+    expect(migration).toMatch(/WHERE watch_id IS NOT NULL AND voided_at IS NULL/)
+  })
+
+  it('keeps the fee if the watch record is ever removed', () => {
+    // The money is an accounting fact that outlives tidying of the stock.
+    expect(migration).toMatch(/REFERENCES watches\(id\) ON DELETE SET NULL/)
+  })
+
+  it('offers only stock we still hold', () => {
+    expect(service).toMatch(/inArray\(watches\.status, \['IN_STOCK', 'RESERVED', 'SALE_AGREED'\]\)/)
+  })
+})
+
+describe('a sale that should have been a commission', () => {
+  const service = read('src/server/services/brokerage-service.ts')
+  const action = read('src/app/actions/watches.ts')
+  const table = read('src/components/sales/SalesTable.tsx')
+
+  it('voids the sale rather than deleting it', () => {
+    // An invoice that was issued is a fact, and the reports already skip
+    // voided rows.
+    expect(service).toMatch(/voidReason: 'Recorded as a commission instead'/)
+    expect(service).not.toMatch(/delete\(sales\)/)
+  })
+
+  it('carries the watch, the date and the salesperson across', () => {
+    expect(service).toMatch(/watchId: sale\.watchId/)
+    expect(service).toMatch(/brokeredOn: sale\.saleDate/)
+    expect(service).toMatch(/soldById: sale\.soldById/)
+  })
+
+  it('leaves the watch sold, because it did sell', () => {
+    // Only what the business earned on it changes.
+    const convert = service.slice(service.indexOf('convertSaleToBrokerage'))
+    expect(convert).not.toMatch(/status: 'IN_STOCK'/)
+  })
+
+  it('is behind the same capability as voiding, which is half of what it does', () => {
+    expect(action).toMatch(/saleToCommissionAction/)
+    const fn = action.slice(action.indexOf('export async function saleToCommissionAction'))
+    expect(fn.slice(0, 400)).toMatch(/requireCapability\('sale:delete'\)/)
+  })
+
+  it('is offered on a sale row but not on a commission row', () => {
+    expect(table).toMatch(/canVoid && sale\.kind !== 'COMMISSION'/)
+    expect(table).toMatch(/label: 'Record as a commission…'/)
+  })
+})

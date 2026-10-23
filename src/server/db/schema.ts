@@ -1462,6 +1462,15 @@ export const brokerages = pgTable(
     soldFor: text('sold_for'),
     soldTo: text('sold_to'),
     customerId: text('customer_id').references((): AnyPgColumn => customers.id),
+    /**
+     * The watch of ours it was, where it was one of ours.
+     *
+     * Null for the common case — a fee on somebody else's watch, which
+     * never appears in our stock. Set where a piece on our own book went
+     * out for a fee rather than a margin, and setting it is what takes the
+     * watch off the shelf and off the website.
+     */
+    watchId: text('watch_id').references((): AnyPgColumn => watches.id, { onDelete: 'set null' }),
     brokeredOn: timestamp('brokered_on', { withTimezone: true }).notNull(),
     reference: text('reference'),
     /** The fee as agreed, in the currency it was agreed in. */

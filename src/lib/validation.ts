@@ -807,6 +807,8 @@ export const brokerageSchema = z.object({
   soldFor: z.string().trim().max(140).nullish().transform((v) => v || null),
   soldTo: z.string().trim().max(140).nullish().transform((v) => v || null),
   customerId: z.string().trim().nullish().transform((v) => v || null),
+  /** A watch of ours, where the fee was earned on one. */
+  watchId: z.string().trim().nullish().transform((v) => v || null),
   brokeredOn: z.coerce.date(),
   reference: z.string().trim().max(60).nullish().transform((v) => v || null),
   feeAmount: z.coerce.number().int().positive('Enter the commission you were paid.'),
@@ -816,6 +818,13 @@ export const brokerageSchema = z.object({
   notes: z.string().trim().max(2000).nullish().transform((v) => v || null),
 })
 export type BrokerageFormInput = z.infer<typeof brokerageSchema>
+
+/** Re-recording a direct sale as a fee: the sale, and what we were paid. */
+export const saleToCommissionSchema = z.object({
+  saleId: z.string().trim().min(1),
+  feeAmount: z.coerce.number().int().positive('Enter the commission you were paid.'),
+  feeCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+})
 
 export const dealSchema = z.object({
   title: z.string().trim().min(1, 'Give the deal a name you would recognise in a list.').max(140),
