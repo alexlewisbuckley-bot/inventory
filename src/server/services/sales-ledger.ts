@@ -70,6 +70,8 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     kind: 'COMMISSION',
     id: row.id,
     invoiceNo: row.reference ?? '—',
+    // A fee stands alone: there is no invoice of ours with other watches on it.
+    invoiceLines: 1,
     saleDate: row.brokeredOn,
     saleAmount: row.feeAmount,
     saleCurrency: row.feeCurrency as SaleListItem['saleCurrency'],

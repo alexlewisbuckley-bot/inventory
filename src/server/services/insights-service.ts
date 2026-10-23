@@ -373,12 +373,20 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       .orderBy(deals.stageChangedAt)
       .limit(limit),
 
+    /*
+     * By invoice, not by sale row.
+     *
+     * One invoice can cover ten watches, which is ten rows — and chasing
+     * one payment is one job however many watches it bought. Ungrouped,
+     * a single unpaid invoice filled the whole list with ten copies of
+     * itself and pushed everything else off it.
+     */
     db.select({
-      id: sales.id,
       invoiceNo: sales.invoiceNo,
-      amountGbp: sales.saleAmountGbp,
-      saleDate: sales.saleDate,
-      customerName: sales.customerName,
+      amountGbp: sql<number>`sum(${sales.saleAmountGbp})`.mapWith(Number),
+      saleDate: sql<Date>`min(${sales.saleDate})`,
+      customerName: sql<string | null>`min(${sales.customerName})`,
+      lines: sql<number>`count(*)`.mapWith(Number),
     })
       .from(sales)
       .where(and(
@@ -386,7 +394,8 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
         sql`${sales.paymentStatus} IN ('PENDING', 'OVERDUE')`,
         lt(sales.saleDate, new Date(now - 7 * DAY)),
       ))
-      .orderBy(sales.saleDate)
+      .groupBy(sales.invoiceNo)
+      .orderBy(sql`min(${sales.saleDate})`)
       .limit(limit),
   ])
 
@@ -408,8 +417,10 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       href: `/deals/${row.id}`,
     })),
     ...unpaid.map((row) => ({
-      id: `sale-${row.id}`,
-      title: `${row.invoiceNo} is unpaid`,
+      id: `invoice-${row.invoiceNo}`,
+      title: row.lines > 1
+        ? `${row.invoiceNo} is unpaid (${row.lines} watches)`
+        : `${row.invoiceNo} is unpaid`,
       who: row.customerName,
       since: row.saleDate,
       amountGbp: row.amountGbp,

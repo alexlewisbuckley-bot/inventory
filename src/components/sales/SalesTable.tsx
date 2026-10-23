@@ -133,6 +133,15 @@ export function SalesTable({
               <TD className="whitespace-nowrap text-content-secondary">{formatDate(sale.saleDate)}</TD>
               <TD className="font-bold text-navy-700">
                 {sale.invoiceNo}
+                {/* One invoice routinely covers several watches. Saying so
+                    here is what stops the row reading like a duplicate —
+                    the same number four times down the column, with
+                    nothing to say they are four lines of one sale. */}
+                {sale.invoiceLines > 1 && (
+                  <span className="mt-0.5 block whitespace-nowrap text-caption font-semibold text-content-secondary">
+                    {sale.invoiceLines} watches
+                  </span>
+                )}
                 {/* Only when the money is not in. "Paid in full" is the
                     ordinary ending and marking every settled invoice with a
                     badge is how a column of badges stops being read — the

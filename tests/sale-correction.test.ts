@@ -169,11 +169,17 @@ describe('the figures a correction leaves behind', () => {
     expect(amend.slice(0, 9000)).toMatch(/if \(sale\.voidedAt\)/)
   })
 
-  it('let a sale keep its own invoice number', () => {
-    // The uniqueness check has to exclude the row being saved, or saving a
-    // sale without touching its number collides with itself.
-    const amend = service.slice(service.indexOf('export async function amendSale'))
-    expect(amend.slice(0, 9000)).toMatch(/duplicate\[0\]\.id !== sale\.id/)
+  it('let several watches share one invoice number', () => {
+    // There is no uniqueness check left to exclude the row being saved
+    // from: one invoice covers as many watches as the customer bought, so
+    // the second line carrying the same number is the point rather than a
+    // collision. Booking the same watch twice is still refused, by its
+    // SOLD status, which is the guard that was ever doing the work.
+    expect(service).not.toMatch(/invoice number has already been used/)
+    expect(service).not.toMatch(/already used by another sale/)
+    expect(service).not.toMatch(/Invoice number must be unique/)
+    const record = service.slice(service.indexOf('export async function recordSale'))
+    expect(record.slice(0, 9000)).toMatch(/has already been sold/)
   })
 
   it('reach the sale when it is the cost that was corrected', () => {
@@ -298,5 +304,49 @@ describe('whether the money arrived', () => {
     const fn = service.slice(service.indexOf('export async function markSalePaid'))
     expect(fn.slice(0, 1600)).toMatch(/marked paid in full/)
     expect(fn.slice(0, 1600)).toMatch(/paymentStatus: \{ from: sale\.paymentStatus, to: 'PAID' \}/)
+  })
+})
+
+/**
+ * One invoice, as many watches as were on it.
+ *
+ * A sale row is one watch leaving the building, and the invoice number was
+ * unique across live rows — so a customer buying ten watches on one invoice
+ * could be given exactly one of them, and the second attempt was refused
+ * with "that invoice number has already been used". That sentence described
+ * an index, not the business.
+ */
+describe('an invoice that covers several watches', () => {
+  const migration = readFileSync(
+    'src/server/db/migrations/0048_one_invoice_many_watches.sql', 'utf8',
+  )
+
+  it('is no longer unique in the database', () => {
+    expect(migration).toMatch(/DROP INDEX IF EXISTS sales_invoice_live_idx/)
+    // Replaced, not merely dropped: looking a sale up by the invoice the
+    // customer is holding is the commonest search on the ledger.
+    expect(migration).toMatch(/CREATE INDEX IF NOT EXISTS sales_invoice_live_idx/)
+    expect(migration).not.toMatch(/CREATE UNIQUE INDEX/)
+  })
+
+  it('counts its lines in SQL, not over the page', () => {
+    // A filter narrowing the view to three of ten watches must not make the
+    // invoice claim it covers three.
+    const repo = readFileSync('src/server/repositories/sale-repository.ts', 'utf8')
+    expect(repo).toMatch(/SELECT count\(\*\) FROM sales line/)
+    expect(repo).toMatch(/line\.deleted_at IS NULL AND line\.voided_at IS NULL/)
+  })
+
+  it('says so on the ledger instead of looking like a duplicate row', () => {
+    const table = readFileSync('src/components/sales/SalesTable.tsx', 'utf8')
+    expect(table).toMatch(/sale\.invoiceLines > 1/)
+  })
+
+  it('is chased once, not once per watch', () => {
+    // Ten rows for one unpaid invoice filled the waiting list with ten
+    // copies of itself and pushed everything else off it.
+    const insights = readFileSync('src/server/services/insights-service.ts', 'utf8')
+    expect(insights).toMatch(/\.groupBy\(sales\.invoiceNo\)/)
+    expect(insights).toMatch(/id: `invoice-\$\{row\.invoiceNo\}`/)
   })
 })
