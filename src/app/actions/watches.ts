@@ -35,6 +35,33 @@ function refreshInventory(): void {
 }
 
 /**
+ * Everything a sale moves, not just the two screens beside it.
+ *
+ * Recording a sale refreshed the stock list, the dashboard and the ledger
+ * and stopped there, so every report went on showing the figures from
+ * before it: the overview's lifetime totals, the leaderboard, the
+ * commission run, the profit and loss. They are all `force-dynamic`, which
+ * is why it looked intermittent — the server would have rendered the new
+ * numbers, and the client's router cache served the old payload until it
+ * happened to expire.
+ *
+ * One function so the next page that reads the ledger is added here once
+ * rather than being forgotten in six places.
+ */
+function refreshLedger(): void {
+  refreshInventory()
+  revalidatePath('/sales')
+  revalidatePath('/today')
+  revalidatePath('/insights')
+  revalidatePath('/reports')
+  revalidatePath('/reports/people')
+  revalidatePath('/reports/pnl')
+  revalidatePath('/reports/commission')
+  revalidatePath('/reports/costs')
+  revalidatePath('/reports/ageing')
+}
+
+/**
  * Tell the storefront, now rather than on a schedule.
  *
  * The point of the mirror is that marking a watch sold takes it off the
@@ -264,8 +291,7 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
 
   try {
     const sale = await recordSale(parsed.data, actor)
-    refreshInventory()
-    revalidatePath('/sales')
+    refreshLedger()
     // The watch has left the building; it should leave the website too.
     await mirror(parsed.data.watchId)
     return {
@@ -321,10 +347,7 @@ export async function saleToCommissionAction(
       { amount: parsed.data.feeAmount, currency: parsed.data.feeCurrency },
       actor,
     )
-    revalidatePath('/sales')
-    revalidatePath('/reports/pnl')
-    revalidatePath('/reports/commission')
-    revalidatePath('/reports/people')
+    refreshLedger()
     return { ok: true, message: 'Recorded as a commission. The sale has been voided.', id }
   } catch (error) {
     return toState(error, 'Could not convert that sale.')
@@ -338,9 +361,7 @@ export async function voidBrokerageAction(id: string, reason: string): Promise<A
   try {
     const { voidBrokerage } = await import('@/server/services/brokerage-service')
     await voidBrokerage(id, reason.trim() || 'No reason given', actor)
-    revalidatePath('/sales')
-    revalidatePath('/reports/pnl')
-    revalidatePath('/reports/people')
+    refreshLedger()
     return { ok: true, message: 'Commission voided.' }
   } catch (error) {
     return toState(error, 'Could not void that commission.')
@@ -356,8 +377,7 @@ export async function linkCommissionWatchAction(
   try {
     const { linkWatchToBrokerage } = await import('@/server/services/brokerage-service')
     await linkWatchToBrokerage(input.brokerageId, input.watchId, actor)
-    refreshInventory()
-    revalidatePath('/sales')
+    refreshLedger()
     revalidatePath('/inventory/content')
     return { ok: true, message: 'Linked. The watch is marked sold.' }
   } catch (error) {
@@ -405,13 +425,10 @@ export async function recordBrokerageAction(_prev: ActionState, formData: FormDa
   try {
     const { recordBrokerage } = await import('@/server/services/brokerage-service')
     const id = await recordBrokerage(parsed.data, actor)
-    revalidatePath('/sales')
-    revalidatePath('/reports/pnl')
-    revalidatePath('/reports/commission')
-    // The watch has left the shelf, so the stock screens and the storefront
-    // plan are both out of date until they are re-read.
+    refreshLedger()
+    // The watch has left the shelf, so its record and the storefront plan
+    // are out of date too.
     if (parsed.data.watchId) {
-      refreshInventory()
       revalidatePath(`/inventory/${parsed.data.watchId}`)
       revalidatePath('/inventory/content')
     }
@@ -437,8 +454,7 @@ export async function amendSaleAction(input: unknown): Promise<ActionState> {
   try {
     const { amendSale } = await import('@/server/services/watch-service')
     const watchId = await amendSale(parsed.data, actor)
-    refreshInventory()
-    revalidatePath('/sales')
+    refreshLedger()
     revalidatePath(`/inventory/${watchId}`)
     // No Shopify push: the watch was sold before and is sold now, so nothing
     // the storefront can see has changed.
@@ -627,10 +643,11 @@ export async function voidSaleAction(watchId: string, reason: string): Promise<A
 
   try {
     await voidSale(watchId, reason.trim() || null, actor)
-    refreshInventory()
+    refreshLedger()
+    revalidatePath(`/inventory/${watchId}`)
+    revalidatePath('/inventory/content')
     // Back in stock here means back on the website.
     await mirror(watchId)
-    revalidatePath('/sales')
     return { ok: true, message: 'Sale voided. The watch is back in stock.' }
   } catch (error) {
     return toState(error, 'Could not void the sale.')
@@ -685,8 +702,7 @@ export async function markSalePaidAction(saleId: string): Promise<ActionState> {
   try {
     const { markSalePaid } = await import('@/server/services/watch-service')
     await markSalePaid(saleId, actor)
-    revalidatePath('/sales')
-    refreshInventory()
+    refreshLedger()
     return { ok: true, message: 'Marked as paid in full.' }
   } catch (error) {
     return toState(error, 'Could not record the payment.')

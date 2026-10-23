@@ -3,8 +3,9 @@ import Link from 'next/link'
 import { ArrowRight, Clock, Receipt, Scale, Store, TrendingUp, Wallet } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
 import {
-  salesByMonth, salesByPerson, summariseSales, supplierPerformance,
+  salesByMonth, summariseSales, supplierPerformance,
 } from '@/server/repositories/sale-repository'
+import { brokerageTotals, salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
 import { stockByLocation, summariseInventory, findAgeingStock } from '@/server/repositories/watch-repository'
 import { tradeVsRetail } from '@/server/repositories/crm-repository'
 import { watchQuerySchema } from '@/lib/validation'
@@ -29,18 +30,22 @@ export default async function ReportsPage() {
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
   const [
     inventory, sales, monthly, suppliers, people, byLocation, ageing, rates, preferences,
-    segments,
+    segments, fees,
   ] = await Promise.all([
     summariseInventory(activeQuery),
     summariseSales({}),
     salesByMonth(12),
     supplierPerformance(),
-    salesByPerson(),
+    // With brokered deals in it, like the ledger and the per-person report.
+    // A leaderboard that leaves them out ranks people on part of their year.
+    salesByPersonWithBrokerage(),
     stockByLocation(),
     findAgeingStock(90, 100),
     getRateTable(),
     getPreferencesFor(user.id),
     tradeVsRetail(),
+    // All time, matching the "Lifetime" tiles beside it.
+    brokerageTotals(),
   ])
 
   // Every figure below is stored in GBP and rendered in the viewer's chosen
@@ -70,8 +75,22 @@ export default async function ReportsPage() {
 
       <section aria-label="Headline figures" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
         <StatCard label="Capital deployed" value={money(inventory.totalCostGbp)} caption={`${inventory.inStockCount} watches held`} />
-        <StatCard label="Lifetime revenue" value={money(sales.revenueGbp)} caption={`${sales.count} sales`} />
-        <StatCard label="Lifetime profit" value={signed(sales.profitGbp)} tone="accent" caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin`} />
+        {/* Fees count as revenue and as profit, the same as on the ledger.
+            The weighted margin stays a figure about stock, because a fee
+            has no cost under it to measure one against. */}
+        <StatCard
+          label="Lifetime revenue"
+          value={money(sales.revenueGbp + fees.total)}
+          caption={fees.count > 0
+            ? `${sales.count} sales · ${fees.count} commissions`
+            : `${sales.count} sales`}
+        />
+        <StatCard
+          label="Lifetime profit"
+          value={signed(sales.profitGbp + fees.total)}
+          tone="accent"
+          caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin on stock`}
+        />
         <StatCard label="Sell-through" value={formatPct(turnover * 100, 0)} caption="of all stock ever acquired" />
       </section>
 
