@@ -11,6 +11,13 @@ import type {
 export interface SaleListItem {
   id: string
   invoiceNo: string
+  /**
+   * How many live sales share this invoice number, this row included.
+   *
+   * Counted in SQL rather than over the page, so an invoice covering ten
+   * watches still says ten when a filter has narrowed the view to three.
+   */
+  invoiceLines: number
   saleDate: Date
   /**
    * The amount and currency as actually agreed, alongside the base figures.
@@ -139,6 +146,11 @@ export async function findSales(query: SaleQuery) {
       costGbp: watches.purchasePriceGbp, costUsd: watches.purchasePriceUsd,
       estSaleGbp: watches.estSaleGbp,
       brandName: brands.name, supplierName: suppliers.name, recordedByName: users.name,
+      invoiceLines: sql<number>`(
+        SELECT count(*) FROM sales line
+        WHERE line.invoice_no = ${sales.invoiceNo}
+          AND line.deleted_at IS NULL AND line.voided_at IS NULL
+      )`.mapWith(Number),
     })
       .from(sales)
       .innerJoin(watches, eq(watches.id, sales.watchId))

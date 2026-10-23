@@ -364,16 +364,11 @@ export async function recordSale(
     // find them again is the failure the customer book exists to prevent.
     const customerId = await resolveBuyer(input, actor)
 
-    // Voided invoices free their number: the commonest reason to void is
-    // having booked the sale against the wrong watch, and the invoice the
-    // customer is holding has not changed.
-    const duplicate = await db.select({ id: sales.id }).from(sales)
-      .where(and(eq(sales.invoiceNo, input.invoiceNo), liveSale())).limit(1)
-    if (duplicate[0]) {
-      throw new ConflictError('That invoice number has already been used.', {
-        invoiceNo: 'Invoice number must be unique.',
-      })
-    }
+    // No uniqueness check on the invoice number. One invoice routinely
+    // covers several watches — ten is not unusual — and refusing the
+    // second one described an index rather than anything true about the
+    // business. Booking the same watch twice is still impossible: that is
+    // the SOLD check above, which is the guard that was ever doing work.
 
     // The sale is agreed in one currency and reported in another. The agreed
     // figure is preserved exactly as entered; the base is derived from it
@@ -531,15 +526,9 @@ export async function amendSale(input: SaleAmendInput, actor: SessionUser): Prom
     const watch = watchRows[0]
     if (!watch) throw new NotFoundError('Watch')
 
-    // Unique among live sales, excluding this one — otherwise saving a sale
-    // without touching its number collides with itself.
-    const duplicate = await db.select({ id: sales.id }).from(sales)
-      .where(and(eq(sales.invoiceNo, input.invoiceNo), liveSale())).limit(1)
-    if (duplicate[0] && duplicate[0].id !== sale.id) {
-      throw new ConflictError('That invoice number is already used by another sale.', {
-        invoiceNo: 'Invoice number must be unique.',
-      })
-    }
+    // Likewise no uniqueness check: correcting one line of a ten-watch
+    // invoice to carry the same number as its nine siblings is the
+    // correction, not a mistake to refuse.
 
     /**
      * The rate the sale was booked at, not today’s.
