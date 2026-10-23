@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { brokerageSchema } from '@/lib/validation'
+import { brokerageSchema, saleToCommissionSchema } from '@/lib/validation'
 import {
   createWatch, updateWatch, moveWatches, recordSale, deleteWatch, restoreWatch,
   setWatchStatus, voidSale,
@@ -294,6 +294,43 @@ export async function recordSaleAction(_prev: ActionState, formData: FormData): 
  * something and the business was paid — and the same people should be able
  * to book it in.
  */
+/**
+ * Re-record a direct sale as a commission.
+ *
+ * For the case where a watch went out for a fee and somebody booked it as
+ * a sale, which invents a cost and a margin it never had. The sale is
+ * voided, the fee is recorded against the same watch, and the watch stays
+ * sold — because it did sell. Only what the business earned changes.
+ */
+export async function saleToCommissionAction(
+  input: { saleId: string; feeAmount: number; feeCurrency: string },
+): Promise<ActionState> {
+  // The same door as voiding, because that is half of what it does.
+  const actor = await requireCapability('sale:delete')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = saleToCommissionSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, message: 'Enter the commission you were paid.', errors: fieldErrors(parsed.error) }
+  }
+
+  try {
+    const { convertSaleToBrokerage } = await import('@/server/services/brokerage-service')
+    const id = await convertSaleToBrokerage(
+      parsed.data.saleId,
+      { amount: parsed.data.feeAmount, currency: parsed.data.feeCurrency },
+      actor,
+    )
+    revalidatePath('/sales')
+    revalidatePath('/reports/pnl')
+    revalidatePath('/reports/commission')
+    revalidatePath('/reports/people')
+    return { ok: true, message: 'Recorded as a commission. The sale has been voided.', id }
+  } catch (error) {
+    return toState(error, 'Could not convert that sale.')
+  }
+}
+
 export async function recordBrokerageAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('sale:create')
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
@@ -303,6 +340,7 @@ export async function recordBrokerageAction(_prev: ActionState, formData: FormDa
     soldFor: formData.get('soldFor'),
     soldTo: formData.get('soldTo'),
     customerId: formData.get('customerId'),
+    watchId: formData.get('watchId'),
     brokeredOn: formData.get('brokeredOn'),
     reference: formData.get('reference'),
     // Taken in major units on the form and stored in minor, as every other
@@ -336,7 +374,20 @@ export async function recordBrokerageAction(_prev: ActionState, formData: FormDa
     revalidatePath('/sales')
     revalidatePath('/reports/pnl')
     revalidatePath('/reports/commission')
-    return { ok: true, message: 'Commission recorded.', id }
+    // The watch has left the shelf, so the stock screens and the storefront
+    // plan are both out of date until they are re-read.
+    if (parsed.data.watchId) {
+      refreshInventory()
+      revalidatePath(`/inventory/${parsed.data.watchId}`)
+      revalidatePath('/inventory/content')
+    }
+    return {
+      ok: true,
+      id,
+      message: parsed.data.watchId
+        ? 'Commission recorded, and the watch is marked sold.'
+        : 'Commission recorded.',
+    }
   } catch (error) {
     return toState(error, 'Could not record the commission.')
   }

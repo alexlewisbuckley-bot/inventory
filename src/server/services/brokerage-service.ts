@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm'
-import { db } from '../db/client'
-import { brokerages, salesPeople } from '../db/schema'
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { db, withTransaction } from '../db/client'
+import { brands, brokerages, sales, salesPeople, watches } from '../db/schema'
 import { newId } from '@/lib/ids'
 import { recordAudit } from './audit'
+import { ConflictError, NotFoundError } from '@/lib/errors'
 import { getRateTable } from './fx-service'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
@@ -44,6 +45,15 @@ export function feeInBase(amount: number, currency: CurrencyCode, rates: RateTab
 }
 
 export interface BrokerageInput {
+  /**
+   * A watch of ours this fee was earned on.
+   *
+   * Setting it marks that watch sold, which is what takes it out of the
+   * stock list and archives its page on the storefront. Left out for the
+   * common case: a fee on somebody else's watch, which was never ours to
+   * remove.
+   */
+  watchId?: string | null
   description: string
   soldFor?: string | null
   soldTo?: string | null
@@ -62,8 +72,12 @@ export async function recordBrokerage(input: BrokerageInput, actor: SessionUser)
   const { feeBase, feeFxRate } = feeInBase(input.feeAmount, input.feeCurrency, rates)
   const id = newId('brk')
 
+  if (input.watchId) await assertBrokerable(input.watchId)
+
+  await withTransaction(async () => {
   await db.insert(brokerages).values({
     id,
+    watchId: input.watchId ?? null,
     description: input.description,
     soldFor: input.soldFor ?? null,
     soldTo: input.soldTo ?? null,
@@ -80,6 +94,28 @@ export async function recordBrokerage(input: BrokerageInput, actor: SessionUser)
     recordedById: actor.id,
   })
 
+  /*
+   * The watch goes with it, in the same transaction.
+   *
+   * A fee recorded while the watch stayed in stock is the failure this
+   * exists to prevent: the piece is gone, the website still offers it and
+   * the stock list still counts its capital. SOLD is the status that takes
+   * it out of both — the storefront plan archives anything not held.
+   */
+  if (input.watchId) {
+    await db.update(watches)
+      .set({ status: 'SOLD', updatedAt: new Date() })
+      .where(eq(watches.id, input.watchId))
+    await recordAudit({
+      entityType: 'Watch',
+      entityId: input.watchId,
+      action: 'SELL',
+      summary: `${actor.name} sold it on commission — ${input.description}`,
+      actorId: actor.id,
+    })
+  }
+  })
+
   await recordAudit({
     entityType: 'Brokerage',
     entityId: id,
@@ -88,6 +124,29 @@ export async function recordBrokerage(input: BrokerageInput, actor: SessionUser)
     actorId: actor.id,
   })
   return id
+}
+
+/**
+ * A watch may carry one fee, and not alongside a sale.
+ *
+ * Both of these are double counts of the same event rather than two
+ * events, and both are far cheaper to refuse here than to find later in a
+ * month's figures.
+ */
+async function assertBrokerable(watchId: string): Promise<void> {
+  const [existingSale] = await db.select({ id: sales.id }).from(sales)
+    .where(and(eq(sales.watchId, watchId), isNull(sales.voidedAt), isNull(sales.deletedAt)))
+    .limit(1)
+  if (existingSale) {
+    throw new ConflictError(
+      'That watch already has a sale recorded against it. Void the sale first, '
+      + 'or use "Record as commission" on the sale itself.',
+    )
+  }
+  const [existingFee] = await db.select({ id: brokerages.id }).from(brokerages)
+    .where(and(eq(brokerages.watchId, watchId), isNull(brokerages.voidedAt), isNull(brokerages.deletedAt)))
+    .limit(1)
+  if (existingFee) throw new ConflictError('That watch already has a commission recorded against it.')
 }
 
 /** Void rather than delete: a fee invoiced and cancelled is still a fact. */
@@ -327,4 +386,126 @@ async function brokerageByPersonDetailed(from?: Date, to?: Date, onlyPersonId?: 
     .groupBy(brokerages.soldById, salesPeople.name)
 
   return rows.map((row) => ({ ...row, count: Number(row.count), total: Number(row.total) }))
+}
+
+/**
+ * A sale that should have been a commission.
+ *
+ * The watch went out and somebody booked it as a direct sale, inventing a
+ * cost and a margin for a piece that earned a fee instead. Rather than
+ * making anybody unpick that by hand — void the sale, remember the
+ * salesperson, retype the watch, re-record the fee — this does the whole
+ * swap in one transaction.
+ *
+ * The sale is voided rather than deleted, as every correction here is: an
+ * invoice that was issued is a fact, and the reports already skip voided
+ * rows. The watch stays sold, because it did sell; only what the business
+ * earned on it changes.
+ */
+export async function convertSaleToBrokerage(
+  saleId: string,
+  fee: { amount: number; currency: CurrencyCode },
+  actor: SessionUser,
+): Promise<string> {
+  const [sale] = await db
+    .select({
+      id: sales.id,
+      watchId: sales.watchId,
+      saleDate: sales.saleDate,
+      soldById: sales.soldById,
+      customerName: sales.customerName,
+      customerId: sales.customerId,
+      invoiceNo: sales.invoiceNo,
+      paymentStatus: sales.paymentStatus,
+      model: watches.model,
+      brandName: brands.name,
+    })
+    .from(sales)
+    .innerJoin(watches, eq(watches.id, sales.watchId))
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(eq(sales.id, saleId), isNull(sales.voidedAt), isNull(sales.deletedAt)))
+    .limit(1)
+
+  if (!sale) throw new NotFoundError('Sale')
+
+  const rates = await getRateTable()
+  const { feeBase, feeFxRate } = feeInBase(fee.amount, fee.currency, rates)
+  const id = newId('brk')
+
+  await withTransaction(async () => {
+    await db.update(sales)
+      .set({
+        voidedAt: new Date(),
+        voidedById: actor.id,
+        voidReason: 'Recorded as a commission instead',
+        updatedAt: new Date(),
+      })
+      .where(eq(sales.id, saleId))
+
+    await db.insert(brokerages).values({
+      id,
+      watchId: sale.watchId,
+      description: `${sale.brandName} ${sale.model}`,
+      soldTo: sale.customerName,
+      customerId: sale.customerId,
+      brokeredOn: sale.saleDate,
+      reference: sale.invoiceNo,
+      feeAmount: fee.amount,
+      feeCurrency: fee.currency,
+      feeFxRate,
+      feeBase,
+      paymentStatus: sale.paymentStatus,
+      soldById: sale.soldById,
+      recordedById: actor.id,
+    })
+
+    await recordAudit({
+      entityType: 'Watch',
+      entityId: sale.watchId,
+      action: 'UPDATE',
+      summary: `${actor.name} re-recorded the sale as a commission`,
+      actorId: actor.id,
+    })
+  })
+
+  await recordAudit({
+    entityType: 'Brokerage',
+    entityId: id,
+    action: 'CREATE',
+    summary: `${actor.name} converted invoice ${sale.invoiceNo} to a commission`,
+    actorId: actor.id,
+  })
+  return id
+}
+
+/**
+ * Watches still on the book, for the commission form's picker.
+ *
+ * Only what we still hold: something already sold cannot be sold again,
+ * and offering it would only produce the conflict the recorder refuses.
+ * Labelled the way the stock list labels things, so the piece somebody is
+ * looking at on one screen is recognisable on the other.
+ */
+export async function sellableStock(): Promise<Array<{ id: string; label: string }>> {
+  const rows = await db
+    .select({
+      id: watches.id,
+      stockNo: watches.stockNo,
+      model: watches.model,
+      nickname: watches.nickname,
+      brandName: brands.name,
+    })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(
+      inArray(watches.status, ['IN_STOCK', 'RESERVED', 'SALE_AGREED']),
+      isNull(watches.deletedAt),
+    ))
+    .orderBy(desc(watches.stockNo))
+    .limit(500)
+
+  return rows.map((row) => ({
+    id: row.id,
+    label: `${row.stockNo} · ${row.brandName} ${row.nickname ?? row.model}`,
+  }))
 }

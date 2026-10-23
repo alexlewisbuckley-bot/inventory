@@ -16,7 +16,7 @@ import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, SALE_CHANNELS, type SaleChanne
 import { can, canSeeCost } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
-import { brokerageTotals } from '@/server/services/brokerage-service'
+import { brokerageTotals, sellableStock } from '@/server/services/brokerage-service'
 import { findSalesLedger } from '@/server/services/sales-ledger'
 import { RecordCommission } from '@/components/sales/RecordCommission'
 
@@ -54,7 +54,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const brokerFrom = query.from ? new Date(query.from) : undefined
   const brokerTo = query.to ? new Date(query.to) : undefined
 
-  const [result, summary, rates, preferences, salesPeople, brokerTotals] = await Promise.all([
+  const [result, summary, rates, preferences, salesPeople, brokerTotals, stock] = await Promise.all([
     // One ledger: watches we sold, and fees we earned selling other
     // people's. Kept in the same list because that is how a month's
     // earnings are read.
@@ -64,6 +64,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     getPreferencesFor(user.id),
     listSalesPeople(),
     brokerageTotals(brokerFrom, brokerTo),
+    // Stock still on the book, for a fee earned on one of ours. Only what
+    // we still hold: a watch already gone cannot be sold again.
+    can(user.role, 'sale:create') ? sellableStock() : Promise.resolve([]),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -107,7 +110,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
                 not sold its own stock yet may still have brokered a deal,
                 and that is exactly when it needs somewhere to put it. */}
             {can(user.role, 'sale:create') && (
-              <RecordCommission people={salesPeople} />
+              <RecordCommission people={salesPeople} stock={stock} />
             )}
             {exportable && !isFirstRun && (
               <LinkButton href="/api/export/sales" variant="secondary" icon={<Download className="h-4 w-4" />}>Export</LinkButton>

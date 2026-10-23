@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
-import { BadgeCheck, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
+import { BadgeCheck, Handshake, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleModal'
 import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
+import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
 import { markSalePaidAction } from '@/app/actions/watches'
 import { formatPct } from '@/lib/money'
 import { useCurrency } from '@/components/ui'
@@ -63,6 +64,8 @@ export function SalesTable({
   const router = useRouter()
   const [voidTarget, setVoidTarget] = useState<VoidTarget | null>(null)
   const [editTarget, setEditTarget] = useState<EditSaleTarget | null>(null)
+  const [commissionTarget, setCommissionTarget] = useState<
+    { id: string; label: string; invoiceNo: string; amountGbp: number } | null>(null)
 
   const confirmPaid = async (sale: SaleListItem) => {
     const result = await markSalePaidAction(sale.id)
@@ -203,6 +206,12 @@ export function SalesTable({
                   canAmend={canAmend}
                   canVoid={canVoid}
                   onPaid={() => { void confirmPaid(sale) }}
+                  onCommission={() => setCommissionTarget({
+                    id: sale.id,
+                    label: `${sale.brandName} ${sale.model}`,
+                    invoiceNo: sale.invoiceNo,
+                    amountGbp: sale.amountGbp,
+                  })}
                   onCorrect={() => setEditTarget({
                     id: sale.id,
                     invoiceNo: sale.invoiceNo,
@@ -261,6 +270,13 @@ export function SalesTable({
         onClose={() => setVoidTarget(null)}
         onVoided={() => router.refresh()}
       />
+
+      <SaleToCommissionModal
+        open={commissionTarget !== null}
+        target={commissionTarget}
+        onClose={() => setCommissionTarget(null)}
+        onDone={() => router.refresh()}
+      />
     </div>
   )
 }
@@ -277,13 +293,14 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid }: {
-  sale: SaleListItem
+function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission }: {
+  sale: SaleListItem & { kind?: 'SALE' | 'COMMISSION' }
   canAmend: boolean
   canVoid: boolean
   onCorrect: () => void
   onPaid: () => void
   onVoid: () => void
+  onCommission: () => void
 }) {
   const [open, setOpen] = useState(false)
   const anchor = useRef<HTMLButtonElement>(null)
@@ -307,6 +324,19 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid }: {
       label: 'Correct this sale…',
       onSelect: onCorrect,
       icon: <Pencil className="h-3.5 w-3.5" />,
+    }] : []),
+    /*
+     * For a watch that went out for a fee and was booked as a sale,
+     * inventing a cost and a margin it never had. Offered beside Void
+     * because that is half of what it does, and it saves unpicking the
+     * whole thing by hand.
+     */
+    ...(canVoid && sale.kind !== 'COMMISSION' ? [{
+      id: 'commission',
+      label: 'Record as a commission…',
+      onSelect: onCommission,
+      icon: <Handshake className="h-3.5 w-3.5" />,
+      separated: canAmend,
     }] : []),
     ...(canVoid ? [{
       id: 'void',
