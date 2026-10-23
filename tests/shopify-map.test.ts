@@ -3,6 +3,7 @@ import {
   descriptionHtmlFor, isManagedSku, planSync, priceFor, quantityFor, seoDescriptionFor,
   mediaFilesFor, seoIsOurs, seoTitleFor, skuFor, statusFor, titleFor, titleIsOurs,
   type SyncProduct, type SyncWatch,
+  cardGaps, sizeOf,
 } from '@/lib/shopify-map'
 import type { RateTable } from '@/lib/currency'
 
@@ -118,9 +119,9 @@ describe('the price', () => {
 describe('the page’s words', () => {
   it('leads with the family, never the brand', () => {
     // The card carries the brand above the title already.
-    expect(titleFor(watch())).toBe('116334')
+    expect(titleFor(watch())).toBe('116334 41mm')
     expect(titleFor(watch({ model: '116610LV', nickname: 'Submariner Date', dial: 'Green', caseSizeMm: 41 })))
-      .toBe('Submariner Date Green 41')
+      .toBe('Submariner Date Green 41mm')
   })
 
   it('leaves out what is not known rather than saying "unknown"', () => {
@@ -231,7 +232,7 @@ describe('planning the sync', () => {
 describe('seeding a page that does not exist yet', () => {
   it('names it in the shop’s own convention', () => {
     expect(titleFor(watch({ nickname: 'Explorer II', dial: 'Black', caseSizeMm: 42 })))
-      .toBe('Explorer II Black 42')
+      .toBe('Explorer II Black 42mm')
   })
 
   it('gives it the specification, since there is no copy yet', () => {
@@ -251,13 +252,28 @@ describe('seeding a page that does not exist yet', () => {
 describe('naming a product', () => {
   it('leads with the family, then the dial, then the size', () => {
     expect(titleFor(watch({ nickname: 'Explorer II', dial: 'Black', caseSizeMm: 42 })))
-      .toBe('Explorer II Black 42')
+      .toBe('Explorer II Black 42mm')
   })
 
   it('does not say the size twice', () => {
     // The nickname often carries it already.
     expect(titleFor(watch({ nickname: 'Datejust 41', dial: 'Wimbledon', caseSizeMm: 41 })))
-      .toBe('Datejust Wimbledon 41')
+      .toBe('Datejust Wimbledon 41mm')
+  })
+
+  it('shows the size even when only the nickname carries it', () => {
+    // familyOf takes the number off the end to keep the brand menu from
+    // splitting one family into a row of one-offs. Taken off and not put
+    // back, the size was simply lost from the card.
+    expect(titleFor(watch({ nickname: 'Datejust 36', dial: null, caseSizeMm: null })))
+      .toBe('Datejust 36mm')
+  })
+
+  it('does not read a reference as a measurement', () => {
+    // "RM 011" is not an 11mm Richard Mille, and a Nautilus 5711 is not
+    // an 11mm anything.
+    expect(titleFor(watch({ model: '5711', nickname: 'Nautilus 5711', dial: null, caseSizeMm: null })))
+      .toBe('Nautilus 5711')
   })
 
   it('never leads with the brand', () => {
@@ -269,12 +285,18 @@ describe('naming a product', () => {
     // sentence about the hour markers.
     expect(titleFor(watch({
       nickname: 'Datejust 41', dial: 'Champagne with Factory Diamond Hour Markers', caseSizeMm: 41,
-    }))).toBe('Datejust 41')
+    }))).toBe('Datejust 41mm')
   })
 
-  it('falls back to the reference alone when there is no name', () => {
-    // Not "116334 41", which reads like two references.
-    expect(titleFor(watch({ nickname: null }))).toBe('116334')
+  it('keeps the size beside the reference when there is no name', () => {
+    // A bare "116334 41" would read like two references, which is why the
+    // size used to be dropped entirely here — and dropping it is how a
+    // shelf ends up with cards a buyer cannot compare. The unit settles it.
+    expect(titleFor(watch({ nickname: null }))).toBe('116334 41mm')
+  })
+
+  it('is the reference alone only when nothing else is recorded', () => {
+    expect(titleFor(watch({ nickname: null, caseSizeMm: null }))).toBe('116334')
   })
 })
 
@@ -295,6 +317,37 @@ describe('whose title is it', () => {
   it('lets go once somebody has edited it into the shop’s convention', () => {
     // Which is exactly when this system should stop touching it.
     expect(titleIsOurs(titleFor(watch({ nickname: 'Explorer II' })), watch())).toBe(false)
+  })
+
+  /**
+   * The titles nobody chose.
+   *
+   * A bare reference, or a family with no size, is not somebody's own
+   * words — it is this system's own output from before it carried the
+   * size. Answering "somebody chose that" for them meant the products
+   * whose cards most needed correcting were the exact ones a correction
+   * could never reach, which is why the shelf had three different shapes
+   * of card on it.
+   */
+  it('claims its own earlier output so a correction can reach it', () => {
+    const subject = watch({ model: '116334', nickname: 'Datejust 41', caseSizeMm: 41 })
+    for (const title of [
+      '116334',             // reference alone, from before the size was carried
+      '116334 41',          // reference and a bare number
+      'Datejust 41',        // family and a bare number
+      'Datejust',           // family with the size lost off the nickname
+      'Datejust 41mm',      // and what it writes now
+    ]) {
+      expect(titleIsOurs(title, subject), title).toBe(true)
+    }
+  })
+
+  it('still will not touch a reference that belongs to another watch', () => {
+    // The claim is an exact match against what this system would have
+    // written for this watch, not a pattern loose enough to catch a
+    // sentence somebody typed.
+    expect(titleIsOurs('116334 on a Jubilee bracelet', watch())).toBe(false)
+    expect(titleIsOurs('A beautiful Datejust', watch())).toBe(false)
   })
 })
 
@@ -559,5 +612,33 @@ describe('a page that is coming down says so', () => {
     // The other kind of take-down, which was already right.
     const plan = planSync([], [product()])
     expect(plan.archive).toHaveLength(1)
+  })
+})
+
+/**
+ * What a card cannot say yet.
+ *
+ * A buyer scanning a shelf uses the brand, the model and the size before
+ * deciding whether to look further. No mapping can invent a model name
+ * nobody typed, so the records that cannot fill a card are counted rather
+ * than discovered on the website.
+ */
+describe('a card that cannot be filled', () => {
+  it('names a missing model and a missing size', () => {
+    expect(cardGaps(watch({ nickname: null, caseSizeMm: null }))).toEqual(['model', 'size'])
+  })
+
+  it('counts a reference as no model name', () => {
+    // Somebody who knows 126503 is a two-tone Daytona did not need the card.
+    expect(cardGaps(watch({ nickname: null, caseSizeMm: 41 }))).toEqual(['model'])
+  })
+
+  it('is satisfied by a size that only the nickname carries', () => {
+    expect(cardGaps(watch({ nickname: 'Datejust 36', caseSizeMm: null }))).toEqual([])
+    expect(sizeOf(watch({ nickname: 'Datejust 36', caseSizeMm: null }))).toBe(36)
+  })
+
+  it('finds no gap in a complete record', () => {
+    expect(cardGaps(watch({ nickname: 'Submariner Date', caseSizeMm: 41 }))).toEqual([])
   })
 })
