@@ -384,7 +384,17 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
     db.select({
       invoiceNo: sales.invoiceNo,
       amountGbp: sql<number>`sum(${sales.saleAmountGbp})`.mapWith(Number),
-      saleDate: sql<Date>`min(${sales.saleDate})`,
+      /*
+       * mapWith, or this comes back a string.
+       *
+       * A plain column is parsed by the driver from its type; an
+       * aggregate over one is just an expression, and `sql<Date>` is a
+       * type assertion rather than a conversion — so the promise of a
+       * Date was kept to the compiler and broken at runtime, and the
+       * sort below died on `.getTime is not a function`, taking the
+       * whole Today page down with it.
+       */
+      saleDate: sql<Date>`min(${sales.saleDate})`.mapWith(sales.saleDate),
       customerName: sql<string | null>`min(${sales.customerName})`,
       lines: sql<number>`count(*)`.mapWith(Number),
     })
