@@ -149,11 +149,22 @@ export function SalesTable({
               {/* A commission has no stock number and no watch to open:
                   the watch was never ours. A dash and plain text rather
                   than a zero and a link to nothing. */}
-              <TD className="text-content-secondary">{sale.kind === 'COMMISSION' ? '—' : sale.stockNo}</TD>
+              <TD className="text-content-secondary">
+                {sale.kind === 'COMMISSION' && !sale.watchId ? '—' : sale.stockNo}
+              </TD>
               <TD>
+                {/* A fee on one of ours opens its watch like any other row;
+                    a fee on somebody else's has no record to open. */}
                 {sale.kind === 'COMMISSION' ? (
-                  <div>
-                    <span className="block font-bold text-content-primary">{sale.model}</span>
+                  <div className="flex flex-col items-start gap-1">
+                    {sale.watchId ? (
+                      <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
+                        <span className="block font-bold text-content-primary">{sale.model}</span>
+                        <span className="block text-caption text-content-secondary">{sale.brandName}</span>
+                      </Link>
+                    ) : (
+                      <span className="block font-bold text-content-primary">{sale.model}</span>
+                    )}
                     <Chip tone="navy">Commission</Chip>
                   </div>
                 ) : (

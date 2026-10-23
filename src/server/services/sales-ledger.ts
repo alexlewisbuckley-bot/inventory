@@ -78,10 +78,17 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     marginBps: 0,
     channel: 'RETAIL',
     customerName: row.soldTo ?? row.soldFor,
-    stockNo: 0,
-    watchId: '',
-    model: row.description,
-    brandName: 'Commission',
+    /*
+     * A linked fee carries its watch like any other row.
+     *
+     * These were hardcoded blank, so a commission linked to one of our
+     * own watches still showed no stock number and could not be opened —
+     * the link was recorded and then thrown away on the way to the screen.
+     */
+    stockNo: row.stockNo ?? 0,
+    watchId: row.watchId ?? '',
+    model: row.model ?? row.description,
+    brandName: row.brandName ?? 'Commission',
     supplierName: row.soldFor ?? '—',
     costGbp: 0,
     costUsd: null,
