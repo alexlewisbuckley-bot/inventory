@@ -71,6 +71,16 @@ export const CAPABILITIES = [
    * business, not about a screen.
    */
   'watch:broadcast',
+  /**
+   * Lending against watches, and the money it earns.
+   *
+   * Its own pair rather than folded into sales, because a buy-back puts the
+   * firm's cash out of the door against somebody else's property. Reading
+   * one shows what a customer owes and what is being held for them;
+   * writing one commits capital and, on a default, takes the watches. Both
+   * are decisions about the business rather than about a screen.
+   */
+  'buyback:read', 'buyback:write',
   'data:import',
   'user:read', 'user:manage',
   'settings:read', 'settings:manage',
@@ -195,6 +205,7 @@ const STAFF: Capability[] = [
 
 const MANAGER: Capability[] = [
   ...STAFF,
+  'buyback:read',
   'watch:delete', 'watch:restore',
   'sale:update', 'sale:delete',
   'supplier:manage', 'location:manage', 'owner:manage',
@@ -206,6 +217,7 @@ const MANAGER: Capability[] = [
 const OWNER: Capability[] = [
   ...MANAGER, 'user:manage', 'settings:manage', 'watch:amend', 'trade:respond', 'overhead:manage',
   'watch:broadcast',
+  'buyback:write',
 ]
 
 /**

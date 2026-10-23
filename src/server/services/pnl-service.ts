@@ -3,6 +3,7 @@ import {
 } from '../repositories/sale-repository'
 import { overheadCoverage, overheadsInMonth } from '../repositories/overhead-repository'
 import { brokerageTotals, commissionBaseForMonth } from './brokerage-service'
+import { buybackTotals } from './buyback-service'
 import type { OverheadCadence, OverheadCategory } from '@/lib/enums'
 
 export interface OverheadLine {
@@ -24,6 +25,14 @@ export interface PnlMonth {
   /** Fees earned selling other people's watches. Income, not trading. */
   brokerage: number
   brokerageCount: number
+  /**
+   * Interest and extension fees on money lent against watches.
+   *
+   * Income on the same terms as a fee: no stock behind it and no margin to
+   * measure. The principal lent is in neither this nor the trading lines.
+   */
+  buyback: number
+  buybackCount: number
   saleCount: number
   /** Of that invoiced figure, what has actually been settled. */
   received: number
@@ -93,7 +102,7 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
   const monthStart = isoDate(from)
   const monthEnd = isoDate(to)
 
-  const [trading, people, costs, unattributed, coverage, brokered] = await Promise.all([
+  const [trading, people, costs, unattributed, coverage, brokered, interest] = await Promise.all([
     tradingForMonth(from, to),
     // Includes brokerage, so the commission charged here is the commission
     // the report pays out.
@@ -102,6 +111,7 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
     unattributedForMonth(from, to),
     overheadCoverage(monthStart, monthEnd),
     brokerageTotals(from, to),
+    buybackTotals(from, to),
   ])
 
   const retainers = people.reduce((sum, person) => sum + person.retainer, 0)
@@ -137,12 +147,20 @@ export async function profitAndLoss(from: Date, to: Date): Promise<PnlMonth> {
    * no cost of stock and no margin, and folding it into the trading lines
    * would quietly inflate both. It is added after gross profit, on its own
    * line, which is also where somebody reading this would look for it.
+   *
+   * Buy-back interest and extension fees are the same shape and sit on
+   * their own line beside it. The principal is in neither: lending it is
+   * not a cost and getting it back is not income, so putting either in
+   * here would make a month read as a disaster or a windfall purely on
+   * which way the cash happened to move.
    */
-  const netProfit = trading.grossProfit + brokered.total - totalCosts
+  const netProfit = trading.grossProfit + brokered.total + interest.total - totalCosts
 
   return {
     brokerage: brokered.total,
     brokerageCount: brokered.count,
+    buyback: interest.total,
+    buybackCount: interest.count,
     invoiced: trading.invoiced,
     costOfStock: trading.costOfStock,
     grossProfit: trading.grossProfit,

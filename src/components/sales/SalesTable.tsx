@@ -11,6 +11,8 @@ import {
 } from '@/components/ui'
 import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleModal'
 import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
+import type { LedgerKind } from '@/lib/ledger-kind'
+import { stockless } from '@/lib/ledger-kind'
 import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
 import { LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
 import { markSalePaidAction } from '@/app/actions/watches'
@@ -24,7 +26,7 @@ export function SalesTable({
   result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
   salesPeople = [], stock = [],
 }: {
-  result: { items: Array<SaleListItem & { kind?: 'SALE' | 'COMMISSION' }>; total: number; page: number; perPage: number }
+  result: { items: Array<SaleListItem & { kind?: LedgerKind }>; total: number; page: number; perPage: number }
   /** Stock still on the book, for linking a watch to a commission. */
   stock?: Array<{ id: string; label: string }>
   /**
@@ -159,12 +161,12 @@ export function SalesTable({
                   the watch was never ours. A dash and plain text rather
                   than a zero and a link to nothing. */}
               <TD className="text-content-secondary">
-                {sale.kind === 'COMMISSION' && !sale.watchId ? '—' : sale.stockNo}
+                {stockless(sale) && !sale.watchId ? '—' : sale.stockNo}
               </TD>
               <TD>
                 {/* A fee on one of ours opens its watch like any other row;
                     a fee on somebody else's has no record to open. */}
-                {sale.kind === 'COMMISSION' ? (
+                {stockless(sale) ? (
                   <div className="flex flex-col items-start gap-1">
                     {sale.watchId ? (
                       <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
@@ -206,7 +208,7 @@ export function SalesTable({
                   dash, which is also what stops them being averaged. */}
               {showCost && (
                 <TD align="right" className="text-content-secondary">
-                  {sale.kind === 'COMMISSION' ? '—' : money(sale.costGbp)}
+                  {stockless(sale) ? '—' : money(sale.costGbp)}
                 </TD>
               )}
               <TD align="right" className="font-bold">{money(sale.amountGbp)}</TD>
@@ -217,7 +219,7 @@ export function SalesTable({
               </TD>
               <TD align="right">
                 <span className={cn('font-bold', sale.marginBps >= 0 ? 'text-content-primary' : 'text-state-danger')}>
-                  {sale.kind === 'COMMISSION' ? '—' : formatPct(sale.marginBps / 100)}
+                  {stockless(sale) ? '—' : formatPct(sale.marginBps / 100)}
                 </span>
                 {sale.vsEstimateGbp !== null && sale.vsEstimateGbp !== 0 && (
                   // On one line: "vs est." wrapping alone under the figure read
@@ -236,6 +238,7 @@ export function SalesTable({
                   canVoid={canVoid}
                   onPaid={() => { void confirmPaid(sale) }}
                   onLink={() => setLinkTarget({ id: sale.id, label: sale.model })}
+                  onOpenLoan={() => router.push('/buybacks')}
                   onCommission={() => setCommissionTarget({
                     id: sale.id,
                     label: `${sale.brandName} ${sale.model}`,
@@ -338,8 +341,8 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission, onLink }: {
-  sale: SaleListItem & { kind?: 'SALE' | 'COMMISSION' }
+function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission, onLink, onOpenLoan }: {
+  sale: SaleListItem & { kind?: LedgerKind }
   canAmend: boolean
   canVoid: boolean
   onCorrect: () => void
@@ -347,6 +350,7 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
   onVoid: () => void
   onCommission: () => void
   onLink: () => void
+  onOpenLoan: () => void
 }) {
   /*
    * A commission is not a sale, and none of the sale verbs work on one.
@@ -356,6 +360,34 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
    * record that does not exist, addressed by an id belonging to another
    * table. Its own two verbs instead: attach a watch, or void it.
    */
+  /*
+   * A buy-back charge is not a sale either, and the sale verbs are worse
+   * than useless on one: "Correct this sale" would open a form addressed
+   * by an id belonging to the charges table, and voiding would reach for
+   * a watch that was never ours. The charge is managed on the buy-back it
+   * belongs to, where the rest of its months are, so the row offers the
+   * two things worth doing from a ledger — record the payment, or go and
+   * look at the loan.
+   */
+  if (sale.kind === 'BUYBACK') {
+    const chargeItems: MenuItem[] = [
+      ...(canAmend && sale.paymentStatus !== 'PAID' ? [{
+        id: 'paid',
+        label: 'Payment received',
+        onSelect: onPaid,
+        icon: <BadgeCheck className="h-3.5 w-3.5" />,
+        tone: 'accent' as const,
+      }] : []),
+      {
+        id: 'open',
+        label: 'Open the buy-back',
+        onSelect: onOpenLoan,
+        icon: <LinkIcon className="h-3.5 w-3.5" />,
+      },
+    ]
+    return <RowMenu label={`Actions for ${sale.model}`} items={chargeItems} />
+  }
+
   if (sale.kind === 'COMMISSION') {
     const commissionItems: MenuItem[] = [
       ...(canAmend ? [{

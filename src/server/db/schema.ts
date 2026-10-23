@@ -11,6 +11,7 @@ import {
   OFFER_STATUSES, OWNER_TYPES, type OverheadCadence, type OverheadCategory,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
   REQUEST_ENQUIRY_STATUSES, REQUEST_STATUSES,
+  BUYBACK_CHARGE_KINDS, BUYBACK_STATUSES,
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
   STOCK_CHECK_LINE_STATUSES, STOCK_CHECK_STATUSES, TASK_KINDS, TASK_STATUSES, THEMES,
   VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
@@ -1494,6 +1495,116 @@ export const brokerages = pgTable(
   (t) => ({
     dateIdx: index('brokerages_date_idx').on(t.brokeredOn),
     personIdx: index('brokerages_person_idx').on(t.soldById, t.brokeredOn),
+  }),
+)
+
+/**
+ * Money lent against watches we hold as security.
+ *
+ * The customer keeps ownership; we advance a sum, hold their watches, and
+ * earn interest every month until they redeem. The principal is capital
+ * out that we expect back rather than a cost, which is why it is not a
+ * purchase, and the watches are not ours, which is why they are not stock.
+ */
+export const buybacks = pgTable(
+  'buybacks',
+  {
+    id: text('id').primaryKey(),
+    reference: text('reference'),
+    customerId: text('customer_id').references((): AnyPgColumn => customers.id),
+    customerName: text('customer_name').notNull(),
+    /** What we advanced, as agreed and in base minor units. */
+    principalAmount: integer('principal_amount').notNull(),
+    principalCurrency: text('principal_currency', { enum: CURRENCIES }).notNull().default('AED'),
+    principalFxRate: integer('principal_fx_rate'),
+    principalBase: integer('principal_base').notNull(),
+    /**
+     * The monthly interest, as a rate and as the amount it comes to.
+     *
+     * Both, so a rate changed later never silently rewrites what was
+     * already billed: the charges already raised keep their own figures.
+     */
+    rateBps: integer('rate_bps').notNull(),
+    monthlyBase: integer('monthly_base').notNull(),
+    startedOn: timestamp('started_on', { withTimezone: true }).notNull(),
+    /** When it is due to be redeemed. An extension moves it. */
+    dueOn: timestamp('due_on', { withTimezone: true }),
+    status: text('status', { enum: BUYBACK_STATUSES }).notNull().default('OPEN'),
+    closedOn: timestamp('closed_on', { withTimezone: true }),
+    soldById: text('sold_by_id').references((): AnyPgColumn => salesPeople.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    recordedById: text('recorded_by_id').notNull().references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (t) => ({
+    statusIdx: index('buybacks_status_idx').on(t.status, t.startedOn),
+    personIdx: index('buybacks_person_idx').on(t.soldById, t.startedOn),
+    customerIdx: index('buybacks_customer_idx').on(t.customerId),
+  }),
+)
+
+/**
+ * The watches securing a loan.
+ *
+ * Described rather than referenced: they are not ours, and putting them in
+ * `watches` would place somebody else's property in our stock, in the
+ * capital-deployed figure and on the website. `watchId` is filled in only
+ * on default, when the watch does become ours.
+ */
+export const buybackItems = pgTable(
+  'buyback_items',
+  {
+    id: text('id').primaryKey(),
+    buybackId: text('buyback_id').notNull()
+      .references((): AnyPgColumn => buybacks.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    brand: text('brand'),
+    model: text('model'),
+    serial: text('serial'),
+    year: integer('year'),
+    /** What this one was valued at, since the figures move with the watches. */
+    agreedBase: integer('agreed_base'),
+    watchId: text('watch_id').references((): AnyPgColumn => watches.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ loanIdx: index('buyback_items_loan_idx').on(t.buybackId) }),
+)
+
+/**
+ * The money: one row per month of interest, plus any extension fee.
+ *
+ * A row each rather than a running total, because "they have paid four of
+ * six months" is the question this exists to answer and a single figure
+ * cannot answer it.
+ */
+export const buybackCharges = pgTable(
+  'buyback_charges',
+  {
+    id: text('id').primaryKey(),
+    buybackId: text('buyback_id').notNull()
+      .references((): AnyPgColumn => buybacks.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: BUYBACK_CHARGE_KINDS }).notNull(),
+    /** Which month of the loan this is. Null for an extension fee. */
+    periodIndex: integer('period_index'),
+    dueOn: timestamp('due_on', { withTimezone: true }).notNull(),
+    amount: integer('amount').notNull(),
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('AED'),
+    fxRate: integer('fx_rate'),
+    amountBase: integer('amount_base').notNull(),
+    paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PENDING'),
+    paidOn: timestamp('paid_on', { withTimezone: true }),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidedById: text('voided_by_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
+    voidReason: text('void_reason'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    loanIdx: index('buyback_charges_loan_idx').on(t.buybackId, t.dueOn),
+    dueIdx: index('buyback_charges_due_idx').on(t.dueOn),
   }),
 )
 

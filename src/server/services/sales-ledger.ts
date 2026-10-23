@@ -1,5 +1,6 @@
 import { findSales, type SaleListItem, type SaleQuery } from '../repositories/sale-repository'
 import { listBrokerages } from './brokerage-service'
+import { listBuybackCharges } from './buyback-service'
 
 /**
  * The sales ledger: watches we sold, and fees we earned selling other
@@ -22,8 +23,17 @@ import { listBrokerages } from './brokerage-service'
  */
 const MERGE_CAP = 2000
 
-/** A commission row carries a marker; a sale row is the default. */
-export type LedgerRow = SaleListItem & { kind: 'SALE' | 'COMMISSION' }
+/**
+ * What kind of thing earned the money.
+ *
+ * A sale row is the default. A commission is a fee on somebody else's
+ * watch; a buy-back charge is interest or an extension fee on money we
+ * lent. All three are earnings, none of the last two has a cost under it,
+ * and they belong in one list because that is how a month is thought
+ * about.
+ */
+export type LedgerKind = 'SALE' | 'COMMISSION' | 'BUYBACK'
+export type LedgerRow = SaleListItem & { kind: LedgerKind }
 
 export interface Ledger {
   items: LedgerRow[]
@@ -61,9 +71,10 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
 
   const stockOnly = stockSalesOnly(query)
 
-  const [sales, brokered] = await Promise.all([
+  const [sales, brokered, charges] = await Promise.all([
     findSales({ ...query, page: 1, perPage: MERGE_CAP }),
     stockOnly ? Promise.resolve([]) : listBrokerages(query.from, query.to, MERGE_CAP),
+    stockOnly ? Promise.resolve([]) : listBuybackCharges(query.from, query.to, MERGE_CAP),
   ])
 
   const commissions: LedgerRow[] = brokered.map((row) => ({
@@ -114,7 +125,55 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     recordedByName: '',
   }))
 
-  const merged = [...sales.items.map((item) => ({ ...item, kind: 'SALE' as const })), ...commissions]
+  /*
+   * Interest and extension fees, as ledger rows.
+   *
+   * The principal is not here and never will be: lending it is not a cost
+   * and getting it back is not income, so putting either in the ledger
+   * would make a month read as a windfall or a disaster depending on which
+   * way the money happened to move that week. Only what was earned.
+   */
+  const buybackRows: LedgerRow[] = charges.map((row) => ({
+    kind: 'BUYBACK',
+    id: row.id,
+    invoiceNo: row.reference ?? '—',
+    invoiceLines: 1,
+    saleDate: row.dueOn,
+    saleAmount: row.amount,
+    saleCurrency: row.currency as SaleListItem['saleCurrency'],
+    paymentStatus: row.paymentStatus as SaleListItem['paymentStatus'],
+    deliveryStatus: 'COLLECTED',
+    customerCompany: null,
+    notes: null,
+    purchaseAmount: null,
+    purchaseCurrency: 'AED',
+    soldById: null,
+    soldByName: row.soldByName,
+    // Nothing was bought, so the whole charge is the profit — the same way
+    // a brokered fee is, and for the same reason.
+    amountUsd: row.amountBase,
+    amountGbp: row.amountBase,
+    profitUsd: row.amountBase,
+    profitGbp: row.amountBase,
+    marginBps: 0,
+    channel: 'BUYBACK',
+    customerName: row.customerName,
+    stockNo: 0,
+    watchId: '',
+    // Which month it is, where it is a month. "Interest, month 4" is what
+    // makes a column of identical figures explainable a year later.
+    model: row.kind === 'EXTENSION'
+      ? 'Extension fee'
+      : `Interest${row.periodIndex ? `, month ${row.periodIndex}` : ''}`,
+    brandName: 'Buy-back',
+    supplierName: row.customerName,
+    costGbp: 0,
+    costUsd: null,
+    vsEstimateGbp: null,
+    recordedByName: '',
+  }))
+
+  const merged = [...sales.items.map((item) => ({ ...item, kind: 'SALE' as const })), ...commissions, ...buybackRows]
   const direction = query.dir === 'asc' ? 1 : -1
   merged.sort((a, b) => {
     switch (query.sort) {

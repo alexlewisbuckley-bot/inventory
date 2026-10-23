@@ -3,6 +3,7 @@ import {
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
   Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
   type LucideIcon,
+  HandCoins,
 } from 'lucide-react'
 import { can, canAny, isExternalRole, salesScope, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -73,6 +74,10 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/catalogue', label: 'Inventory', icon: Package, capability: 'catalogue:read', match: '/catalogue' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
+        // Beside Sales rather than under Manage: a buy-back is money out
+        // and money earned, and the people who read the ledger are the
+        // people who need to know what is out on loan.
+        { href: '/buybacks', label: 'Buy-backs', icon: HandCoins, capability: 'buyback:read', match: '/buybacks' },
       ],
     },
     {

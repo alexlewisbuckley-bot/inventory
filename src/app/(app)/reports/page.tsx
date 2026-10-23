@@ -6,6 +6,7 @@ import {
   salesByMonth, summariseSales, supplierPerformance,
 } from '@/server/repositories/sale-repository'
 import { brokerageTotals, salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
+import { buybackTotals, principalOutstanding } from '@/server/services/buyback-service'
 import { stockByLocation, summariseInventory, findAgeingStock } from '@/server/repositories/watch-repository'
 import { tradeVsRetail } from '@/server/repositories/crm-repository'
 import { watchQuerySchema } from '@/lib/validation'
@@ -30,7 +31,7 @@ export default async function ReportsPage() {
   const activeQuery = watchQuerySchema.parse({ status: ['IN_STOCK', 'RESERVED', 'SALE_AGREED'] })
   const [
     inventory, sales, monthly, suppliers, people, byLocation, ageing, rates, preferences,
-    segments, fees,
+    segments, fees, interest, lent,
   ] = await Promise.all([
     summariseInventory(activeQuery),
     summariseSales({}),
@@ -46,6 +47,8 @@ export default async function ReportsPage() {
     tradeVsRetail(),
     // All time, matching the "Lifetime" tiles beside it.
     brokerageTotals(),
+    buybackTotals(),
+    principalOutstanding(),
   ])
 
   // Every figure below is stored in GBP and rendered in the viewer's chosen
@@ -74,20 +77,33 @@ export default async function ReportsPage() {
       <ReportTabs tabs={reportTabs(user.role)} />
 
       <section aria-label="Headline figures" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
-        <StatCard label="Capital deployed" value={money(inventory.totalCostGbp)} caption={`${inventory.inStockCount} watches held`} />
+        {/* Money lent on buy-backs is capital out too, and it is the half
+            of it that is easiest to forget: it is not on a shelf and it
+            does not show in a stock count, but it is not in the bank
+            either. Shown beside the stock rather than added into it,
+            because what it is tied up in is somebody else's watch. */}
+        <StatCard
+          label="Capital deployed"
+          value={money(inventory.totalCostGbp + lent)}
+          caption={lent > 0
+            ? `${inventory.inStockCount} watches held · ${money(lent)} out on buy-backs`
+            : `${inventory.inStockCount} watches held`}
+        />
         {/* Fees count as revenue and as profit, the same as on the ledger.
             The weighted margin stays a figure about stock, because a fee
             has no cost under it to measure one against. */}
         <StatCard
           label="Lifetime revenue"
-          value={money(sales.revenueGbp + fees.total)}
-          caption={fees.count > 0
-            ? `${sales.count} sales · ${fees.count} commissions`
-            : `${sales.count} sales`}
+          value={money(sales.revenueGbp + fees.total + interest.total)}
+          caption={[
+            `${sales.count} sales`,
+            fees.count > 0 ? `${fees.count} commissions` : null,
+            interest.count > 0 ? `${interest.count} buy-back charges` : null,
+          ].filter(Boolean).join(' · ')}
         />
         <StatCard
           label="Lifetime profit"
-          value={signed(sales.profitGbp + fees.total)}
+          value={signed(sales.profitGbp + fees.total + interest.total)}
           tone="accent"
           caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin on stock`}
         />
