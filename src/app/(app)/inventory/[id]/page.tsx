@@ -21,7 +21,7 @@ import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatDate, formatDateTime, daysHeld } from '@/lib/dates'
 import {
   accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
-  PRODUCT_TYPE_LABELS, referenceLabel,
+  PRODUCT_TYPE_LABELS, referenceLabel, SALE_CHANNEL_LABELS,
   type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import { watchChecks } from '@/lib/checks'
@@ -256,7 +256,10 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                     <Row label="Sale amount" value={money(sale.saleAmountGbp)} />
                   )}
                   <Row label="Customer" value={sale.customerName ?? '—'} />
-                  <Row label="Channel" value={sale.channel} />
+                  {/* The label, not the stored value: everywhere else
+                      this reads "Retail", and only here did it shout
+                      RETAIL back at the reader. */}
+                  <Row label="Channel" value={SALE_CHANNEL_LABELS[sale.channel]} />
                 </dl>
               </CardBody>
             </Card>

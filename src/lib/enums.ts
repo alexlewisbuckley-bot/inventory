@@ -159,7 +159,16 @@ export const EXTRACTION_METHOD_LABELS: Record<ExtractionMethod, string> = {
   AI_RULES: 'Claude, checked against the text',
 }
 
-export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT'] as const
+/**
+ * How a sale came about.
+ *
+ * COMMISSION covers a deal we were paid a fee to broker. It sits here
+ * rather than only on the brokerage record so that the two shapes answer
+ * the Channel column the same way: a fee on somebody else's watch and a
+ * watch of ours sold on a commission arrangement both read "Commission"
+ * there, and both can be filtered for.
+ */
+export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT', 'COMMISSION'] as const
 export type SaleChannel = (typeof SALE_CHANNELS)[number]
 
 /**
@@ -441,6 +450,7 @@ export const SALE_CHANNEL_LABELS: Record<SaleChannel, string> = {
   ONLINE: 'Online',
   AUCTION: 'Auction',
   CONSIGNMENT: 'Consignment',
+  COMMISSION: 'Commission',
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
