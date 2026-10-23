@@ -258,7 +258,44 @@ describe('a sale that should have been a commission', () => {
   })
 
   it('is offered on a sale row but not on a commission row', () => {
-    expect(table).toMatch(/canVoid && sale\.kind !== 'COMMISSION'/)
+    // A commission row returns its own two verbs before reaching the sale
+    // menu at all, which is stronger than filtering an item out of it.
+    expect(table).toMatch(/if \(sale\.kind === 'COMMISSION'\) \{/)
     expect(table).toMatch(/label: 'Record as a commission…'/)
+  })
+
+  it('never offers a sale verb on a commission', () => {
+    // "Correct this sale" opened on a commission showing Stock 0 and a
+    // cost of nothing: a form editing a record that does not exist,
+    // addressed by an id belonging to another table.
+    const branch = table.slice(table.indexOf("if (sale.kind === 'COMMISSION')"))
+    const ownVerbs = branch.slice(0, branch.indexOf('const items: MenuItem[]'))
+    expect(ownVerbs).not.toMatch(/Correct this sale/)
+    expect(ownVerbs).not.toMatch(/Void the sale/)
+    expect(ownVerbs).toMatch(/Link one of our watches…/)
+    expect(ownVerbs).toMatch(/Void this commission…/)
+  })
+})
+
+describe('voiding is about the sale, not the watch', () => {
+  const service = read('src/server/services/watch-service.ts')
+
+  it('does not refuse because the watch reads something other than sold', () => {
+    // Eight of ten live sales on the development book sit against a watch
+    // reading "In stock", and every one of them was unvoidable. However
+    // the drift arose, the invoice is still there to cancel.
+    const fn = service.slice(service.indexOf('export async function voidSale'))
+    expect(fn.slice(0, 1800)).not.toMatch(/This watch is not marked as sold/)
+  })
+
+  it('still refuses when there is no live sale to void', () => {
+    expect(service).toMatch(/No live sale was found against this watch/)
+  })
+
+  it('returns only a sold watch to stock', () => {
+    // One on hold or with a deposit taken is somewhere deliberate; forcing
+    // it back would undo that as a side effect of an unrelated correction.
+    expect(service).toMatch(/const returning = watch\.status === 'SOLD'/)
+    expect(service).toMatch(/left as \$\{watch\.status\}/)
   })
 })

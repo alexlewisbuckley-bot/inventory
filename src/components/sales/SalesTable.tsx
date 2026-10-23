@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
-import { BadgeCheck, Handshake, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
+import { BadgeCheck, Handshake, Link2 as LinkIcon, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import {
@@ -12,6 +12,7 @@ import {
 import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleModal'
 import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
 import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
+import { LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
 import { markSalePaidAction } from '@/app/actions/watches'
 import { formatPct } from '@/lib/money'
 import { useCurrency } from '@/components/ui'
@@ -21,9 +22,11 @@ import type { SaleListItem } from '@/server/repositories/sale-repository'
 
 export function SalesTable({
   result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
-  salesPeople = [],
+  salesPeople = [], stock = [],
 }: {
   result: { items: Array<SaleListItem & { kind?: 'SALE' | 'COMMISSION' }>; total: number; page: number; perPage: number }
+  /** Stock still on the book, for linking a watch to a commission. */
+  stock?: Array<{ id: string; label: string }>
   /**
    * Whether the cost side — cost, profit, margin — exists on this table.
    * The page has already nulled the figures for roles without `cost:read`;
@@ -66,6 +69,9 @@ export function SalesTable({
   const [editTarget, setEditTarget] = useState<EditSaleTarget | null>(null)
   const [commissionTarget, setCommissionTarget] = useState<
     { id: string; label: string; invoiceNo: string; amountGbp: number } | null>(null)
+  const [linkTarget, setLinkTarget] = useState<{ id: string; label: string } | null>(null)
+  const [voidCommissionTarget, setVoidCommissionTarget] =
+    useState<{ id: string; label: string } | null>(null)
 
   const confirmPaid = async (sale: SaleListItem) => {
     const result = await markSalePaidAction(sale.id)
@@ -206,6 +212,7 @@ export function SalesTable({
                   canAmend={canAmend}
                   canVoid={canVoid}
                   onPaid={() => { void confirmPaid(sale) }}
+                  onLink={() => setLinkTarget({ id: sale.id, label: sale.model })}
                   onCommission={() => setCommissionTarget({
                     id: sale.id,
                     label: `${sale.brandName} ${sale.model}`,
@@ -271,6 +278,21 @@ export function SalesTable({
         onVoided={() => router.refresh()}
       />
 
+      <LinkWatchModal
+        open={linkTarget !== null}
+        target={linkTarget}
+        stock={stock}
+        onClose={() => setLinkTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
+      <VoidCommissionModal
+        open={voidCommissionTarget !== null}
+        target={voidCommissionTarget}
+        onClose={() => setVoidCommissionTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
       <SaleToCommissionModal
         open={commissionTarget !== null}
         target={commissionTarget}
@@ -293,7 +315,7 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission }: {
+function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission, onLink }: {
   sale: SaleListItem & { kind?: 'SALE' | 'COMMISSION' }
   canAmend: boolean
   canVoid: boolean
@@ -301,9 +323,37 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
   onPaid: () => void
   onVoid: () => void
   onCommission: () => void
+  onLink: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const anchor = useRef<HTMLButtonElement>(null)
+  /*
+   * A commission is not a sale, and none of the sale verbs work on one.
+   *
+   * They were offered anyway, and "Correct this sale" opened on a
+   * commission with Stock 0 and a cost of nothing — a form editing a
+   * record that does not exist, addressed by an id belonging to another
+   * table. Its own two verbs instead: attach a watch, or void it.
+   */
+  if (sale.kind === 'COMMISSION') {
+    const commissionItems: MenuItem[] = [
+      ...(canAmend ? [{
+        id: 'link',
+        label: 'Link one of our watches…',
+        onSelect: onLink,
+        icon: <LinkIcon className="h-3.5 w-3.5" />,
+      }] : []),
+      ...(canVoid ? [{
+        id: 'void-commission',
+        label: 'Void this commission…',
+        onSelect: onVoid,
+        icon: <Undo2 className="h-3.5 w-3.5" />,
+        tone: 'danger' as const,
+        separated: canAmend,
+      }] : []),
+    ]
+    return commissionItems.length === 0 ? null : (
+      <RowMenu label={`Actions for ${sale.model}`} items={commissionItems} />
+    )
+  }
 
   const items: MenuItem[] = [
     // First, and without an ellipsis: there is nothing to ask. The money
@@ -331,7 +381,8 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
      * because that is half of what it does, and it saves unpicking the
      * whole thing by hand.
      */
-    ...(canVoid && sale.kind !== 'COMMISSION' ? [{
+    // No kind check needed: a commission row returned above.
+    ...(canVoid ? [{
       id: 'commission',
       label: 'Record as a commission…',
       onSelect: onCommission,
@@ -350,7 +401,13 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
 
   if (items.length === 0) return null
 
-  const label = `Actions for invoice ${sale.invoiceNo}`
+  return <RowMenu label={`Actions for invoice ${sale.invoiceNo}`} items={items} />
+}
+
+/** The trigger and its menu, so both kinds of row open the same control. */
+function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
+  const [open, setOpen] = useState(false)
+  const anchor = useRef<HTMLButtonElement>(null)
   return (
     <>
       <IconButton

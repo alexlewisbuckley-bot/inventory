@@ -331,6 +331,40 @@ export async function saleToCommissionAction(
   }
 }
 
+/** Void a commission. The same act as voiding a sale, on the other ledger. */
+export async function voidBrokerageAction(id: string, reason: string): Promise<ActionState> {
+  const actor = await requireCapability('sale:delete')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    const { voidBrokerage } = await import('@/server/services/brokerage-service')
+    await voidBrokerage(id, reason.trim() || 'No reason given', actor)
+    revalidatePath('/sales')
+    revalidatePath('/reports/pnl')
+    revalidatePath('/reports/people')
+    return { ok: true, message: 'Commission voided.' }
+  } catch (error) {
+    return toState(error, 'Could not void that commission.')
+  }
+}
+
+/** Attach one of our watches to a fee already recorded, and mark it sold. */
+export async function linkCommissionWatchAction(
+  input: { brokerageId: string; watchId: string },
+): Promise<ActionState> {
+  const actor = await requireCapability('sale:create')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    const { linkWatchToBrokerage } = await import('@/server/services/brokerage-service')
+    await linkWatchToBrokerage(input.brokerageId, input.watchId, actor)
+    refreshInventory()
+    revalidatePath('/sales')
+    revalidatePath('/inventory/content')
+    return { ok: true, message: 'Linked. The watch is marked sold.' }
+  } catch (error) {
+    return toState(error, 'Could not link that watch.')
+  }
+}
+
 export async function recordBrokerageAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('sale:create')
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })

@@ -210,6 +210,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             canAmend={can(user.role, 'sale:update')}
             canAmendCost={can(user.role, 'watch:amend')}
             salesPeople={salesPeople}
+            stock={stock}
           />
         )}
       </Card>
