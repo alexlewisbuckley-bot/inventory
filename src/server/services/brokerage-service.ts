@@ -330,9 +330,11 @@ export async function commissionBaseForMonth(from: Date, to: Date) {
  * would inflate every percentage on the page.
  */
 export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPersonId?: string) {
-  const [ledger, fees] = await Promise.all([
+  const { buybackByPersonDetailed } = await import('./buyback-service')
+  const [ledger, fees, interest] = await Promise.all([
     salesByPerson(from, to, onlyPersonId),
     brokerageByPersonDetailed(from, to, onlyPersonId),
+    buybackByPersonDetailed(from, to, onlyPersonId),
   ])
 
   const rows = ledger.map((row) => ({
@@ -346,7 +348,10 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
   }))
   const byId = new Map(rows.map((row) => [row.personId ?? 'none', row]))
 
-  for (const fee of fees) {
+  // Brokered fees and buy-back charges fold in the same way: earnings with
+  // no stock under them. Walked as one list rather than two loops, because
+  // the second loop is where the third income source gets forgotten.
+  for (const fee of [...fees, ...interest]) {
     const key = fee.personId ?? 'none'
     const existing = byId.get(key)
     if (existing) {
@@ -359,8 +364,9 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
       }
       continue
     }
-    // Somebody whose only earnings this period were brokered. Without this
-    // they would be missing from a report that is meant to list everybody.
+    // Somebody whose only earnings this period were a fee or a buy-back.
+    // Without this they would be missing from a report that is meant to
+    // list everybody.
     const row = {
       personId: fee.personId,
       personName: fee.personName ?? 'Not recorded',

@@ -73,7 +73,7 @@ describe('where the money lands', () => {
   const service = read('src/server/services/brokerage-service.ts')
 
   it('is income, added after gross profit rather than into it', () => {
-    expect(pnl).toMatch(/trading\.grossProfit \+ brokered\.total - totalCosts/)
+    expect(pnl).toMatch(/trading\.grossProfit \+ brokered\.total \+ interest\.total - totalCosts/)
     // Not folded into the trading lines, which would inflate revenue and
     // margin on stock that never existed.
     expect(pnl).not.toMatch(/invoiced: trading\.invoiced \+/)
@@ -164,8 +164,13 @@ describe('recording one', () => {
     // Margin on something with no cost is undefined, not 100%, and a zero
     // would be averaged into the weighted margin above the table.
     const table = read('src/components/sales/SalesTable.tsx')
-    expect(table).toMatch(/sale\.kind === 'COMMISSION' \? '—' : money\(sale\.costGbp\)/)
-    expect(table).toMatch(/sale\.kind === 'COMMISSION' \? '—' : formatPct/)
+    expect(table).toMatch(/stockless\(sale\) \? '—' : money\(sale\.costGbp\)/)
+    expect(table).toMatch(/stockless\(sale\) \? '—' : formatPct/)
+    // One idea, named once. The four consequences of "no watch under this
+    // row" drifted apart the last time a kind was added, and a commission
+    // briefly offered the verbs of a sale.
+    const kinds = readFileSync('src/lib/ledger-kind.ts', 'utf8')
+    expect(kinds).toMatch(/kind === 'COMMISSION' \|\| row\.kind === 'BUYBACK'/)
   })
 
   it('never fails silently on a rejected form', () => {
@@ -192,7 +197,7 @@ describe('a commission counts as a sale, and as profit', () => {
   const page = read('src/app/(app)/sales/page.tsx')
 
   it('is in the sales count', () => {
-    expect(page).toMatch(/value=\{summary\.count \+ brokerTotals\.count\}/)
+    expect(page).toMatch(/value=\{summary\.count \+ brokerTotals\.count \+ interest\.count\}/)
   })
 
   it('is in revenue', () => {
@@ -200,7 +205,7 @@ describe('a commission counts as a sale, and as profit', () => {
   })
 
   it('is in realised profit', () => {
-    expect(page).toMatch(/formatBaseSigned\(summary\.profitGbp \+ brokerTotals\.total, currency, rates\)/)
+    expect(page).toMatch(/formatBaseSigned\(summary\.profitGbp \+ brokerTotals\.total \+ interest\.total, currency, rates\)/)
   })
 
   it('is not in the weighted margin, and the caption says so', () => {
@@ -350,7 +355,7 @@ describe('a linked commission shows its watch', () => {
   it('opens the watch when there is one, and does not when there is not', () => {
     // A fee on somebody else's watch has no record to open, so it must not
     // render a link to nowhere.
-    expect(table).toMatch(/sale\.kind === 'COMMISSION' && !sale\.watchId \? '—' : sale\.stockNo/)
+    expect(table).toMatch(/stockless\(sale\) && !sale\.watchId \? '—' : sale\.stockNo/)
     expect(table).toMatch(/\{sale\.watchId \? \(/)
   })
 })

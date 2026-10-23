@@ -17,6 +17,7 @@ import { can, canSeeCost } from '@/lib/permissions'
 import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { brokerageTotals, sellableStock } from '@/server/services/brokerage-service'
+import { buybackTotals } from '@/server/services/buyback-service'
 import { findSalesLedger } from '@/server/services/sales-ledger'
 import { RecordCommission } from '@/components/sales/RecordCommission'
 
@@ -54,7 +55,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const brokerFrom = query.from ? new Date(query.from) : undefined
   const brokerTo = query.to ? new Date(query.to) : undefined
 
-  const [result, summary, rates, preferences, salesPeople, brokerTotals, stock] = await Promise.all([
+  const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock] = await Promise.all([
     // One ledger: watches we sold, and fees we earned selling other
     // people's. Kept in the same list because that is how a month's
     // earnings are read.
@@ -64,6 +65,10 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     getPreferencesFor(user.id),
     listSalesPeople(),
     brokerageTotals(brokerFrom, brokerTo),
+    // Interest and extension fees on money lent. Earnings with no cost
+    // under them, like a brokered fee, and in the same list for the same
+    // reason: one place to read what the month made.
+    buybackTotals(brokerFrom, brokerTo),
     // Stock still on the book, for a fee earned on one of ours. Only what
     // we still hold: a watch already gone cannot be sold again.
     can(user.role, 'sale:create') ? sellableStock() : Promise.resolve([]),
@@ -71,6 +76,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
   const money = (base: number | null) => formatBase(base, currency, rates)
+
+  /** Earnings with no stock under them: brokered fees and buy-back charges. */
+  const earned = brokerTotals.total + interest.total
 
   const exportable = can(user.role, 'report:export')
 
@@ -139,25 +147,27 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             reason rather than an omission. */}
         <StatCard
           label="Sales"
-          value={summary.count + brokerTotals.count}
-          caption={brokerTotals.count > 0
-            ? `${summary.count} from stock · ${brokerTotals.count} brokered`
-            : 'in the current view'}
+          value={summary.count + brokerTotals.count + interest.count}
+          caption={[
+            `${summary.count} from stock`,
+            brokerTotals.count > 0 ? `${brokerTotals.count} brokered` : null,
+            interest.count > 0 ? `${interest.count} buy-back` : null,
+          ].filter(Boolean).join(' · ') || 'in the current view'}
         />
         <StatCard
           label="Revenue"
-          value={money(summary.revenueGbp + brokerTotals.total)}
-          caption={brokerTotals.count > 0
-            ? `including ${money(brokerTotals.total)} commission`
+          value={money(summary.revenueGbp + brokerTotals.total + interest.total)}
+          caption={earned > 0
+            ? `including ${money(earned)} in fees and interest`
             : 'gross, excluding fees'}
         />
         {showCost && (
           <StatCard
             label="Realised profit"
-            value={formatBaseSigned(summary.profitGbp + brokerTotals.total, currency, rates)}
+            value={formatBaseSigned(summary.profitGbp + brokerTotals.total + interest.total, currency, rates)}
             tone="accent"
-            caption={brokerTotals.count > 0
-              ? `including ${money(brokerTotals.total)} commission, which has no cost`
+            caption={earned > 0
+              ? `including ${money(earned)} in fees and interest, which have no cost`
               : 'sale price minus purchase cost'}
           />
         )}

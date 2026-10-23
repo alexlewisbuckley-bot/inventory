@@ -368,6 +368,26 @@ function statementLines(pnl: PnlMonth): Line[] {
     { label: 'Cost of stock sold', value: pnl.costOfStock, negative: true },
     { label: 'Gross profit', value: pnl.grossProfit, total: true, rule: true },
 
+    /*
+     * Income with no stock under it, each on its own line.
+     *
+     * Both were already in net profit and neither was shown, so the
+     * figures on this page did not add up to the one at the bottom of it
+     * — which reads as a bug in the report rather than as a line somebody
+     * forgot to print. Hidden when there is none, so a business that does
+     * neither is not asked to read two zeroes every month.
+     */
+    ...(pnl.brokerage !== 0 ? [{
+      label: 'Commission earned',
+      value: pnl.brokerage,
+      caption: 'fees on other people\u2019s watches, which have no cost of stock',
+    }] : []),
+    ...(pnl.buyback !== 0 ? [{
+      label: 'Buy-back interest and fees',
+      value: pnl.buyback,
+      caption: 'earned on money lent; the principal is in neither this nor the trading lines',
+    }] : []),
+
     { label: 'Retainers', value: pnl.retainers, negative: true, caption: 'the sales floor, paid whatever sells' },
     { label: 'Commission', value: pnl.commission, negative: true, caption: 'what is due on top of the retainers, which are an advance against the same quarter' },
     ...[...overheadsByCategory.entries()]

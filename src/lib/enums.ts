@@ -168,7 +168,32 @@ export const EXTRACTION_METHOD_LABELS: Record<ExtractionMethod, string> = {
  * watch of ours sold on a commission arrangement both read "Commission"
  * there, and both can be filtered for.
  */
-export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT', 'COMMISSION'] as const
+/**
+ * Where a buy-back is up to.
+ *
+ * OPEN while it runs; REDEEMED when the customer pays the principal back
+ * and takes their watches; DEFAULTED when they do not and the watches
+ * become ours.
+ */
+export const BUYBACK_STATUSES = ['OPEN', 'REDEEMED', 'DEFAULTED'] as const
+export type BuybackStatus = (typeof BUYBACK_STATUSES)[number]
+
+export const BUYBACK_STATUS_LABELS: Record<BuybackStatus, string> = {
+  OPEN: 'Open',
+  REDEEMED: 'Redeemed',
+  DEFAULTED: 'Defaulted',
+}
+
+/** Interest accrues monthly; an extension fee is charged when one is agreed. */
+export const BUYBACK_CHARGE_KINDS = ['INTEREST', 'EXTENSION'] as const
+export type BuybackChargeKind = (typeof BUYBACK_CHARGE_KINDS)[number]
+
+export const BUYBACK_CHARGE_LABELS: Record<BuybackChargeKind, string> = {
+  INTEREST: 'Monthly interest',
+  EXTENSION: 'Extension fee',
+}
+
+export const SALE_CHANNELS = ['RETAIL', 'TRADE', 'ONLINE', 'AUCTION', 'CONSIGNMENT', 'COMMISSION', 'BUYBACK'] as const
 export type SaleChannel = (typeof SALE_CHANNELS)[number]
 
 /**
@@ -451,6 +476,7 @@ export const SALE_CHANNEL_LABELS: Record<SaleChannel, string> = {
   AUCTION: 'Auction',
   CONSIGNMENT: 'Consignment',
   COMMISSION: 'Commission',
+  BUYBACK: 'Buy-back',
 }
 
 export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
