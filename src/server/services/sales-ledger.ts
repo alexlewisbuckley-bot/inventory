@@ -34,18 +34,32 @@ export interface Ledger {
   truncated: boolean
 }
 
+/**
+ * Whether a filtered view is asking about our own stock only.
+ *
+ * A text search or a facet is a question about stock — a brokered deal has
+ * no stock number and no supplier to match — so a commission among the
+ * results would be answering a different question.
+ *
+ * Channel used to count the same way, and no longer does: Commission is a
+ * channel now, and the one filter that names it is precisely a request for
+ * these rows. Suppressing them there returned an empty list for the filter
+ * they are the whole point of. Any other channel still excludes them.
+ *
+ * Exported so the rule can be tested as a rule, rather than pinned as a
+ * line of source.
+ */
+export function stockSalesOnly(query: SaleQuery): boolean {
+  if (query.q || query.f?.length) return true
+  const channels = query.channel ?? []
+  return channels.length > 0 && !channels.includes('COMMISSION')
+}
+
 export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
   const page = Math.max(1, query.page ?? 1)
   const perPage = Math.min(200, query.perPage ?? 25)
 
-  /*
-   * A sale-specific filter excludes commissions by construction.
-   *
-   * Channel, a stock number, a supplier — a brokered deal has none of
-   * them, so a filtered view is asking about stock sales and showing a
-   * commission in it would be answering a different question.
-   */
-  const stockOnly = Boolean(query.channel?.length || query.q || query.f?.length)
+  const stockOnly = stockSalesOnly(query)
 
   const [sales, brokered] = await Promise.all([
     findSales({ ...query, page: 1, perPage: MERGE_CAP }),
@@ -76,7 +90,9 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     // Margin on a thing with no cost is not 100%, it is undefined. Zero
     // here and the table prints a dash rather than a number to average.
     marginBps: 0,
-    channel: 'RETAIL',
+    // Not retail — it never was. The column printed a dash, so the lie
+    // was invisible; now the row says what kind of deal it was.
+    channel: 'COMMISSION',
     customerName: row.soldTo ?? row.soldFor,
     /*
      * A linked fee carries its watch like any other row.

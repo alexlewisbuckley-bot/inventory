@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { feeInBase } from '@/server/services/brokerage-service'
+import { stockSalesOnly } from '@/server/services/sales-ledger'
+import type { SaleQuery } from '@/server/repositories/sale-repository'
 import { RATE_SCALE } from '@/lib/currency'
 
 const read = (path: string) => readFileSync(path, 'utf8')
@@ -126,9 +128,36 @@ describe('recording one', () => {
   })
 
   it('drops out of a view filtered to stock sales', () => {
-    // Channel, a stock number, a supplier: a brokered deal has none of
-    // them, so showing one in that view answers a different question.
-    expect(ledger).toMatch(/const stockOnly = Boolean\(query\.channel\?\.length \|\| query\.q \|\| query\.f\?\.length\)/)
+    // A stock number or a supplier: a brokered deal has neither, so
+    // showing one in that view answers a different question.
+    expect(stockSalesOnly({ q: '116655' } as SaleQuery)).toBe(true)
+    expect(stockSalesOnly({ f: ['brand:Rolex'] } as unknown as SaleQuery)).toBe(true)
+    expect(stockSalesOnly({ channel: ['RETAIL'] } as SaleQuery)).toBe(true)
+  })
+
+  it('stays in a view filtered to the commission channel', () => {
+    // The one filter these rows are the point of. Suppressing them here
+    // returned an empty list for the only channel that matches them.
+    expect(stockSalesOnly({ channel: ['COMMISSION'] } as SaleQuery)).toBe(false)
+    expect(stockSalesOnly({ channel: ['TRADE', 'COMMISSION'] } as SaleQuery)).toBe(false)
+  })
+
+  it('shows both kinds when nothing is filtered', () => {
+    expect(stockSalesOnly({} as SaleQuery)).toBe(false)
+  })
+
+  it('carries the commission channel rather than defaulting to retail', () => {
+    // The column printed a dash, so a stored 'RETAIL' on a brokered deal
+    // was an invisible lie. It reads "Commission" there now.
+    expect(ledger).toMatch(/channel: 'COMMISSION'/)
+  })
+
+  it('puts the commission marker in the channel column, not under the name', () => {
+    const table = read('src/components/sales/SalesTable.tsx')
+    expect(table).toMatch(/sale\.channel === 'COMMISSION' \? 'navy' : 'neutral'/)
+    // The old badge sat beside the watch name, which is not where a
+    // reader looks to ask how something sold.
+    expect(table).not.toMatch(/<Chip tone="navy">Commission<\/Chip>/)
   })
 
   it('prints a dash for cost and margin rather than a zero', () => {

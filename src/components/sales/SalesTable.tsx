@@ -165,7 +165,6 @@ export function SalesTable({
                     ) : (
                       <span className="block font-bold text-content-primary">{sale.model}</span>
                     )}
-                    <Chip tone="navy">Commission</Chip>
                   </div>
                 ) : (
                   <Link href={`/inventory/${sale.watchId}`} className="block hover:underline">
@@ -182,12 +181,16 @@ export function SalesTable({
                 {sale.soldByName ?? 'Not recorded'}
               </TD>
               <TD>
-                {/* Retail or trade is a question about how we sold our own
-                    stock. A brokered deal has no answer to it, and showing
-                    one invites filtering on a value that means nothing. */}
-                {sale.kind === 'COMMISSION'
-                  ? <span className="text-content-secondary">—</span>
-                  : <Chip tone="neutral">{SALE_CHANNEL_LABELS[sale.channel]}</Chip>}
+                {/* Where the commission marker lives, rather than tucked
+                    under the watch name: it is an answer to "how did this
+                    sell", which is the question this column asks, and a
+                    reader scanning the column now sees every brokered deal
+                    in one place. Carried in the colour too, because it is
+                    the one channel where there is no stock behind the
+                    figures in the row. */}
+                <Chip tone={sale.channel === 'COMMISSION' ? 'navy' : 'neutral'}>
+                  {SALE_CHANNEL_LABELS[sale.channel]}
+                </Chip>
               </TD>
               {/* Nothing was bought, so there is no cost — and a margin on
                   no cost is undefined rather than infinite. Both print a
