@@ -7,6 +7,7 @@ import { shopVocabulary } from '@/server/services/shopify-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ContentGrid, type ContentRow } from '@/components/inventory/ContentGrid'
 import { HELD_STATUSES } from '@/lib/enums'
+import { cardGaps } from '@/lib/shopify-map'
 
 export const metadata: Metadata = { title: 'Shop content' }
 export const dynamic = 'force-dynamic'
@@ -71,6 +72,20 @@ export default async function ShopContentPage() {
     imageId: watch.primaryImageId ?? watch.tradeImageId,
   }))
 
+  /*
+   * What the shop window cannot say yet.
+   *
+   * The push can only send what was recorded, and a card falls back to the
+   * bare reference when there is no model name — which is why the shelf
+   * showed "Sky Dweller", "126503" and "Datejust 36mm" beside each other.
+   * The size now always goes on the card where it is known, but no mapping
+   * can invent a name nobody typed, so the gap is counted here instead of
+   * being discovered on the website.
+   */
+  const gaps = rows.map((row) => cardGaps(row))
+  const noModel = gaps.filter((gap) => gap.includes('model')).length
+  const noSize = gaps.filter((gap) => gap.includes('size')).length
+
   return (
     <>
       <PageHeader
@@ -78,6 +93,31 @@ export default async function ShopContentPage() {
         title="Shop content"
         description="Everything the website shows about a watch, in one grid. Tab across, Enter to save. Emptiest first."
       />
+
+      {(noModel > 0 || noSize > 0) && (
+        <p className="mb-4 rounded-md border border-state-warning/40 bg-state-warning/5 px-4 py-2.5 text-caption text-content-secondary">
+          <span className="font-semibold text-content-primary">
+            Product cards are missing information.
+          </span>{' '}
+          Every card shows the brand, the model and the size, and a card with no
+          model name falls back to the reference number on its own.{' '}
+          {noModel > 0 && (
+            <>
+              <span className="font-semibold text-content-primary">{noModel}</span>
+              {' '}of {rows.length} held watches have no model name — that is the
+              Title column below, where &ldquo;Submariner Date&rdquo; or
+              &ldquo;Datejust 41&rdquo; goes.{' '}
+            </>
+          )}
+          {noSize > 0 && (
+            <>
+              <span className="font-semibold text-content-primary">{noSize}</span>
+              {' '}have no case size — the Size column. Filling either one fixes that
+              watch&rsquo;s card on the next push.
+            </>
+          )}
+        </p>
+      )}
 
       {result.total > rows.length && (
         <p className="mb-4 rounded-md border border-state-warning/40 bg-state-warning/5 px-4 py-2.5 text-caption text-content-secondary">

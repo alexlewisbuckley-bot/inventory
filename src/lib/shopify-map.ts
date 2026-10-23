@@ -193,10 +193,18 @@ export function titleFor(watch: SyncWatch): string {
   // "Rolex / Rolex 126334" says it twice — which is also how the shop's brand
   // menu ended up with a hundred families of one.
   const family = familyOf(watch)
-  // Nothing to build a name out of. The reference on its own is what a dealer
-  // would say, and it is better than dressing it up with a measurement into
-  // "116334 41", which reads like two references.
-  if (!family) return watch.model
+  const size = sizeOf(watch)
+  // The unit is what makes the size safe to print next to a reference.
+  // "116334 41" reads like two references, which is why it used to be left
+  // off entirely for a watch with no family — and leaving it off is how a
+  // shelf ends up with cards a buyer cannot compare. "116334 41mm" cannot be
+  // misread, so the size goes on every card that has one either way.
+  const mm = size ? `${size}mm` : null
+
+  // Nothing to build a name out of but the reference. It is what a dealer
+  // would say, and with the size beside it the card still answers the two
+  // questions somebody scanning a shelf is actually asking.
+  if (!family) return [watch.model, mm].filter(Boolean).join(' ')
 
   const dial = watch.dial?.trim()
   return [
@@ -205,8 +213,53 @@ export function titleFor(watch: SyncWatch): string {
     // Diamond Hour Markers" is a description, and a title is not where a
     // description goes.
     dial && dial.length <= 20 ? dial : null,
-    watch.caseSizeMm ? String(watch.caseSizeMm) : null,
+    mm,
   ].filter(Boolean).join(' ')
+}
+
+/**
+ * The case size to show, in millimetres.
+ *
+ * The record is the first answer. Where nobody filled it in, the nickname
+ * often already carries it — "Datejust 36", "Lady-Datejust 28" — and
+ * `familyOf` takes exactly that number off the end to keep the brand menu
+ * from splitting one family into a row of one-offs. Taken off the name and
+ * not put back anywhere, it was simply lost: a watch whose size was only
+ * ever written in its nickname showed no size at all.
+ *
+ * Same bounds as the strip, and for the same reason: 20 to 60 millimetres is
+ * a case, "RM 011" is not an 11mm Richard Mille.
+ */
+export function sizeOf(watch: SyncWatch): number | null {
+  if (watch.caseSizeMm) return watch.caseSizeMm
+  const match = watch.nickname?.trim().match(/\s(\d{2})(\s*mm)?$/i)
+  if (!match) return null
+  const size = Number(match[1])
+  return size >= 20 && size <= 60 ? size : null
+}
+
+/**
+ * What a product card cannot say about this watch yet.
+ *
+ * A card has room for three things, and a buyer scanning a shelf uses all
+ * three before deciding whether to look further: the brand, the model and
+ * the size. The brand is always there. The other two are only there if
+ * somebody recorded them, and where they were not the card falls back to
+ * the bare reference — which is why the same shelf shows "Sky Dweller",
+ * "126503" and "Datejust 36mm" side by side and reads as random.
+ *
+ * No mapping can invent a model name. This says which records cannot fill
+ * a card so the gap is a worklist rather than a mystery on the website.
+ */
+export function cardGaps(
+  watch: Pick<SyncWatch, 'model' | 'nickname' | 'caseSizeMm'>,
+): Array<'model' | 'size'> {
+  const gaps: Array<'model' | 'size'> = []
+  // The reference is not a model name. A buyer who knows that 126503 is a
+  // two-tone Daytona did not need the card.
+  if (!familyOf(watch as SyncWatch)) gaps.push('model')
+  if (!sizeOf(watch as SyncWatch)) gaps.push('size')
+  return gaps
 }
 
 /**
@@ -222,7 +275,47 @@ export function titleFor(watch: SyncWatch): string {
  * system should stop touching it.
  */
 export function titleIsOurs(title: string, watch: SyncWatch): boolean {
-  return title.trim().toLowerCase().startsWith(`${watch.brandName.trim().toLowerCase()} `)
+  const current = title.trim().toLowerCase()
+  if (!current) return true
+  // The legacy signature: everything written before the shop's convention
+  // was understood leads with the brand.
+  if (current.startsWith(`${watch.brandName.trim().toLowerCase()} `)) return true
+  // And anything this system would have written under a convention it has
+  // held since. Without this the test answered "somebody chose that" for
+  // titles nobody chose — a bare reference, or a family with no size — so
+  // the products whose cards most needed correcting were the exact ones a
+  // correction could never reach.
+  return generatedTitles(watch).some((candidate) => candidate.toLowerCase() === current)
+}
+
+/**
+ * Every title this system has ever generated for a watch.
+ *
+ * Listed rather than pattern-matched: a pattern loose enough to catch all of
+ * them is loose enough to catch something a person wrote, and overwriting
+ * somebody's own words is the one failure this test exists to prevent.
+ */
+function generatedTitles(watch: SyncWatch): string[] {
+  const family = familyOf(watch)
+  const dial = watch.dial?.trim()
+  const dialPart = dial && dial.length <= 20 ? dial : null
+  const titles = [
+    titleFor(watch),
+    // Before the size carried its unit, and before it was shown at all on a
+    // watch with no family.
+    watch.model,
+    [watch.model, watch.caseSizeMm ? String(watch.caseSizeMm) : null].filter(Boolean).join(' '),
+  ]
+  if (family) {
+    for (const size of [
+      watch.caseSizeMm ? String(watch.caseSizeMm) : null,
+      sizeOf(watch) ? `${sizeOf(watch)}mm` : null,
+      null,
+    ]) {
+      titles.push([family, dialPart, size].filter(Boolean).join(' '))
+    }
+  }
+  return titles.map((title) => title.trim()).filter(Boolean)
 }
 
 /**
