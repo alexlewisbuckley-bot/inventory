@@ -509,3 +509,42 @@ export async function sellableStock(): Promise<Array<{ id: string; label: string
     label: `${row.stockNo} · ${row.brandName} ${row.nickname ?? row.model}`,
   }))
 }
+
+/**
+ * Attach a watch to a fee already recorded.
+ *
+ * The link can only be made at the moment of recording otherwise, and that
+ * is the wrong moment to insist on: a fee often gets typed in the hour it
+ * arrives and the stock tidied up later. Same guards and same effect as
+ * recording it linked — the watch is marked sold, which is what takes it
+ * off the shelf and off the website.
+ */
+export async function linkWatchToBrokerage(
+  brokerageId: string,
+  watchId: string,
+  actor: SessionUser,
+): Promise<void> {
+  const [fee] = await db.select({ id: brokerages.id, watchId: brokerages.watchId })
+    .from(brokerages).where(eq(brokerages.id, brokerageId)).limit(1)
+  if (!fee) throw new NotFoundError('Commission')
+  if (fee.watchId === watchId) return
+  if (fee.watchId) throw new ConflictError('That commission is already linked to a watch.')
+
+  await assertBrokerable(watchId)
+
+  await withTransaction(async () => {
+    await db.update(brokerages)
+      .set({ watchId, updatedAt: new Date() })
+      .where(eq(brokerages.id, brokerageId))
+    await db.update(watches)
+      .set({ status: 'SOLD', updatedAt: new Date() })
+      .where(eq(watches.id, watchId))
+    await recordAudit({
+      entityType: 'Watch',
+      entityId: watchId,
+      action: 'SELL',
+      summary: `${actor.name} linked it to a commission already recorded`,
+      actorId: actor.id,
+    })
+  })
+}

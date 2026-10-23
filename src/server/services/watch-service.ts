@@ -796,10 +796,17 @@ export async function voidSale(
     const rows = await db.select().from(watches).where(eq(watches.id, watchId)).limit(1)
     const watch = rows[0]
     if (!watch) throw new NotFoundError('Watch')
-    if (watch.status !== 'SOLD') {
-      throw new ValidationError('This watch is not marked as sold.')
-    }
 
+    /*
+     * The sale is the thing being voided, so the sale is the precondition.
+     *
+     * This used to refuse unless the watch was marked SOLD, which made a
+     * correction impossible in exactly the case that needs one: eight of
+     * ten live sales on the development book sit against a watch reading
+     * "In stock", and every one of them was unvoidable. However that drift
+     * arose — an import, a status changed by hand — the invoice is still
+     * there and somebody still has to be able to cancel it.
+     */
     const saleRows = await db.select().from(sales)
       .where(and(eq(sales.watchId, watchId), isNull(sales.deletedAt), isNull(sales.voidedAt)))
       .limit(1)
@@ -812,14 +819,26 @@ export async function voidSale(
       .set({ voidedAt: new Date(), voidedById: actor.id, voidReason: reason })
       .where(eq(sales.id, sale.id))
 
-    await db.update(watches)
-      .set({ status: 'IN_STOCK', updatedAt: new Date(), version: watch.version + 1 })
-      .where(eq(watches.id, watchId))
+    /*
+     * Only a watch that is actually sold comes back to stock.
+     *
+     * One reading "Hold" or "Deposit taken" is somewhere deliberate, and
+     * forcing it to In stock on the way past would quietly undo whatever
+     * put it there — a correction with a side effect nobody asked for.
+     */
+    const returning = watch.status === 'SOLD'
+    if (returning) {
+      await db.update(watches)
+        .set({ status: 'IN_STOCK', updatedAt: new Date(), version: watch.version + 1 })
+        .where(eq(watches.id, watchId))
+    }
 
     await recordAudit({
       entityType: 'Watch', entityId: watchId, action: 'UPDATE', actorId: actor.id,
-      summary: `Sale ${sale.invoiceNo} voided — stock ${watch.stockNo} returned to stock`,
-      changes: { status: { from: 'SOLD', to: 'IN_STOCK' } },
+      summary: returning
+        ? `Sale ${sale.invoiceNo} voided — stock ${watch.stockNo} returned to stock`
+        : `Sale ${sale.invoiceNo} voided — stock ${watch.stockNo} left as ${watch.status}`,
+      changes: returning ? { status: { from: 'SOLD', to: 'IN_STOCK' } } : undefined,
     })
 
     logger.info('sale voided', { saleId: sale.id, watchId, actorId: actor.id })
