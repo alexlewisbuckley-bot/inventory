@@ -884,10 +884,23 @@ export function planSync(
   }
 
   for (const product of bySku.values()) {
+    if (claimed.has(product.id)) continue
+    // Already hidden, so there is nothing left to do to it.
+    //
+    // Archiving is the one action here that does not change whether a product
+    // is claimed: the watch behind it is still gone, so the next sync found it
+    // unclaimed and listed it again, and the one after that, for ever. That is
+    // why "18 to hide" never went down however many times it was run — the work
+    // had been done and the plan had no way of knowing.
+    //
+    // Reading the status closes it. A page that is already ARCHIVED is in the
+    // state this step exists to put it in, and the count now falls to zero and
+    // stays there.
+    if (product.status === 'ARCHIVED') continue
     // A product no watch claimed. Archived rather than deleted: the likeliest
     // reason is a watch that has since been sold and tidied away, and an
     // archived page can be brought back.
-    if (!claimed.has(product.id)) plan.archive.push(descr(product))
+    plan.archive.push(descr(product))
   }
 
   return plan

@@ -199,6 +199,37 @@ describe('planning the sync', () => {
     expect(plan.remove).toEqual([])
   })
 
+  it('does not list a page it has already archived', () => {
+    // Archiving does not give the page a watch, so it stays unclaimed and the
+    // next plan found it again — which is why the "to hide" count never fell
+    // however many times the sync was run. Done is done.
+    const hidden = product({ id: 'p9', sku: '1143', status: 'ARCHIVED' })
+    expect(planSync([], [hidden]).archive).toEqual([])
+  })
+
+  it('still lists an unclaimed page that is only a draft', () => {
+    // Only ARCHIVED is finished. A draft is still a page to take down, and
+    // skipping it would be the same bug in the other direction.
+    const draft = product({ id: 'p9', sku: '1143', status: 'DRAFT' })
+    expect(planSync([], [draft]).archive.map((a) => a.productId)).toEqual(['p9'])
+  })
+
+  it('runs to a stable state: hiding everything leaves nothing to hide', () => {
+    // The property the count depends on. One pass archives the strays; the
+    // pass after it has no work left, so the panel reaches zero and stays.
+    const strays = [
+      product({ id: 'p1', sku: '1556' }),
+      product({ id: 'p2', sku: '1541' }),
+      product({ id: 'p3', sku: '1530' }),
+    ]
+    const first = planSync([], strays)
+    expect(first.archive).toHaveLength(3)
+
+    // What the shop looks like once those archives have been applied.
+    const after = strays.map((p) => ({ ...p, status: 'ARCHIVED' }))
+    expect(planSync([], after).archive).toEqual([])
+  })
+
   it('never removes a product for stock we still hold', () => {
     const plan = planSync([watch()], [product()])
     expect(plan.remove).toEqual([])
