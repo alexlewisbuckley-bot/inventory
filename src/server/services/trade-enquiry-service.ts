@@ -2,7 +2,7 @@ import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db, withTransaction } from '../db/client'
 import {
-  brands, deals, notifications, tradeEnquiries, tradeMessages, users, watches,
+  brands, deals, locations, notifications, tradeEnquiries, tradeMessages, users, watches,
 } from '../db/schema'
 import { recordAudit } from './audit'
 import { createDeal } from './crm-service'
@@ -74,7 +74,25 @@ export async function raiseEnquiry(input: RaiseEnquiryInput, actor: SessionUser)
       .select({ id: watches.id, stockNo: watches.stockNo, model: watches.model, brandName: brands.name })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(and(eq(watches.id, input.watchId), isNull(watches.deletedAt)))
+      .innerJoin(locations, eq(locations.id, watches.locationId))
+      /*
+       * It has to be a piece the catalogue is actually offering.
+       *
+       * The dealer reached this by pressing a button on a listing, but the
+       * action takes a watch id and is reachable with any of them, so it
+       * decides for itself rather than trusting the page that called it —
+       * the same stance the reseller enquiry door takes.
+       *
+       * In stock and somewhere we sell from: a watch in transit left the
+       * catalogue, and an enquiry raised against it is a conversation that
+       * starts with something we cannot show.
+       */
+      .where(and(
+        eq(watches.id, input.watchId),
+        eq(watches.status, 'IN_STOCK'),
+        eq(locations.publishToStorefront, true),
+        isNull(watches.deletedAt),
+      ))
       .limit(1)
     if (!watch) throw new NotFoundError('Watch')
 

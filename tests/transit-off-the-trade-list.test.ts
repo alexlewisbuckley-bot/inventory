@@ -73,3 +73,48 @@ describe('a reseller is offered only what we hold', () => {
     expect(reseller).not.toMatch(/eq\(watches\.status, 'IN_STOCK'\), isNull\(watches\.deletedAt\)\)\)/)
   })
 })
+
+const groupPost = readFileSync('src/server/services/group-post-service.ts', 'utf8')
+const groupLib = readFileSync('src/lib/group-post.ts', 'utf8')
+const enquiry = readFileSync('src/server/services/trade-enquiry-service.ts', 'utf8')
+
+/**
+ * The dealer group is a trade list too.
+ *
+ * The batch builder already refused to post a sold watch, an unpriced one
+ * or one with no photograph — "a watch is left out rather than posted
+ * badly". It had no opinion about where the watch was, so a piece in a
+ * courier's bag went out at a trade price, which is worse than posting a
+ * sold one: the dealer says yes and then is waited on.
+ */
+describe('the WhatsApp dealer group', () => {
+  it('leaves out a watch that is not in the building', () => {
+    expect(groupPost).toMatch(/if \(!row\.here\) \{/)
+    expect(groupPost).toMatch(/reason: 'not-here'/)
+    expect(groupPost).toMatch(/here: locations\.publishToStorefront/)
+    expect(groupPost).toMatch(/innerJoin\(locations/)
+  })
+
+  it('says so, rather than dropping it silently', () => {
+    // Every other omission is reported back with its reason; this one is
+    // worded as where the watch is, because that is what the sender acts on.
+    expect(groupLib).toMatch(/'not-here': 'in transit'/)
+    expect(groupLib).toMatch(/SkipReason = 'sold' \| 'no-photo' \| 'no-price' \| 'not-here'/)
+  })
+
+  it('counts it in the summary line like any other skip', () => {
+    // describeSkips reads SKIP_LABELS, so a new reason needs no new code
+    // there — this pins that it is still driven off the one map.
+    expect(groupLib).toMatch(/const reason = SKIP_LABELS\[skip\.reason\]/)
+  })
+})
+
+describe('the trade enquiry door', () => {
+  it('refuses a watch the catalogue is no longer offering', () => {
+    // Reachable with any watch id, so it decides for itself rather than
+    // trusting the page that called it.
+    const fn = enquiry.slice(enquiry.indexOf('export async function raiseEnquiry'))
+    expect(fn.slice(0, 1800)).toMatch(/eq\(locations\.publishToStorefront, true\)/)
+    expect(fn.slice(0, 1800)).toMatch(/eq\(watches\.status, 'IN_STOCK'\)/)
+  })
+})
