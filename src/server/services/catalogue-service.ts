@@ -38,7 +38,16 @@ export interface CatalogueItem {
   /** In the reader's display currency, minor units. */
   trade: number | null
   retail: number | null
+  /** The published photograph — the one that shows the watch. */
   imageId: string | null
+  /**
+   * The trade shot, offered behind the card rather than led with.
+   *
+   * Null where there is none, and also where the trade shot is already
+   * the cover — a watch with no published photograph falls back to it,
+   * and a control offering what is on screen does nothing.
+   */
+  tradeImageId: string | null
 }
 
 export type CatalogueSort = 'brand' | 'trade-desc' | 'trade-asc' | 'year-desc'
@@ -175,28 +184,55 @@ export async function getCatalogue(
   const ids = rows.map((r) => r.id)
   //
   // A trade photograph wins where there is one. It is the same watch shot for
-  // this audience, which is who is reading — and a dealer seeing the picture
-  // the public sees is the thing the second upload slot exists to avoid.
-  // Where there is none, the published photograph stands in, because a
-  // catalogue of empty plates is worse than a catalogue of familiar ones.
+  // The published photograph leads, because it is the one that shows the
+  // watch; the trade shot is offered behind it rather than instead of it.
+  // Where a watch has no published photograph the trade shot stands in,
+  // because a catalogue of empty plates is worse than a catalogue of
+  // workbench pictures.
   //
   // Cards and documents are named out rather than left to sort order. They
   // were reachable here: a watch whose warranty card happened to sort first
   // put a serial and a dealer's stamp on the catalogue page.
   const images = ids.length === 0 ? [] : await db
-    .select({ watchId: watchImages.watchId, id: watchImages.id, sortOrder: watchImages.sortOrder })
+    .select({
+      watchId: watchImages.watchId,
+      id: watchImages.id,
+      sortOrder: watchImages.sortOrder,
+      kind: watchImages.kind,
+    })
     .from(watchImages)
     .where(and(
       inArray(watchImages.watchId, ids),
       inArray(watchImages.kind, ['TRADE', 'WATCH']),
     ))
     .orderBy(
-      sql`${watchImages.kind} <> 'TRADE'`,
+      // Website photograph first. This used to lead with the trade shot on
+      // the reasoning that a dealer wants the watch as it is rather than as
+      // it is sold — but a trade shot is a record picture, taken on whatever
+      // surface was to hand, and a grid of them reads as a different and
+      // worse shop than the same stock photographed properly. The trade
+      // shot is still here, one click behind the card.
+      sql`${watchImages.kind} <> 'WATCH'`,
       asc(watchImages.sortOrder),
       asc(watchImages.createdAt),
     )
+  const tradeIds = new Set(images.filter((i) => i.kind === 'TRADE').map((i) => i.id))
   const cover = new Map<string, string>()
   for (const image of images) if (!cover.has(image.watchId)) cover.set(image.watchId, image.id)
+
+  /*
+   * The trade shot, where there is one, carried separately.
+   *
+   * Only when it is not already the cover: a watch with no website
+   * photograph falls back to its trade shot above, and offering "view
+   * trade image" on a card that is showing exactly that is a control that
+   * appears to do nothing.
+   */
+  const tradeShot = new Map<string, string>()
+  for (const image of images) {
+    if (!tradeIds.has(image.id)) continue
+    if (!tradeShot.has(image.watchId)) tradeShot.set(image.watchId, image.id)
+  }
 
   return {
     items: rows.map(({ tradePriceGbp, estSaleGbp, ...rest }) => ({
@@ -204,6 +240,10 @@ export async function getCatalogue(
       trade: tradePriceGbp === null ? null : fromBase(tradePriceGbp, currency, rates),
       retail: estSaleGbp === null ? null : fromBase(estSaleGbp, currency, rates),
       imageId: cover.get(rest.id) ?? null,
+      tradeImageId: (() => {
+        const shot = tradeShot.get(rest.id) ?? null
+        return shot && shot !== cover.get(rest.id) ? shot : null
+      })(),
     })),
     total: totals[0]?.count ?? 0,
     page,

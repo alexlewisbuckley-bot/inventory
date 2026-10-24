@@ -129,13 +129,27 @@ describe('the doors that serve photographs outward', () => {
     expect(source).toMatch(/\['TRADE', 'WATCH'\]/)
   })
 
-  it('shows a dealer the trade photograph, and never the paperwork', () => {
+  it('shows a dealer both photographs, and never the paperwork', () => {
     const source = read('src/server/services/catalogue-service.ts')
     // Named in, rather than card and document named out: a kind added later
     // is then invisible here by default rather than published by default.
     expect(source).toMatch(/inArray\(watchImages\.kind, \['TRADE', 'WATCH'\]\)/)
-    // And the trade shot is the one that wins where both exist.
-    expect(source).toMatch(/watchImages\.kind\} <> 'TRADE'/)
+    // The published photograph is the one that wins where both exist. It
+    // used to be the trade shot, on the reasoning that a dealer wants the
+    // watch as it is rather than as it is sold — but a trade shot is a
+    // record picture taken on whatever surface was to hand, and a grid of
+    // them reads as a worse shop than the same stock photographed well.
+    expect(source).toMatch(/watchImages\.kind\} <> 'WATCH'/)
+    // The trade shot is still carried, one click behind the card, the same
+    // way the inventory's own gallery offers it.
+    expect(source).toMatch(/tradeImageId/)
+  })
+
+  it('does not offer a trade photograph that is already on the card', () => {
+    // A watch with no published photograph falls back to its trade shot,
+    // and a control offering what is already on screen does nothing.
+    const source = read('src/server/services/catalogue-service.ts')
+    expect(source).toMatch(/shot !== cover\.get\(rest\.id\)/)
   })
 })
 
