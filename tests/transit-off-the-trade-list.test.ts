@@ -64,8 +64,10 @@ describe('a reseller is offered only what we hold', () => {
   it('guards the image and enquiry doors too, not just the listings', () => {
     // Those are reachable with any id at all. A watch that has left the
     // listing should not still serve its photograph or take an enquiry.
-    const imageDoors = reseller.match(/eq\(watchImages\.kind, '(WATCH|TRADE)'\),\n\s+\.\.\.onOffer\(\)/g)
-    expect(imageDoors?.length).toBe(2)
+    // One door names WATCH, the other the pair; both then apply the
+    // availability predicate rather than trusting the page that linked in.
+    expect(reseller).toMatch(/eq\(watchImages\.kind, 'WATCH'\),\n\s+\.\.\.onOffer\(\)/)
+    expect(reseller).toMatch(/inArray\(watchImages\.kind, \['WATCH', 'TRADE'\]\),\n\s+\.\.\.onOffer\(\)/)
     expect(reseller).toMatch(/eq\(watches\.id, watchId\), \.\.\.onOffer\(\)/)
   })
 

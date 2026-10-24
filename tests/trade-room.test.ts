@@ -117,12 +117,15 @@ describe('what a dealer is shown', () => {
   const service = read('src/server/services/reseller-service.ts')
   const room = read('src/components/trade/TradeRoom.tsx')
 
-  it('is only stock with a photograph of the actual watch', () => {
-    // A dealer list exists to show the watch as it is. An entry with no
-    // picture is a line of text claiming we have something, which is what a
-    // spreadsheet is for and what this page replaces.
+  it('is only stock with a photograph of some kind', () => {
+    // It used to require a trade shot specifically, which quietly set the
+    // list's membership: a watch photographed for the website but never for
+    // the trade was missing from the dealer list altogether. Either kind is
+    // a picture, and a picture is all this ever needed — a line of text
+    // claiming we have something is what a spreadsheet is for, and what
+    // this page replaces.
     const query = service.slice(service.indexOf('export async function getTradeRoom'))
-    expect(query.slice(0, 2200)).toMatch(/EXISTS \(\n\s+SELECT 1 FROM watch_images i WHERE i\.watch_id = \$\{watches\.id\} AND i\.kind = 'TRADE'/)
+    expect(query.slice(0, 3200)).toMatch(/i\.kind IN \('WATCH', 'TRADE'\)/)
   })
 
   it('is stock we could actually sell today', () => {

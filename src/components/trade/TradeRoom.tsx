@@ -20,7 +20,33 @@ export interface TradeItem {
   caseMaterial: string | null
   dial: string | null
   bracelet: string | null
+  /** The website photographs — the ones that show the watch properly. */
   imageIds: string[]
+  /** The trade shots: the watch as it actually is, offered behind a tap. */
+  tradeImageIds: string[]
+}
+
+/**
+ * The photographs for one watch, in the order a dealer should meet them.
+ *
+ * The website shots first, because they show the piece; the trade shots
+ * after, because they show its condition. Both in one strip so the viewer
+ * is a single run of arrow presses rather than two separate galleries with
+ * a mode switch between them.
+ *
+ * A watch with no website photograph falls back to its trade shots rather
+ * than showing an empty frame — the list requires a picture of some kind,
+ * not a particular kind, and the two are not the same promise.
+ */
+function gallery(item: TradeItem): Array<{ id: string; trade: boolean }> {
+  const site = item.imageIds.map((id) => ({ id, trade: false }))
+  const trade = item.tradeImageIds.map((id) => ({ id, trade: true }))
+  return site.length > 0 ? [...site, ...trade] : trade
+}
+
+/** Where the trade shots begin, so one tap can land on them. */
+function tradeAt(item: TradeItem): number {
+  return item.imageIds.length > 0 ? item.imageIds.length : 0
 }
 
 /**
@@ -32,9 +58,11 @@ export interface TradeItem {
  * is the real photograph, the reference, and a fast way to cut two hundred
  * pieces down to the ones they deal in.
  *
- * So: no prices anywhere — not hidden, never sent — and the picture is the
- * trade shot, which is the watch as it actually is. The filters are the
- * questions a dealer asks: whose, which model, what size, how old, what
+ * So: no prices anywhere — not hidden, never sent. The picture is the
+ * website photograph, which is the one that shows the watch; the trade
+ * shot is one tap behind it, because a dealer wants to see the piece as it
+ * actually is before they ring, not instead of seeing it at all. The
+ * filters are the questions a dealer asks: whose, which model, what size, how old, what
  * condition, and is the set complete.
  *
  * Everything is filtered in the browser. The whole room is a few hundred rows
@@ -204,7 +232,7 @@ export function TradeRoom({ token, reseller, items }: {
                   <span className="block aspect-square w-full overflow-hidden bg-[#f4f3f1]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={`/t/${token}/image/${item.imageIds[0]}`}
+                      src={`/t/${token}/image/${gallery(item)[0].id}`}
                       alt={`${item.brandName} ${item.model}`}
                       loading="lazy"
                       decoding="async"
@@ -213,9 +241,9 @@ export function TradeRoom({ token, reseller, items }: {
                   </span>
                   <span className="mt-2.5 block text-[10.5px] font-semibold uppercase tracking-[0.1em] text-black/45">
                     {item.brandName}
-                    {item.imageIds.length > 1 && (
+                    {gallery(item).length > 1 && (
                       <span className="float-right font-normal tabular-nums normal-case tracking-normal">
-                        {item.imageIds.length} photos
+                        {gallery(item).length} photos
                       </span>
                     )}
                   </span>
@@ -231,6 +259,19 @@ export function TradeRoom({ token, reseller, items }: {
                     {describe(item)}
                   </span>
                 </button>
+                {/* Only where there is one, and only where it is not already
+                    what is on the card. Offering "view trade image" on a
+                    watch whose only picture is the trade image is a button
+                    that appears to do nothing. */}
+                {item.tradeImageIds.length > 0 && item.imageIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setViewing({ item, at: tradeAt(item) })}
+                    className="mt-1.5 text-[11px] uppercase tracking-[0.08em] text-black/45 underline underline-offset-[3px] transition-colors hover:text-black"
+                  >
+                    View trade image
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -239,10 +280,12 @@ export function TradeRoom({ token, reseller, items }: {
 
       {viewing && (
         <Lightbox
-          images={viewing.item.imageIds.map((id) => ({
+          images={gallery(viewing.item).map(({ id, trade }) => ({
             src: `/t/${token}/image/${id}`,
             alt: `${viewing.item.brandName} ${viewing.item.model}`,
-            caption: `${viewing.item.brandName} ${viewing.item.nickname || viewing.item.model} · ${viewing.item.model}`,
+            // The trade shots say so. Unlabelled, a dealer cannot tell
+            // whether a mark is on the watch or on the photograph.
+            caption: `${viewing.item.brandName} ${viewing.item.nickname || viewing.item.model} · ${viewing.item.model}${trade ? ' · Trade photo' : ''}`,
           }))}
           index={viewing.at}
           onIndex={(at) => setViewing((current) => (current ? { ...current, at } : null))}
