@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client'
-import { brands, watchImages, watches } from '../db/schema'
+import { brands, locations, watchImages, watches } from '../db/schema'
 import { pickPostImage, whatsappPost } from '@/lib/whatsapp-post'
 import type { GroupPost, GroupPostBatch } from '@/lib/group-post'
 import { formatCurrency } from '@/lib/currency'
@@ -20,9 +20,11 @@ import { BASE_CURRENCY } from '@/lib/enums'
  * Build the batch, in the order the watches were selected.
  *
  * A watch is left out rather than posted badly. Sold, because offering a
- * gone piece at a trade price is an embarrassment; no photograph, because a
- * caption on its own is a weak post; no trade price, because an unpriced
- * piece in a trade group reads as an oversight rather than a decision. Each
+ * gone piece at a trade price is an embarrassment; in transit, because a
+ * piece in a courier's bag cannot be shown to anybody who says yes; no
+ * photograph, because a caption on its own is a weak post; no trade price,
+ * because an unpriced piece in a trade group reads as an oversight
+ * rather than a decision. Each
  * omission is reported with its reason, so a batch of ten going out as seven
  * is something the sender knows about rather than discovers later.
  */
@@ -39,9 +41,11 @@ export async function buildGroupPosts(watchIds: string[]): Promise<GroupPostBatc
       status: watches.status,
       tradePriceGbp: watches.tradePriceGbp,
       brandName: brands.name,
+      here: locations.publishToStorefront,
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
     .where(and(inArray(watches.id, watchIds), isNull(watches.deletedAt)))
 
   const images = await db
@@ -75,6 +79,22 @@ export async function buildGroupPosts(watchIds: string[]): Promise<GroupPostBatc
 
     if (row.status === 'SOLD') {
       skipped.push({ stockNo: row.stockNo, label, reason: 'sold' })
+      continue
+    }
+    /*
+     * In the building, not merely in stock.
+     *
+     * "In transit" is a location, not a status, so a watch being carried
+     * between them is IN_STOCK the whole way and sailed past the check
+     * above. Offering a trade price on a piece that is in a courier's bag
+     * is the same embarrassment as offering a sold one — worse, because
+     * the dealer will say yes and then be waited on.
+     *
+     * Read from the location's own publish switch, as the storefront, the
+     * catalogue and the reseller doors all do, rather than from its type.
+     */
+    if (!row.here) {
+      skipped.push({ stockNo: row.stockNo, label, reason: 'not-here' })
       continue
     }
     if (!row.tradePriceGbp) {

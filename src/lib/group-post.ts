@@ -20,7 +20,7 @@ export interface GroupPost {
 }
 
 /** Why a selected watch is not in the batch. Shown back, never silent. */
-export type SkipReason = 'sold' | 'no-photo' | 'no-price'
+export type SkipReason = 'sold' | 'no-photo' | 'no-price' | 'not-here'
 
 export interface GroupPostBatch {
   posts: GroupPost[]
@@ -31,6 +31,12 @@ export const SKIP_LABELS: Record<SkipReason, string> = {
   sold: 'already sold',
   'no-photo': 'no photograph',
   'no-price': 'no trade price',
+  /*
+   * Worded as where it is rather than why it was dropped, because that is
+   * the thing the sender has to act on: the watch is fine, it is simply
+   * somewhere a dealer cannot be shown it today.
+   */
+  'not-here': 'in transit',
 }
 
 /** "2 left out: 1 already sold, 1 no trade price" — never a silent omission. */
