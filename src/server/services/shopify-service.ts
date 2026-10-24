@@ -1222,13 +1222,47 @@ export async function runSync({ apply = false, after = null, limit }: {
 export async function pushWatchById(watchId: string): Promise<void> {
   if (!shopifyIsConfigured()) return
   try {
-    const [row] = await db.select({ id: watches.id }).from(watches)
-      .where(and(eq(watches.id, watchId), isNull(watches.deletedAt))).limit(1)
+    const [row] = await db
+      .select({
+        id: watches.id,
+        deletedAt: watches.deletedAt,
+        shopifyProductId: watches.shopifyProductId,
+      })
+      .from(watches).where(eq(watches.id, watchId)).limit(1)
     if (!row) return
+
+    /*
+     * A deleted watch is taken down, not skipped.
+     *
+     * This used to filter deleted watches out of the lookup and return,
+     * which made the push a no-op in the one case it was most needed:
+     * deleting a watch calls straight into here to take its page down,
+     * and instead nothing happened. The product stayed live, for sale,
+     * until somebody happened to run a full sync — where it would turn
+     * up as a page answering to no watch. A record deleted in the book
+     * and still on the website is the worst version of this bug, because
+     * every screen here agrees the watch is gone.
+     *
+     * Archived rather than deleted, as everywhere else: the page stops
+     * being public and its history survives.
+     */
+    if (row.deletedAt) {
+      if (row.shopifyProductId) await archiveProduct(row.shopifyProductId)
+      return
+    }
 
     const all = await syncableWatches()
     const watch = all.find((w) => w.id === watchId)
-    if (!watch) return
+    /*
+     * Not syncable any more, but it has a page. Same reasoning: whatever
+     * took it out of the syncable set — a location that no longer
+     * publishes, a status that is not listed — is a reason to take the
+     * page down rather than to leave it exactly as it was.
+     */
+    if (!watch) {
+      if (row.shopifyProductId) await archiveProduct(row.shopifyProductId)
+      return
+    }
 
     const rates = await getRateTable()
     const { productId, warning } = await pushWatch(watch, rates)
