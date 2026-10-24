@@ -10,10 +10,12 @@ import {
   BOX_PAPERS_LABELS, CONDITION_LABELS,
   type BoxPapers, type Condition, type CurrencyCode,
 } from '@/lib/enums'
-import type { CataloguePage, CatalogueItem } from '@/server/services/catalogue-service'
+import { CatalogueFilters } from './CatalogueFilters'
+import type { CataloguePage, CatalogueItem, CatalogueFacets } from '@/server/services/catalogue-service'
 
-export function CatalogueGrid({ result, currency }: {
+export function CatalogueGrid({ result, facets, currency }: {
   result: CataloguePage
+  facets: CatalogueFacets
   currency: CurrencyCode
 }) {
   const query = useListQuery()
@@ -24,6 +26,11 @@ export function CatalogueGrid({ result, currency }: {
 
   return (
     <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
+      {/* Above the empty state as well as the grid: a dealer who has
+          filtered down to nothing needs the controls that got them there,
+          not a dead end with the way out removed. */}
+      <CatalogueFilters facets={facets} />
+
       {result.items.length === 0 ? (
         <Card>
           <EmptyState

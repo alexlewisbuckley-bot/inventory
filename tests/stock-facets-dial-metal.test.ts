@@ -28,9 +28,13 @@ describe('filtering by dial and metal', () => {
     // Two expressions for "the thing itself" would mean a menu offering
     // Pink and a filter finding nothing: the facet is grouped by one and
     // the clause matched by the other.
+    // The fragments live in watch-sql.ts now: the trade catalogue needed
+    // the same answers, and a second copy would have drifted the first
+    // time one was tuned.
+    const shared = read('src/server/repositories/watch-sql.ts')
+    expect(shared).toMatch(/const DIAL_SQL = headOf\(watches\.dial\)/)
+    expect(shared).toMatch(/const MATERIAL_SQL = headOf\(watches\.caseMaterial\)/)
     const repo = read('src/server/repositories/watch-repository.ts')
-    expect(repo).toMatch(/const DIAL_SQL = headOf\(watches\.dial\)/)
-    expect(repo).toMatch(/const MATERIAL_SQL = headOf\(watches\.caseMaterial\)/)
     expect(repo).toMatch(/match: \(value\) => sql`\$\{DIAL_SQL\} = \$\{value\}`/)
     expect(repo).toMatch(/\.groupBy\(DIAL_SQL\)/)
     expect(repo).toMatch(/\.groupBy\(MATERIAL_SQL\)/)
@@ -43,10 +47,10 @@ describe('filtering by dial and metal', () => {
     expect(withoutDescription('Oyster (72419)')).toBe('Oyster')
     expect(withoutDescription('Black with grey subdials')).toBe('Black')
     expect(withoutDescription('Champagne')).toBe('Champagne')
-    const repo = read('src/server/repositories/watch-repository.ts')
+    const shared = read('src/server/repositories/watch-sql.ts')
     // The same three delimiters, case-insensitively, and never down to blank.
-    expect(repo).toMatch(/'\(,\|\\\\\(\| with \)\.\*\$', '', 'i'/)
-    expect(repo).toMatch(/>= 2/)
+    expect(shared).toMatch(/'\(,\|\\\\\(\| with \)\.\*\$', '', 'i'/)
+    expect(shared).toMatch(/>= 2/)
   })
 
   it('hides a menu with nothing to choose between', () => {
