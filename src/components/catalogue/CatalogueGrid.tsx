@@ -1,5 +1,6 @@
 'use client'
-import { PackageSearch } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, PackageSearch } from 'lucide-react'
 import { useListQuery } from '@/hooks/useListQuery'
 import { Card, EmptyState, Pagination, Chip, Table, THead, TBody, TR, TD, TH, Zoomable } from '@/components/ui'
 import { formatCurrency } from '@/lib/currency'
@@ -56,6 +57,11 @@ export function CatalogueGrid({ result, currency }: {
 }
 
 function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode }) {
+  // Which of the two photographs this card is showing. Per card, because a
+  // dealer checking the condition of one watch has not asked to see the
+  // workbench pictures of every other.
+  const [trade, setTrade] = useState(false)
+  const shown = trade ? item.tradeImageId : item.imageId
   const condition = item.condition === 'UNKNOWN' ? null : CONDITION_LABELS[item.condition as Condition]
   const set = item.boxPapers === 'UNKNOWN' ? null : BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
   const facts = [
@@ -71,18 +77,38 @@ function Tile({ item, currency }: { item: CatalogueItem; currency: CurrencyCode 
         {/* Square, because the stock is photographed every which way and a
             grid of five mixed ratios reads as a mistake. object-contain keeps
             the whole watch in frame; the padding stops it touching the edge. */}
-        <div className="aspect-square w-full bg-surface-subtle">
-          {item.imageId ? (
+        <div className="relative aspect-square w-full bg-surface-subtle">
+          {shown ? (
             <Zoomable
-              src={`/api/images/${item.imageId}`}
+              key={shown}
+              src={`/api/images/${shown}`}
               alt={`${item.brandName} ${item.modelName ?? item.model}`}
-              caption={`${item.brandName} ${item.modelName ?? item.model}`}
+              caption={trade
+                ? `${item.brandName} ${item.modelName ?? item.model} · Trade photograph`
+                : `${item.brandName} ${item.modelName ?? item.model}`}
               className="h-full w-full object-contain p-3 sm:p-4"
             />
           ) : (
             <div className="flex h-full items-center justify-center text-caption text-content-muted">
               Photograph to follow
             </div>
+          )}
+          {/*
+            Only where there is a trade shot that is not already on screen.
+            It toggles rather than opening a second viewer: there is one
+            picture each way, and a dealer comparing them wants to flick
+            between the two in the same frame.
+          */}
+          {item.tradeImageId && (
+            <button
+              type="button"
+              onClick={() => setTrade((on) => !on)}
+              aria-pressed={trade}
+              className="absolute bottom-2 right-2 flex items-center gap-1.5 rounded-md border border-line-subtle bg-surface-raised/90 px-2 py-1 text-micro font-semibold uppercase tracking-wide text-content-secondary backdrop-blur transition-colors hover:border-line-strong hover:text-content-primary"
+            >
+              <Camera className="h-3 w-3" aria-hidden />
+              {trade ? 'Website photo' : 'Trade photo'}
+            </button>
           )}
         </div>
 
