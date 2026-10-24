@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, count, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
 import { brands, locations, resellerEnquiries, resellers, watchImages, watches } from '../db/schema'
@@ -748,8 +748,10 @@ export interface TradeItem {
   caseMaterial: string | null
   dial: string | null
   bracelet: string | null
-  /** Trade photographs only, in the order they were arranged. */
+  /** The website photographs, in the order they were arranged. */
   imageIds: string[]
+  /** The trade shots, offered behind a tap rather than led with. */
+  tradeImageIds: string[]
 }
 
 export interface TradeRoom {
@@ -850,7 +852,24 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
       caseMaterial: watches.caseMaterial,
       dial: watches.dial,
       bracelet: watches.bracelet,
+      /*
+       * The photograph the website uses, which is the one that shows the
+       * watch properly. This used to be the trade shot and only the trade
+       * shot — a quick record picture, taken to prove a piece is in hand
+       * rather than to show it — so a dealer scrolling the list was judging
+       * stock by its worst image while the good one sat unused.
+       */
       imageIds: sql<string[]>`coalesce((
+        SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
+        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+      ), ARRAY[]::text[])`,
+      /*
+       * And the trade shots, carried separately rather than mixed in. A
+       * dealer still wants them — they are the watch as it actually is,
+       * marks and all — but as something asked for, not as the first thing
+       * seen.
+       */
+      tradeImageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
         FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
       ), ARRAY[]::text[])`,
@@ -863,8 +882,16 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
       // are spoken for, and a piece in transit is not here at all; offering
       // either to a dealer is a call that ends in taking it back.
       ...onOffer(),
+      /*
+       * A photograph of some kind. The requirement used to name the trade
+       * shot specifically, which quietly set the list's membership: a watch
+       * photographed for the website but never for the trade was missing
+       * from the dealer list entirely. Either kind is a picture, and a
+       * picture is all this ever needed.
+       */
       sql`EXISTS (
-        SELECT 1 FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
+        SELECT 1 FROM watch_images i
+        WHERE i.watch_id = ${watches.id} AND i.kind IN ('WATCH', 'TRADE')
       )`,
     ))
     .orderBy(asc(brands.name), asc(watches.model))
@@ -876,7 +903,11 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
       accentColor: door.accentColor,
       hasLogo: door.hasLogo,
     },
-    items: stock.map((row) => ({ ...row, imageIds: row.imageIds ?? [] })),
+    items: stock.map((row) => ({
+      ...row,
+      imageIds: row.imageIds ?? [],
+      tradeImageIds: row.tradeImageIds ?? [],
+    })),
   }
 }
 
@@ -905,7 +936,10 @@ export async function getTradeImage(token: string, imageId: string) {
     ))
     .where(and(
       eq(watchImages.id, imageId),
-      eq(watchImages.kind, 'TRADE'),
+      // Both kinds: the room leads with the website photograph and offers
+      // the trade shot behind it, so the door has to pass either. Still a
+      // closed list — anything else on a watch stays unreachable here.
+      inArray(watchImages.kind, ['WATCH', 'TRADE']),
       ...onOffer(),
     ))
     .limit(1)

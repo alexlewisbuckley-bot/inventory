@@ -47,30 +47,37 @@ describe('the doors that serve photographs outward', () => {
     expect(source).toMatch(/eq\(watchImages\.kind, 'WATCH'\)/)
   })
 
-  it('names exactly one kind in every reseller query, whichever room it is for', () => {
-    // This file now serves two audiences from one table. The shop window is a
+  it('names its kinds in every reseller query, whichever room it is for', () => {
+    // This file serves two audiences from one table. The shop window is a
     // public page and gets WATCH; the trade room is behind a passphrase and
-    // gets TRADE. What must never happen is a select with no kind at all —
-    // which is the bug that prompted this file, when the shop window asked
-    // for every photograph a watch had.
+    // now gets both — it leads with the website photograph and offers the
+    // trade shot behind a tap. What must never happen is a select with no
+    // kind at all, which is the bug that prompted this file, when the shop
+    // window asked for every photograph a watch had.
     //
-    // So the rule is not "always WATCH" any more, it is "always exactly one,
-    // and never CARD or DOCUMENT". A warranty card carries a serial, a date
-    // and a dealer's stamp, and neither audience is owed one.
+    // So the rule is not "exactly one kind" any more — that was the shape
+    // of the answer, not the question. It is "always a closed list, and
+    // never CARD or DOCUMENT". A warranty card carries a serial, a date and
+    // a dealer's stamp, and neither audience is owed one.
     const source = read('src/server/services/reseller-service.ts')
 
     const selects = rawImageSelects(source)
     expect(selects.length).toBeGreaterThan(0)
     for (const clause of selects) {
-      const named = clause.match(/i\.kind = '(\w+)'/g) ?? []
-      expect(named, clause.trim().slice(0, 90)).toHaveLength(1)
-      expect(named[0], clause.trim().slice(0, 90)).toMatch(/'(WATCH|TRADE)'/)
+      const named = clause.match(/'(WATCH|TRADE|CARD|DOCUMENT)'/g) ?? []
+      // Something, or the select is asking for every photograph a watch has.
+      expect(named.length, clause.trim().slice(0, 90)).toBeGreaterThan(0)
+      for (const kind of named) {
+        expect(kind, clause.trim().slice(0, 90)).toMatch(/'(WATCH|TRADE)'/)
+      }
     }
 
     // And the doors that hand over the bytes, each reachable with any id and
-    // so unable to rely on the listing having offered only safe ones.
+    // so unable to rely on the listing having offered only safe ones. The
+    // shop window's stays a single kind; the trade door names its two.
     expect(source).toMatch(/eq\(watchImages\.kind, 'WATCH'\)/)
-    expect(source).toMatch(/eq\(watchImages\.kind, 'TRADE'\)/)
+    expect(source).toMatch(/inArray\(watchImages\.kind, \['WATCH', 'TRADE'\]\)/)
+    expect(source).not.toMatch(/'(CARD|DOCUMENT)'/)
   })
 
   it('puts the trade room behind its passphrase, not just behind its URL', () => {
