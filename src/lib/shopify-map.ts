@@ -230,7 +230,7 @@ export function titleFor(watch: SyncWatch): string {
  * Same bounds as the strip, and for the same reason: 20 to 60 millimetres is
  * a case, "RM 011" is not an 11mm Richard Mille.
  */
-export function sizeOf(watch: SyncWatch): number | null {
+export function sizeOf(watch: Pick<SyncWatch, 'nickname' | 'caseSizeMm'>): number | null {
   if (watch.caseSizeMm) return watch.caseSizeMm
   const match = watch.nickname?.trim().match(/\s(\d{2})(\s*mm)?$/i)
   if (!match) return null
@@ -257,8 +257,8 @@ export function cardGaps(
   const gaps: Array<'model' | 'size'> = []
   // The reference is not a model name. A buyer who knows that 126503 is a
   // two-tone Daytona did not need the card.
-  if (!familyOf(watch as SyncWatch)) gaps.push('model')
-  if (!sizeOf(watch as SyncWatch)) gaps.push('size')
+  if (!familyOf(watch)) gaps.push('model')
+  if (!sizeOf(watch)) gaps.push('size')
   return gaps
 }
 
@@ -332,7 +332,7 @@ function generatedTitles(watch: SyncWatch): string[] {
  * implies a family only if you already know Rolex's numbering, and a menu
  * confidently filed under the wrong name is worse than one with a gap in it.
  */
-export function familyOf(watch: SyncWatch): string | null {
+export function familyOf(watch: Pick<SyncWatch, 'nickname'>): string | null {
   const name = watch.nickname?.trim()
   if (!name) return null
   // "Datejust 41" -> "Datejust"; "Lady-Datejust 28" -> "Lady-Datejust".

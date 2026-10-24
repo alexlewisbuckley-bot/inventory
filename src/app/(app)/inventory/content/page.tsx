@@ -6,6 +6,7 @@ import { findWatches } from '@/server/repositories/watch-repository'
 import { shopVocabulary } from '@/server/services/shopify-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ContentGrid, type ContentRow } from '@/components/inventory/ContentGrid'
+import { GapScanner } from '@/components/inventory/GapScanner'
 import { HELD_STATUSES } from '@/lib/enums'
 import { cardGaps } from '@/lib/shopify-map'
 
@@ -125,6 +126,14 @@ export default async function ShopContentPage() {
           come back if the rest need filling in too.
         </p>
       )}
+
+      {/*
+        Above the grid, because it is the shortcut past it. The banner says
+        how many cards are incomplete; this offers an answer for the ones that
+        can be answered, and the grid underneath is still where the rest get
+        typed.
+      */}
+      <GapScanner canEdit={can(user.role, 'watch:amend')} />
 
       <ContentGrid
         rows={rows}
