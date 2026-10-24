@@ -126,8 +126,17 @@ describe('what a dealer is shown', () => {
   })
 
   it('is stock we could actually sell today', () => {
+    // Through the shared predicate now, which adds the half this test was
+    // never able to catch: in stock is not the same as in the building.
+    // "In transit" is a location, not a status, so a watch being carried
+    // between them stayed IN_STOCK and stayed on this list.
     const query = service.slice(service.indexOf('export async function getTradeRoom'))
-    expect(query.slice(0, 2200)).toMatch(/eq\(watches\.status, 'IN_STOCK'\)/)
+    expect(query.slice(0, 2200)).toMatch(/\.\.\.onOffer\(\)/)
+
+    const predicate = service.slice(service.indexOf('function onOffer()'))
+    expect(predicate.slice(0, 400)).toMatch(/eq\(watches\.status, 'IN_STOCK'\)/)
+    expect(predicate.slice(0, 400)).toMatch(/isNull\(watches\.deletedAt\)/)
+    expect(predicate.slice(0, 400)).toMatch(/eq\(locations\.publishToStorefront, true\)/)
   })
 
   it('can be cut down by everything except money', () => {

@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { and, asc, count, desc, eq, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { z } from 'zod'
 import { db, withTransaction } from '../db/client'
-import { brands, resellerEnquiries, resellers, watchImages, watches } from '../db/schema'
+import { brands, locations, resellerEnquiries, resellers, watchImages, watches } from '../db/schema'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { newId, slugify } from '@/lib/ids'
@@ -65,10 +65,41 @@ export async function listResellers() {
   return rows.map((row) => ({ ...row, availableCount: available }))
 }
 
+/**
+ * Stock a reseller may be shown, and may enquire about.
+ *
+ * In stock, not deleted, and held somewhere we actually sell from.
+ *
+ * The third condition is the one that was missing. "In transit" is not a
+ * status — it is a location, and a watch in a courier's bag stays IN_STOCK
+ * the whole way — so every one of these reads was offering pieces that are
+ * not in the building. A shop window promising a watch nobody can show is
+ * the same failure as offering a reserved one, which these queries already
+ * took care to avoid.
+ *
+ * The switch is the location's own `publishToStorefront`, the same one the
+ * Shopify sync reads, rather than a test on location type: transit is only
+ * the case that got noticed, and a bonded warehouse or a piece away at
+ * service asks the identical question. See sellableFrom() in shopify-map.
+ *
+ * Applied to the image and enquiry doors too, not just the listings. Those
+ * are reachable with any id at all and defend themselves on their own
+ * terms; a watch that has left the listing should not still serve its
+ * photograph or accept an enquiry.
+ */
+function onOffer() {
+  return [
+    eq(watches.status, 'IN_STOCK'),
+    isNull(watches.deletedAt),
+    eq(locations.publishToStorefront, true),
+  ]
+}
+
 /** How many watches a shop window would show right now. */
 export async function countAvailableStock(): Promise<number> {
   const rows = await db.select({ value: count() }).from(watches)
-    .where(and(eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
+    .where(and(...onOffer()))
   return Number(rows[0]?.value ?? 0)
 }
 
@@ -440,10 +471,11 @@ export async function getShopWindow(key: string, rates: RateTable): Promise<Shop
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
     // Available means available. Reserved and sale-agreed stock is spoken for,
     // and showing it is how a reseller promises a customer a watch that is
-    // already going to somebody else.
-    .where(and(eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+    // already going to somebody else — as is a piece still in transit.
+    .where(and(...onOffer()))
     .orderBy(asc(brands.name), asc(watches.model))
 
   return {
@@ -533,6 +565,7 @@ export async function getShopImage(key: string, imageId: string) {
     .select({ data: watchImages.data, mime: watchImages.mimeType, size: watchImages.byteSize })
     .from(watchImages)
     .innerJoin(watches, eq(watches.id, watchImages.watchId))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
     .innerJoin(resellers, and(
       matchesKey(key),
       eq(resellers.isActive, true),
@@ -544,8 +577,7 @@ export async function getShopImage(key: string, imageId: string) {
       // with any id at all, so it refuses on its own terms rather than
       // trusting the page that linked to it.
       eq(watchImages.kind, 'WATCH'),
-      eq(watches.status, 'IN_STOCK'),
-      isNull(watches.deletedAt),
+      ...onOffer(),
     ))
     .limit(1)
 
@@ -612,7 +644,8 @@ export async function recordEnquiry(
   const watches_ = await db
     .select({ id: watches.id, model: watches.model, nickname: watches.nickname, brandId: watches.brandId })
     .from(watches)
-    .where(and(eq(watches.id, watchId), eq(watches.status, 'IN_STOCK'), isNull(watches.deletedAt)))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
+    .where(and(eq(watches.id, watchId), ...onOffer()))
     .limit(1)
   const watch = watches_[0]
   if (!watch) return { ok: false, delivered: false }
@@ -824,12 +857,12 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
     })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
     .where(and(
       // Stock we hold and could sell today. Reserved and sale-agreed pieces
-      // are spoken for, and offering one to a dealer is a call that ends in
-      // taking it back.
-      eq(watches.status, 'IN_STOCK'),
-      isNull(watches.deletedAt),
+      // are spoken for, and a piece in transit is not here at all; offering
+      // either to a dealer is a call that ends in taking it back.
+      ...onOffer(),
       sql`EXISTS (
         SELECT 1 FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
       )`,
@@ -863,6 +896,7 @@ export async function getTradeImage(token: string, imageId: string) {
     .select({ data: watchImages.data, mime: watchImages.mimeType, size: watchImages.byteSize })
     .from(watchImages)
     .innerJoin(watches, eq(watches.id, watchImages.watchId))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
     .innerJoin(resellers, and(
       eq(resellers.tradeToken, token),
       isNotNull(resellers.tradePasswordHash),
@@ -872,8 +906,7 @@ export async function getTradeImage(token: string, imageId: string) {
     .where(and(
       eq(watchImages.id, imageId),
       eq(watchImages.kind, 'TRADE'),
-      eq(watches.status, 'IN_STOCK'),
-      isNull(watches.deletedAt),
+      ...onOffer(),
     ))
     .limit(1)
 

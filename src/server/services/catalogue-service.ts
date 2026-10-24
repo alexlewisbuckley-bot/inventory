@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '@/server/db/client'
-import { brands, watchImages, watches } from '@/server/db/schema'
+import { brands, locations, watchImages, watches } from '@/server/db/schema'
 import { fromBase, type RateTable } from '@/lib/currency'
 import type { CurrencyCode } from '@/lib/enums'
 
@@ -60,6 +60,39 @@ export interface CataloguePage {
   brands: string[]
 }
 
+/**
+ * What a trade partner may be shown.
+ *
+ * In stock only: reserved, sold and written-off are states of our business,
+ * not offers, and a dealer enquiring about a watch that went yesterday is a
+ * conversation nobody wants to have twice.
+ *
+ * And held somewhere we actually sell from. Status alone was not enough,
+ * because "in transit" is not a status — it is a location, and a watch in a
+ * courier's bag is IN_STOCK the whole way. So the catalogue was offering
+ * pieces that were not in the building, which is the one promise a trade
+ * list has to keep.
+ *
+ * The switch is the location's own `publishToStorefront`, which is what the
+ * Shopify sync already reads, rather than a test on the location's type.
+ * That choice is made in sellableFrom() and the reasoning carries here: a
+ * bonded warehouse, a piece away at service and a consignment case in
+ * somebody else's shop are the same question as transit, and only transit is
+ * typed TRANSIT. A switch is also something the business can change without
+ * an engineer.
+ *
+ * One function, because this read happens in three places — the page, its
+ * count, and the brand list behind the filter — and a list whose filter
+ * offers a brand it will not then show is worse than either on its own.
+ */
+function offerable() {
+  return [
+    isNull(watches.deletedAt),
+    eq(watches.status, 'IN_STOCK'),
+    eq(locations.publishToStorefront, true),
+  ]
+}
+
 export async function getCatalogue(
   query: CatalogueQuery,
   currency: CurrencyCode,
@@ -68,10 +101,7 @@ export async function getCatalogue(
   const page = Math.max(1, Math.trunc(query.page ?? 1))
   const perPage = Math.min(100, Math.max(1, Math.trunc(query.perPage ?? 24)))
 
-  // In stock only. Reserved, sold and written-off are states of our business,
-  // not offers, and a dealer enquiring about a watch that went yesterday is a
-  // conversation nobody wants to have twice.
-  const clauses = [isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')]
+  const clauses = [...offerable()]
   if (query.brand) clauses.push(eq(brands.name, query.brand))
   if (query.q) {
     const needle = `%${query.q.trim()}%`
@@ -120,6 +150,7 @@ export async function getCatalogue(
     })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
+      .innerJoin(locations, eq(locations.id, watches.locationId))
       .where(where)
       .orderBy(...order)
       .limit(perPage)
@@ -128,12 +159,14 @@ export async function getCatalogue(
     db.select({ count: sql<number>`count(*)::int` })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
+      .innerJoin(locations, eq(locations.id, watches.locationId))
       .where(where),
 
     db.selectDistinct({ name: brands.name })
       .from(watches)
       .innerJoin(brands, eq(brands.id, watches.brandId))
-      .where(and(isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')))
+      .innerJoin(locations, eq(locations.id, watches.locationId))
+      .where(and(...offerable()))
       .orderBy(asc(brands.name)),
   ])
 
@@ -190,7 +223,8 @@ export async function catalogueBrands(): Promise<string[]> {
   const rows = await db.selectDistinct({ name: brands.name })
     .from(watches)
     .innerJoin(brands, eq(brands.id, watches.brandId))
-    .where(and(isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK')))
+    .innerJoin(locations, eq(locations.id, watches.locationId))
+    .where(and(...offerable()))
     .orderBy(asc(brands.name))
   return rows.map((row) => row.name)
 }
