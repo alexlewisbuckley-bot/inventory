@@ -59,9 +59,11 @@ export default async function ShopContentPage() {
     locationName: watch.locationName,
     brandName: watch.brandName,
     model: watch.model,
+    modelName: watch.modelName,
     nickname: watch.nickname,
     year: watch.year,
     dial: watch.dial,
+    dialStyle: watch.dialStyle,
     caseMaterial: watch.caseMaterial,
     caseSizeMm: watch.caseSizeMm,
     bracelet: watch.bracelet,
@@ -106,7 +108,7 @@ export default async function ShopContentPage() {
             <>
               <span className="font-semibold text-content-primary">{noModel}</span>
               {' '}of {rows.length} held watches have no model name — that is the
-              Title column below, where &ldquo;Submariner Date&rdquo; or
+              Model name column below, where &ldquo;Submariner Date&rdquo; or
               &ldquo;Datejust 41&rdquo; goes.{' '}
             </>
           )}

@@ -24,7 +24,7 @@ import { cardGaps, familyOf, sizeOf, type SyncWatch } from './shopify-map'
  */
 
 /** The two things a card needs that a reference can actually settle. */
-export type GapField = 'nickname' | 'caseSizeMm'
+export type GapField = 'modelName' | 'caseSizeMm'
 
 export interface Suggestion {
   watchId: string
@@ -41,7 +41,7 @@ export interface Suggestion {
 }
 
 /** What this needs off a watch. A subset of the row the content page already has. */
-export interface GapRow extends Pick<SyncWatch, 'model' | 'nickname' | 'caseSizeMm'> {
+export interface GapRow extends Pick<SyncWatch, 'model' | 'modelName' | 'caseSizeMm'> {
   id: string
   stockNo: number
   brandName: string
@@ -61,7 +61,7 @@ export interface GapRow extends Pick<SyncWatch, 'model' | 'nickname' | 'caseSize
  * worth more damage than every blank dial in the book. The photograph is where
  * that answer lives; this is not that feature.
  */
-const SETTLED_BY_REFERENCE: readonly GapField[] = ['nickname', 'caseSizeMm']
+const SETTLED_BY_REFERENCE: readonly GapField[] = ['modelName', 'caseSizeMm']
 
 /** Case-insensitively, ignoring the punctuation dealers vary. 5740/1G-001 = 5740 1g 001. */
 export function sameReference(a: string | null, b: string | null): boolean {
@@ -74,7 +74,7 @@ export function sameReference(a: string | null, b: string | null): boolean {
 export function gapsOf(row: GapRow): GapField[] {
   const gaps = cardGaps(row)
   const fields: GapField[] = []
-  if (gaps.includes('model')) fields.push('nickname')
+  if (gaps.includes('model')) fields.push('modelName')
   if (gaps.includes('size')) fields.push('caseSizeMm')
   return fields.filter((field) => SETTLED_BY_REFERENCE.includes(field))
 }
@@ -86,7 +86,7 @@ function valueOf(row: GapRow, field: GapField): string | null {
     return size ? String(size) : null
   }
   const family = familyOf(row)
-  return family ? (row.nickname?.trim() ?? null) : null
+  return family ? (row.modelName?.trim() ?? null) : null
 }
 
 /**
@@ -176,7 +176,7 @@ export function storable(value: string, field: GapField, choices: Record<string,
 }
 
 /**
- * The nickname to write, from a family the shop already knows.
+ * The model name to write, from a family the shop already knows.
  *
  * Claude is asked for a family off the shop's own list rather than for a
  * title, because a list of forty-two is checkable and a free-text title is
@@ -258,13 +258,13 @@ export function acceptProposals(
         : null
     const evidence = String(proposal.reasoning ?? '').slice(0, 200)
 
-    if (item.fields.includes('nickname')) {
+    if (item.fields.includes('modelName')) {
       if (knownFamily(proposal.family, choices)) {
         suggestions.push({
           watchId: item.row.id,
           stockNo: item.row.stockNo,
           reference: item.row.model,
-          field: 'nickname',
+          field: 'modelName',
           value: nicknameFrom(proposal.family, size),
           source: 'claude',
           evidence,

@@ -27,7 +27,7 @@ import { loadEnv } from '@/lib/load-env'
 loadEnv()
 
 interface SeedWatch {
-  stockNo: number; brand: string; model: string; nickname: string | null
+  stockNo: number; brand: string; model: string; modelName: string | null
   serial: string | null; purchasePriceGbp: number; purchasePriceUsd: number | null
   supplier: string; purchaseDate: string; estSaleUsd: number | null
 }
@@ -147,7 +147,7 @@ export async function seed(): Promise<void> {
         stockNo: w.stockNo,
         brandId: brandIds.get(w.brand)!,
         model: w.model,
-        nickname: w.nickname,
+        modelName: w.modelName,
         serial: w.serial,
         supplierId: supplierIds.get(w.supplier)!,
         purchaseDate: new Date(`${w.purchaseDate}T00:00:00.000Z`),

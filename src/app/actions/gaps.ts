@@ -57,7 +57,7 @@ export async function scanGapsAction(): Promise<GapScanResult> {
       stockNo: watch.stockNo,
       brandName: watch.brandName,
       model: watch.model,
-      nickname: watch.nickname,
+      modelName: watch.modelName,
       caseSizeMm: watch.caseSizeMm,
     }))
 

@@ -17,9 +17,11 @@ export interface ContentRow {
   locationName: string
   brandName: string
   model: string
+  modelName: string | null
   nickname: string | null
   year: number | null
   dial: string | null
+  dialStyle: string | null
   caseMaterial: string | null
   caseSizeMm: number | null
   bracelet: string | null
@@ -94,7 +96,7 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
         if (onlyGaps && missing === 0) return false
         if (places.length > 0 && !places.includes(row.locationName)) return false
         if (!needle) return true
-        return [row.brandName, row.model, row.nickname, String(row.stockNo)]
+        return [row.brandName, row.model, row.modelName, String(row.stockNo)]
           .filter(Boolean).join(' ').toLowerCase().includes(needle)
       })
       // Emptiest first. A worklist sorted by stock number is a worklist you
@@ -447,10 +449,17 @@ interface Field {
  * fields that are two words long. The stock number links out to the record.
  */
 const FIELDS: Field[] = [
-  { key: 'nickname', label: 'Title', width: 186 },
+  { key: 'modelName', label: 'Model name', width: 170 },
+  // Beside the model name rather than at the end, because the two are read
+  // together: "Submariner Date" and "Hulk" are one thought, and a nickname
+  // parked eight columns away is a nickname nobody fills in.
+  { key: 'nickname', label: 'Nickname', width: 120 },
   { key: 'model', label: 'Reference', width: 142 },
   { key: 'year', label: 'Year', width: 70, numeric: true },
-  { key: 'dial', label: 'Dial', width: 118, list: 'dial' },
+  { key: 'dial', label: 'Dial', width: 108, list: 'dial' },
+  // Colour then markers, in that order, because that is how a dial is
+  // described out loud: "blue baton", not "baton blue".
+  { key: 'dialStyle', label: 'Dial style', width: 112, list: 'dial_style' },
   { key: 'caseMaterial', label: 'Material', width: 132, list: 'material' },
   { key: 'caseSizeMm', label: 'Size', width: 70, numeric: true },
   { key: 'bracelet', label: 'Bracelet', width: 110, list: 'bracelet' },

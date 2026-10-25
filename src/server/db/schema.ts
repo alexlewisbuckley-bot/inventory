@@ -489,6 +489,16 @@ export const watches = pgTable(
 
     brandId: text('brand_id').notNull().references(() => brands.id),
     model: text('model').notNull(),
+    modelName: text('model_name'),
+    /**
+     * What the piece is asked for by: "Hulk", "Pepsi", "Root Beer".
+     *
+     * Not the model and not a dial colour. It used to be smuggled into the
+     * model name — "Submariner Date Green Hulk 40" — and into the shop's own
+     * model list, which still holds three entries that are one family with a
+     * nickname in quotation marks after it. Its own field is what lets a
+     * title be composed from parts rather than typed as a sentence.
+     */
     nickname: text('nickname'),
     serial: text('serial'),
     condition: text('condition', { enum: CONDITIONS }).notNull().default('UNKNOWN'),
@@ -564,6 +574,17 @@ export const watches = pgTable(
     caseSizeMm: integer('case_size_mm'),
     caseMaterial: text('case_material'),
     dial: text('dial'),
+    /**
+     * What is on the dial, as against what shade it is.
+     *
+     * "Baton", "Diamond", "Roman", "Arabic". Colour alone flattens a shelf:
+     * a blue baton and a blue diamond are two different watches at two
+     * different prices, and a filter that calls them both Blue cannot tell a
+     * buyer which one they are looking at. Kept apart from the colour rather
+     * than folded into it, because a shopper browsing by colour and one
+     * browsing by markers are asking different questions.
+     */
+    dialStyle: text('dial_style'),
     bracelet: text('bracelet'),
     movement: text('movement'),
     waterResistanceM: integer('water_resistance_m'),

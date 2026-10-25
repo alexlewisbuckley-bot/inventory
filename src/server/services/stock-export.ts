@@ -9,7 +9,7 @@ export interface StockExportRow {
   productType: string
   brandName: string
   model: string
-  nickname: string | null
+  modelName: string | null
   serial: string | null
   supplierName: string
   locationName: string
@@ -73,7 +73,7 @@ export async function buildStockWorkbook(
     type: productTypeLabels[row.productType] ?? row.productType,
     brand: row.brandName,
     reference: row.model,
-    'model name': row.nickname ?? '',
+    'model name': row.modelName ?? '',
     serial: row.serial ?? '',
     supplier: row.supplierName,
     location: row.locationName,

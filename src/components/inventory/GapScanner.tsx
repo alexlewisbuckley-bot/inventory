@@ -29,7 +29,7 @@ export interface GapScannerProps {
 }
 
 const FIELD_LABEL: Record<Suggestion['field'], string> = {
-  nickname: 'Title',
+  modelName: 'Model name',
   caseSizeMm: 'Size',
 }
 

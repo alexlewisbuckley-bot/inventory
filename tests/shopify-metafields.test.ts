@@ -7,7 +7,7 @@ import type { SyncWatch } from '@/lib/shopify-map'
 
 const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   id: 'wch_1', stockNo: 1143, brandName: 'Rolex', model: '116334', serial: null,
-  nickname: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', locationPublishes: true, estSaleGbp: 1020000,
+  modelName: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', locationPublishes: true, estSaleGbp: 1020000,
   caseSizeMm: 41, caseMaterial: 'Oystersteel', dial: 'White', bracelet: 'Oyster',
   movement: null, waterResistanceM: null, condition: 'EXCELLENT',
   boxPapers: 'PAPERS_ONLY', description: null, images: [], shopifyProductId: null,
@@ -132,7 +132,7 @@ describe('trimming a description down to a name', () => {
 
 describe('what the shop should say about a watch', () => {
   it('asks for every structured field the record holds', () => {
-    const want = desiredMetaobjects(watch({ nickname: 'Datejust 41' }))
+    const want = desiredMetaobjects(watch({ modelName: 'Datejust 41' }))
     expect(want).toEqual([
       { type: 'brand', name: 'Rolex' },
       // Dial and bracelet are trimmed to a name before being asked for, which
@@ -182,7 +182,7 @@ describe('what the shop should say about a watch', () => {
 
 describe('resolving against the shop', () => {
   it('points each field at the shop’s own entry', () => {
-    const { metafields, unmatched } = resolveMetafields(watch({ nickname: 'Datejust 41' }), INDEX)
+    const { metafields, unmatched } = resolveMetafields(watch({ modelName: 'Datejust 41' }), INDEX)
     expect(unmatched).toEqual([])
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'dial', type: 'metaobject_reference', value: 'gid://d/1',
@@ -257,7 +257,7 @@ describe('resolving against the shop', () => {
  * The shop's brand menu and its Model filter both group by this. It is the one
  * field the record does not hold directly — `model` here is the reference
  * number, which is what a dealer files by, while a shop window is browsed by
- * name — so it comes from the nickname, which is where the name actually sits.
+ * name — so it comes from the model name, which is where the name actually sits.
  */
 describe('a dial shade, filed under its colour', () => {
   /**
@@ -323,31 +323,31 @@ describe('a dial shade, filed under its colour', () => {
 
 describe('the model family', () => {
   it('takes the case size off, because a 41 and a 31 are one family', () => {
-    expect(familyOf(watch({ nickname: 'Datejust 41' }))).toBe('Datejust')
-    expect(familyOf(watch({ nickname: 'Lady-Datejust 28' }))).toBe('Lady-Datejust')
-    expect(familyOf(watch({ nickname: 'Day-Date 40' }))).toBe('Day-Date')
+    expect(familyOf(watch({ modelName: 'Datejust 41' }))).toBe('Datejust')
+    expect(familyOf(watch({ modelName: 'Lady-Datejust 28' }))).toBe('Lady-Datejust')
+    expect(familyOf(watch({ modelName: 'Day-Date 40' }))).toBe('Day-Date')
   })
 
   it('leaves a name that has no size on it alone', () => {
-    expect(familyOf(watch({ nickname: 'Sky-Dweller' }))).toBe('Sky-Dweller')
-    expect(familyOf(watch({ nickname: 'Datejust II' }))).toBe('Datejust II')
-    expect(familyOf(watch({ nickname: 'GMT-Master II' }))).toBe('GMT-Master II')
+    expect(familyOf(watch({ modelName: 'Sky-Dweller' }))).toBe('Sky-Dweller')
+    expect(familyOf(watch({ modelName: 'Datejust II' }))).toBe('Datejust II')
+    expect(familyOf(watch({ modelName: 'GMT-Master II' }))).toBe('GMT-Master II')
   })
 
   it('does not mistake part of a name for a measurement', () => {
     // "RM 011" is a Richard Mille, not an RM in 11mm. "Nautilus 5711" is a
     // reference, not a case size.
-    expect(familyOf(watch({ nickname: 'RM 011' }))).toBe('RM 011')
-    expect(familyOf(watch({ nickname: 'Nautilus 5711' }))).toBe('Nautilus 5711')
-    expect(familyOf(watch({ nickname: 'Royal Oak' }))).toBe('Royal Oak')
+    expect(familyOf(watch({ modelName: 'RM 011' }))).toBe('RM 011')
+    expect(familyOf(watch({ modelName: 'Nautilus 5711' }))).toBe('Nautilus 5711')
+    expect(familyOf(watch({ modelName: 'Royal Oak' }))).toBe('Royal Oak')
   })
 
   it('says nothing rather than guessing from the reference', () => {
     // A reference prefix implies a family only to somebody who already knows
     // the numbering, and a menu confidently filed under the wrong name is
     // worse than one with a gap in it.
-    expect(familyOf(watch({ nickname: null }))).toBeNull()
-    expect(familyOf(watch({ nickname: '   ' }))).toBeNull()
+    expect(familyOf(watch({ modelName: null }))).toBeNull()
+    expect(familyOf(watch({ modelName: '   ' }))).toBeNull()
   })
 
   it('matches the shop’s entry across its own spelling', () => {
@@ -358,8 +358,8 @@ describe('the model family', () => {
       { type: 'model', displayName: 'Sky Dweller', id: 'gid://mo/2' },
       { type: 'model', displayName: 'Daytona', id: 'gid://mo/3' },
     ])
-    const of = (nickname: string) =>
-      resolveMetafields(watch({ nickname }), index).metafields.find((m) => m.key === 'model')?.value
+    const of = (modelName: string) =>
+      resolveMetafields(watch({ modelName }), index).metafields.find((m) => m.key === 'model')?.value
 
     expect(of('GMT-Master II')).toBe('gid://mo/1')
     expect(of('Sky-Dweller')).toBe('gid://mo/2')
@@ -380,7 +380,7 @@ describe('the model family', () => {
 describe('what is asked for and what is loaded', () => {
   it('loads every type a watch can ask for', () => {
     const asked = new Set(desiredMetaobjects(watch({
-      nickname: 'Datejust 41', dial: 'White', bracelet: 'Oyster',
+      modelName: 'Datejust 41', dial: 'White', bracelet: 'Oyster',
       caseMaterial: 'Oystersteel', caseSizeMm: 41, year: 2016,
       condition: 'EXCELLENT', boxPapers: 'PAPERS_ONLY',
     })).map((w) => w.type))
@@ -397,7 +397,7 @@ describe('what is asked for and what is loaded', () => {
  * Deriving a name and hoping the shop used the same one produced a Model
  * filter with six kinds of Submariner in it, each holding one watch:
  * "Submariner Date 41", "Submariner Date Green Hulk 41", 'Submariner Date
- * "Starbucks" 41'. No amount of trimming the end of a nickname reliably
+ * "Starbucks" 41'. No amount of trimming the end of a model name reliably
  * yields "Submariner". The list already knew the answer.
  */
 describe('finding the family in the shop’s list', () => {
@@ -410,14 +410,14 @@ describe('finding the family in the shop’s list', () => {
     // The stray entry really in the shop's list.
     { type: 'model', displayName: 'A', id: 'gid://f/junk' },
   ])
-  const family = (nickname: string) => resolveFamily(watch({ nickname }), FAMILIES).id
+  const family = (modelName: string) => resolveFamily(watch({ modelName }), FAMILIES).id
 
   it('files every Submariner under Submariner', () => {
-    for (const nickname of [
+    for (const modelName of [
       'Submariner Date 41', 'Submariner Date 40', 'Submariner Date Green Hulk 41',
       'Submariner Date "Hulk" 40', 'Submariner Date "Starbucks" 41', 'Submariner Date Starbucks 41',
     ]) {
-      expect(family(nickname), nickname).toBe('gid://f/sub')
+      expect(family(modelName), modelName).toBe('gid://f/sub')
     }
   })
 
@@ -439,7 +439,7 @@ describe('finding the family in the shop’s list', () => {
   })
 
   it('reports a family the shop does not have, rather than inventing one', () => {
-    const { id, name } = resolveFamily(watch({ nickname: 'Day-Date 40' }), FAMILIES)
+    const { id, name } = resolveFamily(watch({ modelName: 'Day-Date 40' }), FAMILIES)
     expect(id).toBeNull()
     expect(name).toBe('Day-Date')
   })

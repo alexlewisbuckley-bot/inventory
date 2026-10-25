@@ -69,7 +69,7 @@ export type CatalogueSort = 'brand' | 'trade-desc' | 'trade-asc' | 'year-desc'
 export interface CatalogueQuery {
   q?: string
   brand?: string
-  /** The model name — Daytona, Nautilus — read off the nickname. */
+  /** The model name — Daytona, Nautilus — read off the model name. */
   family?: string
   dial?: string
   /** The metal, coarsened the way the inventory coarsens it. */
@@ -180,7 +180,7 @@ export async function getCatalogue(
     const needle = `%${query.q.trim()}%`
     const match = or(
       ilike(watches.model, needle),
-      ilike(watches.nickname, needle),
+      ilike(watches.modelName, needle),
       ilike(brands.name, needle),
       ilike(watches.dial, needle),
       ilike(watches.caseMaterial, needle),
@@ -206,7 +206,7 @@ export async function getCatalogue(
       id: watches.id,
       brandName: brands.name,
       model: watches.model,
-      modelName: watches.nickname,
+      modelName: watches.modelName,
       year: watches.year,
       condition: watches.condition,
       boxPapers: watches.boxPapers,

@@ -16,25 +16,25 @@ import {
 
 const watch = (over: Partial<GapRow> & Pick<GapRow, 'id' | 'stockNo' | 'model'>): GapRow => ({
   brandName: 'Rolex',
-  nickname: null,
+  modelName: null,
   caseSizeMm: null,
   ...over,
 })
 
 describe('which gaps are worth proposing an answer for', () => {
   it('asks for a model name and a size when neither is recorded', () => {
-    expect(gapsOf(watch({ id: 'a', stockNo: 1, model: '126334' }))).toEqual(['nickname', 'caseSizeMm'])
+    expect(gapsOf(watch({ id: 'a', stockNo: 1, model: '126334' }))).toEqual(['modelName', 'caseSizeMm'])
   })
 
   it('asks for nothing once both are there', () => {
-    const filled = watch({ id: 'a', stockNo: 1, model: '126334', nickname: 'Datejust 41', caseSizeMm: 41 })
+    const filled = watch({ id: 'a', stockNo: 1, model: '126334', modelName: 'Datejust 41', caseSizeMm: 41 })
     expect(gapsOf(filled)).toEqual([])
   })
 
-  it('reads the size out of the nickname, like the card does', () => {
+  it('reads the size out of the modelName, like the card does', () => {
     // "Datejust 41" carries its own size, so this watch is not missing one
     // even with caseSizeMm empty — sizeOf finds it, and so must this.
-    const named = watch({ id: 'a', stockNo: 1, model: '126334', nickname: 'Datejust 41' })
+    const named = watch({ id: 'a', stockNo: 1, model: '126334', modelName: 'Datejust 41' })
     expect(gapsOf(named)).toEqual([])
   })
 
@@ -67,15 +67,15 @@ describe('matching a reference the way a dealer writes it', () => {
 
 describe('answering from the book', () => {
   const held = [
-    watch({ id: 'a', stockNo: 1534, model: '126334', nickname: 'Datejust 41', caseSizeMm: 41 }),
-    watch({ id: 'b', stockNo: 1535, model: '126334', nickname: 'Datejust 41', caseSizeMm: 41 }),
+    watch({ id: 'a', stockNo: 1534, model: '126334', modelName: 'Datejust 41', caseSizeMm: 41 }),
+    watch({ id: 'b', stockNo: 1535, model: '126334', modelName: 'Datejust 41', caseSizeMm: 41 }),
     watch({ id: 'c', stockNo: 1588, model: '126334' }),
   ]
 
   it('fills a blank from the watches that share its reference', () => {
     const out = suggestFromBook(held).filter((s) => s.watchId === 'c')
     expect(out.map((s) => [s.field, s.value])).toEqual([
-      ['nickname', 'Datejust 41'],
+      ['modelName', 'Datejust 41'],
       ['caseSizeMm', '41'],
     ])
     expect(out.every((s) => s.source === 'book')).toBe(true)
@@ -98,8 +98,8 @@ describe('answering from the book', () => {
     // One of the two is wrong. Picking the more popular spelling would hide
     // that; leaving it blank keeps it on the worklist where it belongs.
     const split = [
-      watch({ id: 'a', stockNo: 1, model: '116610LV', nickname: 'Submariner Date', caseSizeMm: 40 }),
-      watch({ id: 'b', stockNo: 2, model: '116610LV', nickname: 'Submariner Hulk', caseSizeMm: 40 }),
+      watch({ id: 'a', stockNo: 1, model: '116610LV', modelName: 'Submariner Date', caseSizeMm: 40 }),
+      watch({ id: 'b', stockNo: 2, model: '116610LV', modelName: 'Submariner Hulk', caseSizeMm: 40 }),
       watch({ id: 'c', stockNo: 3, model: '116610LV' }),
     ]
     const out = suggestFromBook(split).filter((s) => s.watchId === 'c')
@@ -108,30 +108,30 @@ describe('answering from the book', () => {
   })
 
   it('does not quote a watch back to itself', () => {
-    const alone = [watch({ id: 'a', stockNo: 1, model: '126334', nickname: 'Datejust 41' })]
+    const alone = [watch({ id: 'a', stockNo: 1, model: '126334', modelName: 'Datejust 41' })]
     expect(suggestFromBook(alone)).toEqual([])
   })
 
   it('leaves a watch alone when only its other field is missing', () => {
     const rows = [
-      watch({ id: 'a', stockNo: 1, model: '126334', nickname: 'Datejust 41', caseSizeMm: 41 }),
+      watch({ id: 'a', stockNo: 1, model: '126334', modelName: 'Datejust 41', caseSizeMm: 41 }),
       watch({ id: 'b', stockNo: 2, model: '126334', caseSizeMm: 41 }),
     ]
     const out = suggestFromBook(rows).filter((s) => s.watchId === 'b')
-    expect(out.map((s) => s.field)).toEqual(['nickname'])
+    expect(out.map((s) => s.field)).toEqual(['modelName'])
   })
 })
 
 describe('what is left for Claude', () => {
   it('passes on only the gaps the book could not answer', () => {
     const rows = [
-      watch({ id: 'a', stockNo: 1534, model: '126334', nickname: 'Datejust 41', caseSizeMm: 41 }),
+      watch({ id: 'a', stockNo: 1534, model: '126334', modelName: 'Datejust 41', caseSizeMm: 41 }),
       watch({ id: 'b', stockNo: 1588, model: '126334' }),
       watch({ id: 'c', stockNo: 1573, model: '86348SAJOR' }),
     ]
     const left = unresolved(rows, suggestFromBook(rows))
     expect(left.map((entry) => entry.row.stockNo)).toEqual([1573])
-    expect(left[0].fields).toEqual(['nickname', 'caseSizeMm'])
+    expect(left[0].fields).toEqual(['modelName', 'caseSizeMm'])
   })
 })
 
@@ -149,7 +149,7 @@ describe('only offering a size the shop can store', () => {
   })
 
   it('never withholds a model name on these grounds', () => {
-    expect(storable('Pearlmaster', 'nickname', choices)).toBe(true)
+    expect(storable('Pearlmaster', 'modelName', choices)).toBe(true)
   })
 
   it('offers everything when the shop could not be read', () => {
@@ -160,7 +160,7 @@ describe('only offering a size the shop can store', () => {
   })
 })
 
-describe('composing a nickname from a family the shop knows', () => {
+describe('composing a modelName from a family the shop knows', () => {
   it('puts the size on, to the convention the book uses', () => {
     expect(nicknameFrom('Datejust', 41)).toBe('Datejust 41')
   })
@@ -184,7 +184,7 @@ describe('composing a nickname from a family the shop knows', () => {
     // The round trip that matters: what is written here must be what the
     // card and the push read out again.
     const written = nicknameFrom('Lady-Datejust', 28)
-    expect(familyOf({ nickname: written })).toBe('Lady-Datejust')
+    expect(familyOf({ modelName: written })).toBe('Lady-Datejust')
   })
 })
 
@@ -224,8 +224,8 @@ describe('what is accepted from Claude', () => {
     model: ['Daytona', 'Submariner Date "Hulk"', 'Lady-Datejust', 'Pearlmaster'],
     case_size: ['28mm', '39mm', '40mm', '41mm'],
   }
-  const asked = (stockNo: number, reference: string, fields: GapField[] = ['nickname', 'caseSizeMm']) => ({
-    row: { id: `w${stockNo}`, stockNo, brandName: 'Rolex', model: reference, nickname: null, caseSizeMm: null },
+  const asked = (stockNo: number, reference: string, fields: GapField[] = ['modelName', 'caseSizeMm']) => ({
+    row: { id: `w${stockNo}`, stockNo, brandName: 'Rolex', model: reference, modelName: null, caseSizeMm: null },
     fields,
   })
   const said = (over: Partial<Proposal> & Pick<Proposal, 'stock_no'>): Proposal => ({
@@ -239,7 +239,7 @@ describe('what is accepted from Claude', () => {
       choices,
     )
     expect(suggestions.map((s) => [s.field, s.value])).toEqual([
-      ['nickname', 'Submariner Date "Hulk" 40'],
+      ['modelName', 'Submariner Date "Hulk" 40'],
       ['caseSizeMm', '40'],
     ])
     expect(suggestions.every((s) => s.source === 'claude')).toBe(true)
@@ -285,7 +285,7 @@ describe('what is accepted from Claude', () => {
       [asked(1529, '67-01')],
       choices,
     )
-    expect(suggestions.map((s) => s.field)).toEqual(['nickname'])
+    expect(suggestions.map((s) => s.field)).toEqual(['modelName'])
   })
 
   it('does not answer a field that was not missing', () => {

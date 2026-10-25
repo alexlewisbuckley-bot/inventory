@@ -27,7 +27,7 @@ const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   id: 'w1', stockNo: 1520, brandName: 'Patek Philippe', model: 'Nautilus',
-  nickname: null, reference: '5740/1G-001', serial: null, year: 2023,
+  modelName: null, reference: '5740/1G-001', serial: null, year: 2023,
   status: 'IN_STOCK', locationPublishes: true, estSaleGbp: 928850,
   caseSizeMm: 40, caseMaterial: null, dial: null, bracelet: null,
   movement: null, waterResistanceM: null, condition: 'EXCELLENT',

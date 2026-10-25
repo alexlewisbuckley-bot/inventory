@@ -42,9 +42,9 @@ describe('finding a watch that has already sold', () => {
     expect(saleQuery).toMatch(/w\.stock_no::text ILIKE/)
   })
 
-  it('matches the maison and the nickname', () => {
+  it('matches the maison and the model name', () => {
     expect(saleQuery).toMatch(/b\.name ILIKE/)
-    expect(saleQuery).toMatch(/w\.nickname ILIKE/)
+    expect(saleQuery).toMatch(/w\.model_name ILIKE/)
   })
 
   it('still matches the paperwork it always did', () => {

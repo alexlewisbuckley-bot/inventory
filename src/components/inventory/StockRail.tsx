@@ -91,7 +91,7 @@ export function StockRail({
                     {watch.brandName} <span className="font-semibold">{watch.reference}</span>
                   </p>
                   <p className="truncate text-caption text-content-secondary">
-                    {[watch.nickname, watch.serial].filter(Boolean).join(' · ') || 'No name or serial recorded'}
+                    {[watch.modelName, watch.serial].filter(Boolean).join(' · ') || 'No name or serial recorded'}
                   </p>
                 </div>
 
@@ -135,6 +135,6 @@ export function StockRail({
 }
 
 function text(watch: PickerWatch): string {
-  return [watch.stockNo, watch.brandName, watch.reference, watch.nickname, watch.serial]
+  return [watch.stockNo, watch.brandName, watch.reference, watch.modelName, watch.serial]
     .filter(Boolean).join(' ').toLowerCase()
 }

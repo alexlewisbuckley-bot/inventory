@@ -136,7 +136,7 @@ export async function suggestFromClaude(
 
   const asked = batch
     .map((item) => {
-      const wants = item.fields.map((f) => (f === 'nickname' ? 'model name' : 'case size')).join(' and ')
+      const wants = item.fields.map((f) => (f === 'modelName' ? 'model name' : 'case size')).join(' and ')
       return `- stock ${item.row.stockNo}: ${item.row.brandName} reference ${item.row.model} — missing ${wants}`
     })
     .join('\n')

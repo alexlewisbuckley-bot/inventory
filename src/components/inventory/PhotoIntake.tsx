@@ -95,7 +95,7 @@ export function PhotoIntake({ candidates, initialFiles }: {
   // The pool the matcher, the picker and the rail all work from: the same
   // watches, with a written name attached for ranking.
   const pool = useMemo<PickerWatch[]>(
-    () => candidates.map((c) => ({ ...c, name: [c.brandName, c.nickname].filter(Boolean).join(' ') })),
+    () => candidates.map((c) => ({ ...c, name: [c.brandName, c.modelName].filter(Boolean).join(' ') })),
     [candidates],
   )
   const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates])

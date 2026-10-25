@@ -31,6 +31,8 @@ export interface WatchListItem {
   productType: ProductType
   brandName: string
   model: string
+  modelName: string | null
+  /** "Hulk", "Pepsi" — what it is asked for by, kept apart from the model. */
   nickname: string | null
   serial: string | null
   supplierName: string
@@ -44,6 +46,8 @@ export interface WatchListItem {
   caseSizeMm: number | null
   caseMaterial: string | null
   dial: string | null
+  /** What is on the dial — baton, diamond — as against what shade it is. */
+  dialStyle: string | null
   bracelet: string | null
   movement: string | null
   waterResistanceM: number | null
@@ -110,6 +114,7 @@ const listSelection = {
   stockNo: watches.stockNo,
   productType: watches.productType,
   model: watches.model,
+  modelName: watches.modelName,
   nickname: watches.nickname,
   serial: watches.serial,
   purchaseDate: watches.purchaseDate,
@@ -135,6 +140,7 @@ const listSelection = {
   caseSizeMm: watches.caseSizeMm,
   caseMaterial: watches.caseMaterial,
   dial: watches.dial,
+  dialStyle: watches.dialStyle,
   bracelet: watches.bracelet,
   movement: watches.movement,
   waterResistanceM: watches.waterResistanceM,
@@ -190,13 +196,13 @@ function buildFilters(query: WatchQuery): SQL | undefined {
 
   if (query.q) {
     // Free-text across the identifiers staff actually quote to each other:
-    // stock number, model reference, serial and nickname.
+    // stock number, model reference, serial and model name.
     const term = `%${query.q.toLowerCase()}%`
     clauses.push(
       or(
         like(sql`lower(${watches.model})`, term),
         like(sql`lower(${watches.serial})`, term),
-        like(sql`lower(${watches.nickname})`, term),
+        like(sql`lower(${watches.modelName})`, term),
         like(sql`lower(${brands.name})`, term),
         like(sql`cast(${watches.stockNo} as text)`, term),
       ),
@@ -294,10 +300,10 @@ const WATCH_COLUMNS: ColumnMap = {
    * what picking several of anything else means.
    */
   /**
-   * The model family, read off the nickname.
+   * The model family, read off the model name.
    *
    * `model` holds the reference — 126334 — which is what a dealer files by;
-   * a customer asks for a Datejust. The name lives in the nickname, with the
+   * a customer asks for a Datejust. The name lives in the model name, with the
    * case size on the end, so the size comes off: a 41 and a 31 are one
    * family in two sizes and splitting them makes a menu of one-offs.
    *

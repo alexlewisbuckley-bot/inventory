@@ -402,7 +402,7 @@ export async function parseImport(input: string | { name: string; buffer: ArrayB
         purchasePriceGbp: watches.purchasePriceGbp,
         estSaleGbp: watches.estSaleGbp,
         tradePriceGbp: watches.tradePriceGbp,
-        modelName: watches.nickname,
+        modelName: watches.modelName,
         year: watches.year,
         caseSizeMm: watches.caseSizeMm,
         caseMaterial: watches.caseMaterial,
@@ -820,9 +820,9 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         }
         for (const [field, value] of Object.entries(row.spec)) {
           if (value === null || !changed.has(field)) continue
-          // The model name lives in a column called `nickname`, from before
+          // The model name lives in a column called `model name`, from before
           // anybody needed to show it to a customer.
-          patch[field === 'modelName' ? 'nickname' : field] = value
+          patch[field === 'modelName' ? 'modelName' : field] = value
         }
 
         /**
@@ -901,7 +901,7 @@ export async function commitImport(rows: ImportRow[], actor: SessionUser): Promi
         ownerId,
         // Whatever the sheet knew about the watch itself. Nulls fall through
         // to the column defaults rather than overwriting them with nothing.
-        nickname: row.spec.modelName,
+        modelName: row.spec.modelName,
         year: row.spec.year,
         caseSizeMm: row.spec.caseSizeMm,
         caseMaterial: row.spec.caseMaterial,

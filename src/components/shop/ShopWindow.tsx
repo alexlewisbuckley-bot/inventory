@@ -14,7 +14,7 @@ export interface ShopItem {
   id: string
   brandName: string
   model: string
-  nickname: string | null
+  modelName: string | null
   year: number | null
   condition: string
   boxPapers: string
@@ -100,7 +100,7 @@ export function ShopWindow({
       if (pricedOnly && item.price === null) return false
       if (!needle) return true
       return [
-        item.brandName, item.model, item.nickname, item.dial, item.caseMaterial,
+        item.brandName, item.model, item.modelName, item.dial, item.caseMaterial,
         item.bracelet, item.year ? String(item.year) : null,
       ].filter(Boolean).some((field) => field!.toLowerCase().includes(needle))
     })
@@ -387,7 +387,7 @@ function ShopCard({ item, token, currency, onOpen }: {
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={`/s/${token}/image/${item.imageId}`}
-              alt={`${item.brandName} ${item.nickname || item.model}`}
+              alt={`${item.brandName} ${item.modelName || item.model}`}
               loading="lazy"
               className="h-full w-full object-contain p-4 transition-transform duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.06] sm:p-8"
             />
@@ -424,7 +424,7 @@ function ShopCard({ item, token, currency, onOpen }: {
           <p className="shop-eyebrow truncate text-[color:var(--ink-mute)]">{item.brandName}</p>
 
           <h2 className="shop-serif shop-num mt-1.5 text-[20px] font-medium leading-[1.15] sm:mt-2 sm:text-[26px]">
-            {item.nickname || item.model}
+            {item.modelName || item.model}
           </h2>
 
           {/* leading-[1.1] rather than none: a currency prefix and lining
@@ -456,9 +456,9 @@ function ShopCard({ item, token, currency, onOpen }: {
 
               A piece with no model name is headed by its reference, so it is
               not repeated here. */}
-          {(item.nickname || item.year) && (
+          {(item.modelName || item.year) && (
             <div className="mt-2 flex flex-col gap-1 text-[11.5px] leading-[1.3] text-[color:var(--ink-mute)]">
-              {item.nickname && (
+              {item.modelName && (
                 <p className="shop-num truncate">
                   <span className="sr-only">Reference </span>{item.model}
                 </p>
@@ -618,10 +618,10 @@ function ProductView({ item, token, currency, contactEmail, hasLogo, shopName, o
             {/* Lining figures on the heading too: plenty of these names are a
                 reference number, and old-style digits make one look mistyped. */}
             <h2 className="shop-serif shop-num mt-2.5 text-[28px] font-medium leading-[1.1] sm:text-[34px]">
-              {item.nickname || item.model}
+              {item.modelName || item.model}
             </h2>
             {/* Only when it says something the heading did not. */}
-            {item.nickname && (
+            {item.modelName && (
               <p className="mt-2 text-sm text-[color:var(--ink-mute)]">Reference {item.model}</p>
             )}
 

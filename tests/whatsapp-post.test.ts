@@ -5,14 +5,14 @@ import { can } from '@/lib/permissions'
 import { ROLES } from '@/lib/enums'
 
 /**
- * `model` holds the reference number and `nickname` holds the name. Every
+ * `model` holds the reference number and `model name` holds the name. Every
  * fixture here is built that way round on purpose, because getting it
  * backwards is the one mistake that would make every post wrong.
  */
 const HULK = {
   brandName: 'Rolex',
   model: '116610LV',
-  nickname: 'Submariner Date 40',
+  modelName: 'Submariner Date 40',
   year: 2018,
 }
 
@@ -24,22 +24,22 @@ describe('what a dealer group is sent', () => {
   })
 
   it('never says the brand twice', () => {
-    // A nickname carrying the brand is common and would otherwise read
+    // A model name carrying the brand is common and would otherwise read
     // "Rolex Rolex Datejust 41".
-    expect(postTitle({ ...HULK, nickname: 'Rolex Datejust 41' })).toBe('Rolex Datejust 41')
+    expect(postTitle({ ...HULK, modelName: 'Rolex Datejust 41' })).toBe('Rolex Datejust 41')
   })
 
   it('keeps the case size, which a shop menu would drop', () => {
     // familyOf() strips it to group a menu. To a dealer a 41 and a 36 are
     // different watches at different money, so it stays.
-    expect(postTitle({ ...HULK, nickname: 'Datejust 41' })).toBe('Rolex Datejust 41')
-    expect(postTitle({ ...HULK, nickname: 'Datejust 36' })).toBe('Rolex Datejust 36')
+    expect(postTitle({ ...HULK, modelName: 'Datejust 41' })).toBe('Rolex Datejust 41')
+    expect(postTitle({ ...HULK, modelName: 'Datejust 36' })).toBe('Rolex Datejust 36')
   })
 
   it('falls back to the brand alone when there is no name', () => {
-    expect(postTitle({ ...HULK, nickname: null })).toBe('Rolex')
+    expect(postTitle({ ...HULK, modelName: null })).toBe('Rolex')
     // The reference still carries the identification on its own line.
-    expect(whatsappPost({ ...HULK, nickname: null }, { tradePrice: null }))
+    expect(whatsappPost({ ...HULK, modelName: null }, { tradePrice: null }))
       .toBe('Rolex\nRef: 116610LV\nYear: 2018')
   })
 
@@ -226,7 +226,7 @@ describe('the drawer can post without opening the record', () => {
   it('is handed the name and the trade price it needs', () => {
     // Neither was on the drawer record before; without them the post would
     // have shown the brand alone and no price.
-    expect(server).toMatch(/nickname: record\.watch\.nickname/)
+    expect(server).toMatch(/modelName: record\.watch\.modelName/)
     expect(server).toMatch(/tradePriceGbp: record\.watch\.tradePriceGbp/)
   })
 

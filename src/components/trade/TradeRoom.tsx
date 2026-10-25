@@ -12,7 +12,7 @@ export interface TradeItem {
   id: string
   brandName: string
   model: string
-  nickname: string | null
+  modelName: string | null
   year: number | null
   condition: string
   boxPapers: string
@@ -248,7 +248,7 @@ export function TradeRoom({ token, reseller, items }: {
                     )}
                   </span>
                   <span className="mt-1 block font-serif text-[17px] leading-tight text-black">
-                    {item.nickname || item.model}
+                    {item.modelName || item.model}
                   </span>
                   {/* The reference, always, and on its own line. It is what a
                       dealer writes down and what they will quote back. */}
@@ -285,7 +285,7 @@ export function TradeRoom({ token, reseller, items }: {
             alt: `${viewing.item.brandName} ${viewing.item.model}`,
             // The trade shots say so. Unlabelled, a dealer cannot tell
             // whether a mark is on the watch or on the photograph.
-            caption: `${viewing.item.brandName} ${viewing.item.nickname || viewing.item.model} · ${viewing.item.model}${trade ? ' · Trade photo' : ''}`,
+            caption: `${viewing.item.brandName} ${viewing.item.modelName || viewing.item.model} · ${viewing.item.model}${trade ? ' · Trade photo' : ''}`,
           }))}
           index={viewing.at}
           onIndex={(at) => setViewing((current) => (current ? { ...current, at } : null))}
@@ -355,14 +355,14 @@ const GROUPS = [
 ] as const
 
 /**
- * The model family, read off the nickname.
+ * The model family, read off the model name.
  *
- * Same cut as the stock list makes: everything up to a quoted nickname, a
+ * Same cut as the stock list makes: everything up to a quoted model name, a
  * dash or a trailing case size. "Submariner Date "Hulk" Green 40" is a
  * Submariner Date, and a dealer asking for Submariners means all of them.
  */
 function familyOf(item: TradeItem): string {
-  const source = item.nickname ?? ''
+  const source = item.modelName ?? ''
   const cut = source
     .replace(/\s*[“”"–—].*$/, '')
     .replace(/\s+(2\d|[3-5]\d|60)(\s*mm)?$/i, '')
@@ -420,7 +420,7 @@ function valueOf(item: TradeItem, group: string): string {
 }
 
 const searchable = (item: TradeItem): string => [
-  item.brandName, item.model, item.nickname, item.caseMaterial, item.dial, item.bracelet,
+  item.brandName, item.model, item.modelName, item.caseMaterial, item.dial, item.bracelet,
   item.year ? String(item.year) : null,
 ].filter(Boolean).join(' ').toLowerCase()
 

@@ -55,7 +55,7 @@ describe('which column says which watch', () => {
 describe('what renaming does to the storefront', () => {
   const base = {
     id: 'wch_1', brandName: 'Rolex', model: '116334', serial: '0SQ84951',
-    nickname: null, year: 2016, status: 'IN_STOCK',
+    modelName: null, year: 2016, status: 'IN_STOCK',
     locationName: 'One Street Watches', locationPublishes: true,
     estSaleGbp: 4_407_001, caseSizeMm: 41, caseMaterial: 'Steel',
     dial: 'White', bracelet: 'Oyster', movement: 'Automatic',

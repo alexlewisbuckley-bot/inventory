@@ -411,14 +411,14 @@ export function indexMetaobjects(
 /**
  * The shop's family for a watch, found by its own vocabulary.
  *
- * Not computed and then matched, which is how this went wrong: a nickname is
+ * Not computed and then matched, which is how this went wrong: a model name is
  * the whole variant — "Submariner Date Green Hulk 41" — and no amount of
  * trimming the end of it reliably yields "Submariner". Deriving a name and
  * hoping the shop uses the same one produced a Model filter with six kinds of
  * Submariner in it, each holding one watch.
  *
  * So the shop's list is the authority. The family is the longest entry in it
- * that the nickname contains: "Submariner Date Green Hulk" gives Submariner,
+ * that the model name contains: "Submariner Date Green Hulk" gives Submariner,
  * "Datejust II Fluted" gives Datejust II rather than Datejust, because the
  * longer name is the more specific true one.
  *
@@ -430,10 +430,10 @@ export function resolveFamily(
   watch: SyncWatch,
   index: MetaobjectIndex,
 ): { id: string | null; name: string | null } {
-  const nickname = watch.nickname?.trim()
-  if (!nickname) return { id: null, name: null }
+  const modelName = watch.modelName?.trim()
+  if (!modelName) return { id: null, name: null }
 
-  const haystack = normalise(nickname)
+  const haystack = normalise(modelName)
   const families = index.get('model')
   if (!families) return { id: null, name: familyOf(watch) }
 
@@ -443,7 +443,7 @@ export function resolveFamily(
     if (!best || name.length > best.length) best = { id, length: name.length }
   }
 
-  return best ? { id: best.id, name: nickname } : { id: null, name: familyOf(watch) }
+  return best ? { id: best.id, name: modelName } : { id: null, name: familyOf(watch) }
 }
 
 export interface ResolvedMetafields {

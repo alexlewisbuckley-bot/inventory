@@ -84,7 +84,7 @@ export async function createWatch(input: WatchCreateInput, actor: SessionUser): 
       productType: input.productType,
       brandId: input.brandId,
       model: input.model,
-      nickname: input.nickname ?? null,
+      modelName: input.modelName ?? null,
       serial: input.serial ?? null,
       year: input.year ?? null,
       condition: input.condition,
@@ -174,7 +174,8 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
 
     if (input.productType !== undefined) patch.productType = input.productType
     if (input.model !== undefined) patch.model = input.model
-    if (input.nickname !== undefined) patch.nickname = input.nickname
+    if (input.modelName !== undefined) patch.modelName = input.modelName
+    if (input.nickname !== undefined) patch.nickname = input.nickname || null
     if (input.serial !== undefined) patch.serial = input.serial
     if (input.year !== undefined) patch.year = input.year
     if (input.condition !== undefined) patch.condition = input.condition
@@ -189,6 +190,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
     if (input.caseSizeMm !== undefined) patch.caseSizeMm = input.caseSizeMm ?? null
     if (input.caseMaterial !== undefined) patch.caseMaterial = input.caseMaterial || null
     if (input.dial !== undefined) patch.dial = input.dial || null
+    if (input.dialStyle !== undefined) patch.dialStyle = input.dialStyle || null
     if (input.bracelet !== undefined) patch.bracelet = input.bracelet || null
     if (input.movement !== undefined) patch.movement = input.movement || null
     if (input.waterResistanceM !== undefined) patch.waterResistanceM = input.waterResistanceM ?? null
@@ -285,7 +287,7 @@ export async function updateWatch(input: WatchUpdateInput, actor: SessionUser): 
 
     const changes = diff(existing, patch, [
       'stockNo',
-      'productType', 'model', 'nickname', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
+      'productType', 'model', 'modelName', 'serial', 'year', 'condition', 'boxPapers', 'brandId',
       'supplierId', 'locationId', 'ownerId', 'notes', 'status', 'purchaseDate', 'purchasePriceGbp', 'estSaleUsd',
       'tradePriceGbp',
       'caseSizeMm', 'caseMaterial', 'dial', 'bracelet', 'movement', 'waterResistanceM', 'description',

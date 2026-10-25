@@ -511,7 +511,7 @@ export async function sellableStock(): Promise<Array<{ id: string; label: string
       id: watches.id,
       stockNo: watches.stockNo,
       model: watches.model,
-      nickname: watches.nickname,
+      modelName: watches.modelName,
       brandName: brands.name,
     })
     .from(watches)
@@ -525,7 +525,7 @@ export async function sellableStock(): Promise<Array<{ id: string; label: string
 
   return rows.map((row) => ({
     id: row.id,
-    label: `${row.stockNo} · ${row.brandName} ${row.nickname ?? row.model}`,
+    label: `${row.stockNo} · ${row.brandName} ${row.modelName ?? row.model}`,
   }))
 }
 

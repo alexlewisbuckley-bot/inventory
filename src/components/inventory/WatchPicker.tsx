@@ -6,7 +6,7 @@ import { rankCandidates, type MatchCandidate } from '@/lib/photo-match'
 
 export interface PickerWatch extends MatchCandidate {
   brandName: string
-  nickname: string | null
+  modelName: string | null
   /** How many photographs it already has. Nought means it is probably this one. */
   photographs: number
 }
@@ -295,7 +295,7 @@ export function WatchPicker({
                               <WatchLine watch={watch} />
                             </span>
                             <span className="block truncate text-caption text-content-secondary">
-                              {[watch.nickname, watch.serial].filter(Boolean).join(' · ') || 'No name or serial recorded'}
+                              {[watch.modelName, watch.serial].filter(Boolean).join(' · ') || 'No name or serial recorded'}
                             </span>
                           </span>
                           {watch.photographs > 0 && (
@@ -337,6 +337,6 @@ function WatchLine({ watch }: { watch: PickerWatch }) {
 
 /** Everything about a watch that somebody might type into the search box. */
 function searchText(watch: PickerWatch): string {
-  return [watch.stockNo, watch.brandName, watch.reference, watch.nickname, watch.serial]
+  return [watch.stockNo, watch.brandName, watch.reference, watch.modelName, watch.serial]
     .filter(Boolean).join(' ').toLowerCase()
 }
