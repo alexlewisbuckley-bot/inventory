@@ -4,7 +4,7 @@ import { getSessionUser } from '@/server/auth/session'
 import { db } from '@/server/db/client'
 import { liveSale } from '@/server/db/predicates'
 import {
-  deals, notifications, tasks, tradeEnquiries as tradeEnquiries_, watchRequests,
+  brokerages, deals, notifications, tasks, tradeEnquiries as tradeEnquiries_, watchRequests,
 } from '@/server/db/schema'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { TopBar } from '@/components/layout/TopBar'
@@ -92,7 +92,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   endOfToday.setHours(23, 59, 59, 999)
 
   const [
-    unread, rates, preferences, stock, unpriced, ageing, saleCount,
+    unread, rates, preferences, stock, unpriced, ageing, saleCount, brokerCount,
     openDeals, tasksDue, openRequests, tradeEnquiries,
   ] = await Promise.all([
     db.select({ value: count() }).from(notifications)
@@ -103,6 +103,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     countUnpriced(),
     findAgeingStock(90, 500),
     db.select({ value: count() }).from(sales).where(liveSale()),
+    /*
+     * Brokered deals are sales, and the badge has to agree with the page.
+     *
+     * The ledger counts "N sales in this view" as the sale rows plus the
+     * brokered ones, on the stated grounds that a brokered deal is a sale and
+     * a header counting it apart from the rows beside it would be describing
+     * a different table. The badge counted only the rows, so the sidebar said
+     * nine and the page it linked to said twelve — and of the two, the number
+     * you see without opening anything is the one that gets believed.
+     *
+     * Voided and deleted are excluded on both sides, the same way.
+     */
+    db.select({ value: count() }).from(brokerages)
+      .where(and(isNull(brokerages.voidedAt), isNull(brokerages.deletedAt))),
     db.select({ value: count() }).from(deals)
       .where(and(isNull(deals.deletedAt), not(inArray(deals.stage, ['WON', 'LOST'])))),
     db.select({ value: count() }).from(tasks)
@@ -131,7 +145,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     inStock: stock.inStockCount,
     unpriced,
     ageing: ageing.length,
-    sales: Number(saleCount[0]?.value ?? 0),
+    sales: Number(saleCount[0]?.value ?? 0) + Number(brokerCount[0]?.value ?? 0),
     openDeals: Number(openDeals[0]?.value ?? 0),
     tasksDue: Number(tasksDue[0]?.value ?? 0),
     openRequests: Number(openRequests[0]?.value ?? 0),
