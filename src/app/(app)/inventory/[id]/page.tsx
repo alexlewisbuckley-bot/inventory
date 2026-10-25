@@ -120,7 +120,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
                 watch={{
                   brandName: brand.name,
                   model: watch.model,
-                  nickname: watch.nickname,
+                  modelName: watch.modelName,
                   year: watch.year,
                 }}
                 tradePrice={watch.tradePriceGbp

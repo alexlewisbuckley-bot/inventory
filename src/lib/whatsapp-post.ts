@@ -18,7 +18,7 @@ export interface PostableWatch {
   /** The reference number, which is what this column actually holds. */
   model: string
   /** The name — "Submariner Date", "Hulk". Labelled "Model" in the form. */
-  nickname: string | null
+  modelName: string | null
   year: number | null
 }
 
@@ -37,7 +37,7 @@ export interface PostOptions {
 /**
  * The name a dealer would say out loud.
  *
- * The nickname verbatim, with the brand in front of it. Deliberately not
+ * The model name verbatim, with the brand in front of it. Deliberately not
  * `familyOf`, which takes the case size off the end so the shop can group a
  * Datejust 41 and a Datejust 36 under one menu heading. That is right for a
  * menu and wrong here: to a dealer those are two different watches at two
@@ -46,9 +46,9 @@ export interface PostOptions {
  */
 export function postTitle(watch: PostableWatch): string {
   const brand = watch.brandName.trim()
-  const name = watch.nickname?.trim()
+  const name = watch.modelName?.trim()
   if (!name) return brand
-  // The nickname often carries the brand already — "Rolex Datejust 41" — and
+  // The model name often carries the brand already — "Rolex Datejust 41" — and
   // putting it in front again reads as a stutter.
   const lower = name.toLowerCase()
   if (lower === brand.toLowerCase() || lower.startsWith(`${brand.toLowerCase()} `)) return name

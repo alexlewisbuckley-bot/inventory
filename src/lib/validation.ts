@@ -125,7 +125,9 @@ export const watchCreateSchema = z.object({
   productType: z.enum(PRODUCT_TYPES).default(DEFAULT_PRODUCT_TYPE),
   brandId: trimmed.min(1, 'Choose a brand.'),
   model: trimmed.min(1, 'Reference number is required.').max(80),
-  nickname: optionalText(80),
+  modelName: optionalText(80),
+  /** "Hulk", "Pepsi" — short by nature, so shorter than the model name. */
+  nickname: optionalText(40),
   serial: optionalText(60),
   // Same null-branch-first rule as optionalMoney above.
   year: z.preprocess(
@@ -176,6 +178,7 @@ export const watchCreateSchema = z.object({
   caseSizeMm: optionalWhole('Case size'),
   caseMaterial: optionalText(60),
   dial: optionalText(60),
+  dialStyle: optionalText(60),
   bracelet: optionalText(60),
   movement: optionalText(60),
   waterResistanceM: optionalWhole('Water resistance'),
@@ -233,7 +236,7 @@ export const watchPriceSchema = z.object({
  * not be a place where a price can be changed by a stray keystroke.
  */
 export const CONTENT_FIELDS = [
-  'nickname', 'model', 'year', 'dial', 'caseMaterial', 'caseSizeMm',
+  'modelName', 'nickname', 'model', 'year', 'dial', 'dialStyle', 'caseMaterial', 'caseSizeMm',
   'bracelet', 'movement', 'waterResistanceM', 'condition', 'boxPapers',
   'description',
 ] as const

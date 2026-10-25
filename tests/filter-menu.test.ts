@@ -36,7 +36,7 @@ describe('what the menu offers', () => {
   })
 
   it('offers nothing the search box already does better', () => {
-    // One box matches the model, the serial, the nickname, the brand and the
+    // One box matches the model, the serial, the model name, the brand and the
     // stock number. Two `contains` chips reaching two of those columns is
     // three taps to do less.
     for (const gone of ['model', 'serial']) {

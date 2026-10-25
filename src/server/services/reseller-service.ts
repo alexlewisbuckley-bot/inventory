@@ -322,7 +322,7 @@ export interface ShopWindowItem {
   id: string
   brandName: string
   model: string
-  nickname: string | null
+  modelName: string | null
   year: number | null
   condition: string
   boxPapers: string
@@ -435,7 +435,7 @@ export async function getShopWindow(key: string, rates: RateTable): Promise<Shop
       id: watches.id,
       brandName: brands.name,
       model: watches.model,
-      nickname: watches.nickname,
+      modelName: watches.modelName,
       year: watches.year,
       condition: watches.condition,
       boxPapers: watches.boxPapers,
@@ -498,7 +498,7 @@ export async function getShopWindow(key: string, rates: RateTable): Promise<Shop
       id: row.id,
       brandName: row.brandName,
       model: row.model,
-      nickname: row.nickname,
+      modelName: row.modelName,
       year: row.year,
       condition: row.condition,
       boxPapers: row.boxPapers,
@@ -642,7 +642,7 @@ export async function recordEnquiry(
   // The piece has to be one this shop is actually showing, or an id from
   // anywhere would attach an enquiry to any watch in the book.
   const watches_ = await db
-    .select({ id: watches.id, model: watches.model, nickname: watches.nickname, brandId: watches.brandId })
+    .select({ id: watches.id, model: watches.model, modelName: watches.modelName, brandId: watches.brandId })
     .from(watches)
     .innerJoin(locations, eq(locations.id, watches.locationId))
     .where(and(eq(watches.id, watchId), ...onOffer()))
@@ -652,7 +652,7 @@ export async function recordEnquiry(
 
   const brand = await db.select({ name: brands.name }).from(brands)
     .where(eq(brands.id, watch.brandId)).limit(1)
-  const subject = `${brand[0]?.name ?? ''} ${watch.nickname || watch.model}`.trim()
+  const subject = `${brand[0]?.name ?? ''} ${watch.modelName || watch.model}`.trim()
 
   const id = newId('enq')
   await db.insert(resellerEnquiries).values({
@@ -740,7 +740,7 @@ export interface TradeItem {
   /** The reference, which is what the model column actually holds. */
   model: string
   /** "Submariner Date \"Hulk\" Green 40" — what anybody calls it out loud. */
-  nickname: string | null
+  modelName: string | null
   year: number | null
   condition: string
   boxPapers: string
@@ -844,7 +844,7 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
       id: watches.id,
       brandName: brands.name,
       model: watches.model,
-      nickname: watches.nickname,
+      modelName: watches.modelName,
       year: watches.year,
       condition: watches.condition,
       boxPapers: watches.boxPapers,

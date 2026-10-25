@@ -38,7 +38,7 @@ export interface WatchFormValues {
   estSaleCurrency: CurrencyCode
   tradeAmount: string
   tradeCurrency: CurrencyCode
-  nickname: string
+  modelName: string
   locationId: string
   ownerId: string
   caseSizeMm: string
@@ -59,7 +59,7 @@ const EMPTY: WatchFormValues = {
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
   tradeAmount: '', tradeCurrency: BASE_CURRENCY,
-  nickname: '',
+  modelName: '',
   locationId: '', ownerId: '', notes: '',
   caseSizeMm: '', caseMaterial: '', dial: '', bracelet: '', movement: '',
   waterResistanceM: '', description: '',
@@ -226,9 +226,9 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
             existed, but only the seed ever filled it.
           */}
           <TextField
-            name="nickname" label="Model"
+            name="modelName" label="Model"
             hint="What the piece is known as — shown to customers ahead of the reference."
-            value={values.nickname} onChange={set('nickname')}
+            value={values.modelName} onChange={set('modelName')}
             placeholder="e.g. Daytona"
           />
           <TextField

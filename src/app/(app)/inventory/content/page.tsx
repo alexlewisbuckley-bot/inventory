@@ -6,6 +6,7 @@ import { findWatches } from '@/server/repositories/watch-repository'
 import { shopVocabulary } from '@/server/services/shopify-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ContentGrid, type ContentRow } from '@/components/inventory/ContentGrid'
+import { GapScanner } from '@/components/inventory/GapScanner'
 import { HELD_STATUSES } from '@/lib/enums'
 import { cardGaps } from '@/lib/shopify-map'
 
@@ -58,9 +59,11 @@ export default async function ShopContentPage() {
     locationName: watch.locationName,
     brandName: watch.brandName,
     model: watch.model,
+    modelName: watch.modelName,
     nickname: watch.nickname,
     year: watch.year,
     dial: watch.dial,
+    dialStyle: watch.dialStyle,
     caseMaterial: watch.caseMaterial,
     caseSizeMm: watch.caseSizeMm,
     bracelet: watch.bracelet,
@@ -105,7 +108,7 @@ export default async function ShopContentPage() {
             <>
               <span className="font-semibold text-content-primary">{noModel}</span>
               {' '}of {rows.length} held watches have no model name — that is the
-              Title column below, where &ldquo;Submariner Date&rdquo; or
+              Model name column below, where &ldquo;Submariner Date&rdquo; or
               &ldquo;Datejust 41&rdquo; goes.{' '}
             </>
           )}
@@ -125,6 +128,14 @@ export default async function ShopContentPage() {
           come back if the rest need filling in too.
         </p>
       )}
+
+      {/*
+        Above the grid, because it is the shortcut past it. The banner says
+        how many cards are incomplete; this offers an answer for the ones that
+        can be answered, and the grid underneath is still where the rest get
+        typed.
+      */}
+      <GapScanner canEdit={can(user.role, 'watch:amend')} />
 
       <ContentGrid
         rows={rows}

@@ -28,7 +28,7 @@ export interface DrawerRecord {
   stockNo: number
   model: string
   /** The name — "Submariner Date 40". `model` holds the reference. */
-  nickname: string | null
+  modelName: string | null
   serial: string | null
   status: string
   version: number
@@ -132,7 +132,7 @@ export function WatchDrawerClient({
                 watch={{
                   brandName: record.brandName,
                   model: record.model,
-                  nickname: record.nickname,
+                  modelName: record.modelName,
                   year: record.year,
                 }}
                 tradePrice={record.tradePriceGbp

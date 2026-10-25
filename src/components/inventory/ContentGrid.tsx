@@ -17,9 +17,11 @@ export interface ContentRow {
   locationName: string
   brandName: string
   model: string
+  modelName: string | null
   nickname: string | null
   year: number | null
   dial: string | null
+  dialStyle: string | null
   caseMaterial: string | null
   caseSizeMm: number | null
   bracelet: string | null
@@ -94,7 +96,7 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
         if (onlyGaps && missing === 0) return false
         if (places.length > 0 && !places.includes(row.locationName)) return false
         if (!needle) return true
-        return [row.brandName, row.model, row.nickname, String(row.stockNo)]
+        return [row.brandName, row.model, row.modelName, String(row.stockNo)]
           .filter(Boolean).join(' ').toLowerCase().includes(needle)
       })
       // Emptiest first. A worklist sorted by stock number is a worklist you
@@ -170,14 +172,13 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
         {/* Separate borders, not collapsed: a collapsed table draws its
             rules on the cells, and a sticky cell then scrolls out from under
             its own left-hand border. */}
-        <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-small">
+        <table className="w-full min-w-[1724px] border-separate border-spacing-0 text-small">
           <thead>
             <tr className="text-left">
-              <th className={cn(HEAD, PINNED, 'left-0 w-[52px]')} />
-              <th className={cn(HEAD, PINNED, 'left-[52px] w-[66px]')}>Stock</th>
-              <th className={cn(HEAD, PINNED, 'left-[118px] w-[104px] shadow-[1px_0_0_rgb(var(--c-border-subtle))]')}>
-                Brand
-              </th>
+              <th className={cn(HEAD, PINNED, PIN_PHOTO)} />
+              <th className={cn(HEAD, PINNED, PIN_STOCK)}>Stock</th>
+              <th className={cn(HEAD, PINNED, PIN_BRAND)}>Brand</th>
+              <th className={cn(HEAD, PINNED, PIN_NAME, EDGE)}>{NAME_FIELD.label}</th>
               {FIELDS.map((field) => (
                 <th
                   key={field.key}
@@ -222,6 +223,46 @@ export function ContentGrid({ rows, choices, unmatched, canEdit }: {
  * speed is how the wrong watch gets a dial colour.
  */
 const PINNED = 'sticky z-10'
+/** The rule that separates the frozen block from the half that scrolls. */
+const EDGE = 'shadow-[1px_0_0_rgb(var(--c-border-subtle))]'
+
+/**
+ * The three frozen columns, each pinned at the exact width of everything to
+ * its left.
+ *
+ * The offsets and the widths have to agree or the freeze comes apart. They
+ * used to be declared in two places — a `width` hint on the header and
+ * nothing at all on the cell — and a hint is only a hint: the table lays
+ * itself out automatically, so "Audemars Piguet" widened the Brand column
+ * past the 104px its offset had been calculated from. The sticky cell then
+ * reached further right than the column after it began, and the Model name
+ * column scrolled underneath it and read "le".
+ *
+ * Declared once, applied to the header and the cell together, and bounded on
+ * both sides so content cannot push them open. 52 + 66 + 132 = 250, which is
+ * where the scrolling half of the table starts.
+ */
+const PIN_PHOTO = 'left-0 w-[52px] min-w-[52px] max-w-[52px]'
+const PIN_STOCK = 'left-[52px] w-[62px] min-w-[62px] max-w-[62px]'
+// Wide enough for the longest maison in the book — "Audemars Piguet" and
+// "Vacheron Constantin" — because a brand column that truncates every
+// Audemars is a column you have to hover to read.
+const PIN_BRAND = 'left-[114px] w-[118px] min-w-[118px] max-w-[118px]'
+/**
+ * The model name is frozen too, and that is the point of the whole block.
+ *
+ * Freezing stopped at the brand, so the first column to slide under it when
+ * you scrolled was the model name — the one field that says which watch the
+ * row is. Alex, filling in dial and size with the table scrolled right:
+ * "second column isn't even visable". It was not a rendering fault; it was
+ * the freeze line drawn one column too early.
+ *
+ * A spreadsheet freezes through the column that names the row, and so does
+ * this now: photograph, stock number, maison, model name. Everything to the
+ * right is a detail you are filling in, and the row still tells you what you
+ * are filling it in for.
+ */
+const PIN_NAME = 'left-[232px] w-[160px] min-w-[160px] max-w-[160px]'
 const HEAD = 'border-b border-line-subtle bg-surface-subtle px-2 py-2 text-caption font-semibold text-content-secondary'
 const CELL = 'border-b border-line-subtle px-2 py-1.5'
 
@@ -235,7 +276,7 @@ function Row({ row, missing, choices, unmatched, canEdit }: {
   const alt = `Stock ${row.stockNo}, ${row.brandName} ${row.model}`
   return (
     <tr className="group/row">
-      <td className={cn(CELL, PINNED, 'left-0 bg-surface-raised group-hover/row:bg-surface-subtle')}>
+      <td className={cn(CELL, PINNED, PIN_PHOTO, 'bg-surface-raised group-hover/row:bg-surface-subtle')}>
         {row.imageId ? (
           <Zoomable
             src={`/api/images/${row.imageId}`}
@@ -252,7 +293,7 @@ function Row({ row, missing, choices, unmatched, canEdit }: {
           </span>
         )}
       </td>
-      <td className={cn(CELL, PINNED, 'left-[52px] bg-surface-raised tabular-nums group-hover/row:bg-surface-subtle')}>
+      <td className={cn(CELL, PINNED, PIN_STOCK, 'bg-surface-raised tabular-nums group-hover/row:bg-surface-subtle')}>
         {/* The way out to the whole record, for the things a grid cannot
             do — photographs, history, the fields that are not content. */}
         <Link
@@ -264,11 +305,25 @@ function Row({ row, missing, choices, unmatched, canEdit }: {
         </Link>
       </td>
       <td
-        className={cn(CELL, PINNED, 'left-[118px] truncate bg-surface-raised text-content-secondary',
+        className={cn(CELL, PINNED, PIN_BRAND, 'bg-surface-raised text-content-secondary',
           'shadow-[1px_0_0_rgb(var(--c-border-subtle))] group-hover/row:bg-surface-subtle')}
         title={row.brandName}
       >
-        {row.brandName}
+        {/*
+          The cap lives on this span, not on the cell.
+          `max-width` on a table cell is advisory — the table's own layout
+          algorithm decides the column, and a long maison wins. The cell had
+          `truncate` on it already and "Audemars Piguet" still prised the
+          column open, which is what pushed the frozen block past the offset
+          the column after it was positioned from. A block element inside the
+          cell has an ordinary width that is simply obeyed.
+          132px of column, less the 8px of padding each side.
+        */}
+        <span className="block w-[102px] truncate">{row.brandName}</span>
+      </td>
+      <td className={cn(PINNED, PIN_NAME, EDGE,
+        'border-b border-line-subtle bg-surface-raised p-0 group-hover/row:bg-surface-subtle')}>
+        <Cell row={row} field={NAME_FIELD} canEdit={canEdit} flagged={false} />
       </td>
 
       {FIELDS.map((field) => (
@@ -446,11 +501,22 @@ interface Field {
  * textarea, and a column wide enough to write it in would squeeze the eleven
  * fields that are two words long. The stock number links out to the record.
  */
+/**
+ * Frozen, so it is rendered apart from the rest — but still a Field, so it is
+ * still an editable cell with the same behaviour as every other.
+ */
+const NAME_FIELD: Field = { key: 'modelName', label: 'Model name', width: 160 }
+
 const FIELDS: Field[] = [
-  { key: 'nickname', label: 'Title', width: 186 },
+  // First of the scrolling half, beside the frozen model name, because the
+  // two are read together: "Submariner Date" and "Hulk" are one thought.
+  { key: 'nickname', label: 'Nickname', width: 120 },
   { key: 'model', label: 'Reference', width: 142 },
   { key: 'year', label: 'Year', width: 70, numeric: true },
-  { key: 'dial', label: 'Dial', width: 118, list: 'dial' },
+  { key: 'dial', label: 'Dial', width: 108, list: 'dial' },
+  // Colour then markers, in that order, because that is how a dial is
+  // described out loud: "blue baton", not "baton blue".
+  { key: 'dialStyle', label: 'Dial style', width: 112, list: 'dial_style' },
   { key: 'caseMaterial', label: 'Material', width: 132, list: 'material' },
   { key: 'caseSizeMm', label: 'Size', width: 70, numeric: true },
   { key: 'bracelet', label: 'Bracelet', width: 110, list: 'bracelet' },

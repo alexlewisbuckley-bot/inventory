@@ -36,7 +36,7 @@ export async function buildGroupPosts(watchIds: string[]): Promise<GroupPostBatc
       id: watches.id,
       stockNo: watches.stockNo,
       model: watches.model,
-      nickname: watches.nickname,
+      modelName: watches.modelName,
       year: watches.year,
       status: watches.status,
       tradePriceGbp: watches.tradePriceGbp,
@@ -72,10 +72,10 @@ export async function buildGroupPosts(watchIds: string[]): Promise<GroupPostBatc
     const watch = {
       brandName: row.brandName,
       model: row.model,
-      nickname: row.nickname,
+      modelName: row.modelName,
       year: row.year,
     }
-    const label = [row.brandName, row.nickname ?? row.model].filter(Boolean).join(' ')
+    const label = [row.brandName, row.modelName ?? row.model].filter(Boolean).join(' ')
 
     if (row.status === 'SOLD') {
       skipped.push({ stockNo: row.stockNo, label, reason: 'sold' })

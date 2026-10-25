@@ -170,7 +170,7 @@ describe('operators', () => {
     expect(operatorsFor(bought)).toEqual(['after', 'before', 'isEmpty', 'isNotEmpty'])
 
     // And a watch has no text filter left at all: the search box matches the
-    // model, the serial, the nickname, the brand and the stock number in one
+    // model, the serial, the model name, the brand and the stock number in one
     // box, which is strictly more than two `contains` chips could do.
     expect(WATCH_FIELDS.filter((field) => field.type === 'text')).toEqual([])
   })

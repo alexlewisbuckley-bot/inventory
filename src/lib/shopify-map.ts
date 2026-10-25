@@ -39,7 +39,7 @@ export interface SyncWatch {
   brandName: string
   model: string
   serial: string | null
-  nickname: string | null
+  modelName: string | null
   year: number | null
   status: string
   /** Where the piece physically is, which drives the shop's region filter. */
@@ -185,7 +185,7 @@ export function priceFor(
  * The name on the page.
  *
  * Reference first for anything a buyer searches by, because that is what they
- * type. The nickname earns its place — "Hulk" sells a 116610LV — and the year
+ * type. The model name earns its place — "Hulk" sells a 116610LV — and the year
  * belongs in the title for a watch where it changes the thing entirely.
  */
 export function titleFor(watch: SyncWatch): string {
@@ -220,19 +220,19 @@ export function titleFor(watch: SyncWatch): string {
 /**
  * The case size to show, in millimetres.
  *
- * The record is the first answer. Where nobody filled it in, the nickname
+ * The record is the first answer. Where nobody filled it in, the model name
  * often already carries it — "Datejust 36", "Lady-Datejust 28" — and
  * `familyOf` takes exactly that number off the end to keep the brand menu
  * from splitting one family into a row of one-offs. Taken off the name and
  * not put back anywhere, it was simply lost: a watch whose size was only
- * ever written in its nickname showed no size at all.
+ * ever written in its model name showed no size at all.
  *
  * Same bounds as the strip, and for the same reason: 20 to 60 millimetres is
  * a case, "RM 011" is not an 11mm Richard Mille.
  */
-export function sizeOf(watch: SyncWatch): number | null {
+export function sizeOf(watch: Pick<SyncWatch, 'modelName' | 'caseSizeMm'>): number | null {
   if (watch.caseSizeMm) return watch.caseSizeMm
-  const match = watch.nickname?.trim().match(/\s(\d{2})(\s*mm)?$/i)
+  const match = watch.modelName?.trim().match(/\s(\d{2})(\s*mm)?$/i)
   if (!match) return null
   const size = Number(match[1])
   return size >= 20 && size <= 60 ? size : null
@@ -252,13 +252,13 @@ export function sizeOf(watch: SyncWatch): number | null {
  * a card so the gap is a worklist rather than a mystery on the website.
  */
 export function cardGaps(
-  watch: Pick<SyncWatch, 'model' | 'nickname' | 'caseSizeMm'>,
+  watch: Pick<SyncWatch, 'model' | 'modelName' | 'caseSizeMm'>,
 ): Array<'model' | 'size'> {
   const gaps: Array<'model' | 'size'> = []
   // The reference is not a model name. A buyer who knows that 126503 is a
   // two-tone Daytona did not need the card.
-  if (!familyOf(watch as SyncWatch)) gaps.push('model')
-  if (!sizeOf(watch as SyncWatch)) gaps.push('size')
+  if (!familyOf(watch)) gaps.push('model')
+  if (!sizeOf(watch)) gaps.push('size')
   return gaps
 }
 
@@ -323,7 +323,7 @@ function generatedTitles(watch: SyncWatch): string[] {
  *
  * The shop groups its brand menu by this, and it is the one field the record
  * does not hold directly: `model` here is the reference number, which is what
- * a dealer files by, while a shop window is browsed by name. The nickname is
+ * a dealer files by, while a shop window is browsed by name. The model name is
  * where the name actually lives — "Sky-Dweller", "Datejust 41" — so the family
  * is that with the case size taken off the end, since a 41 and a 31 are the
  * same family in two sizes and splitting them makes a menu of one-offs.
@@ -332,8 +332,8 @@ function generatedTitles(watch: SyncWatch): string[] {
  * implies a family only if you already know Rolex's numbering, and a menu
  * confidently filed under the wrong name is worse than one with a gap in it.
  */
-export function familyOf(watch: SyncWatch): string | null {
-  const name = watch.nickname?.trim()
+export function familyOf(watch: Pick<SyncWatch, 'modelName'>): string | null {
+  const name = watch.modelName?.trim()
   if (!name) return null
   // "Datejust 41" -> "Datejust"; "Lady-Datejust 28" -> "Lady-Datejust".
   //
@@ -465,7 +465,7 @@ function clamp(text: string): string {
  *
  * Maison, family, reference — in that order, and each only if the ones before
  * it have not already said it. "Rolex Submariner Date 116610LV", but not
- * "Rolex Rolex Submariner" when the nickname carries the brand, and not
+ * "Rolex Rolex Submariner" when the model name carries the brand, and not
  * "Datejust 41 116334 41" when the family already holds the size.
  */
 function subjectPartsOf(watch: SyncWatch): string[] {
@@ -476,7 +476,7 @@ function subjectPartsOf(watch: SyncWatch): string[] {
     const next = flat(part)
     // Already said: "Datejust 41" after a family that is "Datejust 41".
     if (said.includes(next)) continue
-    // Says it all and more: a nickname of "Rolex Submariner Date" after the
+    // Says it all and more: a model name of "Rolex Submariner Date" after the
     // maison "Rolex" is not a second thing to add, it is a better way of
     // saying the first. Testing only one of these two directions is how the
     // title came out as "Rolex Rolex Submariner Date".
@@ -884,10 +884,23 @@ export function planSync(
   }
 
   for (const product of bySku.values()) {
+    if (claimed.has(product.id)) continue
+    // Already hidden, so there is nothing left to do to it.
+    //
+    // Archiving is the one action here that does not change whether a product
+    // is claimed: the watch behind it is still gone, so the next sync found it
+    // unclaimed and listed it again, and the one after that, for ever. That is
+    // why "18 to hide" never went down however many times it was run — the work
+    // had been done and the plan had no way of knowing.
+    //
+    // Reading the status closes it. A page that is already ARCHIVED is in the
+    // state this step exists to put it in, and the count now falls to zero and
+    // stays there.
+    if (product.status === 'ARCHIVED') continue
     // A product no watch claimed. Archived rather than deleted: the likeliest
     // reason is a watch that has since been sold and tidied away, and an
     // archived page can be brought back.
-    if (!claimed.has(product.id)) plan.archive.push(descr(product))
+    plan.archive.push(descr(product))
   }
 
   return plan

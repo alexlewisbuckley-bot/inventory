@@ -13,11 +13,11 @@ import { watches } from '../db/schema'
  * answers; a second copy would have drifted the first time one was tuned.
  */
 /**
- * The family a watch belongs to, read off its nickname, as SQL.
+ * The family a watch belongs to, read off its model name, as SQL.
  *
  * Two cuts, and the order matters.
  *
- * First everything from a quote or a dash onward, because a nickname is a
+ * First everything from a quote or a dash onward, because a model name is a
  * family plus the name the trade gave one version of it: Submariner
  * "Hulk", Submariner "Starbucks", GMT-Master II "Root Beer". Left whole,
  * every nicknamed watch becomes its own family of one and the Model row
@@ -37,7 +37,7 @@ import { watches } from '../db/schema'
  * builds its menu. The customer sees the same grouping either way; this is
  * the first place the trade side has had it.
  */
-const FAMILY_SQL = sql`nullif(btrim(regexp_replace(regexp_replace(${watches.nickname}, '\\s*[“”"–—].*$', ''), '\\s+(2[0-9]|[3-5][0-9]|60)(\\s*mm)?$', '', 'i')), '')`
+const FAMILY_SQL = sql`nullif(btrim(regexp_replace(regexp_replace(${watches.modelName}, '\\s*[“”"–—].*$', ''), '\\s+(2[0-9]|[3-5][0-9]|60)(\\s*mm)?$', '', 'i')), '')`
 
 /**
  * The thing itself, without the sentence about it.

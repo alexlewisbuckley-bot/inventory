@@ -155,7 +155,7 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
   //
   // Two fields were taken out rather than tidied: `model` and `serial`, text
   // filters over two of the five columns the search box already matches — the
-  // others being the nickname, the brand and the stock number — so reaching
+  // others being the model name, the brand and the stock number — so reaching
   // them cost three taps to do less than typing. One line each if either is
   // ever wanted back.
   //
@@ -183,7 +183,7 @@ export const WATCH_FIELDS: readonly FieldSpec[] = [
     group: 'what',
   },
   // The three a customer actually asks in: what model, how much, what size.
-  // `family` is a question about the nickname rather than a column of its
+  // `family` is a question about the model name rather than a column of its
   // own — the model column holds the reference, which is what a dealer files
   // by, while a customer asks for a Daytona. Its options come from stock, so
   // they are supplied at runtime rather than listed here.

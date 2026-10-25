@@ -22,7 +22,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   brandName: 'Rolex',
   model: '116334',
   serial: '0SQ84951',
-  nickname: null,
+  modelName: null,
   year: 2023,
   status: 'IN_STOCK',
   locationName: 'Dubai',

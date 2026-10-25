@@ -49,7 +49,7 @@ export default async function BringStockInPage() {
           serial: watches.serial,
           reference: watches.model,
           brandName: brands.name,
-          nickname: watches.nickname,
+          modelName: watches.modelName,
         })
         .from(watches)
         .innerJoin(brands, eq(brands.id, watches.brandId))

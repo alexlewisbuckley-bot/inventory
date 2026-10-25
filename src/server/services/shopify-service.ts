@@ -184,7 +184,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       brandName: brands.name,
       model: watches.model,
       serial: watches.serial,
-      nickname: watches.nickname,
+      modelName: watches.modelName,
       year: watches.year,
       status: watches.status,
       locationName: locations.name,

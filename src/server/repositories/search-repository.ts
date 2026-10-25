@@ -112,7 +112,7 @@ async function watchHits(
            w.stock_no,
            w.model,
            w.serial,
-           w.nickname,
+           w.model_name,
            w.status,
            w.est_sale_gbp,
            w.updated_at,
@@ -133,7 +133,7 @@ async function watchHits(
       AND (
         w.model ILIKE ${like}
         OR w.serial ILIKE ${like}
-        OR w.nickname ILIKE ${like}
+        OR w.model_name ILIKE ${like}
         OR b.name ILIKE ${like}
         OR (${numeric}::text IS NOT NULL AND w.stock_no::text ILIKE ${numeric})
       )
@@ -150,7 +150,7 @@ async function watchHits(
     subtitle: [
       `Stock ${row.stock_no}`,
       row.serial ? `serial ${row.serial}` : 'no serial',
-      row.nickname,
+      row.model_name,
     ].filter(Boolean).join(' · '),
     meta: !showPrice ? null : row.est_sale_gbp === null ? 'unpriced' : gbp(Number(row.est_sale_gbp)),
     href: `/inventory/${row.id}`,
@@ -281,7 +281,7 @@ async function saleHits(
         OR s.customer_company ILIKE ${like}
         OR w.model ILIKE ${like}
         OR w.serial ILIKE ${like}
-        OR w.nickname ILIKE ${like}
+        OR w.model_name ILIKE ${like}
         OR b.name ILIKE ${like}
         OR (${numeric}::text IS NOT NULL AND w.stock_no::text ILIKE ${numeric})
       )
