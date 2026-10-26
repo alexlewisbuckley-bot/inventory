@@ -197,6 +197,18 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
   // thing that leaks.
   const showCost = canSeeCost(user.role)
   const showRevenue = can(user.role, 'revenue:read')
+  /*
+   * The totals across the view, as against the figures on one watch.
+   *
+   * Cost and revenue say whether somebody may be shown what a watch cost and
+   * what it is asking — a lookup, and the reason Sales holds both. Summing
+   * them over the whole book is a different question: capital invested,
+   * retail and trade value, profit across the stock. That is the firm's
+   * account of itself, which the Sales role is defined as not being shown,
+   * and it was reaching the page anyway because the cards were gated on the
+   * per-watch capability rather than on the reporting one.
+   */
+  const showTotals = can(user.role, 'report:read')
   const rows = redactRows(user.role as never, result.items, {
     cost: ['purchasePriceGbp', 'estProfitGbp', 'actualProfitGbp'],
     revenue: ['estSaleGbp', 'soldAmountGbp'],
@@ -279,10 +291,10 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
       */}
       <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-3">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
-        {showRevenue && (
+        {showTotals && showRevenue && (
           <StatCard label="Retail value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
         )}
-        {showCost && (
+        {showTotals && showCost && (
           <StatCard
             label="Est. profit · Retail"
             value={formatBaseSigned(summary.estProfitGbp, currency, rates)}
@@ -290,17 +302,17 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
             tone="accent"
           />
         )}
-        {showCost && (
+        {showTotals && showCost && (
           <StatCard label="Capital invested" value={money(summary.totalCostGbp)} caption={`avg ${money(summary.avgCostGbp)} per watch`} />
         )}
-        {showRevenue && (
+        {showTotals && showRevenue && (
           <StatCard
             label="Trade value"
             value={money(summary.tradeValueGbp)}
             caption={`${summary.tradePricedCount} quoted to the trade`}
           />
         )}
-        {showCost && (
+        {showTotals && showCost && (
           <StatCard
             label="Est. profit · Trade"
             value={formatBaseSigned(summary.tradeProfitGbp, currency, rates)}

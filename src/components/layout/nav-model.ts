@@ -96,7 +96,17 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
     {
       heading: 'Needs attention',
       items: [
-        { href: '/inventory?unpricedOnly=true', label: 'Unpriced stock', icon: Coins, capability: 'watch:read', count: counts.unpriced, attention: counts.unpriced > 0 },
+        /*
+         * `watch:price`, not `watch:read`.
+         *
+         * A worklist belongs to whoever can clear it. On `watch:read` this
+         * sat in a salesperson's sidebar as a standing task with a number
+         * beside it, for a job they cannot do — the price fields are gated
+         * on the capability they do not hold. Its neighbour below was
+         * already judged this way, which is why Ageing stock was absent
+         * from the same rail and this was not.
+         */
+        { href: '/inventory?unpricedOnly=true', label: 'Unpriced stock', icon: Coins, capability: 'watch:price', count: counts.unpriced, attention: counts.unpriced > 0 },
         { href: '/reports/ageing', label: 'Ageing stock', icon: Clock, capability: 'report:read', count: counts.ageing, attention: counts.ageing > 0 },
         // Beside the other two worklists rather than under the shop settings.
         // It is the same kind of job — a list of stock with something

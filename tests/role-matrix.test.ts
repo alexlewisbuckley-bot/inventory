@@ -102,7 +102,7 @@ describe('the role matrix', () => {
   it('lets Sales look up stock, and their own clients', () => {
     // The reference seat, narrowed: the stock list and the people they
     // personally own. Nothing else about the firm.
-    for (const needed of ['watch:read', 'location:read', 'owner:read', 'customer:own'] as const) {
+    for (const needed of ['watch:read', 'location:read', 'customer:own'] as const) {
       expect(can('SALES', needed), `SALES lacks ${needed}`).toBe(true)
     }
     expect(customerScope('SALES')).toBe('own')
@@ -112,9 +112,14 @@ describe('the role matrix', () => {
     // Each of these was taken away by name. The contact book is the asset
     // most worth walking out of the door with, so `customer:read` — the
     // whole of it — is the one that matters most here.
+    //
+    // `owner:read` joined them: it opened one page, and that page states the
+    // capital position per backer — "133 watches, AED 19,922,890, 81% of
+    // capital across all owners". Being shown what a watch costs is not a
+    // reason to be shown who funds the book and for how much.
     for (const withheld of [
       'customer:read', 'deal:read', 'task:read', 'request:read',
-      'supplier:read', 'sale:read', 'activity:read',
+      'supplier:read', 'sale:read', 'activity:read', 'owner:read',
     ] as const) {
       expect(can('SALES', withheld), `SALES still has ${withheld}`).toBe(false)
     }
