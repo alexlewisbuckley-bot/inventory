@@ -166,9 +166,16 @@ const VIEWER: Capability[] = [
  * Still not `report:read`: the capital position, the supplier spend and the
  * profit and loss are the business's own account of itself, and reading a
  * price list is not a reason to be shown them.
+ *
+ * Nor `owner:read`, which was the same rule leaking through a side door. The
+ * Owners page is a list of who the firm's backers are and how much capital
+ * each has in the book — "Edward Jackson, 133 watches, AED 19,922,890, 81% of
+ * capital across all owners" — which is the capital position stated per
+ * person. A salesperson looking up what a watch costs has no call to be shown
+ * it, and the page was the only thing the capability opened.
  */
 const SALES: Capability[] = [
-  'watch:read', 'location:read', 'owner:read',
+  'watch:read', 'location:read',
   // All three prices: what it cost, what the trade pays, what it is asking.
   'revenue:read', 'cost:read',
   // Their own clients and their own figures. Not the firm's contact list,
