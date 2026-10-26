@@ -471,7 +471,23 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
     byId.set(key, row as typeof rows[number])
   }
 
-  return rows
+  /*
+   * Sorted again, now that the fees are in.
+   *
+   * Alex: "These should be in order of profit." They were ordered by
+   * profit — by the profit the database could see, which is the stock
+   * alone. The fees are added here, afterwards, and a person who earned
+   * one came out ranked on the part of their month that happened to be a
+   * watch: Zoe at AED 19,690 sat below Francesca at AED 6,050, and
+   * Gabriella, whose whole month was brokered, was appended wherever the
+   * loop happened to reach her.
+   *
+   * A leaderboard's whole job is the order, so it is settled on the
+   * figure the page prints rather than on an earlier version of it. By
+   * name where two people tie, so the ranking does not shuffle between
+   * two loads that are genuinely level.
+   */
+  return rows.sort((a, b) => b.profitGbp - a.profitGbp || a.personName.localeCompare(b.personName))
 }
 
 /**
