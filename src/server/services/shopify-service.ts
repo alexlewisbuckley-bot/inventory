@@ -197,6 +197,7 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,
       dial: watches.dial,
+      dialStyle: watches.dialStyle,
       bracelet: watches.bracelet,
       movement: watches.movement,
       waterResistanceM: watches.waterResistanceM,

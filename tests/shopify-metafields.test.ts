@@ -8,7 +8,7 @@ import type { SyncWatch } from '@/lib/shopify-map'
 const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   id: 'wch_1', stockNo: 1143, brandName: 'Rolex', model: '116334', serial: null,
   modelName: null, year: 2016, status: 'IN_STOCK', locationName: 'Dubai', locationPublishes: true, estSaleGbp: 1020000,
-  caseSizeMm: 41, caseMaterial: 'Oystersteel', dial: 'White', bracelet: 'Oyster',
+  caseSizeMm: 41, caseMaterial: 'Oystersteel', dial: 'White', dialStyle: null, bracelet: 'Oyster',
   movement: null, waterResistanceM: null, condition: 'EXCELLENT',
   boxPapers: 'PAPERS_ONLY', description: null, images: [], shopifyProductId: null,
   ...over,
@@ -139,8 +139,10 @@ describe('what the shop should say about a watch', () => {
       // is what makes them safe to add to the shop's lists.
       { type: 'dial', name: 'White', canCreate: true },
       { type: 'bracelet', name: 'Oyster', canCreate: true },
-      // 116334 ends in 4: a White Rolesor, whatever the free text said, and
-      // White Rolesor is filed under Steel & White Gold.
+      // The record says "Oystersteel", which is true and incomplete: 116334
+      // ends in 4, a White Rolesor, so there is a white gold bezel the record
+      // never mentioned. The reference completes it to Steel & White Gold
+      // rather than losing a two-tone watch under plain Steel.
       { type: 'material', name: 'Steel & White Gold', canCreate: true },
       { type: 'case_size', name: '41mm' },
       { type: 'year', name: '2016' },
@@ -190,11 +192,36 @@ describe('resolving against the shop', () => {
     expect(metafields).toHaveLength(9)
   })
 
-  it('takes the metal from the reference, not from the typed words', () => {
-    // 116334 ends in 4. The record says "Oystersteel", which would file it
-    // under Steel; the reference says White Rolesor, which is Steel & White
-    // Gold, and the reference is the one both houses agree on.
+  it('lets the reference add the second metal a steel record left out', () => {
+    // 116334 is a White Rolesor: steel case, white gold bezel. The record
+    // says only "Oystersteel", so reading it alone would file a two-tone
+    // watch under plain Steel and lose it from the filter people use to find
+    // it. Steel is a part of the reference's answer, not a contradiction of
+    // it, so the reference completes the record here.
     const { metafields } = resolveMetafields(watch({ caseMaterial: 'Oystersteel' }), INDEX)
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/3',
+    })
+  })
+
+  it('does not let the reference contradict a recorded metal', () => {
+    // Stock 1563, reported from the shop floor: a Yacht-Master 42 in RLX
+    // titanium showing as yellow gold. 226627 ends in 7, and a 7 is 14k
+    // yellow gold everywhere else in Rolex's numbering — but not here, and
+    // a digit is not an argument against somebody who had the watch in
+    // their hands. Yellow gold is not a fuller account of titanium.
+    const { metafields } = resolveMetafields(
+      watch({ model: '226627', caseMaterial: 'Titanium', caseSizeMm: 42 }),
+      INDEX,
+    )
+    expect(metafields).toContainEqual({
+      namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/4',
+    })
+  })
+
+  it('still answers from the reference when nothing is recorded', () => {
+    // The fallback the reference is actually good at: no typed metal at all.
+    const { metafields } = resolveMetafields(watch({ caseMaterial: null }), INDEX)
     expect(metafields).toContainEqual({
       namespace: 'custom', key: 'material', type: 'metaobject_reference', value: 'gid://m/3',
     })

@@ -16,7 +16,7 @@ import { listSalesPeople, salesPersonForUser } from '@/server/services/reference
 import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { formatPct } from '@/lib/money'
 import { salesScope } from '@/lib/permissions'
-import { formatDate } from '@/lib/dates'
+import { formatDate, businessToday, startOfMonthUtc, endOfMonthUtc, endOfDayUtc } from '@/lib/dates'
 import { cn } from '@/lib/cn'
 
 export const metadata: Metadata = { title: 'Sales by person' }
@@ -47,6 +47,24 @@ type PeriodKey = keyof typeof PERIODS
  * beside it says what happened but not whether it is good. The previous
  * window is the same shape so the two are honestly comparable, which rules
  * out comparing a part-finished month against a whole one without saying so.
+ *
+ * Two things here used to come from the server's clock and should never
+ * have:
+ *
+ * Which day it is. The server runs in UTC, the shop is in Dubai, and for
+ * the last four hours of every UTC day they disagree about the date. A sale
+ * booked on the shop floor at one in the morning carries that morning's
+ * Dubai date, which the server still reads as tomorrow.
+ *
+ * Where the window ends. It ended at the current instant, so anything dated
+ * later than right now fell outside a period it plainly belongs to. Those
+ * two together are how a Patek sold in Dubai on the 27th was absent from
+ * every figure on this page while sitting on the ledger behind it. A period
+ * now runs to the end of its last day, and which day that is comes from
+ * Dubai.
+ *
+ * The bounds are UTC midnights because that is how a sale date is stored —
+ * the calendar day somebody picked, at 00:00Z — so the two line up exactly.
  */
 function windowFor(key: PeriodKey): {
   from: Date | undefined
@@ -55,34 +73,47 @@ function windowFor(key: PeriodKey): {
   prevTo: Date | undefined
   partial: boolean
 } {
-  const now = new Date()
+  const { year, month, day } = businessToday()
   if (key === 'all') {
     return { from: undefined, to: undefined, prevFrom: undefined, prevTo: undefined, partial: false }
   }
   if (key === 'month') {
-    const from = new Date(now.getFullYear(), now.getMonth(), 1)
-    const prevFrom = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    return { from, to: now, prevFrom, prevTo: new Date(now.getFullYear(), now.getMonth(), 0), partial: true }
-  }
-  if (key === 'last') {
-    const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-    const to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59)
-    const prevFrom = new Date(now.getFullYear(), now.getMonth() - 2, 1)
-    return { from, to, prevFrom, prevTo: new Date(now.getFullYear(), now.getMonth() - 1, 0, 23, 59, 59), partial: false }
-  }
-  if (key === 'year') {
-    const from = new Date(now.getFullYear(), 0, 1)
     return {
-      from, to: now,
-      prevFrom: new Date(now.getFullYear() - 1, 0, 1),
-      prevTo: new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()),
+      from: startOfMonthUtc(year, month),
+      to: endOfMonthUtc(year, month),
+      prevFrom: startOfMonthUtc(year, month - 1),
+      prevTo: endOfMonthUtc(year, month - 1),
       partial: true,
     }
   }
-  const from = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate())
+  if (key === 'last') {
+    return {
+      from: startOfMonthUtc(year, month - 1),
+      to: endOfMonthUtc(year, month - 1),
+      prevFrom: startOfMonthUtc(year, month - 2),
+      prevTo: endOfMonthUtc(year, month - 2),
+      partial: false,
+    }
+  }
+  if (key === 'year') {
+    return {
+      from: startOfMonthUtc(year, 0),
+      to: endOfMonthUtc(year, 11),
+      prevFrom: startOfMonthUtc(year - 1, 0),
+      // The same point in last year, so the comparison stays year-to-date
+      // against year-to-date rather than against a finished twelve months.
+      prevTo: endOfDayUtc(year - 1, month, day),
+      partial: true,
+    }
+  }
+  // Rolling: three months back from today, to the end of today. A rolling
+  // window is anchored on the day rather than the month, so this one ends
+  // tonight rather than at the end of a period it does not have.
+  const from = new Date(Date.UTC(year, month - 3, day))
   return {
-    from, to: now,
-    prevFrom: new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()),
+    from,
+    to: endOfDayUtc(year, month, day),
+    prevFrom: new Date(Date.UTC(year, month - 6, day)),
     prevTo: from,
     partial: false,
   }
@@ -178,6 +209,8 @@ export default async function SalesByPersonPage({ searchParams }: {
        * margin can honestly be taken of.
        */
       margin: cost > 0 ? (Number(row.stockProfitGbp) / cost) * 100 : null,
+      /** The same numerator, kept so the headline margin can agree with this one. */
+      stockProfit: Number(row.stockProfitGbp),
       average: Number(row.soldCount) > 0 ? Number(row.revenueGbp) / Number(row.soldCount) : 0,
       lastSaleAt: row.lastSaleAt,
       priorProfit: prior ? Number(prior.profitGbp) : 0,
@@ -191,8 +224,9 @@ export default async function SalesByPersonPage({ searchParams }: {
       revenue: sum.revenue + person.revenue,
       profit: sum.profit + person.profit,
       cost: sum.cost + person.cost,
+      stockProfit: sum.stockProfit + person.stockProfit,
     }),
-    { sold: 0, revenue: 0, profit: 0, cost: 0 },
+    { sold: 0, revenue: 0, profit: 0, cost: 0, stockProfit: 0 },
   )
   const priorTotals = previous.reduce(
     (sum, row) => ({
@@ -279,11 +313,23 @@ export default async function SalesByPersonPage({ searchParams }: {
           tone="accent"
           caption={key === 'all' ? 'realised' : movement(totals.profit, priorTotals.profit).text}
         />
+        {/*
+          * Stock profit over stock cost — the same arithmetic as the margin
+          * on each person's row, so a page showing one person cannot show
+          * two different margins for them.
+          *
+          * It was `totals.profit`, which includes brokered fees and buy-back
+          * charges. Those have no cost under them, so every fee earned
+          * pushed this figure up without moving the denominator: one stock
+          * sale at 5.3% beside a brokered fee read as a weighted margin of
+          * 20.9%. The warning against exactly this is written over the row
+          * calculation above, and this card did it anyway.
+          */}
         <StatCard
           label="Weighted margin"
-          value={totals.cost > 0 ? formatPct((totals.profit / totals.cost) * 100) : '—'}
+          value={totals.cost > 0 ? formatPct((totals.stockProfit / totals.cost) * 100) : '—'}
           tone="accent"
-          caption="profit over the cost of what sold"
+          caption="profit over the cost of the stock sold"
         />
       </section>
 

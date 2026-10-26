@@ -233,7 +233,7 @@ export function materialGroup(value: string | null | undefined): string | null {
  * exactly as it was.
  */
 export const METAOBJECT_TYPES = [
-  'brand', 'model', 'dial', 'bracelet', 'material', 'case_size', 'year',
+  'brand', 'model', 'dial', 'dial_style', 'bracelet', 'material', 'case_size', 'year',
   'condition', 'box_papers',
 ] as const
 
@@ -354,20 +354,65 @@ export function desiredMetaobjects(watch: SyncWatch): DesiredMetaobject[] {
     watch.dial
       ? { type: 'dial', name: alias(withoutDescription(watch.dial)), canCreate: true }
       : null,
+    /*
+     * The markers, kept apart from the colour.
+     *
+     * `canCreate` for the same reason the colour has it: the vocabulary here
+     * is whatever the trade says — baton, diamond dot, Roman, stick — and a
+     * list somebody has to extend by hand in the admin before a watch can
+     * carry its own dial is a list that gets worked around rather than
+     * extended. A name that is genuinely new makes its own entry.
+     */
+    watch.dialStyle
+      ? { type: 'dial_style', name: alias(withoutDescription(watch.dialStyle)), canCreate: true }
+      : null,
     watch.bracelet
       ? { type: 'bracelet', name: alias(withoutDescription(watch.bracelet)), canCreate: true }
       : null,
-    // The reference first, where the house encodes it. Rolex, Patek and
-    // Audemars all put the case metal in the reference, and that is the one
-    // description both systems can agree on without either giving way: the
-    // record says "Oystersteel and Everose gold", the shop says "Two-tone
-    // Everose Rolesor", and 126711 says which metal without an opinion.
-    // Grouped to the nine the shop filters on, from whichever source we have.
-    // The reference is tried first because it cannot be typed wrongly, but
-    // both ends arrive at the same nine words, so a watch described in the
-    // record and one read off its reference file together.
+    /*
+     * The record first, and the reference behind it.
+     *
+     * Rolex, Patek and Audemars all encode the case metal in the reference,
+     * and reading it is worth doing: it fills in every watch nobody got
+     * round to describing. This used to be tried FIRST, on the reasoning
+     * that a reference cannot be typed wrongly.
+     *
+     * Which is true, and beside the point — a reference cannot be mistyped,
+     * but the inference drawn from it can still be wrong, and when it is, it
+     * was silently overruling somebody who had looked at the watch.
+     *
+     * Stock 1563 is the case that showed it. Rolex 226627 is the Yacht-Master
+     * 42 in RLX titanium, and the record said Titanium. The reference ends in
+     * 7, which in Rolex's own numbering is 14k yellow gold — a grade they
+     * retired decades ago and a scheme they simply departed from here. The
+     * website showed Yellow Gold over the top of a human being's Titanium.
+     *
+     * But the reference is not simply wrong either, and 116334 is why. The
+     * record there says "Oystersteel", which is true and incomplete — it is
+     * a Datejust II with a white gold bezel, and the reference knows about
+     * the bezel because its last digit is what two-tone means. Reading the
+     * record alone would file a two-tone watch under plain Steel and lose it
+     * from the filter somebody actually uses to find it.
+     *
+     * So the rule is not which source wins. It is that the reference may
+     * COMPLETE a record and may not CONTRADICT one:
+     *
+     *   record Steel, reference Steel & something   -> the reference, which
+     *                                                  found the second metal
+     *   record anything else                        -> the record, which is
+     *                                                  somebody who looked
+     *   no record at all                            -> the reference
+     *
+     * Both cases land correctly. 116334 is filed Steel & White Gold because
+     * steel is a part of that answer; 226627 stays Titanium because yellow
+     * gold is not a more complete version of titanium, it is a different
+     * metal.
+     */
     (() => {
-      const metal = materialGroup(derivedMaterial) ?? materialGroup(watch.caseMaterial)
+      const recorded = materialGroup(watch.caseMaterial)
+      const derived = materialGroup(derivedMaterial)
+      const completes = recorded === 'Steel' && derived !== null && derived.startsWith('Steel &')
+      const metal = completes ? derived : (recorded ?? derived)
       return metal ? { type: 'material', name: metal, canCreate: true } : null
     })(),
     watch.caseSizeMm ? { type: 'case_size', name: `${watch.caseSizeMm}mm` } : null,
