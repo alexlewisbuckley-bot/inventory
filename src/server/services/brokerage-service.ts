@@ -6,6 +6,7 @@ import { recordAudit } from './audit'
 import { ConflictError, NotFoundError } from '@/lib/errors'
 import { getRateTable } from './fx-service'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
+import type { BrokerageAmendInput } from '@/lib/validation'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { commissionForMonth, salesByPerson } from '../repositories/sale-repository'
 import type { SessionUser } from '../auth/session'
@@ -159,6 +160,84 @@ export async function voidBrokerage(id: string, reason: string, actor: SessionUs
     entityId: id,
     action: 'UPDATE',
     summary: `${actor.name} voided a commission — ${reason}`,
+    actorId: actor.id,
+  })
+}
+
+/**
+ * Correcting a commission after the fact.
+ *
+ * There was no way to. A commission could be recorded, voided, or have a
+ * watch attached, and nothing else — so the reference was write-once at the
+ * moment of recording. The invoice usually arrives afterwards, which made the
+ * only route to putting it on the record voiding the commission and entering
+ * it again, losing the audit trail to a typo.
+ *
+ * The sale verbs were deliberately taken off a commission row — "Correct this
+ * sale" opened a form addressed by an id belonging to another table — and
+ * correctly so. This is the commission-shaped replacement that was never
+ * built: the paperwork around the fee, not the fee itself.
+ *
+ * The fee is not here on purpose. It is the one field the reports add up, and
+ * `feeBase` is derived from the amount, the currency and the rate on the day;
+ * changing it means re-deriving all three, which is a different job from
+ * typing in an invoice number. A fee agreed wrongly is still a void and
+ * re-enter, and that is the right amount of friction for restating income.
+ *
+ * Only what is named is written, so a form that sends one field leaves the
+ * other five alone.
+ */
+export async function amendBrokerage(
+  id: string,
+  input: BrokerageAmendInput,
+  actor: SessionUser,
+): Promise<void> {
+  const [existing] = await db.select().from(brokerages).where(eq(brokerages.id, id)).limit(1)
+  if (!existing || existing.deletedAt) throw new NotFoundError('Commission')
+  // A voided commission is not a record to keep tidy, it is one that was
+  // withdrawn. Editing it would put a corrected invoice number on income
+  // nobody is claiming.
+  if (existing.voidedAt) {
+    throw new ConflictError('That commission was voided, so it can no longer be corrected.')
+  }
+
+  const patch: Partial<typeof brokerages.$inferInsert> = { updatedAt: new Date() }
+  /*
+   * An emptied box and a box never filled are the same fact, and the column
+   * should hold one value for it. The schema already folds "" to null on the
+   * way in, so this is belt and braces — but a service that trusts every
+   * caller to have parsed first is one direct call away from a row whose
+   * reference is an empty string, which reads as "recorded, and blank".
+   */
+  const blankIsNull = (value: string | null | undefined) =>
+    value === undefined ? undefined : (value?.trim() || null)
+
+  if (input.reference !== undefined) patch.reference = blankIsNull(input.reference)
+  if (input.soldFor !== undefined) patch.soldFor = blankIsNull(input.soldFor)
+  if (input.soldTo !== undefined) patch.soldTo = blankIsNull(input.soldTo)
+  if (input.paymentStatus !== undefined) patch.paymentStatus = input.paymentStatus
+  if (input.brokeredOn !== undefined) patch.brokeredOn = input.brokeredOn
+  if (input.notes !== undefined) patch.notes = blankIsNull(input.notes)
+
+  await db.update(brokerages).set(patch).where(eq(brokerages.id, id))
+
+  // What changed, in the words of the ledger rather than the column names,
+  // so the audit log reads as a sentence about a commission.
+  const LABELS: Record<string, string> = {
+    reference: 'invoice', soldFor: 'sold for', soldTo: 'sold to',
+    paymentStatus: 'payment', brokeredOn: 'date', notes: 'notes',
+  }
+  const touched = Object.keys(patch)
+    .filter((key) => key !== 'updatedAt')
+    .map((key) => LABELS[key] ?? key)
+
+  await recordAudit({
+    entityType: 'Brokerage',
+    entityId: id,
+    action: 'UPDATE',
+    summary: touched.length
+      ? `${actor.name} corrected the ${touched.join(', ')} on a commission`
+      : `${actor.name} saved a commission with nothing changed`,
     actorId: actor.id,
   })
 }
