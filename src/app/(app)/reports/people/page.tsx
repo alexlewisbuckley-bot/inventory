@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Users } from 'lucide-react'
 import { requireAnyCapability } from '@/server/auth/session'
 import { salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
+import { commissionMonthsFor, commissionOverMonths } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
@@ -14,7 +15,7 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { listSalesPeople, salesPersonForUser } from '@/server/services/reference-service'
 import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
-import { formatPct } from '@/lib/money'
+import { formatPct, formatShare } from '@/lib/money'
 import { salesScope } from '@/lib/permissions'
 import { formatDate, businessToday, startOfMonthUtc, endOfMonthUtc, endOfDayUtc } from '@/lib/dates'
 import { cn } from '@/lib/cn'
@@ -163,7 +164,7 @@ export default async function SalesByPersonPage({ searchParams }: {
   // rather than shown an empty leaderboard they would read as "no sales".
   const onlyMine = scope === 'own' ? me?.id ?? '__unlinked__' : undefined
 
-  const [rows, previous, roster, rates, preferences] = await Promise.all([
+  const [rows, previous, roster, rates, preferences, commissionMonths] = await Promise.all([
     // Includes brokered deals: a commission is a sale the person made and
     // the fee is profit they earned, so a leaderboard that left it out
     // would rank them on part of their month.
@@ -173,6 +174,16 @@ export default async function SalesByPersonPage({ searchParams }: {
     scope === 'all' ? listSalesPeople() : Promise.resolve([]),
     getRateTable(),
     getPreferencesFor(user.id),
+    /*
+     * Their own commission, and only ever their own.
+     *
+     * Keyed on the salesperson this reader is linked to rather than on
+     * anything in the URL, so there is no id to change. A manager reading
+     * the whole book gets nothing here: the commission run is its own
+     * report and this is the card a salesperson opens to see where they
+     * are against their retainer.
+     */
+    me ? commissionMonthsFor(me.id, from, to) : Promise.resolve([]),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency)
@@ -182,6 +193,49 @@ export default async function SalesByPersonPage({ searchParams }: {
   const signed = (base: number) => formatBaseSigned(base, currency, rates)
 
   const before = new Map(previous.map((row) => [row.personId ?? 'none', row]))
+
+  /*
+   * What this month is worth to the person reading it.
+   *
+   * Alex: "commision is paid on 25% of profit we can display that to sales
+   * staff and also their retainer amount if they have one which they have
+   * to surpass."
+   *
+   * The share and the retainer are the person's own terms rather than a
+   * rate written in here, because they already are: 25% is the default a
+   * new salesperson is created on, and somebody on different terms is
+   * shown theirs.
+   *
+   * Stock sales only, which is what the commission run has always paid on
+   * and what the profit column on the sales ledger holds. A brokered fee
+   * is in the Profit card above and not in this one, so each card says
+   * which profit it means rather than leaving somebody to work out why a
+   * quarter of one is not the other.
+   *
+   * Worked out one month at a time even when the period is a quarter or a
+   * year. The retainer is monthly and a quiet month owes nothing forward,
+   * so a quarter is three separate settlements — taking the share of the
+   * lump sum and deducting one retainer would pay somebody for two months
+   * they never cleared.
+   */
+  const commission = me
+    ? commissionOverMonths(commissionMonths, me.retainer, me.commissionBps)
+    : null
+  /*
+   * "How much more do I need to sell this month?", as a figure.
+   *
+   * Only asked of a single month, because only a single month has an
+   * answer: each month settles on its own and a past one is closed, so
+   * there is no running shortfall to carry. Over a longer period the
+   * honest summary is how many months got there, which is the card below.
+   *
+   * Measured on what they have sold rather than on what the customer has
+   * paid — the retainer is a question about selling.
+   */
+  const singleMonth = key === 'month' || key === 'last'
+  const toClear = me && commission && singleMonth
+    ? Math.max(0, me.retainer - commission.projectedEarned)
+    : 0
 
   /**
    * A colour per person, fixed by their place on the roster rather than by
@@ -332,6 +386,59 @@ export default async function SalesByPersonPage({ searchParams }: {
           caption="profit over the cost of the stock sold"
         />
       </section>
+
+      {me && commission && (
+        <section aria-label="Your commission" className="mb-6 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
+          <StatCard
+            label="Commission earned"
+            value={money(commission.paidCommission)}
+            tone="accent"
+            caption={`${formatShare(me.commissionBps)} of profit on watches you sold, on invoices that are paid`}
+          />
+          <StatCard
+            label="If everything settles"
+            value={money(commission.projectedCommission)}
+            caption={commission.projectedCommission > commission.paidCommission
+              ? 'including invoices still outstanding'
+              : 'nothing outstanding'}
+          />
+          {me.retainer > 0 && (
+            <>
+              <StatCard
+                label="Your retainer"
+                value={money(me.retainer)}
+                caption="a month, drawn against commission"
+              />
+              {singleMonth ? (
+                <StatCard
+                  label="Past your retainer"
+                  value={toClear > 0 ? 'Not yet' : 'Yes'}
+                  tone={toClear > 0 ? undefined : 'accent'}
+                  caption={toClear > 0
+                    ? `${money(toClear)} more of profit share to cover it`
+                    : 'commission is paid on top from here'}
+                />
+              ) : (
+                <StatCard
+                  label="Months cleared"
+                  value={`${commission.clearedMonths} of ${commission.months}`}
+                  tone={commission.clearedMonths > 0 ? 'accent' : undefined}
+                  caption={commission.months === 1 ? 'month you sold in' : 'months you sold in'}
+                />
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {me && commission && me.retainer > 0 && (
+        <p className="mb-6 rounded-md border border-line-subtle bg-surface-subtle px-4 py-2.5 text-caption text-content-secondary">
+          Your retainer is an advance against commission: you are paid {formatShare(me.commissionBps)} of
+          the profit on the watches you sell, and commission reaches you once that share passes
+          the retainer you have already drawn. A month that does not get there owes nothing
+          forward — each month starts again.
+        </p>
+      )}
 
       {partial && (
         <p className="mb-6 rounded-md border border-line-subtle bg-surface-subtle px-4 py-2.5 text-caption text-content-secondary">

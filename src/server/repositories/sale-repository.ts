@@ -458,6 +458,79 @@ export async function tradingForMonth(from: Date, to: Date) {
  * loses a fils per person per month, which is nothing until somebody
  * reconciles it against the bank and cannot find it.
  */
+/**
+ * What one person earned in commission, month by month.
+ *
+ * Commission is a monthly rule — a share of the profit, less a retainer
+ * already drawn, and a quiet month earns nothing rather than owing it
+ * forward. So a figure covering more than one month cannot be taken of the
+ * lump sum: 25% of a quarter's profit, less one retainer, pays somebody for
+ * two months they never cleared.
+ *
+ * Grouped in SQL by the month of the sale and reduced month by month in
+ * `commissionOverMonths`, so "this month", "last 3 months" and "this year"
+ * are all the same arithmetic applied the right number of times.
+ *
+ * Paid and pending stay apart for the same reason the commission run keeps
+ * them apart: one is money earned, the other is money earned if the
+ * customer settles, and they should never be read as the same number.
+ */
+export async function commissionMonthsFor(personId: string, from?: Date, to?: Date) {
+  const window = [liveSale(), eq(sales.soldById, personId)]
+  if (from) window.push(gte(sales.saleDate, from))
+  if (to) window.push(lte(sales.saleDate, to))
+
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(${sales.saleDate}, 'YYYY-MM')`.as('month'),
+      paidProfit: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} = 'PAID'), 0)`,
+      pendingProfit: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} <> 'PAID'), 0)`,
+    })
+    .from(sales)
+    .where(and(...window))
+    .groupBy(sql`1`)
+    .orderBy(sql`1`)
+
+  return rows.map((row) => ({
+    month: row.month,
+    paidProfit: Number(row.paidProfit),
+    pendingProfit: Number(row.pendingProfit),
+  }))
+}
+
+/**
+ * The months added up, with the rule applied once per month.
+ *
+ * `clearedMonths` is how many of them got past the retainer, which is the
+ * thing a salesperson on a retainer actually wants to know and the thing a
+ * single total hides.
+ */
+export function commissionOverMonths(
+  months: ReadonlyArray<{ month: string; paidProfit: number; pendingProfit: number }>,
+  retainerBase: number,
+  bps: number,
+): {
+  paidCommission: number
+  projectedCommission: number
+  /** The share before the retainer is taken off — what is covering it. */
+  projectedEarned: number
+  clearedMonths: number
+  months: number
+} {
+  let paidCommission = 0
+  let projectedCommission = 0
+  let projectedEarned = 0
+  let clearedMonths = 0
+  for (const month of months) {
+    paidCommission += commissionOn(month.paidProfit, retainerBase, bps).commission
+    const all = commissionOn(month.paidProfit + month.pendingProfit, retainerBase, bps)
+    projectedCommission += all.commission
+    projectedEarned += all.earned
+    if (all.commission > 0) clearedMonths += 1
+  }
+  return { paidCommission, projectedCommission, projectedEarned, clearedMonths, months: months.length }
+}
+
 export function commissionOn(
   profitBase: number, retainerBase: number, bps: number,
 ): { earned: number; commission: number } {

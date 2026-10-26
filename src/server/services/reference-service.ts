@@ -399,10 +399,19 @@ export async function listSalesPeople(): Promise<Array<{ id: string; name: strin
  * and a sentence saying why, which is a better answer than somebody else's
  * figures or a blank page.
  */
-export async function salesPersonForUser(userId: string): Promise<{ id: string; name: string } | null> {
+export async function salesPersonForUser(
+  userId: string,
+): Promise<{ id: string; name: string; retainer: number; commissionBps: number } | null> {
   const { salesPeople } = await import('../db/schema')
   const rows = await db
-    .select({ id: salesPeople.id, name: salesPeople.name })
+    .select({
+      id: salesPeople.id,
+      name: salesPeople.name,
+      // Their own terms, so the page can show them what they have earned
+      // against them. Nobody else's terms are read here.
+      retainer: salesPeople.retainer,
+      commissionBps: salesPeople.commissionBps,
+    })
     .from(salesPeople)
     .where(and(
       eq(salesPeople.userId, userId),
