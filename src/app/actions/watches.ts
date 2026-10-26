@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { brokerageSchema, saleToCommissionSchema } from '@/lib/validation'
+import { brokerageAmendSchema, brokerageSchema, saleToCommissionSchema } from '@/lib/validation'
 import {
   createWatch, updateWatch, moveWatches, recordSale, deleteWatch, restoreWatch,
   setWatchStatus, voidSale,
@@ -365,6 +365,33 @@ export async function voidBrokerageAction(id: string, reason: string): Promise<A
     return { ok: true, message: 'Commission voided.' }
   } catch (error) {
     return toState(error, 'Could not void that commission.')
+  }
+}
+
+/**
+ * Correct the paperwork on a commission already recorded.
+ *
+ * `sale:update`, the same capability that lets somebody correct a sale: this
+ * is the commission's half of that verb, which had never been built. Nothing
+ * here touches the fee, so no stricter capability is called for.
+ */
+export async function amendBrokerageAction(
+  id: string,
+  input: unknown,
+): Promise<ActionState> {
+  const actor = await requireCapability('sale:update')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = brokerageAmendSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
+
+  try {
+    const { amendBrokerage } = await import('@/server/services/brokerage-service')
+    await amendBrokerage(id, parsed.data, actor)
+    refreshLedger()
+    return { ok: true, message: 'Commission updated.' }
+  } catch (error) {
+    return toState(error, 'Could not update that commission.')
   }
 }
 

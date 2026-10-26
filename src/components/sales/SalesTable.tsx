@@ -14,7 +14,7 @@ import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleM
 import type { LedgerKind } from '@/lib/ledger-kind'
 import { stockless } from '@/lib/ledger-kind'
 import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
-import { LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
+import { EditCommissionModal, LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
 import { markSalePaidAction } from '@/app/actions/watches'
 import { formatPct } from '@/lib/money'
 import { useCurrency } from '@/components/ui'
@@ -72,6 +72,9 @@ export function SalesTable({
   const [commissionTarget, setCommissionTarget] = useState<
     { id: string; label: string; invoiceNo: string; amountGbp: number } | null>(null)
   const [linkTarget, setLinkTarget] = useState<{ id: string; label: string } | null>(null)
+  const [editCommissionTarget, setEditCommissionTarget] = useState<
+    React.ComponentProps<typeof EditCommissionModal>['target']
+  >(null)
   const [voidCommissionTarget, setVoidCommissionTarget] =
     useState<{ id: string; label: string } | null>(null)
 
@@ -238,6 +241,17 @@ export function SalesTable({
                   canVoid={canVoid}
                   onPaid={() => { void confirmPaid(sale) }}
                   onLink={() => setLinkTarget({ id: sale.id, label: sale.model })}
+                  onCorrectCommission={() => setEditCommissionTarget({
+                    id: sale.id,
+                    label: `${sale.brandName} ${sale.model}`.trim() || sale.model,
+                    // The ledger prints an em dash where there is no
+                    // reference; the form must offer an empty box, not that.
+                    reference: sale.invoiceNo === '—' ? '' : sale.invoiceNo,
+                    paymentStatus: sale.paymentStatus,
+                    brokeredOn: new Date(sale.saleDate).toISOString().slice(0, 10),
+                    notes: sale.notes ?? '',
+                    fee: money(sale.amountGbp),
+                  })}
                   onOpenLoan={() => router.push('/buybacks')}
                   onCommission={() => setCommissionTarget({
                     id: sale.id,
@@ -312,6 +326,13 @@ export function SalesTable({
         onDone={() => router.refresh()}
       />
 
+      <EditCommissionModal
+        open={editCommissionTarget !== null}
+        target={editCommissionTarget}
+        onClose={() => setEditCommissionTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
       <VoidCommissionModal
         open={voidCommissionTarget !== null}
         target={voidCommissionTarget}
@@ -341,7 +362,7 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onCommission, onLink, onOpenLoan }: {
+function RowActions({ sale, canAmend, canVoid, onCorrect, onCorrectCommission, onPaid, onVoid, onCommission, onLink, onOpenLoan }: {
   sale: SaleListItem & { kind?: LedgerKind }
   canAmend: boolean
   canVoid: boolean
@@ -350,6 +371,7 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
   onVoid: () => void
   onCommission: () => void
   onLink: () => void
+  onCorrectCommission: () => void
   onOpenLoan: () => void
 }) {
   /*
@@ -390,6 +412,12 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onPaid, onVoid, onComm
 
   if (sale.kind === 'COMMISSION') {
     const commissionItems: MenuItem[] = [
+      ...(canAmend ? [{
+        id: 'correct-commission',
+        label: 'Correct this commission…',
+        onSelect: onCorrectCommission,
+        icon: <Pencil className="h-3.5 w-3.5" />,
+      }] : []),
       ...(canAmend ? [{
         id: 'link',
         label: 'Link one of our watches…',

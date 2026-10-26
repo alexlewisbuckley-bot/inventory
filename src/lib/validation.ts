@@ -822,6 +822,34 @@ export const brokerageSchema = z.object({
 })
 export type BrokerageFormInput = z.infer<typeof brokerageSchema>
 
+/**
+ * Correcting the paperwork on a commission already recorded.
+ *
+ * The invoice usually arrives after the fee is agreed, so the reference has
+ * to be addable later; without this the only way onto the record was to void
+ * the commission and type it again.
+ *
+ * Every field is optional and nothing is defaulted, which is the whole point:
+ * a form sending only the invoice number must not quietly reset the payment
+ * status to PAID because the schema has a default. `nullish` for the same
+ * reason the record schema gives — form data is null for a field that was
+ * not rendered — and an empty string clears the field, which is how somebody
+ * removes a reference typed in error.
+ *
+ * The fee is absent deliberately. It is what the reports add up, and its base
+ * value is derived from the amount, the currency and the rate on the day;
+ * restating income should cost a void and a re-entry rather than a keystroke.
+ */
+export const brokerageAmendSchema = z.object({
+  reference: z.string().trim().max(60).nullish().transform((v) => v || null),
+  soldFor: z.string().trim().max(140).nullish().transform((v) => v || null),
+  soldTo: z.string().trim().max(140).nullish().transform((v) => v || null),
+  paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
+  brokeredOn: z.coerce.date().optional(),
+  notes: z.string().trim().max(2000).nullish().transform((v) => v || null),
+}).partial()
+export type BrokerageAmendInput = z.infer<typeof brokerageAmendSchema>
+
 /** Re-recording a direct sale as a fee: the sale, and what we were paid. */
 export const saleToCommissionSchema = z.object({
   saleId: z.string().trim().min(1),

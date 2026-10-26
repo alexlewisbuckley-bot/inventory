@@ -1,7 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { Button, ComboSelect, Modal, TextareaField, useToast } from '@/components/ui'
-import { linkCommissionWatchAction, voidBrokerageAction } from '@/app/actions/watches'
+import { Button, ComboSelect, Modal, SelectField, TextField, TextareaField, useToast } from '@/components/ui'
+import { amendBrokerageAction, linkCommissionWatchAction, voidBrokerageAction } from '@/app/actions/watches'
+import { PAYMENT_STATUSES, PAYMENT_STATUS_LABELS } from '@/lib/enums'
 
 /**
  * The two things you can do to a commission after recording it.
@@ -112,6 +113,114 @@ export function VoidCommissionModal({ open, target, onClose, onDone }: {
           <Button type="button" variant="danger" onClick={() => { void submit() }} loading={busy}>
             Void commission
           </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Correcting the paperwork on a commission.
+ *
+ * The missing third verb. A commission could be linked or voided and nothing
+ * else, so the reference was fixed at the moment of recording — and the
+ * invoice almost always arrives afterwards. Putting it on the record meant
+ * voiding the commission and entering it again, which is a poor trade for a
+ * number somebody now has in front of them.
+ *
+ * Deliberately not the record form. That one takes the fee, the currency and
+ * the rate, and re-deriving income is a different act from writing down an
+ * invoice number. The fee is shown here as text, so it is clear what is being
+ * corrected and what is not.
+ */
+export function EditCommissionModal({ open, target, onClose, onDone }: {
+  open: boolean
+  target: {
+    id: string
+    label: string
+    /** The ledger prints an em dash for a reference nobody filled in. */
+    reference: string
+    paymentStatus: string
+    brokeredOn: string
+    notes: string
+    fee: string
+  } | null
+  onClose: () => void
+  onDone: () => void
+}) {
+  const toast = useToast()
+  const [reference, setReference] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('PAID')
+  const [brokeredOn, setBrokeredOn] = useState('')
+  const [notes, setNotes] = useState('')
+  const [busy, setBusy] = useState(false)
+  // Which commission the fields were last filled from, so re-opening on a
+  // different row reloads them and typing into them does not.
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
+
+  if (!target) return null
+
+  if (loadedFor !== target.id) {
+    setLoadedFor(target.id)
+    setReference(target.reference)
+    setPaymentStatus(target.paymentStatus)
+    setBrokeredOn(target.brokeredOn)
+    setNotes(target.notes)
+  }
+
+  async function submit() {
+    setBusy(true)
+    const result = await amendBrokerageAction(target!.id, {
+      reference, paymentStatus, brokeredOn, notes,
+    })
+    setBusy(false)
+    if (!result.ok) { toast.error('Could not update that commission', result.message); return }
+    toast.success('Commission updated', result.message)
+    onClose()
+    onDone()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Correct this commission" description={target.label} size="sm">
+      <div className="flex flex-col gap-4">
+        <TextField
+          name="reference"
+          label="Invoice or reference"
+          value={reference}
+          onChange={(event) => setReference(event.target.value)}
+          placeholder="INV-2026-0042"
+          hint="The invoice the fee was billed on. Add it whenever it arrives."
+        />
+        <SelectField
+          name="paymentStatus"
+          label="Payment"
+          value={paymentStatus}
+          onChange={(event) => setPaymentStatus(event.target.value)}
+          options={PAYMENT_STATUSES.map((status) => ({
+            value: status, label: PAYMENT_STATUS_LABELS[status],
+          }))}
+        />
+        <TextField
+          name="brokeredOn"
+          type="date"
+          label="Date"
+          value={brokeredOn}
+          onChange={(event) => setBrokeredOn(event.target.value)}
+        />
+        <TextareaField
+          name="notes"
+          label="Notes"
+          rows={2}
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
+        <p className="text-caption text-content-secondary">
+          The fee stays at {target.fee}. It is what the reports add up, and restating income
+          is a void and a re-entry rather than an edit here.
+        </p>
+        <div className="mt-1 flex items-center justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="button" onClick={() => { void submit() }} loading={busy}>Save</Button>
         </div>
       </div>
     </Modal>
