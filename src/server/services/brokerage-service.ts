@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { brands, brokerages, sales, salesPeople, watches } from '../db/schema'
+import { brands, brokerages, buybackCharges, buybacks, sales, salesPeople, watches } from '../db/schema'
 import { newId } from '@/lib/ids'
 import { recordAudit } from './audit'
 import { ConflictError, NotFoundError } from '@/lib/errors'
@@ -424,6 +424,15 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
     costGbp: Number(row.costGbp),
     /** Profit on their own stock, which is what a margin is measured on. */
     stockProfitGbp: Number(row.profitGbp),
+    /**
+     * Watches, before the fees are folded in beside them.
+     *
+     * Kept so a page can say "one watch and one brokered deal" rather than
+     * "2". Two deals adding up to a profit and a margin that plainly do not
+     * belong to each other is a figure somebody has to come and ask about,
+     * and the answer is always this split.
+     */
+    stockCount: Number(row.soldCount),
   }))
   const byId = new Map(rows.map((row) => [row.personId ?? 'none', row]))
 
@@ -454,6 +463,8 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
       profitGbp: fee.total,
       costGbp: 0,
       stockProfitGbp: 0,
+      // No watch left the shelf for a fee, so none of this is stock.
+      stockCount: 0,
       lastSaleAt: fee.lastAt,
     }
     rows.push(row as typeof rows[number])
@@ -461,6 +472,212 @@ export async function salesByPersonWithBrokerage(from?: Date, to?: Date, onlyPer
   }
 
   return rows
+}
+
+/**
+ * Everything a salesperson earned, month by month, from all three sources.
+ *
+ * Alex: "Brokered deals are pure profit, ignore them for Margin" and
+ * "commision earned should be 25% of the total amount including brokered
+ * deals." Two halves of one rule, and they pull in opposite directions on
+ * purpose:
+ *
+ *   margin      stock only — a fee has no cost, so there is nothing for a
+ *               percentage to be of
+ *   commission  everything — a fee is money the person brought in, and a
+ *               quarter of it is theirs
+ *
+ * So the commission figure is taken of the profit on the watches they sold
+ * and the fees on the deals they brokered. Commission used to be worked out
+ * on sales alone on this page, which paid somebody nothing for a brokered
+ * deal that was pure profit to the firm.
+ *
+ * Buy-back charges are deliberately not in here. They are in the Profit
+ * card, because the money is theirs to have earned, and the firm's own
+ * commission run has never paid on them — `commissionBaseForMonth` is
+ * sales and brokerage, and these two must agree to the penny or the
+ * salesperson and the person signing the cheque are reading different
+ * numbers. Changing what a buy-back earns is a decision about money, not
+ * about a screen, so it is not made here.
+ *
+ * Paid and pending stay apart. All three sources carry a payment status, so
+ * "earned" means the customer has settled and "if everything settles" means
+ * the rest lands too; neither is guessed.
+ *
+ * Grouped by the month of the sale, the deal or the charge, because the
+ * commission rule is monthly: a share above a retainer, settled afresh each
+ * month. One row per person per month, summed across the three.
+ */
+export async function earningsByPersonMonth(
+  from?: Date, to?: Date, personId?: string,
+): Promise<Array<{ personId: string | null; month: string; paidProfit: number; pendingProfit: number }>> {
+  const saleWindow = [isNull(sales.voidedAt), isNull(sales.deletedAt)]
+  if (from) saleWindow.push(gte(sales.saleDate, from))
+  if (to) saleWindow.push(lte(sales.saleDate, to))
+  if (personId) saleWindow.push(eq(sales.soldById, personId))
+
+  const feeWindow = [...[live()]]
+  if (from) feeWindow.push(gte(brokerages.brokeredOn, from))
+  if (to) feeWindow.push(lte(brokerages.brokeredOn, to))
+  if (personId) feeWindow.push(eq(brokerages.soldById, personId))
+
+  const [fromSales, fromFees] = await Promise.all([
+    db.select({
+      personId: sales.soldById,
+      month: sql<string>`to_char(${sales.saleDate}, 'YYYY-MM')`.as('month'),
+      paid: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} = 'PAID'), 0)`,
+      pending: sql<number>`coalesce(sum(${sales.profitGbp}) filter (where ${sales.paymentStatus} <> 'PAID'), 0)`,
+    }).from(sales).where(and(...saleWindow)).groupBy(sales.soldById, sql`2`),
+
+    db.select({
+      personId: brokerages.soldById,
+      month: sql<string>`to_char(${brokerages.brokeredOn}, 'YYYY-MM')`.as('month'),
+      paid: sql<number>`coalesce(sum(${brokerages.feeBase}) filter (where ${brokerages.paymentStatus} = 'PAID'), 0)`,
+      pending: sql<number>`coalesce(sum(${brokerages.feeBase}) filter (where ${brokerages.paymentStatus} <> 'PAID'), 0)`,
+    }).from(brokerages).where(and(...feeWindow)).groupBy(brokerages.soldById, sql`2`),
+  ])
+
+  // Keyed on person and month together, so the three sources land on the
+  // same row wherever they share one.
+  const byKey = new Map<string, { personId: string | null; month: string; paidProfit: number; pendingProfit: number }>()
+  for (const row of [...fromSales, ...fromFees]) {
+    const key = `${row.personId ?? 'none'}|${row.month}`
+    const found = byKey.get(key) ?? { personId: row.personId, month: row.month, paidProfit: 0, pendingProfit: 0 }
+    found.paidProfit += Number(row.paid)
+    found.pendingProfit += Number(row.pending)
+    byKey.set(key, found)
+  }
+  return [...byKey.values()].sort((a, b) => a.month.localeCompare(b.month))
+}
+
+/**
+ * Every deal one person did in the period, as a list rather than a total.
+ *
+ * Alex: "Show an actual breakdown of deals done and then the commision
+ * too." A single row reading "2 · AED 113,690 · +AED 19,690" is a figure to
+ * be taken on trust, and the first thing anybody does with a figure they
+ * cannot see inside is dispute it. These are the deals the totals are made
+ * of, each with what it earned and what it is worth to the person who did
+ * it.
+ *
+ * All three sources, in one list, because from where the salesperson
+ * stands they are all deals they did: a watch off the shelf, a watch of
+ * somebody else's brokered for a fee, and a charge on a buy-back they
+ * wrote. The `kind` says which, so the page can be honest about what it is
+ * showing without three tables.
+ *
+ * Sorted newest first, which is the order somebody checks their own month
+ * in.
+ */
+export interface PersonDeal {
+  kind: 'sale' | 'brokered' | 'buyback'
+  id: string
+  date: Date
+  /** What it was: the watch, or the thing brokered. */
+  title: string
+  /** The stock number, where one exists — nothing for somebody else's watch. */
+  stockNo: number | null
+  reference: string | null
+  /** What the customer paid. A fee has no sale price of its own. */
+  amount: number | null
+  /** What it earned the firm, which is what a commission is taken of. */
+  profit: number
+  paymentStatus: string
+}
+
+export async function dealsFor(personId: string, from?: Date, to?: Date): Promise<PersonDeal[]> {
+  const saleWindow = [isNull(sales.voidedAt), isNull(sales.deletedAt), eq(sales.soldById, personId)]
+  if (from) saleWindow.push(gte(sales.saleDate, from))
+  if (to) saleWindow.push(lte(sales.saleDate, to))
+
+  const feeWindow = [live(), eq(brokerages.soldById, personId)]
+  if (from) feeWindow.push(gte(brokerages.brokeredOn, from))
+  if (to) feeWindow.push(lte(brokerages.brokeredOn, to))
+
+  const chargeWindow = [
+    isNull(buybackCharges.voidedAt), isNull(buybacks.deletedAt), eq(buybacks.soldById, personId),
+  ]
+  if (from) chargeWindow.push(gte(buybackCharges.dueOn, from))
+  if (to) chargeWindow.push(lte(buybackCharges.dueOn, to))
+
+  const [soldRows, feeRows, chargeRows] = await Promise.all([
+    db.select({
+      id: sales.id,
+      date: sales.saleDate,
+      invoiceNo: sales.invoiceNo,
+      amount: sales.saleAmountGbp,
+      profit: sales.profitGbp,
+      paymentStatus: sales.paymentStatus,
+      stockNo: watches.stockNo,
+      model: watches.model,
+      brand: brands.name,
+    })
+      .from(sales)
+      .innerJoin(watches, eq(watches.id, sales.watchId))
+      .leftJoin(brands, eq(brands.id, watches.brandId))
+      .where(and(...saleWindow)),
+
+    db.select({
+      id: brokerages.id,
+      date: brokerages.brokeredOn,
+      description: brokerages.description,
+      reference: brokerages.reference,
+      soldFor: brokerages.soldFor,
+      fee: brokerages.feeBase,
+      paymentStatus: brokerages.paymentStatus,
+    }).from(brokerages).where(and(...feeWindow)),
+
+    db.select({
+      id: buybackCharges.id,
+      date: buybackCharges.dueOn,
+      amount: buybackCharges.amountBase,
+      paymentStatus: buybackCharges.paymentStatus,
+      reference: buybacks.reference,
+    })
+      .from(buybackCharges)
+      .innerJoin(buybacks, eq(buybacks.id, buybackCharges.buybackId))
+      .where(and(...chargeWindow)),
+  ])
+
+  const deals: PersonDeal[] = [
+    ...soldRows.map((row) => ({
+      kind: 'sale' as const,
+      id: row.id,
+      date: row.date,
+      title: [row.brand, row.model].filter(Boolean).join(' ') || 'Watch',
+      stockNo: row.stockNo,
+      reference: row.invoiceNo,
+      amount: Number(row.amount),
+      profit: Number(row.profit),
+      paymentStatus: row.paymentStatus,
+    })),
+    ...feeRows.map((row) => ({
+      kind: 'brokered' as const,
+      id: row.id,
+      date: row.date,
+      title: row.description,
+      stockNo: null,
+      reference: row.reference,
+      // A fee is not a sale price. What the piece went for is the other
+      // party's figure, and putting it in this column would make the
+      // revenue on this page disagree with the ledger.
+      amount: null,
+      profit: Number(row.fee),
+      paymentStatus: row.paymentStatus,
+    })),
+    ...chargeRows.map((row) => ({
+      kind: 'buyback' as const,
+      id: row.id,
+      date: row.date,
+      title: 'Buy-back charge',
+      stockNo: null,
+      reference: row.reference,
+      amount: null,
+      profit: Number(row.amount),
+      paymentStatus: row.paymentStatus,
+    })),
+  ]
+  return deals.sort((a, b) => b.date.getTime() - a.date.getTime())
 }
 
 /** Brokerage per person, with the name and the latest date. */

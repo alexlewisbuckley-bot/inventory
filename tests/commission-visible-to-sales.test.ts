@@ -76,12 +76,44 @@ describe('commission as a salesperson sees it', () => {
 
   it('shows somebody their own figures and nobody else’s', () => {
     // Keyed on the salesperson the reader is linked to, never on the URL.
-    expect(page).toContain('me ? commissionMonthsFor(me.id, from, to) : Promise.resolve([])')
+    expect(page).toContain('me ? earningsByPersonMonth(from, to, me.id) : Promise.resolve([])')
+    expect(page).toContain('me ? dealsFor(me.id, from, to) : Promise.resolve([])')
     expect(page).toContain('commissionOverMonths(commissionMonths, me.retainer, me.commissionBps)')
   })
 
   it('states the rate from the person’s own terms rather than hard-coding it', () => {
     expect(page).toContain('formatShare(me.commissionBps)')
     expect(page).not.toContain('25% of profit`')
+  })
+
+  /**
+   * Alex: "Brokered deals are pure profit, ignore them for Margin" and
+   * "commision earned should be 25% of the total amount including brokered
+   * deals." The same fee, treated oppositely in the two figures, and both
+   * ways round are right: it has no cost, so it cannot be in a margin; it
+   * is all profit, so it must be in a commission.
+   */
+  it('pays commission on brokered deals as well as watches', () => {
+    expect(page).toContain('of everything you brought in')
+  })
+
+  it('keeps brokered deals out of the margin', () => {
+    // The numerator is stock profit, which a fee never enters.
+    expect(page).toContain('formatPct((totals.stockProfit / totals.cost) * 100)')
+  })
+
+  it('shows a salesperson no margin at all', () => {
+    // "remove margin from Sales View" — both the card and the column.
+    expect(page).toContain("{scope === 'all' && (\n          <StatCard\n            label=\"Weighted margin\"")
+    expect(page).toContain('{scope === \'all\' && <TH width="90px" align="right">Margin</TH>}')
+  })
+
+  it('breaks the total down into the deals it is made of', () => {
+    expect(page).toContain('Your deals')
+    expect(page).toContain('<TH width="110px" align="right">Your share</TH>')
+  })
+
+  it('quotes no share on a buy-back, which the firm does not pay on', () => {
+    expect(page).toContain("deal.kind === 'buyback'")
   })
 })
