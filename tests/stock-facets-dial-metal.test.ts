@@ -86,7 +86,10 @@ describe('where the stock list opens', () => {
     // you arrive on has no chip lit at all.
     const page = read('src/app/(app)/inventory/page.tsx')
     expect(page).toMatch(/redirect\(`\/inventory\?\$\{house \? locationQuery\(house\.id\) : AVAILABLE_QUERY\}`\)/)
-    expect(page).toMatch(/builtIn=\{inventoryViews\(house\)\}/)
+    // The second argument decides whether the queues are offered at all
+    // (Sales gets the shop floor alone); the house stays the first, which is
+    // what this test is about.
+    expect(page).toMatch(/builtIn=\{inventoryViews\(house[,)]/)
   })
 
   it('finds the shop by the order set in Locations, not by its name', () => {

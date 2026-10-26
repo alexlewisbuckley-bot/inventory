@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { can } from '@/lib/permissions'
 import { navGroups } from '@/components/layout/nav-model'
+import { inventoryViews } from '@/components/inventory/views'
 
 const inventoryPage = readFileSync(join(process.cwd(), 'src/app/(app)/inventory/page.tsx'), 'utf8')
 
@@ -74,5 +75,57 @@ describe('what Sales is shown', () => {
       expect(labelsFor(role)).toContain('Owners')
       expect(labelsFor(role)).toContain('Unpriced stock')
     }
+  })
+})
+
+/**
+ * The stock list itself, once the role was narrowed around it.
+ *
+ * Alex: "These views not needed for sales they should only see OSW stock",
+ * "Remove amount invested", "and 138 view is repeated" — three things on one
+ * screen, and the first two are the same mistake twice. A total gated on the
+ * capability for reading one watch's cost rather than on the capability for
+ * reading the firm's account of itself is how a figure survives its own
+ * cards being taken away.
+ */
+describe('the stock list a salesperson opens', () => {
+  const house = { id: 'loc-1', name: 'One Street Watches' }
+
+  it('offers Sales the shop floor and nothing else', () => {
+    const labels = inventoryViews(house, { queues: false }).map((v) => v.label)
+    expect(labels).toEqual(['One Street Watches'])
+  })
+
+  it('still offers the queues to the people whose job they are', () => {
+    const labels = inventoryViews(house, { queues: true }).map((v) => v.label)
+    expect(labels).toContain('One Street Watches')
+    for (const queue of ['All locations', 'Sold', 'Needs a price', 'Register check due', 'Ageing']) {
+      expect(labels).toContain(queue)
+    }
+  })
+
+  it('gives every role that works the book its queues back', () => {
+    // The gate the page computes. Sales is the only role on the wrong side
+    // of it, which is the point: a capability nobody else lacks would have
+    // taken the bar away from Operations too.
+    const worksTheBook = (role: Parameters<typeof can>[0]) =>
+      can(role, 'report:read') || can(role, 'watch:update')
+    expect(worksTheBook('SALES')).toBe(false)
+    for (const role of ['VIEWER', 'OPERATIONS', 'STAFF', 'MANAGER', 'OWNER'] as const) {
+      expect(worksTheBook(role)).toBe(true)
+    }
+  })
+
+  it('says nothing about capital in the subtitle', () => {
+    // The leak: `showCost` is held by Sales, `showTotals` is not.
+    expect(inventoryPage).toContain("description={showTotals && showCost ? `${money(summary.totalCostGbp)} invested` : undefined}")
+    expect(inventoryPage).not.toContain('description={showCost')
+  })
+
+  it('does not print the same count twice', () => {
+    // "138 watches matching the current view" over a card reading "In view
+    // 138". The card keeps it; the subtitle stops repeating it.
+    expect(inventoryPage).not.toContain('matching the current view')
+    expect(inventoryPage).toContain('<StatCard label="In view" value={summary.inStockCount}')
   })
 })

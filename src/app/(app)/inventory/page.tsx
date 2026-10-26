@@ -209,6 +209,20 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
    * per-watch capability rather than on the reporting one.
    */
   const showTotals = can(user.role, 'report:read')
+  /*
+   * Whether the view bar offers anything beyond the shop floor.
+   *
+   * Gated on the two capabilities that mark somebody who works the book
+   * rather than sells from it: `report:read` for the roles that account for
+   * it, `watch:update` for the roles that move it. Sales holds neither, so
+   * Sales gets the house view on its own.
+   *
+   * This is the bar, not the query. A filter typed into the address bar
+   * still reaches stock in another location — the views are what the screen
+   * offers, and offering a salesperson the register-check queue was the
+   * thing that made no sense.
+   */
+  const showQueues = showTotals || can(user.role, 'watch:update')
   const rows = redactRows(user.role as never, result.items, {
     cost: ['purchasePriceGbp', 'estProfitGbp', 'actualProfitGbp'],
     revenue: ['estSaleGbp', 'soldAmountGbp'],
@@ -231,9 +245,19 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
     <>
       <PageHeader
         title="Stock Inventory"
-        description={showCost
-          ? `${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view · ${money(summary.totalCostGbp)} invested`
-          : `${summary.inStockCount} ${summary.inStockCount === 1 ? 'watch' : 'watches'} matching the current view`}
+        /*
+         * The count is on the "In view" card, in bigger type, with the
+         * unpriced figure under it — saying it again in the subtitle was the
+         * same number twice on one screen.
+         *
+         * What is left is the money, and it is gated on `showTotals` like
+         * every other total on this page. It was gated on `showCost`, which
+         * Sales holds: the five cards below were moved onto the reporting
+         * capability and this line was missed, so the capital invested went
+         * on reading out in the subtitle of a page whose cards had all just
+         * been taken away.
+         */
+        description={showTotals && showCost ? `${money(summary.totalCostGbp)} invested` : undefined}
         actions={
           <>
             {/* Visible from sm upwards; below that they fold into the overflow
@@ -322,7 +346,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         )}
       </section>
 
-      <ViewBar object="watch" builtIn={inventoryViews(house)} saved={savedViews} />
+      <ViewBar object="watch" builtIn={inventoryViews(house, { queues: showQueues })} saved={savedViews} />
 
       <FilterBar
         fields={WATCH_FIELDS}

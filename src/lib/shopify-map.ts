@@ -50,6 +50,8 @@ export interface SyncWatch {
   caseSizeMm: number | null
   caseMaterial: string | null
   dial: string | null
+  /** What is on the dial — baton, diamond — as against what shade it is. */
+  dialStyle: string | null
   bracelet: string | null
   movement: string | null
   waterResistanceM: number | null
@@ -207,12 +209,24 @@ export function titleFor(watch: SyncWatch): string {
   if (!family) return [watch.model, mm].filter(Boolean).join(' ')
 
   const dial = watch.dial?.trim()
+  const style = watch.dialStyle?.trim()
   return [
     family,
     // A dial name earns its place when it is a colour. "Champagne with Factory
     // Diamond Hour Markers" is a description, and a title is not where a
     // description goes.
     dial && dial.length <= 20 ? dial : null,
+    /*
+     * The markers after the colour, because that is the order it is said in:
+     * "Black Diamond Dot", never "Diamond Dot Black". Same length rule and
+     * for the same reason — a style field holding a sentence is a
+     * description, and the title is not where one goes.
+     *
+     * Only ever after a colour. On its own, "Daytona Diamond Dot 40mm" reads
+     * as the name of a model that does not exist; the markers qualify a
+     * colour and are meaningless without one.
+     */
+    dial && style && style.length <= 20 ? style : null,
     mm,
   ].filter(Boolean).join(' ')
 }
@@ -307,12 +321,25 @@ function generatedTitles(watch: SyncWatch): string[] {
     [watch.model, watch.caseSizeMm ? String(watch.caseSizeMm) : null].filter(Boolean).join(' '),
   ]
   if (family) {
+    const style = watch.dialStyle?.trim()
+    const stylePart = dialPart && style && style.length <= 20 ? style : null
     for (const size of [
       watch.caseSizeMm ? String(watch.caseSizeMm) : null,
       sizeOf(watch) ? `${sizeOf(watch)}mm` : null,
       null,
     ]) {
+      /*
+       * Both shapes, which keeps the set closed in both directions.
+       *
+       * Without the colour alone, adding a dial style would leave the title
+       * it wrote before — "Daytona Black 40mm" — looking hand-chosen, and
+       * the push would never correct it. Without the colour and style
+       * together, clearing a style would strand "Daytona Black Diamond Dot
+       * 40mm" the same way. A title this system wrote has to stay
+       * recognisable as its own whichever way the record moves afterwards.
+       */
       titles.push([family, dialPart, size].filter(Boolean).join(' '))
+      if (stylePart) titles.push([family, dialPart, stylePart, size].filter(Boolean).join(' '))
     }
   }
   return titles.map((title) => title.trim()).filter(Boolean)

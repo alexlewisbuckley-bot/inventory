@@ -47,20 +47,31 @@ export function locationQuery(locationId: string): string {
  * Which location counts as the house is the first active store in the
  * Locations list, so it follows the order set there rather than a name
  * written into the code.
+ *
+ * `queues` is what separates selling from running the shop. Every view but
+ * the house one widens the list past the stock standing in the shop: other
+ * locations, sold stock, and the four administrative queues — unpriced,
+ * register checks, thin records, ageing. None of those is a salesperson's
+ * job, and the bar was offering all seven of them to a role whose work is
+ * the shelf in front of them. Turned off, the bar is the shelf and nothing
+ * else.
+ *
+ * With no house configured and no queues there is no bar at all, which is
+ * the honest answer: the one view this role has is defined by a location,
+ * and nobody has said which location that is.
  */
 export function inventoryViews(
   house: { id: string; name: string } | null,
+  { queues = true }: { queues?: boolean } = {},
 ): readonly BuiltInView[] {
-  if (!house) return INVENTORY_VIEWS
-  return [
-    {
-      id: 'house',
-      label: house.name,
-      query: locationQuery(house.id),
-      description: `Stock you hold at ${house.name}`,
-    },
-    ...INVENTORY_VIEWS,
-  ]
+  if (!house) return queues ? INVENTORY_VIEWS : []
+  const shelf: BuiltInView = {
+    id: 'house',
+    label: house.name,
+    query: locationQuery(house.id),
+    description: `Stock you hold at ${house.name}`,
+  }
+  return queues ? [shelf, ...INVENTORY_VIEWS] : [shelf]
 }
 
 export const INVENTORY_VIEWS: readonly BuiltInView[] = [

@@ -25,6 +25,7 @@ const watch = (over: Partial<SyncWatch> = {}): SyncWatch => ({
   caseSizeMm: 41,
   caseMaterial: 'Steel and white gold',
   dial: null,
+  dialStyle: null,
   bracelet: null,
   movement: null,
   waterResistanceM: null,

@@ -59,6 +59,7 @@ describe('what renaming does to the storefront', () => {
     locationName: 'One Street Watches', locationPublishes: true,
     estSaleGbp: 4_407_001, caseSizeMm: 41, caseMaterial: 'Steel',
     dial: 'White', bracelet: 'Oyster', movement: 'Automatic',
+    dialStyle: null,
     waterResistanceM: 100, condition: 'EXCELLENT', boxPapers: 'FULL_SET',
     description: null, images: [],
   }
