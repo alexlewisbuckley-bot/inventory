@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Users } from 'lucide-react'
 import { requireAnyCapability } from '@/server/auth/session'
-import { salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
-import { commissionMonthsFor, commissionOverMonths } from '@/server/repositories/sale-repository'
+import { dealsFor, earningsByPersonMonth, salesByPersonWithBrokerage } from '@/server/services/brokerage-service'
+import { commissionOverMonths } from '@/server/repositories/sale-repository'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
@@ -164,7 +164,7 @@ export default async function SalesByPersonPage({ searchParams }: {
   // rather than shown an empty leaderboard they would read as "no sales".
   const onlyMine = scope === 'own' ? me?.id ?? '__unlinked__' : undefined
 
-  const [rows, previous, roster, rates, preferences, commissionMonths] = await Promise.all([
+  const [rows, previous, roster, rates, preferences, commissionMonths, deals] = await Promise.all([
     // Includes brokered deals: a commission is a sale the person made and
     // the fee is profit they earned, so a leaderboard that left it out
     // would rank them on part of their month.
@@ -183,7 +183,10 @@ export default async function SalesByPersonPage({ searchParams }: {
      * report and this is the card a salesperson opens to see where they
      * are against their retainer.
      */
-    me ? commissionMonthsFor(me.id, from, to) : Promise.resolve([]),
+    me ? earningsByPersonMonth(from, to, me.id) : Promise.resolve([]),
+    // The deals themselves, so the totals above can be checked rather than
+    // taken on trust.
+    me ? dealsFor(me.id, from, to) : Promise.resolve([]),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency)
@@ -206,11 +209,15 @@ export default async function SalesByPersonPage({ searchParams }: {
    * new salesperson is created on, and somebody on different terms is
    * shown theirs.
    *
-   * Stock sales only, which is what the commission run has always paid on
-   * and what the profit column on the sales ledger holds. A brokered fee
-   * is in the Profit card above and not in this one, so each card says
-   * which profit it means rather than leaving somebody to work out why a
-   * quarter of one is not the other.
+   * Taken of everything they brought in, not of the stock alone. Alex:
+   * "commision earned should be 25% of the total amount including brokered
+   * deals." A brokered fee is pure profit to the firm, so paying nothing on
+   * it was paying somebody nothing for the most profitable thing they did
+   * all month.
+   *
+   * This is the other half of the margin rule and it points the other way
+   * on purpose: a fee has no cost, so it cannot be in a margin, and it is
+   * all profit, so it must be in a commission.
    *
    * Worked out one month at a time even when the period is a quarter or a
    * year. The retainer is monthly and a quiet month owes nothing forward,
@@ -265,6 +272,8 @@ export default async function SalesByPersonPage({ searchParams }: {
       margin: cost > 0 ? (Number(row.stockProfitGbp) / cost) * 100 : null,
       /** The same numerator, kept so the headline margin can agree with this one. */
       stockProfit: Number(row.stockProfitGbp),
+      /** Watches sold, as against deals done — the rest are fees. */
+      stockSold: Number(row.stockCount),
       average: Number(row.soldCount) > 0 ? Number(row.revenueGbp) / Number(row.soldCount) : 0,
       lastSaleAt: row.lastSaleAt,
       priorProfit: prior ? Number(prior.profitGbp) : 0,
@@ -279,9 +288,25 @@ export default async function SalesByPersonPage({ searchParams }: {
       profit: sum.profit + person.profit,
       cost: sum.cost + person.cost,
       stockProfit: sum.stockProfit + person.stockProfit,
+      stockSold: sum.stockSold + person.stockSold,
     }),
-    { sold: 0, revenue: 0, profit: 0, cost: 0, stockProfit: 0 },
+    { sold: 0, revenue: 0, profit: 0, cost: 0, stockProfit: 0, stockSold: 0 },
   )
+  /*
+   * The part of the period that was not a watch.
+   *
+   * Alex, looking at a profit of AED 19,690 beside a margin of 5.3%: "These
+   * numbers are still wrong - why?" They were not wrong, and they did not
+   * belong to each other either. One of the two deals was a brokered fee,
+   * which is profit with no cost under it: it lifts the profit and cannot
+   * touch the margin, so a quarter of one is nothing like the other.
+   *
+   * The page knew that and said none of it. These two are what it needs to
+   * say it with.
+   */
+  const feeProfit = totals.profit - totals.stockProfit
+  const feeDeals = totals.sold - totals.stockSold
+
   const priorTotals = previous.reduce(
     (sum, row) => ({
       sold: sum.sold + Number(row.soldCount),
@@ -354,7 +379,9 @@ export default async function SalesByPersonPage({ searchParams }: {
         <StatCard
           label="Sales"
           value={totals.sold}
-          caption={key === 'all' ? 'all time' : movement(totals.sold, priorTotals.sold).text}
+          caption={feeDeals > 0
+            ? `${totals.stockSold} ${totals.stockSold === 1 ? 'watch' : 'watches'} · ${feeDeals} brokered`
+            : key === 'all' ? 'all time' : movement(totals.sold, priorTotals.sold).text}
         />
         <StatCard
           label="Revenue"
@@ -365,7 +392,9 @@ export default async function SalesByPersonPage({ searchParams }: {
           label="Profit"
           value={signed(totals.profit)}
           tone="accent"
-          caption={key === 'all' ? 'realised' : movement(totals.profit, priorTotals.profit).text}
+          caption={feeProfit !== 0
+            ? `includes ${money(feeProfit)} in fees, which have no cost`
+            : key === 'all' ? 'realised' : movement(totals.profit, priorTotals.profit).text}
         />
         {/*
           * Stock profit over stock cost — the same arithmetic as the margin
@@ -379,12 +408,25 @@ export default async function SalesByPersonPage({ searchParams }: {
           * 20.9%. The warning against exactly this is written over the row
           * calculation above, and this card did it anyway.
           */}
-        <StatCard
-          label="Weighted margin"
-          value={totals.cost > 0 ? formatPct((totals.stockProfit / totals.cost) * 100) : '—'}
-          tone="accent"
-          caption="profit over the cost of the stock sold"
-        />
+        {/*
+          * Not shown to a salesperson. Alex: "remove margin from Sales
+          * View". A margin is the firm's own account of how well it buys,
+          * and it is measured on the stock alone because a brokered fee has
+          * no cost — so on a month that mixes the two it reads as a figure
+          * that contradicts the profit beside it. The person selling is
+          * paid on the profit and the commission, which are the two cards
+          * that replace this one.
+          */}
+        {scope === 'all' && (
+          <StatCard
+            label="Weighted margin"
+            value={totals.cost > 0 ? formatPct((totals.stockProfit / totals.cost) * 100) : '—'}
+            tone="accent"
+            caption={feeProfit !== 0
+              ? 'on the stock only — a fee has no cost to measure against'
+              : 'profit over the cost of the stock sold'}
+          />
+        )}
       </section>
 
       {me && commission && (
@@ -393,7 +435,7 @@ export default async function SalesByPersonPage({ searchParams }: {
             label="Commission earned"
             value={money(commission.paidCommission)}
             tone="accent"
-            caption={`${formatShare(me.commissionBps)} of profit on watches you sold, on invoices that are paid`}
+            caption={`${formatShare(me.commissionBps)} of everything you brought in, on invoices that are paid`}
           />
           <StatCard
             label="If everything settles"
@@ -434,9 +476,9 @@ export default async function SalesByPersonPage({ searchParams }: {
       {me && commission && me.retainer > 0 && (
         <p className="mb-6 rounded-md border border-line-subtle bg-surface-subtle px-4 py-2.5 text-caption text-content-secondary">
           Your retainer is an advance against commission: you are paid {formatShare(me.commissionBps)} of
-          the profit on the watches you sell, and commission reaches you once that share passes
-          the retainer you have already drawn. A month that does not get there owes nothing
-          forward — each month starts again.
+          the profit you bring in — on the watches you sell and on the deals you broker — and
+          commission reaches you once that share passes the retainer you have already drawn.
+          A month that does not get there owes nothing forward — each month starts again.
         </p>
       )}
 
@@ -485,7 +527,78 @@ export default async function SalesByPersonPage({ searchParams }: {
           </ChartFrame>
           )}
 
-          <Card className={cn('overflow-hidden', scope === 'all' && 'lg:col-span-3')}>
+          {scope === 'own' && (
+            <Card className="overflow-hidden">
+              <div className="border-b border-line-subtle px-6 py-4">
+                <h2 className="text-small font-bold text-content-primary">Your deals</h2>
+                <p className="mt-0.5 text-caption text-content-secondary">
+                  What the figures above are made of. Your share is {formatShare(me?.commissionBps ?? 2500)} of
+                  the profit on each watch you sold and each deal you brokered
+                  {me && me.retainer > 0 ? ', before the month’s retainer comes off the total' : ''}.
+                </p>
+              </div>
+              <Table layout="fixed" minWidth="720px">
+                <THead>
+                  <TR>
+                    <TH width="100px">Date</TH>
+                    <TH width="230px">Deal</TH>
+                    <TH width="110px" align="right">Sale</TH>
+                    <TH width="110px" align="right">Profit</TH>
+                    <TH width="110px" align="right">Your share</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {deals.map((deal) => (
+                    <TR key={`${deal.kind}-${deal.id}`}>
+                      <TD className="whitespace-nowrap text-content-secondary">{formatDate(deal.date)}</TD>
+                      <TD>
+                        <span className="block truncate font-bold text-content-primary">{deal.title}</span>
+                        <span className="mt-0.5 block text-caption text-content-secondary">
+                          {deal.kind === 'sale'
+                            ? `Stock ${deal.stockNo} · ${deal.reference}`
+                            : deal.kind === 'brokered'
+                              ? `Brokered${deal.reference ? ` · ${deal.reference}` : ''}`
+                              : `Buy-back${deal.reference ? ` · ${deal.reference}` : ''}`}
+                          {deal.paymentStatus !== 'PAID' && ' · awaiting payment'}
+                        </span>
+                      </TD>
+                      <TD align="right" className="tabular-nums">
+                        {/* A fee has no sale price of its own: the piece was
+                            never ours to sell, so the column is honestly
+                            empty rather than filled with the fee again. */}
+                        {deal.amount === null ? '—' : money(deal.amount)}
+                      </TD>
+                      <TD align="right" className={cn(
+                        'font-bold tabular-nums',
+                        deal.profit >= 0 ? 'text-content-accent' : 'text-state-danger',
+                      )}>
+                        {signed(deal.profit)}
+                      </TD>
+                      <TD align="right" className="tabular-nums text-content-secondary">
+                        {/* A buy-back charge is money the person earned and
+                            the firm's commission run has never paid on it, so
+                            the column says nothing rather than quoting a
+                            share that will not be in the cheque. */}
+                        {deal.kind === 'buyback'
+                          ? '—'
+                          : money(Math.round((Math.max(0, deal.profit) * (me?.commissionBps ?? 2500)) / 10_000))}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+              {deals.length === 0 && (
+                <div className="px-6 py-5 text-caption text-content-secondary">
+                  No deals in this period.
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* The leaderboard. On somebody's own page it would be one row
+              repeating the cards above it, so the deals take its place. */}
+          {scope === 'all' && (
+          <Card className="overflow-hidden lg:col-span-3">
             <Table layout="fixed" minWidth="620px">
               <THead>
                 <TR>
@@ -493,7 +606,7 @@ export default async function SalesByPersonPage({ searchParams }: {
                   <TH width="70px" align="right">Sold</TH>
                   <TH width="110px" align="right">Revenue</TH>
                   <TH width="110px" align="right">Profit</TH>
-                  <TH width="90px" align="right">Margin</TH>
+                  {scope === 'all' && <TH width="90px" align="right">Margin</TH>}
                   <TH width="110px" align="right">Avg sale</TH>
                 </TR>
               </THead>
@@ -536,9 +649,11 @@ export default async function SalesByPersonPage({ searchParams }: {
                         </span>
                       )}
                     </TD>
-                    <TD align="right" className="tabular-nums">
-                      {person.margin !== null ? formatPct(person.margin) : '—'}
-                    </TD>
+                    {scope === 'all' && (
+                      <TD align="right" className="tabular-nums">
+                        {person.margin !== null ? formatPct(person.margin) : '—'}
+                      </TD>
+                    )}
                     <TD align="right" className="tabular-nums text-content-secondary">
                       {money(person.average)}
                     </TD>
@@ -556,6 +671,7 @@ export default async function SalesByPersonPage({ searchParams }: {
               </div>
             )}
           </Card>
+          )}
         </div>
       )}
 

@@ -116,3 +116,50 @@ describe('the margin on the Sales by person page', () => {
     expect(page).not.toContain('formatPct((totals.profit / totals.cost) * 100)')
   })
 })
+
+/**
+ * Saying which profit is which.
+ *
+ * Alex, on a profit of AED 19,690 beside a margin of 5.3%: "These numbers
+ * are still wrong - why?" Neither was wrong. They did not belong to each
+ * other, because one of the two deals was a brokered fee — profit with no
+ * cost under it, which lifts the profit and cannot touch the margin. The
+ * page knew and said none of it.
+ */
+describe('a period that mixes watches with fees', () => {
+  it('names the fee inside the profit', () => {
+    expect(page).toContain('`includes ${money(feeProfit)} in fees, which have no cost`')
+  })
+
+  it('splits the deal count into watches and brokered deals', () => {
+    expect(page).toContain("${feeDeals} brokered")
+  })
+
+  it('says the margin is on the stock only when there is a fee beside it', () => {
+    expect(page).toContain("'on the stock only — a fee has no cost to measure against'")
+  })
+
+  it('derives both from the stock figures the rows already carry', () => {
+    expect(page).toContain('const feeProfit = totals.profit - totals.stockProfit')
+    expect(page).toContain('const feeDeals = totals.sold - totals.stockSold')
+  })
+
+  it('leaves the captions alone when every deal was a watch', () => {
+    // No fee, no explanation needed: the movement text is more use.
+    expect(page).toContain("key === 'all' ? 'realised' : movement(totals.profit, priorTotals.profit).text")
+    expect(page).toContain("'profit over the cost of the stock sold'")
+  })
+
+  it('reconstructs Zoe’s screen from the two figures', () => {
+    // What the page showed: 2 deals, AED 19,690 profit, 5.3% margin.
+    const stockCost = 94_000
+    const stockProfit = Math.round(stockCost * 0.053)
+    const profit = 19_690
+    const fee = profit - stockProfit
+    expect(fee).toBeGreaterThan(stockProfit)
+    // The margin is of the stock alone, which is why a quarter of the
+    // profit is nowhere near it.
+    expect((stockProfit / stockCost) * 100).toBeCloseTo(5.3, 1)
+    expect((profit / stockCost) * 100).toBeCloseTo(20.9, 1)
+  })
+})
