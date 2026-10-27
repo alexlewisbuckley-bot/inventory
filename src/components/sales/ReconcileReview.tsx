@@ -80,6 +80,8 @@ const TIER_WORDS: Record<string, string> = {
   manual: 'linked by hand',
 }
 
+const IMAGE = /\.(png|jpe?g|webp|gif)$/i
+
 const money = (minor: number, currency: string) =>
   `${currency} ${(minor / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -118,18 +120,38 @@ export function ReconcileReview({ review, canApply }: {
   )
   const onCount = allKeys.filter((key) => !off.has(key)).length
 
-  const upload = (file: File) => {
+  /**
+   * A drop, whatever it was.
+   *
+   * Several files, because a screen of invoices is usually two or three
+   * pictures and making somebody drop them one at a time would create
+   * three imports where they meant one.
+   */
+  const upload = (files: File[]) => {
+    if (files.length === 0) return
     const data = new FormData()
-    data.set('file', file)
+    for (const file of files) data.append('file', file)
+    const pictures = files.every((file) => IMAGE.test(file.name) || file.type.startsWith('image/'))
     start(async () => {
       const result = await stageXeroImportAction(data)
       if (!result.ok) {
-        toast.error('That file could not be read', result.message)
+        toast.error(pictures ? 'Those screenshots could not be read' : 'That file could not be read', result.message)
         return
       }
       toast.success(
-        `${result.invoiceCount} invoices read`,
-        `${result.matchedCount} matched to sales${result.skippedRows ? ` · ${result.skippedRows} rows skipped` : ''}`,
+        `${result.invoiceCount} ${result.invoiceCount === 1 ? 'invoice' : 'invoices'} read`,
+        [
+          `${result.matchedCount} matched to sales`,
+          result.skippedRows
+            ? result.fromScreenshots
+              ? `${result.skippedRows} could not be made out`
+              : `${result.skippedRows} rows skipped`
+            : null,
+          // Worth saying out loud: a reading off a picture is a reading,
+          // and the figures below are worth a second look before they are
+          // approved.
+          result.fromScreenshots ? 'read from the screenshots — check the figures' : null,
+        ].filter(Boolean).join(' · '),
       )
       setOff(new Set())
       router.refresh()
@@ -193,8 +215,7 @@ export function ReconcileReview({ review, canApply }: {
           onDrop={(e) => {
             e.preventDefault()
             setDragging(false)
-            const file = e.dataTransfer.files?.[0]
-            if (file) upload(file)
+            upload(Array.from(e.dataTransfer.files ?? []))
           }}
           className={cn(
             'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors',
@@ -204,25 +225,26 @@ export function ReconcileReview({ review, canApply }: {
           <FileSpreadsheet className="h-7 w-7 text-content-secondary" aria-hidden />
           <div>
             <p className="text-small font-bold text-content-primary">
-              Drop a Xero invoice export here
+              Drop a Xero export or a screenshot here
             </p>
             <p className="mt-1 text-caption text-content-secondary">
-              The Sales Invoices list, exported as CSV or XLSX. Nothing is written until you approve it.
+              The Sales Invoices list as CSV or XLSX — or just a picture of the screen,
+              several at once if it does not fit on one. Nothing is written until you approve it.
             </p>
           </div>
           <input
             ref={input}
             type="file"
-            accept=".csv,.xlsx,.xls,.tsv"
+            multiple
+            accept=".csv,.xlsx,.xls,.tsv,image/png,image/jpeg,image/webp,image/gif"
             className="sr-only"
             onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) upload(file)
+              upload(Array.from(e.target.files ?? []))
               e.target.value = ''
             }}
           />
           <Button variant="secondary" onClick={() => input.current?.click()} disabled={pending}>
-            <Upload className="h-4 w-4" aria-hidden /> Choose a file
+            <Upload className="h-4 w-4" aria-hidden /> {pending ? 'Reading…' : 'Choose files'}
           </Button>
         </div>
       </Card>
@@ -232,7 +254,7 @@ export function ReconcileReview({ review, canApply }: {
           <EmptyState
             icon={<FileSpreadsheet className="h-6 w-6" />}
             title="Nothing imported yet"
-            description="Export the Sales Invoices list from Xero and drop it above. Every invoice is matched to the sales it covers, and you see what would change before anything does."
+            description="Drop the Sales Invoices export above, or a screenshot of the screen. Every invoice is matched to the sales it covers, and you see what would change before anything does."
           />
         </Card>
       )}

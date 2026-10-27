@@ -10,6 +10,7 @@ import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { recordAudit } from './audit'
 import { readTable } from './import-service'
+import { readXeroScreenshots, isScreenshot } from './xero-vision'
 import { saleMoney } from './watch-service'
 import { logger } from '@/lib/logger'
 import {
@@ -67,14 +68,67 @@ function toBaseWith(rates: RateTable) {
  * approved."
  */
 export async function stageImport(
-  file: { name: string; buffer: ArrayBuffer },
+  files: Array<{ name: string; mimeType?: string; buffer: ArrayBuffer }>,
   actor: { id: string },
-): Promise<{ importId: string; invoiceCount: number; matchedCount: number; skippedRows: number }> {
-  const table = await readTable(file)
-  const { invoices, skipped } = parseXeroExport(table, { base: BASE_CURRENCY })
-  if (invoices.length === 0) {
-    throw new ConflictError('No invoices could be read from that file. Export the Sales Invoices list from Xero as CSV or XLSX.')
+): Promise<{
+  importId: string
+  invoiceCount: number
+  matchedCount: number
+  skippedRows: number
+  /** True where the invoices were read out of pictures rather than a file. */
+  fromScreenshots: boolean
+}> {
+  if (files.length === 0) throw new ConflictError('Choose a Xero export or a screenshot.')
+
+  /*
+   * Three ways in, one shape out.
+   *
+   * Alex asked for screenshots alongside the export, and the matching
+   * layer was built for exactly this: whatever produced them, the rest of
+   * the feature receives `XeroInvoice[]` and cannot tell the difference.
+   * A Xero API sync will be the third, and will not change a line below.
+   */
+  const shots = files.filter((file) => isScreenshot({ name: file.name, type: file.mimeType }))
+  const sheet = files.find((file) => !isScreenshot({ name: file.name, type: file.mimeType }))
+
+  let invoices: XeroInvoice[]
+  let skipped: number
+  const fromScreenshots = shots.length > 0 && !sheet
+
+  if (fromScreenshots) {
+    const reading = await readXeroScreenshots(
+      shots.map((file) => ({
+        name: file.name,
+        mimeType: file.mimeType ?? mimeFromName(file.name),
+        buffer: file.buffer,
+      })),
+      BASE_CURRENCY,
+    )
+    if (reading.error) throw new ConflictError(reading.error)
+    invoices = reading.invoices
+    // Invoices the reading could not use — a total it could not make out,
+    // a row cut off at the edge of the picture. Reported in the same place
+    // a file's unreadable rows are, because they mean the same thing: this
+    // much of what you gave me did not come through.
+    skipped = reading.dropped
+    if (invoices.length === 0) {
+      throw new ConflictError(
+        'No invoices could be read from those screenshots. Make sure the invoice number, the total and the status are all visible, or drop the CSV export instead.',
+      )
+    }
+  } else {
+    const file = sheet ?? files[0]!
+    const table = await readTable(file)
+    const parsed = parseXeroExport(table, { base: BASE_CURRENCY })
+    invoices = parsed.invoices
+    skipped = parsed.skipped
+    if (invoices.length === 0) {
+      throw new ConflictError('No invoices could be read from that file. Export the Sales Invoices list from Xero as CSV or XLSX.')
+    }
   }
+  const fileName = fromScreenshots
+    ? `${shots.length} ${shots.length === 1 ? 'screenshot' : 'screenshots'}`
+    : (sheet ?? files[0]!).name
 
   // Money is held in 32-bit integers throughout, as every other amount in
   // the system is. A figure past that is a misread column — a reference
@@ -84,7 +138,7 @@ export async function stageImport(
   const tooBig = invoices.find((invoice) => Math.abs(invoice.total) > 2_147_483_647)
   if (tooBig) {
     throw new ConflictError(
-      `Invoice ${tooBig.invoiceNo} reads as ${(tooBig.total / 100).toLocaleString('en-GB')} ${tooBig.currency}, which is too large to be a total. Check the file's amount column.`,
+      `Invoice ${tooBig.invoiceNo} reads as ${(tooBig.total / 100).toLocaleString('en-GB')} ${tooBig.currency}, which is too large to be a total. Check the amount it was read from.`,
     )
   }
 
@@ -104,7 +158,7 @@ export async function stageImport(
     const dates = invoices.map((i) => i.invoiceDate).filter((d): d is Date => d !== null)
     await db.insert(xeroImports).values({
       id: importId,
-      fileName: file.name,
+      fileName,
       baseCurrency: BASE_CURRENCY,
       invoiceCount: invoices.length,
       skippedRows: skipped,
@@ -147,14 +201,24 @@ export async function stageImport(
   })
 
   logger.info('xero import staged', {
-    importId, invoices: invoices.length, matched: matched.length, actorId: actor.id,
+    importId, invoices: invoices.length, matched: matched.length,
+    fromScreenshots, actorId: actor.id,
   })
   return {
     importId,
     invoiceCount: invoices.length,
     matchedCount: matched.reduce((n, m) => n + m.sales.length, 0),
     skippedRows: skipped,
+    fromScreenshots,
   }
+}
+
+/** The type a dropped file did not declare, from what it is called. */
+function mimeFromName(name: string): string {
+  if (/\.png$/i.test(name)) return 'image/png'
+  if (/\.webp$/i.test(name)) return 'image/webp'
+  if (/\.gif$/i.test(name)) return 'image/gif'
+  return 'image/jpeg'
 }
 
 /**
