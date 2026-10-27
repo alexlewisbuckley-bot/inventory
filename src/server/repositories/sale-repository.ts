@@ -31,6 +31,11 @@ export interface SaleListItem {
   saleAmount: number | null
   saleCurrency: CurrencyCode
   paymentStatus: PaymentStatus
+  /** Xero's dates, which the always-on quality flags are measured against. */
+  dueOn: Date | null
+  paidOn: Date | null
+  /** Which Xero import last accounted for this sale, if any. */
+  xeroSeenImportId: string | null
   deliveryStatus: DeliveryStatus
   customerCompany: string | null
   notes: string | null
@@ -139,6 +144,7 @@ export async function findSales(query: SaleQuery) {
       channel: sales.channel, customerName: sales.customerName,
       saleAmount: sales.saleAmount, saleCurrency: sales.saleCurrency,
       paymentStatus: sales.paymentStatus, deliveryStatus: sales.deliveryStatus,
+      dueOn: sales.dueOn, paidOn: sales.paidOn, xeroSeenImportId: sales.xeroSeenImportId,
       customerCompany: sales.customerCompany, notes: sales.notes,
       purchaseAmount: watches.purchaseAmount, purchaseCurrency: watches.purchaseCurrency,
       soldById: sales.soldById, soldByName: salesPeople.name,

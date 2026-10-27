@@ -24,7 +24,7 @@ import { isPlaceholderInvoiceNo, normaliseInvoiceNo, normaliseName } from './xer
 /** Every field Xero is allowed to have an opinion about. Nothing else. */
 export const XERO_FIELDS = [
   'invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency',
-  'paymentStatus', 'paidOn',
+  'paymentStatus', 'paidOn', 'dueOn',
 ] as const
 export type XeroField = (typeof XERO_FIELDS)[number]
 
@@ -45,6 +45,7 @@ export const FIELD_LABELS: Record<XeroField, string> = {
   saleCurrency: 'Currency',
   paymentStatus: 'Payment status',
   paidOn: 'Paid date',
+  dueOn: 'Due date',
 }
 
 /** The sale as it stands, in only the fields Xero may speak to. */
@@ -59,6 +60,7 @@ export interface SaleSnapshot {
   saleCurrency: CurrencyCode
   paymentStatus: PaymentStatus
   paidOn: Date | null
+  dueOn: Date | null
 }
 
 export interface ProposedChange {
@@ -186,6 +188,16 @@ export function proposeChanges(
       fromText: dateText(sale.paidOn),
       toText: dateText(invoice.paidDate),
       to: invoice.paidDate,
+    })
+  }
+
+  // The due date, which is what "past due" is measured against.
+  if (invoice.dueDate && !sameDay(sale.dueOn, invoice.dueDate)) {
+    changes.push({
+      field: 'dueOn',
+      fromText: dateText(sale.dueOn),
+      toText: dateText(invoice.dueDate),
+      to: invoice.dueDate,
     })
   }
 

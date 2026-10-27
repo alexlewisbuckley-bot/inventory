@@ -13,7 +13,7 @@ const invoice = (over: Partial<XeroInvoice> = {}): XeroInvoice => ({
   invoiceNo: 'INV-0241',
   contactName: 'Sweepings Hands',
   invoiceDate: day('2026-10-14'),
-  dueDate: day('2026-10-28'),
+  dueDate: null,
   paidDate: null,
   currency: 'AED',
   total: 10_000_000,
@@ -34,6 +34,7 @@ const sale = (over: Partial<SaleSnapshot> = {}): SaleSnapshot => ({
   saleCurrency: 'AED',
   paymentStatus: 'PENDING',
   paidOn: null,
+  dueOn: null,
   ...over,
 })
 
@@ -114,10 +115,10 @@ describe('what Xero is allowed to change', () => {
 describe('what Xero is never allowed to change', () => {
   const source = readFileSync(join(process.cwd(), 'src/lib/xero-diff.ts'), 'utf8')
 
-  it('names only the seven fields Xero owns', () => {
+  it('names only the eight fields Xero owns', () => {
     expect([...XERO_FIELDS]).toEqual([
       'invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency',
-      'paymentStatus', 'paidOn',
+      'paymentStatus', 'paidOn', 'dueOn',
     ])
   })
 
@@ -214,6 +215,23 @@ describe('a change that changes nothing is not a change', () => {
     const changes = proposeChanges(
       sale({ paymentStatus: 'PAID', paidOn: new Date('2026-10-20T14:00:00.000Z') }),
       invoice({ status: 'PAID', paidDate: day('2026-10-20') }),
+      10_000_000,
+    )
+    expect(changes).toEqual([])
+  })
+})
+
+describe('the due date', () => {
+  it('comes from Xero, because "past due" has to be past something', () => {
+    const changes = proposeChanges(sale(), invoice({ dueDate: day('2026-10-28') }), 10_000_000)
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ field: 'dueOn', fromText: '—', toText: '2026-10-28' })
+  })
+
+  it('is left alone when it already agrees', () => {
+    const changes = proposeChanges(
+      sale({ dueOn: day('2026-10-28') }),
+      invoice({ dueDate: day('2026-10-28') }),
       10_000_000,
     )
     expect(changes).toEqual([])

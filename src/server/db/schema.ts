@@ -852,6 +852,14 @@ export const sales = pgTable(
     /** When Xero says the money arrived. The status says whether; this says when. */
     paidOn: timestamp('paid_on', { withTimezone: true }),
     /**
+     * When it was due.
+     *
+     * "Past due" has to be past something. Without this the only thing the
+     * ledger could say was "unpaid", which is a different question: an
+     * invoice on 30-day terms raised yesterday is unpaid and healthy.
+     */
+    dueOn: timestamp('due_on', { withTimezone: true }),
+    /**
      * Which Xero import last accounted for this sale.
      *
      * Alex's last data-quality flag is "Sale with no matching Xero invoice
@@ -1730,6 +1738,14 @@ export const xeroImports = pgTable(
     invoiceCount: integer('invoice_count').notNull().default(0),
     /** Rows carrying no invoice number: totals, separators, notes. */
     skippedRows: integer('skipped_rows').notNull().default(0),
+    /**
+     * The first and last invoice date in the file.
+     *
+     * So "missing from the last import" can be asked of the sales that
+     * import was meant to account for, rather than of the whole book.
+     */
+    coversFrom: timestamp('covers_from', { withTimezone: true }),
+    coversTo: timestamp('covers_to', { withTimezone: true }),
     importedById: text('imported_by_id').notNull().references(() => users.id),
     /** Null until somebody approves it. Nothing writes until approved. */
     appliedAt: timestamp('applied_at', { withTimezone: true }),
