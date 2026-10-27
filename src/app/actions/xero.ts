@@ -24,6 +24,8 @@ export interface StageResult {
   invoiceCount?: number
   matchedCount?: number
   skippedRows?: number
+  /** Whether these invoices were read out of pictures rather than a file. */
+  fromScreenshots?: boolean
   message?: string
 }
 
@@ -32,13 +34,20 @@ export async function stageXeroImportAction(formData: FormData): Promise<StageRe
   const actor = await requireCapability('data:import')
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
 
-  const file = formData.get('file')
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, message: 'Choose a Xero export to read.' }
+  // Several, because a screen of invoices is often two or three pictures.
+  const files = formData.getAll('file').filter(
+    (entry): entry is File => entry instanceof File && entry.size > 0,
+  )
+  if (files.length === 0) {
+    return { ok: false, message: 'Choose a Xero export or a screenshot to read.' }
   }
   try {
     const result = await stageImport(
-      { name: file.name, buffer: await file.arrayBuffer() },
+      await Promise.all(files.map(async (file) => ({
+        name: file.name,
+        mimeType: file.type || undefined,
+        buffer: await file.arrayBuffer(),
+      }))),
       actor,
     )
     revalidatePath('/sales/reconcile')
