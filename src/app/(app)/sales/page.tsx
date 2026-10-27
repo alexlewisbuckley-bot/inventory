@@ -14,6 +14,7 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, SALE_CHANNELS, type SaleChannel } from '@/lib/enums'
 import { can, canSeeCost } from '@/lib/permissions'
+import { lastImportWindow } from '@/server/services/xero-service'
 import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { brokerageTotals, sellableStock } from '@/server/services/brokerage-service'
@@ -55,7 +56,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const brokerFrom = query.from ? new Date(query.from) : undefined
   const brokerTo = query.to ? new Date(query.to) : undefined
 
-  const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock] = await Promise.all([
+  const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock, lastImport] = await Promise.all([
     // One ledger: watches we sold, and fees we earned selling other
     // people's. Kept in the same list because that is how a month's
     // earnings are read.
@@ -72,6 +73,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     // Stock still on the book, for a fee earned on one of ours. Only what
     // we still hold: a watch already gone cannot be sold again.
     can(user.role, 'sale:create') ? sellableStock() : Promise.resolve([]),
+    // The last Xero import, so a sale inside the period it covered that
+    // the accounts never saw can say so on its own row.
+    lastImportWindow(),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -216,6 +220,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
           <SalesTable
             result={{ ...result, items }}
             showCost={showCost}
+            lastImport={lastImport}
             canVoid={can(user.role, 'sale:delete')}
             canAmend={can(user.role, 'sale:update')}
             canAmendCost={can(user.role, 'watch:amend')}

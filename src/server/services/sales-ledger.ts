@@ -88,6 +88,11 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     saleCurrency: row.feeCurrency as SaleListItem['saleCurrency'],
     paymentStatus: row.paymentStatus as SaleListItem['paymentStatus'],
     deliveryStatus: 'COLLECTED',
+    // Not a Xero sales invoice, so it has none of these and is never
+    // measured against an import.
+    dueOn: null,
+    paidOn: null,
+    xeroSeenImportId: null,
     customerCompany: null,
     notes: row.notes,
     purchaseAmount: null,
@@ -143,6 +148,11 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     saleCurrency: row.currency as SaleListItem['saleCurrency'],
     paymentStatus: row.paymentStatus as SaleListItem['paymentStatus'],
     deliveryStatus: 'COLLECTED',
+    // Not a Xero sales invoice, so it has none of these and is never
+    // measured against an import.
+    dueOn: null,
+    paidOn: null,
+    xeroSeenImportId: null,
     customerCompany: null,
     notes: null,
     purchaseAmount: null,

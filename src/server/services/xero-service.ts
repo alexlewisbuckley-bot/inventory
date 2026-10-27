@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
   customerAliases, sales, watches, xeroImports, xeroInvoices, xeroLinks,
@@ -101,6 +101,7 @@ export async function stageImport(
   const importId = newId('xim')
 
   await withTransaction(async () => {
+    const dates = invoices.map((i) => i.invoiceDate).filter((d): d is Date => d !== null)
     await db.insert(xeroImports).values({
       id: importId,
       fileName: file.name,
@@ -108,6 +109,10 @@ export async function stageImport(
       invoiceCount: invoices.length,
       skippedRows: skipped,
       importedById: actor.id,
+      // The period this file was meant to account for, so the ledger can
+      // later ask which sales inside it the accounts never saw.
+      coversFrom: dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : null,
+      coversTo: dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null,
     })
 
     // By position, not by number: a file can carry the same invoice number
@@ -211,6 +216,7 @@ interface LiveSale {
   saleCurrency: CurrencyCode
   paymentStatus: SaleSnapshot['paymentStatus']
   paidOn: Date | null
+  dueOn: Date | null
   channel: string
   watchId: string
   purchasePriceGbp: number | null
@@ -229,6 +235,7 @@ async function liveSaleCandidates(): Promise<LiveSale[]> {
       saleCurrency: sales.saleCurrency,
       paymentStatus: sales.paymentStatus,
       paidOn: sales.paidOn,
+      dueOn: sales.dueOn,
       channel: sales.channel,
       watchId: sales.watchId,
       purchasePriceGbp: watches.purchasePriceGbp,
@@ -265,6 +272,7 @@ const toSnapshot = (sale: LiveSale): SaleSnapshot => ({
   saleCurrency: sale.saleCurrency,
   paymentStatus: sale.paymentStatus,
   paidOn: sale.paidOn,
+  dueOn: sale.dueOn,
 })
 
 /* ================= the review screen ================= */
@@ -615,6 +623,7 @@ export async function applyImport(
             saleCurrency: sales.saleCurrency,
             paymentStatus: sales.paymentStatus,
             paidOn: sales.paidOn,
+            dueOn: sales.dueOn,
             stockNo: watches.stockNo,
             cost: watches.purchasePriceGbp,
           })
@@ -673,6 +682,23 @@ export async function applyImport(
 
   logger.info('xero import applied', { importId, salesChanged, fieldsChanged, actorId: actor.id })
   return { salesChanged, fieldsChanged }
+}
+
+/**
+ * The last import, and the period it accounted for.
+ *
+ * For the always-on flag on the sales ledger: a sale inside those dates
+ * that the import never saw is a sale the accounts have never heard of.
+ * Null before the first import, which is when the flag has nothing to say.
+ */
+export async function lastImportWindow(): Promise<{ id: string; coversFrom: Date | null; coversTo: Date | null } | null> {
+  const [row] = await db
+    .select({ id: xeroImports.id, coversFrom: xeroImports.coversFrom, coversTo: xeroImports.coversTo })
+    .from(xeroImports)
+    .where(isNotNull(xeroImports.appliedAt))
+    .orderBy(desc(xeroImports.appliedAt))
+    .limit(1)
+  return row ?? null
 }
 
 /** The imports, newest first, for the page to open on the last one. */

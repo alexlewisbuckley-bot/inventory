@@ -13,6 +13,7 @@ import { VoidSaleModal, type VoidTarget } from '@/components/inventory/VoidSaleM
 import { EditSaleModal, type EditSaleTarget } from '@/components/sales/EditSaleModal'
 import type { LedgerKind } from '@/lib/ledger-kind'
 import { stockless } from '@/lib/ledger-kind'
+import { flagsFor, flagTone, FLAG_LABELS, type LastImport } from '@/lib/sale-flags'
 import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
 import { EditCommissionModal, LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
 import { markSalePaidAction } from '@/app/actions/watches'
@@ -24,8 +25,14 @@ import type { SaleListItem } from '@/server/repositories/sale-repository'
 
 export function SalesTable({
   result, showCost = true, canVoid = false, canAmend = false, canAmendCost = false,
-  salesPeople = [], stock = [],
+  salesPeople = [], stock = [], lastImport = null,
 }: {
+  /**
+   * The last Xero import and the period it covered, so a sale inside it
+   * that the accounts never saw can say so. Null before the first import,
+   * which is when the flag has nothing to say.
+   */
+  lastImport?: LastImport | null
   result: { items: Array<SaleListItem & { kind?: LedgerKind }>; total: number; page: number; perPage: number }
   /** Stock still on the book, for linking a watch to a commission. */
   stock?: Array<{ id: string; label: string }>
@@ -87,6 +94,28 @@ export function SalesTable({
       toast.error('Could not record the payment', result.message)
     }
   }
+  /**
+   * The flags for one row.
+   *
+   * Computed here rather than stored, so a flag cannot go stale: filling
+   * in a customer clears it because it was never written down.
+   */
+  const flagsOf = (sale: SaleListItem & { kind?: LedgerKind }) => flagsFor({
+    invoiceNo: sale.invoiceNo,
+    saleDate: sale.saleDate,
+    customerName: sale.customerName,
+    stockNo: sale.stockNo ?? null,
+    // A role without `cost:read` is handed a nulled cost, which is not the
+    // same as a cost of zero. Flagging it would show that reader an error
+    // about a figure they cannot see and nobody else can reproduce.
+    costGbp: showCost ? sale.costGbp : null,
+    channel: sale.channel,
+    paymentStatus: sale.paymentStatus,
+    dueOn: sale.dueOn,
+    xeroSeenImportId: sale.xeroSeenImportId,
+    stockless: stockless(sale),
+  }, { lastImport })
+
   // Money renders in whatever currency the header is showing, so the table
   // never disagrees with the summary tiles above it.
   const { money, signed } = useCurrency()
@@ -159,6 +188,29 @@ export function SalesTable({
                     {PAYMENT_STATUS_LABELS[sale.paymentStatus]}
                   </span>
                 )}
+                {/*
+                  * What is wrong with this row, on every load rather than
+                  * only after an import.
+                  *
+                  * Alex: "Data-quality flags on the main sales table,
+                  * always on, not just at import." A check that runs only
+                  * when somebody drops a file tells you about a problem
+                  * after it has been one for a week — and the first of
+                  * these, an invoice still reading "TBA", is a problem
+                  * measured in days.
+                  */}
+                {flagsOf(sale).map((flag) => (
+                  <span
+                    key={flag.kind}
+                    title={flag.detail}
+                    className={cn(
+                      'mt-0.5 block whitespace-nowrap text-caption font-semibold',
+                      flagTone(flag.kind) === 'serious' ? 'text-state-danger' : 'text-state-warning',
+                    )}
+                  >
+                    {FLAG_LABELS[flag.kind]}
+                  </span>
+                ))}
               </TD>
               {/* A commission has no stock number and no watch to open:
                   the watch was never ours. A dash and plain text rather
