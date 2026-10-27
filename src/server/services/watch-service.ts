@@ -471,7 +471,14 @@ export async function recordSale(
  * the sort of disagreement nobody notices until a month-end total is out by
  * one watch.
  */
-function saleMoney(
+/**
+ * The derived money columns for a sale.
+ *
+ * Exported so the Xero reconcile path derives them the same way rather than
+ * writing an amount and leaving the base figure, the profit and the margin
+ * saying what the old amount made.
+ */
+export function saleMoney(
   agreedMinor: number,
   currency: CurrencyCode,
   rate: number,

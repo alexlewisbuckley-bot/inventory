@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
-  boolean, customType, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex,
+  boolean, customType, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import {
@@ -849,6 +849,15 @@ export const sales = pgTable(
     commissionGbp: integer('commission_gbp').notNull().default(0),
     depositGbp: integer('deposit_gbp').notNull().default(0),
     paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PAID'),
+    /** When Xero says the money arrived. The status says whether; this says when. */
+    paidOn: timestamp('paid_on', { withTimezone: true }),
+    /**
+     * Which Xero import last accounted for this sale.
+     *
+     * Alex's last data-quality flag is "Sale with no matching Xero invoice
+     * on last import", which cannot be answered without remembering it.
+     */
+    xeroSeenImportId: text('xero_seen_import_id'),
     deliveryStatus: text('delivery_status', { enum: DELIVERY_STATUSES }).notNull().default('COLLECTED'),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     warrantyMonths: integer('warranty_months'),
@@ -1698,3 +1707,131 @@ export type NewActivity = typeof activities.$inferInsert
 export type Task = typeof tasks.$inferSelect
 export type NewTask = typeof tasks.$inferInsert
 export type Tag = typeof tags.$inferSelect
+
+/* ================= Xero reconciliation ================= */
+
+/**
+ * The sales ledger against the accounts.
+ *
+ * Alex: "We reconciled 14 sales against 12 Xero invoices by hand today and
+ * 11 of them had at least one error."
+ *
+ * Xero is the source of truth for the invoice number, the invoice date, the
+ * customer name, the amount, the currency and the payment status. This
+ * system owns everything else, and nothing in the reconcile path writes
+ * cost, sold-by, stock number or notes.
+ */
+export const xeroImports = pgTable(
+  'xero_imports',
+  {
+    id: text('id').primaryKey(),
+    fileName: text('file_name').notNull(),
+    baseCurrency: text('base_currency', { enum: CURRENCIES }).notNull().default('AED'),
+    invoiceCount: integer('invoice_count').notNull().default(0),
+    /** Rows carrying no invoice number: totals, separators, notes. */
+    skippedRows: integer('skipped_rows').notNull().default(0),
+    importedById: text('imported_by_id').notNull().references(() => users.id),
+    /** Null until somebody approves it. Nothing writes until approved. */
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    appliedById: text('applied_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({ recentIdx: index('xero_imports_recent_idx').on(t.createdAt) }),
+)
+
+/** One line of a Xero invoice, as the export stated it. */
+export interface XeroInvoiceLine {
+  description: string
+  amount: number | null
+  quantity: number | null
+}
+
+export const xeroInvoices = pgTable(
+  'xero_invoices',
+  {
+    id: text('id').primaryKey(),
+    importId: text('import_id').notNull()
+      .references(() => xeroImports.id, { onDelete: 'cascade' }),
+    invoiceNo: text('invoice_no').notNull(),
+    contactName: text('contact_name').notNull().default(''),
+    invoiceDate: timestamp('invoice_date', { withTimezone: true }),
+    dueDate: timestamp('due_date', { withTimezone: true }),
+    currency: text('currency', { enum: CURRENCIES }).notNull().default('AED'),
+    /** The total in the invoice's own currency, in minor units. */
+    total: integer('total').notNull().default(0),
+    /**
+     * The rate this invoice is read in base at.
+     *
+     * On the row rather than looked up, because Alex asked for it to be
+     * "shown and editable per invoice" — a rate somebody corrected has to
+     * survive the next page load.
+     */
+    fxRate: integer('fx_rate'),
+    /** Xero's own word, not ours. */
+    status: text('status').notNull().default('DRAFT'),
+    reference: text('reference').notNull().default(''),
+    lines: jsonb('lines').$type<XeroInvoiceLine[]>().notNull().default([]),
+    sourceRows: jsonb('source_rows').$type<number[]>().notNull().default([]),
+    /** SALE, BUYBACK or NOT_A_SALE, once the user has said which. */
+    bucket: text('bucket').notNull().default('SALE'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    importIdx: index('xero_invoices_import_idx').on(t.importId),
+    numberIdx: index('xero_invoices_number_idx').on(t.invoiceNo),
+  }),
+)
+
+export const xeroLinks = pgTable(
+  'xero_links',
+  {
+    id: text('id').primaryKey(),
+    importId: text('import_id').notNull()
+      .references(() => xeroImports.id, { onDelete: 'cascade' }),
+    xeroInvoiceId: text('xero_invoice_id').notNull()
+      .references(() => xeroInvoices.id, { onDelete: 'cascade' }),
+    saleId: text('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
+    /** invoice | stock | fuzzy | manual — how much the match is worth trusting. */
+    tier: text('tier').notNull(),
+    /** This sale's share of the invoice, in the invoice's minor units. */
+    allocated: integer('allocated').notNull().default(0),
+    /** Null until the user decides. */
+    approved: boolean('approved'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    saleIdx: uniqueIndex('xero_links_sale_idx').on(t.importId, t.saleId),
+    invoiceIdx: index('xero_links_invoice_idx').on(t.xeroInvoiceId),
+  }),
+)
+
+/**
+ * What we call somebody, against what Xero calls them.
+ *
+ * "Henry Fisher" and "Sweepings Hands" share no letters at all, which is
+ * why no amount of fuzzy matching replaces this table.
+ */
+export const customerAliases = pgTable(
+  'customer_aliases',
+  {
+    id: text('id').primaryKey(),
+    systemName: text('system_name').notNull(),
+    xeroName: text('xero_name').notNull(),
+    /** Normalised on write so a lookup need not lower-case the table. */
+    xeroKey: text('xero_key').notNull(),
+    customerId: text('customer_id')
+      .references((): AnyPgColumn => customers.id, { onDelete: 'set null' }),
+    approvedById: text('approved_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => ({ keyIdx: uniqueIndex('customer_aliases_key_idx').on(t.xeroKey) }),
+)
+
+export type XeroImport = typeof xeroImports.$inferSelect
+export type NewXeroImport = typeof xeroImports.$inferInsert
+export type XeroInvoiceRow = typeof xeroInvoices.$inferSelect
+export type NewXeroInvoiceRow = typeof xeroInvoices.$inferInsert
+export type XeroLink = typeof xeroLinks.$inferSelect
+export type NewXeroLink = typeof xeroLinks.$inferInsert
+export type CustomerAlias = typeof customerAliases.$inferSelect

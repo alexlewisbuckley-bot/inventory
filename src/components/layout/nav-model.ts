@@ -1,7 +1,7 @@
 import {
   Table2,
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
-  Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Search, Store, Users2,
+  Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Scale, Search, Store, Users2,
   type LucideIcon,
   HandCoins,
 } from 'lucide-react'
@@ -74,6 +74,15 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/catalogue', label: 'Inventory', icon: Package, capability: 'catalogue:read', match: '/catalogue' },
         { href: '/inventory', label: 'Inventory', icon: Package, capability: 'watch:read', match: '/inventory', count: counts.inStock },
         { href: '/sales', label: 'Sales', icon: Receipt, capability: 'sale:read', match: '/sales', count: counts.sales },
+        /*
+         * Reconciling against Xero, beside the ledger it corrects.
+         *
+         * `data:import` rather than `sale:read`: the page's own job is
+         * reading a file and showing what it would change, and whether
+         * anything may actually be written is a separate capability
+         * checked on the Apply button.
+         */
+        { href: '/sales/reconcile', label: 'Reconcile', icon: Scale, capability: 'data:import', match: '/sales/reconcile' },
         // Beside Sales rather than under Manage: a buy-back is money out
         // and money earned, and the people who read the ledger are the
         // people who need to know what is out on loan.
