@@ -88,11 +88,13 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     saleCurrency: row.feeCurrency as SaleListItem['saleCurrency'],
     paymentStatus: row.paymentStatus as SaleListItem['paymentStatus'],
     deliveryStatus: 'COLLECTED',
-    // Not a Xero sales invoice, so it has none of these and is never
-    // measured against an import.
+    // A fee carries no due date and no paid date of its own, but it is
+    // very much measured against an import: hard-coding this null left
+    // every commission reading "Not in Xero" for good, however well it
+    // had just reconciled.
     dueOn: null,
     paidOn: null,
-    xeroSeenImportId: null,
+    xeroSeenImportId: row.xeroSeenImportId,
     customerCompany: null,
     notes: row.notes,
     purchaseAmount: null,
@@ -141,18 +143,20 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
   const buybackRows: LedgerRow[] = charges.map((row) => ({
     kind: 'BUYBACK',
     id: row.id,
-    invoiceNo: row.reference ?? '—',
+    // Its own invoice number where Xero has given it one; the loan's
+    // reference otherwise.
+    invoiceNo: row.invoiceNo ?? row.reference ?? '—',
     invoiceLines: 1,
     saleDate: row.dueOn,
     saleAmount: row.amount,
     saleCurrency: row.currency as SaleListItem['saleCurrency'],
     paymentStatus: row.paymentStatus as SaleListItem['paymentStatus'],
     deliveryStatus: 'COLLECTED',
-    // Not a Xero sales invoice, so it has none of these and is never
-    // measured against an import.
+    // The charge's own due date is its sale date on this row, so there is
+    // nothing separate to put here. The import, though, is real.
     dueOn: null,
     paidOn: null,
-    xeroSeenImportId: null,
+    xeroSeenImportId: row.xeroSeenImportId,
     customerCompany: null,
     notes: null,
     purchaseAmount: null,

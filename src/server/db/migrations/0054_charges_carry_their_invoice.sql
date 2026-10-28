@@ -1,0 +1,14 @@
+-- A buy-back charge needs an invoice number of its own.
+--
+-- Alex, after reconciling: "Once reconciled it is not correct as they have
+-- been linked with Xero."
+--
+-- Two things were wrong on that screen and this is the first. A charge is
+-- invoiced out of Xero one month at a time, but the only reference it
+-- could show was the one on the loan it belongs to — and a loan running
+-- for six months is six charges and six Xero invoices, so the loan's
+-- reference is the wrong place to write any of them. The result was that a
+-- charge could be reconciled against an invoice and still read "—" in the
+-- invoice column afterwards, which looks exactly like a reconciliation
+-- that did not happen.
+ALTER TABLE buyback_charges ADD COLUMN IF NOT EXISTS invoice_no text;

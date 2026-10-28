@@ -398,6 +398,7 @@ async function liveSaleCandidates(): Promise<LiveSale[]> {
       currency: buybackCharges.currency,
       paymentStatus: buybackCharges.paymentStatus,
       paidOn: buybackCharges.paidOn,
+      invoiceNo: buybackCharges.invoiceNo,
       chargeKind: buybackCharges.kind,
       // The customer and the reference live on the loan, not the charge.
       customerName: buybacks.customerName,
@@ -448,7 +449,9 @@ async function liveSaleCandidates(): Promise<LiveSale[]> {
       kind: 'BUYBACK' as const,
       label: `Buy-back ${row.chargeKind.toLowerCase()}${row.customerName ? ` — ${row.customerName}` : ''}`,
       stockNo: null,
-      invoiceNo: row.reference,
+      // Its own number where it has one, falling back to the loan's
+      // reference for a charge that has never been invoiced.
+      invoiceNo: row.invoiceNo ?? row.reference,
       // The day it falls due is the day it would be invoiced on.
       saleDate: row.dueOn,
       customerName: row.customerName,
@@ -883,6 +886,7 @@ async function applyToCharge(
 
   const patch: Record<string, unknown> = {}
   for (const change of taking) {
+    if (change.field === 'invoiceNo') patch['invoiceNo'] = change.to
     if (change.field === 'paymentStatus') patch['paymentStatus'] = change.to
     if (change.field === 'paidOn') patch['paidOn'] = change.to
     if (change.field === 'saleAmount') patch['amount'] = change.to
@@ -1030,11 +1034,31 @@ export async function applyImport(
       }
     }
 
-    // Which import last accounted for each sale, so the "no matching Xero
-    // invoice" flag can be answered without re-reading the file.
-    const seen = review.invoices.flatMap((invoice) => invoice.sales.map((sale) => sale.saleId))
-    if (seen.length > 0) {
-      await db.update(sales).set({ xeroSeenImportId: importId }).where(inArray(sales.id, seen))
+    /*
+     * Which import last accounted for each row, so the "no matching Xero
+     * invoice" flag can be answered without re-reading the file.
+     *
+     * All three books, not just sales. Marking only sales left every
+     * commission and every buy-back charge reading "Not in Xero" for
+     * good, however well it had just reconciled — which is what Alex saw
+     * on the ledger straight after an import.
+     */
+    const seenOf = (kind: CandidateKind) => review.invoices
+      .flatMap((invoice) => invoice.sales.filter((s) => s.kind === kind).map((s) => s.saleId))
+
+    const seenSales = seenOf('SALE')
+    if (seenSales.length > 0) {
+      await db.update(sales).set({ xeroSeenImportId: importId }).where(inArray(sales.id, seenSales))
+    }
+    const seenFees = seenOf('COMMISSION')
+    if (seenFees.length > 0) {
+      await db.update(brokerages).set({ xeroSeenImportId: importId })
+        .where(inArray(brokerages.id, seenFees))
+    }
+    const seenCharges = seenOf('BUYBACK')
+    if (seenCharges.length > 0) {
+      await db.update(buybackCharges).set({ xeroSeenImportId: importId })
+        .where(inArray(buybackCharges.id, seenCharges))
     }
 
     await db.update(xeroImports)

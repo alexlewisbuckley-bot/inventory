@@ -57,7 +57,7 @@ export const FIELD_LABELS: Record<XeroField, string> = {
  *
  *   a sale           everything: it is Xero's invoice end to end
  *   a commission     the number, the date, the customer, the fee, the status
- *   a buy-back charge the money and the status only
+ *   a buy-back charge its invoice number, the money and the status
  *
  * A charge's due date comes off the loan's own schedule and its customer
  * off the loan, so neither is Xero's to state; proposing them would let an
@@ -67,7 +67,7 @@ export const FIELD_LABELS: Record<XeroField, string> = {
 export const FIELDS_BY_KIND: Record<string, readonly XeroField[]> = {
   SALE: ['invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency', 'paymentStatus', 'paidOn', 'dueOn'],
   COMMISSION: ['invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency', 'paymentStatus'],
-  BUYBACK: ['saleAmount', 'saleCurrency', 'paymentStatus', 'paidOn'],
+  BUYBACK: ['invoiceNo', 'saleAmount', 'saleCurrency', 'paymentStatus', 'paidOn'],
 }
 
 /** The sale as it stands, in only the fields Xero may speak to. */
