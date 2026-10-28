@@ -534,7 +534,9 @@ export interface Review {
   /** Rows of the book — of any kind — no invoice in this file accounted for. */
   unmatchedSales: Array<{
     saleId: string; kind: CandidateKind; label: string; stockNo: number | null
-    invoiceNo: string | null; customerName: string | null; saleDate: Date; amountBase: number
+    invoiceNo: string | null; customerName: string | null; saleDate: Date
+    /** As invoiced, and in base — the two figures a row is reconciled on. */
+    amount: number | null; currency: CurrencyCode; amountBase: number
   }>
   exceptions: ReconcileException[]
   /** How many field changes are waiting to be approved. */
@@ -656,8 +658,14 @@ export async function buildReview(importId: string): Promise<Review> {
       invoiceNo: sale.invoiceNo,
       customerName: sale.customerName,
       saleDate: sale.saleDate,
+      amount: sale.saleAmount,
+      currency: sale.saleCurrency,
       amountBase: sale.amountBase,
     }))
+    // Newest first, which is the order a Xero export is worked through.
+    // Returned in candidate order it came out as every sale, then every
+    // commission, then every charge — three lists to scan instead of one.
+    .sort((a, b) => b.saleDate.getTime() - a.saleDate.getTime())
   for (const sale of unmatchedSales) {
     exceptions.push({
       kind: 'SALE_WITHOUT_INVOICE',
