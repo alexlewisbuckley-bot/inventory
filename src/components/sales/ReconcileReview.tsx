@@ -71,6 +71,7 @@ export interface ReviewView {
     saleId: string; kind: 'SALE' | 'COMMISSION' | 'BUYBACK'; label: string
     stockNo: number | null; invoiceNo: string | null
     customerName: string | null; saleDate: string
+    amount: number | null; currency: string; amountBase: number
   }>
   exceptions: Array<{ kind: string; invoiceNo: string | null; stockNo: number | null; detail: string }>
   changeCount: number
@@ -462,11 +463,12 @@ export function ReconcileReview({ review, canApply }: {
                             defaultValue=""
                             className="rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-caption"
                           >
-                            <option value="" disabled>Link a sale…</option>
+                            <option value="" disabled>Link from the book…</option>
                             {review.unmatchedSales.map((sale) => (
                               <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
                                 {KIND_WORDS[sale.kind] ?? sale.kind}
                                 {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
+                                {' · '}{money(sale.amount ?? sale.amountBase, sale.currency)}
                                 {sale.customerName ? ` · ${sale.customerName}` : ''}
                                 {' · '}{sale.saleDate}
                               </option>
@@ -599,14 +601,15 @@ export function ReconcileReview({ review, canApply }: {
                   export covers that no invoice in it accounts for.
                 </p>
               </div>
-              <Table layout="fixed" minWidth="560px">
+              <Table layout="fixed" minWidth="800px">
                 <THead>
                   <TR>
-                    <TH width="110px">Kind</TH>
-                    <TH width="170px">What</TH>
-                    <TH width="140px">Reference here</TH>
-                    <TH width="170px">Customer</TH>
-                    <TH width="110px">Dated</TH>
+                    <TH width="105px">Kind</TH>
+                    <TH width="165px">What</TH>
+                    <TH width="130px" align="right">Amount</TH>
+                    <TH width="130px">Reference here</TH>
+                    <TH width="160px">Customer</TH>
+                    <TH width="105px">Dated</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -619,6 +622,21 @@ export function ReconcileReview({ review, canApply }: {
                       </TD>
                       <TD className="truncate">
                         {sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
+                      </TD>
+                      {/* The figure you actually reconcile on. Quoted in
+                          the currency it was struck in, with the base
+                          underneath when they differ — the same pair the
+                          invoice above shows, so the two are comparable
+                          without doing the conversion in your head. */}
+                      <TD align="right" className="tabular-nums">
+                        <span className="block font-semibold">
+                          {money(sale.amount ?? sale.amountBase, sale.currency)}
+                        </span>
+                        {sale.currency !== 'AED' && (
+                          <span className="block text-caption text-content-secondary">
+                            {money(sale.amountBase, 'AED')}
+                          </span>
+                        )}
                       </TD>
                       <TD className="truncate">{sale.invoiceNo ?? '—'}</TD>
                       <TD className="truncate">{sale.customerName ?? '—'}</TD>

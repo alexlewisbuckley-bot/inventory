@@ -76,6 +76,9 @@ export default async function ReconcilePage({ searchParams }: {
       invoiceNo: sale.invoiceNo,
       customerName: sale.customerName,
       saleDate: formatDate(sale.saleDate),
+      amount: sale.amount,
+      currency: sale.currency,
+      amountBase: sale.amountBase,
     })),
     exceptions: review.exceptions.map((issue) => ({
       kind: issue.kind, invoiceNo: issue.invoiceNo, stockNo: issue.stockNo, detail: issue.detail,
