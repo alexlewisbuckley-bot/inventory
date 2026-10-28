@@ -199,6 +199,10 @@ export function ReconcileReview({ review, canApply }: {
     [review],
   )
   const onCount = allKeys.filter((key) => !off.has(key)).length
+  /** Rows this file accounts for, whether or not any of them need changing. */
+  const linkedCount = (review?.invoices ?? [])
+    .filter((invoice) => invoice.bucket !== 'NOT_A_SALE')
+    .reduce((n, invoice) => n + invoice.sales.length, 0)
 
   /**
    * A drop, whatever it was.
@@ -250,8 +254,12 @@ export function ReconcileReview({ review, canApply }: {
         return
       }
       toast.success(
-        `${result.fieldsChanged} changes applied`,
-        `across ${result.salesChanged} ${result.salesChanged === 1 ? 'sale' : 'sales'}`,
+        result.fieldsChanged === 0
+          ? 'Marked as reconciled'
+          : `${result.fieldsChanged} changes applied`,
+        result.fieldsChanged === 0
+          ? 'Everything already agreed with Xero. These rows now count as accounted for.'
+          : `across ${result.salesChanged} ${result.salesChanged === 1 ? 'row' : 'rows'}`,
       )
       router.refresh()
     })
@@ -359,10 +367,20 @@ export function ReconcileReview({ review, canApply }: {
                     <Download className="h-4 w-4" aria-hidden /> Exceptions ({review.exceptions.length})
                   </Button>
                 )}
-                {canApply && !review.appliedAt && (
-                  <Button onClick={apply} disabled={pending || onCount === 0}>
+                {canApply && !review.appliedAt && linkedCount > 0 && (
+                  /*
+                   * Enabled even with nothing ticked, because applying is
+                   * also what records that this import accounted for these
+                   * rows. Disabled on zero, an import where everything
+                   * already agreed could never be applied, and its rows
+                   * went on reading "Not in Xero" — the ones that matched
+                   * perfectly being the ones reported as missing.
+                   */
+                  <Button onClick={apply} disabled={pending}>
                     <Check className="h-4 w-4" aria-hidden />
-                    Apply {onCount} {onCount === 1 ? 'change' : 'changes'}
+                    {onCount > 0
+                      ? `Apply ${onCount} ${onCount === 1 ? 'change' : 'changes'}`
+                      : `Mark ${linkedCount} as reconciled`}
                   </Button>
                 )}
               </div>
