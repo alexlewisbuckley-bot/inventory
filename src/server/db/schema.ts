@@ -1520,6 +1520,8 @@ export const brokerages = pgTable(
     feeBase: integer('fee_base').notNull(),
     paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PAID'),
     soldById: text('sold_by_id').references((): AnyPgColumn => salesPeople.id, { onDelete: 'set null' }),
+    /** Which Xero import last accounted for this fee, if any. */
+    xeroSeenImportId: text('xero_seen_import_id'),
     notes: text('notes'),
     recordedById: text('recorded_by_id').notNull().references(() => users.id),
     /** Voided rather than deleted, as a sale is. */
@@ -1633,6 +1635,8 @@ export const buybackCharges = pgTable(
     amountBase: integer('amount_base').notNull(),
     paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PENDING'),
     paidOn: timestamp('paid_on', { withTimezone: true }),
+    /** Which Xero import last accounted for this charge, if any. */
+    xeroSeenImportId: text('xero_seen_import_id'),
     voidedAt: timestamp('voided_at', { withTimezone: true }),
     voidedById: text('voided_by_id').references((): AnyPgColumn => users.id, { onDelete: 'set null' }),
     voidReason: text('void_reason'),
@@ -1807,8 +1811,20 @@ export const xeroLinks = pgTable(
       .references(() => xeroImports.id, { onDelete: 'cascade' }),
     xeroInvoiceId: text('xero_invoice_id').notNull()
       .references(() => xeroInvoices.id, { onDelete: 'cascade' }),
-    saleId: text('sale_id').notNull().references(() => sales.id, { onDelete: 'cascade' }),
-    /** invoice | stock | fuzzy | manual — how much the match is worth trusting. */
+    /**
+     * What it points at. Exactly one of the three is set, which a check
+     * constraint enforces rather than leaving to this file to remember.
+     *
+     * Three typed columns rather than one untyped id, so the database
+     * still knows the link points at something real and still cleans up
+     * after a deleted row.
+     */
+    kind: text('kind').notNull().default('SALE'),
+    saleId: text('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    brokerageId: text('brokerage_id').references(() => brokerages.id, { onDelete: 'cascade' }),
+    buybackChargeId: text('buyback_charge_id')
+      .references(() => buybackCharges.id, { onDelete: 'cascade' }),
+    /** invoice | stock | fuzzy | probable | manual — how much to trust it. */
     tier: text('tier').notNull(),
     /** This sale's share of the invoice, in the invoice's minor units. */
     allocated: integer('allocated').notNull().default(0),
@@ -1816,10 +1832,7 @@ export const xeroLinks = pgTable(
     approved: boolean('approved'),
     createdAt: createdAt(),
   },
-  (t) => ({
-    saleIdx: uniqueIndex('xero_links_sale_idx').on(t.importId, t.saleId),
-    invoiceIdx: index('xero_links_invoice_idx').on(t.xeroInvoiceId),
-  }),
+  (t) => ({ invoiceIdx: index('xero_links_invoice_idx').on(t.xeroInvoiceId) }),
 )
 
 /**

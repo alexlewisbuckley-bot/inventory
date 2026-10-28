@@ -48,9 +48,33 @@ export const FIELD_LABELS: Record<XeroField, string> = {
   dueOn: 'Due date',
 }
 
+/**
+ * Which fields Xero owns, per kind of thing it invoiced.
+ *
+ * Alex asked for commissions and buy-backs to reconcile too, and they are
+ * not sales with different names — the business computes some of what is
+ * on them, and Xero must not overwrite that.
+ *
+ *   a sale           everything: it is Xero's invoice end to end
+ *   a commission     the number, the date, the customer, the fee, the status
+ *   a buy-back charge the money and the status only
+ *
+ * A charge's due date comes off the loan's own schedule and its customer
+ * off the loan, so neither is Xero's to state; proposing them would let an
+ * invoice quietly reschedule a loan. Where the figures disagree the
+ * difference still surfaces, as an exception rather than as an edit.
+ */
+export const FIELDS_BY_KIND: Record<string, readonly XeroField[]> = {
+  SALE: ['invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency', 'paymentStatus', 'paidOn', 'dueOn'],
+  COMMISSION: ['invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'saleCurrency', 'paymentStatus'],
+  BUYBACK: ['saleAmount', 'saleCurrency', 'paymentStatus', 'paidOn'],
+}
+
 /** The sale as it stands, in only the fields Xero may speak to. */
 export interface SaleSnapshot {
   id: string
+  /** SALE, COMMISSION or BUYBACK — which decides what Xero may change. */
+  kind?: string
   stockNo: number | null
   invoiceNo: string | null
   saleDate: Date
@@ -113,6 +137,7 @@ export function proposeChanges(
 ): ProposedChange[] {
   if (invoice.status === 'VOIDED' || invoice.status === 'DRAFT') return []
 
+  const allowed = FIELDS_BY_KIND[sale.kind ?? 'SALE'] ?? FIELDS_BY_KIND['SALE']!
   const changes: ProposedChange[] = []
 
   // The invoice number. A placeholder on our side is exactly the case this
@@ -201,7 +226,10 @@ export function proposeChanges(
     })
   }
 
-  return changes
+  // A kind only takes the fields it owns. Filtered at the end rather than
+  // guarded at each branch, so the rule lives in one readable place and a
+  // new field cannot quietly skip it.
+  return changes.filter((change) => allowed.includes(change.field))
 }
 
 /**

@@ -57,6 +57,8 @@ export default async function ReconcilePage({ searchParams }: {
       looksLikeBuyBack: invoice.looksLikeBuyBack,
       sales: invoice.sales.map((sale) => ({
         saleId: sale.saleId,
+        kind: sale.kind,
+        label: sale.label,
         stockNo: sale.stockNo,
         tier: sale.tier,
         allocated: sale.allocated,
@@ -68,6 +70,8 @@ export default async function ReconcilePage({ searchParams }: {
     })),
     unmatchedSales: review.unmatchedSales.map((sale) => ({
       saleId: sale.saleId,
+      kind: sale.kind,
+      label: sale.label,
       stockNo: sale.stockNo,
       invoiceNo: sale.invoiceNo,
       customerName: sale.customerName,

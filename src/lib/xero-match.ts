@@ -34,23 +34,44 @@ import { searchableText, type XeroInvoice } from './xero-invoice'
  * the review screen disposes.
  */
 
-export type MatchTier = 'invoice' | 'stock' | 'fuzzy' | 'manual'
+export type MatchTier = 'invoice' | 'stock' | 'fuzzy' | 'probable' | 'manual'
 
-/** What the matcher needs to know about one of our sales. */
+/**
+ * What kind of thing in our book an invoice might be for.
+ *
+ * Alex: "there are quite a few sales that are not linking, and I think
+ * it's due to commissions not being tracked and buybacks."
+ *
+ * He was right, and it was not a tuning problem: the matcher only ever
+ * looked at the sales table, so a Xero invoice for a brokered fee or a
+ * buy-back charge had nothing it could possibly match and fell into "in
+ * Xero, no sale" every single time. All three earn money, all three get
+ * invoiced out of Xero, so all three are candidates.
+ */
+export type CandidateKind = 'SALE' | 'COMMISSION' | 'BUYBACK'
+
+/** What the matcher needs to know about one row of our book. */
 export interface SaleCandidate {
   id: string
+  kind: CandidateKind
+  /** Only a sale has one, and only a sale can be found by it. */
   stockNo: number | null
+  /**
+   * The number we have for it: a sale's invoice number, a commission's
+   * reference, the reference on the loan a buy-back charge belongs to.
+   */
   invoiceNo: string | null
   customerName: string | null
-  /** Midnight UTC on the sale's day, as the column stores it. */
+  /** Midnight UTC on its day, as the column stores it. */
   saleDate: Date
-  /** What the sale says it was for, in base minor units. */
+  /** What it says it was for, in base minor units. */
   amountBase: number
 }
 
 export interface MatchedSale {
   saleId: string
-  /** How this particular sale was found, which may differ within one invoice. */
+  kind: CandidateKind
+  /** How this particular row was found, which may differ within one invoice. */
   tier: MatchTier
 }
 
@@ -74,7 +95,7 @@ export interface MatchResult {
   matched: InvoiceMatch[]
   /** Invoices nothing could be found for. The user links or dismisses these. */
   unmatchedInvoices: XeroInvoice[]
-  /** Sales no invoice in this file accounts for. */
+  /** Rows of our book no invoice in this file accounts for. */
   unmatchedSaleIds: string[]
 }
 
@@ -180,6 +201,25 @@ const AMOUNT_TOLERANCE = 0.01
 const DAY_TOLERANCE = 3
 const DAY = 86_400_000
 
+/**
+ * The looser bar, for things worth offering rather than asserting.
+ *
+ * Alex: "Daniel Buckley, for example, has a buyback for that exact amount
+ * or close to that should have been flagged and given the name is the
+ * same... Same detail for things like commission that are both 1500
+ * dollars that are in the same week. That is likely going to be the same
+ * thing. It could flag as amber."
+ *
+ * So: the same week rather than three days, a little more drift on the
+ * amount, and a name that still has to look like the same customer. What
+ * comes out is explicitly a suggestion — it is shown in amber, it is not
+ * ticked, and it is never applied unless somebody ticks it. The point is
+ * that a probable match is far more use on the screen than in the
+ * "nothing matched" pile, which is where all of these were going.
+ */
+const PROBABLE_AMOUNT_TOLERANCE = 0.02
+const PROBABLE_DAY_TOLERANCE = 7
+
 export function matchInvoices(
   invoices: XeroInvoice[],
   sales: SaleCandidate[],
@@ -196,9 +236,12 @@ export function matchInvoices(
    * back under both of them.
    */
   const found = new Map<number, MatchedSale[]>()
+  const byId = new Map(sales.map((sale) => [sale.id, sale]))
   const add = (at: number, saleId: string, tier: MatchTier) => {
     claimed.add(saleId)
-    found.set(at, [...(found.get(at) ?? []), { saleId, tier }])
+    found.set(at, [...(found.get(at) ?? []), {
+      saleId, kind: byId.get(saleId)?.kind ?? 'SALE', tier,
+    }])
   }
   const aliasProposals = new Map<number, InvoiceMatch['proposedAlias']>()
 
@@ -223,7 +266,9 @@ export function matchInvoices(
 
   // --- 2. a stock number in the reference or a line ------------------------
   // Additive: an invoice that already found one watch can still be
-  // carrying another that is only named in its reference.
+  // carrying another that is only named in its reference. Only a row with
+  // a stock number can be found this way, which in practice means a sale
+  // and a commission brokered on one of our own watches.
   invoices.forEach((invoice, at) => {
     const text = searchableText(invoice)
     if (!text) return
@@ -234,12 +279,20 @@ export function matchInvoices(
     }
   })
 
-  // --- 3. the customer, the amount and the date, all three -----------------
-  for (const [at, invoice] of invoices.entries()) {
-    if (found.has(at)) continue
-    if (!invoice.contactName || !invoice.invoiceDate) continue
+  /*
+   * --- 3 and 4. the customer, the amount and the date, all three ---------
+   *
+   * The same three signals twice, at two bars. The tight one is a match;
+   * the loose one is a suggestion the screen shows in amber and does not
+   * tick. Running them as separate passes matters: every invoice gets its
+   * chance at a confident hit before any invoice is allowed a probable
+   * one, so a likely guess never takes a row that a firmer reading of
+   * another invoice would have claimed.
+   */
+  const bestFor = (invoice: XeroInvoice, amountTolerance: number, dayTolerance: number) => {
+    if (!invoice.contactName || !invoice.invoiceDate) return null
     const wanted = toBase(invoice.total, invoice.currency)
-    if (wanted <= 0) continue
+    if (wanted <= 0) return null
 
     let best: { sale: SaleCandidate; score: number } | null = null
     for (const sale of sales) {
@@ -248,10 +301,10 @@ export function matchInvoices(
       // The amount, converted first. Alex: "Never compare amounts across
       // currencies without converting first."
       const drift = Math.abs(sale.amountBase - wanted) / wanted
-      if (drift > AMOUNT_TOLERANCE) continue
+      if (drift > amountTolerance) continue
 
       const days = Math.abs(sale.saleDate.getTime() - invoice.invoiceDate.getTime()) / DAY
-      if (days > DAY_TOLERANCE) continue
+      if (days > dayTolerance) continue
 
       // An approved alias is an exact answer, not a fuzzy one.
       const alias = aliasFor.get(normaliseName(invoice.contactName))
@@ -259,11 +312,17 @@ export function matchInvoices(
         ? 1
         : nameSimilarity(sale.customerName, invoice.contactName)
       if (score < NAME_THRESHOLD) continue
-      if (!best || score > best.score) best = { sale, score }
+      // Ties broken towards the closer amount, so two commissions a week
+      // apart at the same price go to the one priced identically.
+      const weighted = score - drift
+      if (!best || weighted > best.score) best = { sale, score: weighted }
     }
-    if (!best) continue
+    return best
+  }
 
-    add(at, best.sale.id, 'fuzzy')
+  const takeBest = (at: number, invoice: XeroInvoice, tier: MatchTier, best: ReturnType<typeof bestFor>) => {
+    if (!best) return
+    add(at, best.sale.id, tier)
     // Worth remembering only where the two names are not already the same.
     aliasProposals.set(
       at,
@@ -271,6 +330,17 @@ export function matchInvoices(
         ? null
         : { systemName: best.sale.customerName!, xeroName: invoice.contactName },
     )
+  }
+
+  for (const [at, invoice] of invoices.entries()) {
+    if (found.has(at)) continue
+    takeBest(at, invoice, 'fuzzy', bestFor(invoice, AMOUNT_TOLERANCE, DAY_TOLERANCE))
+  }
+
+  for (const [at, invoice] of invoices.entries()) {
+    if (found.has(at)) continue
+    takeBest(at, invoice, 'probable',
+      bestFor(invoice, PROBABLE_AMOUNT_TOLERANCE, PROBABLE_DAY_TOLERANCE))
   }
 
   const matched: InvoiceMatch[] = invoices

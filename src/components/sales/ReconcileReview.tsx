@@ -34,6 +34,8 @@ import {
 
 export interface ReviewSaleView {
   saleId: string
+  kind: 'SALE' | 'COMMISSION' | 'BUYBACK'
+  label: string
   stockNo: number | null
   tier: string
   allocated: number
@@ -66,7 +68,8 @@ export interface ReviewView {
   skippedRows: number
   invoices: ReviewInvoiceView[]
   unmatchedSales: Array<{
-    saleId: string; stockNo: number | null; invoiceNo: string | null
+    saleId: string; kind: 'SALE' | 'COMMISSION' | 'BUYBACK'; label: string
+    stockNo: number | null; invoiceNo: string | null
     customerName: string | null; saleDate: string
   }>
   exceptions: Array<{ kind: string; invoiceNo: string | null; stockNo: number | null; detail: string }>
@@ -77,8 +80,25 @@ const TIER_WORDS: Record<string, string> = {
   invoice: 'invoice number',
   stock: 'stock number',
   fuzzy: 'customer, amount and date',
+  probable: 'same customer, close amount, same week',
   manual: 'linked by hand',
 }
+
+/** What each of the three books is called on screen. */
+const KIND_WORDS: Record<string, string> = {
+  SALE: 'Sale',
+  COMMISSION: 'Commission',
+  BUYBACK: 'Buy-back',
+}
+
+/**
+ * A probable match is a suggestion, not a finding.
+ *
+ * Alex: "That is likely going to be the same thing. It could flag as
+ * amber." So it is shown, it is marked, and it starts unticked — the one
+ * tier where somebody has to agree before anything is written.
+ */
+const isProbable = (tier: string) => tier === 'probable'
 
 const IMAGE = /\.(png|jpe?g|webp|gif)$/i
 
@@ -98,8 +118,32 @@ export function ReconcileReview({ review, canApply }: {
   const [dragging, setDragging] = useState(false)
   const input = useRef<HTMLInputElement | null>(null)
 
-  /** Which changes are ticked. Absent means ticked — everything starts on. */
-  const [off, setOff] = useState<Set<string>>(new Set())
+  /**
+   * Which changes are ticked.
+   *
+   * Absent means ticked, and a confident match starts ticked: the common
+   * case is a file of corrections that are all right, and making somebody
+   * tick forty boxes to agree with Xero is how a reconciliation screen
+   * stops being used.
+   *
+   * A probable match is the exception and starts in this set. It is a
+   * suggestion on three loose signals, so agreeing with it has to be an
+   * act rather than an oversight.
+   */
+  const probableKeys = useMemo(
+    () => (review?.invoices ?? []).flatMap((invoice) => invoice.sales
+      .filter((sale) => isProbable(sale.tier))
+      .flatMap((sale) => sale.changes.map((change) => keyFor(sale.saleId, change.field)))),
+    [review],
+  )
+  const [off, setOff] = useState<Set<string>>(() => new Set(probableKeys))
+  // A fresh import brings fresh suggestions, which must arrive unticked
+  // too rather than inheriting the last screen's answers.
+  const [seenImport, setSeenImport] = useState(review?.importId ?? null)
+  if (review && review.importId !== seenImport) {
+    setSeenImport(review.importId)
+    setOff(new Set(probableKeys))
+  }
   const isOn = (saleId: string, field: string) => !off.has(keyFor(saleId, field))
   const toggle = (saleId: string, field: string) => {
     const key = keyFor(saleId, field)
@@ -296,6 +340,15 @@ export function ReconcileReview({ review, canApply }: {
                 >
                   Accept all
                 </button>
+                {probableKeys.length > 0 && (
+                  <button
+                    type="button"
+                    className="font-semibold text-content-secondary hover:underline"
+                    onClick={() => setOff(new Set(probableKeys))}
+                  >
+                    Confident only
+                  </button>
+                )}
                 <button
                   type="button"
                   className="font-semibold text-content-secondary hover:underline"
@@ -305,6 +358,8 @@ export function ReconcileReview({ review, canApply }: {
                 </button>
                 <span className="text-content-secondary">
                   {onCount} of {allKeys.length} ticked
+                  {probableKeys.length > 0
+                    && ` · ${probableKeys.length} on a likely match, left for you`}
                 </span>
               </div>
             )}
@@ -409,10 +464,11 @@ export function ReconcileReview({ review, canApply }: {
                           >
                             <option value="" disabled>Link a sale…</option>
                             {review.unmatchedSales.map((sale) => (
-                              <option key={sale.saleId} value={sale.saleId}>
-                                {sale.stockNo ? `Stock ${sale.stockNo}` : 'No stock no'}
-                                {' · '}{sale.invoiceNo ?? 'no invoice'}
+                              <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
+                                {KIND_WORDS[sale.kind] ?? sale.kind}
+                                {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
                                 {sale.customerName ? ` · ${sale.customerName}` : ''}
+                                {' · '}{sale.saleDate}
                               </option>
                             ))}
                           </select>
@@ -429,9 +485,18 @@ export function ReconcileReview({ review, canApply }: {
                   {invoice.sales.map((sale) => (
                     <div key={sale.saleId} className="px-6 py-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-small font-bold text-content-primary">
-                          {sale.stockNo ? `Stock ${sale.stockNo}` : 'Sale'}
-                          <span className="ml-2 font-normal text-caption text-content-secondary">
+                        <p className="flex flex-wrap items-center gap-2 text-small font-bold text-content-primary">
+                          {sale.kind === 'SALE' && sale.stockNo
+                            ? `Stock ${sale.stockNo}`
+                            : sale.label}
+                          {sale.kind !== 'SALE' && (
+                            <Chip tone="navy">{KIND_WORDS[sale.kind] ?? sale.kind}</Chip>
+                          )}
+                          {isProbable(sale.tier) && <Chip tone="warning">Likely</Chip>}
+                          <span className={cn(
+                            'font-normal text-caption',
+                            isProbable(sale.tier) ? 'text-state-warning' : 'text-content-secondary',
+                          )}>
                             matched on {TIER_WORDS[sale.tier] ?? sale.tier}
                           </span>
                         </p>
@@ -527,26 +592,35 @@ export function ReconcileReview({ review, canApply }: {
             <Card className="overflow-hidden">
               <div className="border-b border-line-subtle px-6 py-4">
                 <h2 className="text-small font-bold text-content-primary">
-                  Sales with no invoice in this file
+                  In the book, not in this file
                 </h2>
                 <p className="mt-0.5 text-caption text-content-secondary">
-                  Booked here, inside the dates this export covers, and not in it.
+                  Sales, commissions and buy-back charges dated inside the period this
+                  export covers that no invoice in it accounts for.
                 </p>
               </div>
               <Table layout="fixed" minWidth="560px">
                 <THead>
                   <TR>
-                    <TH width="90px">Stock</TH>
-                    <TH width="150px">Invoice here</TH>
-                    <TH width="180px">Customer</TH>
-                    <TH width="110px">Sold</TH>
+                    <TH width="110px">Kind</TH>
+                    <TH width="170px">What</TH>
+                    <TH width="140px">Reference here</TH>
+                    <TH width="170px">Customer</TH>
+                    <TH width="110px">Dated</TH>
                   </TR>
                 </THead>
                 <TBody>
                   {review.unmatchedSales.map((sale) => (
-                    <TR key={sale.saleId}>
-                      <TD className="tabular-nums">{sale.stockNo ?? '—'}</TD>
-                      <TD>{sale.invoiceNo ?? '—'}</TD>
+                    <TR key={`${sale.kind}:${sale.saleId}`}>
+                      <TD>
+                        <Chip tone={sale.kind === 'SALE' ? 'neutral' : 'navy'}>
+                          {KIND_WORDS[sale.kind] ?? sale.kind}
+                        </Chip>
+                      </TD>
+                      <TD className="truncate">
+                        {sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
+                      </TD>
+                      <TD className="truncate">{sale.invoiceNo ?? '—'}</TD>
                       <TD className="truncate">{sale.customerName ?? '—'}</TD>
                       <TD className="tabular-nums text-content-secondary">{sale.saleDate}</TD>
                     </TR>
