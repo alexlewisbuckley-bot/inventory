@@ -237,3 +237,98 @@ describe('the due date', () => {
     expect(changes).toEqual([])
   })
 })
+
+/**
+ * What Xero may change depends on what it invoiced.
+ *
+ * Alex asked for commissions and buy-backs to reconcile alongside sales,
+ * and they are not sales with different column names: the business
+ * computes part of what is on them, and an invoice must not quietly
+ * overwrite that.
+ */
+describe('a commission', () => {
+  const fee = (over: Partial<SaleSnapshot> = {}) =>
+    sale({ kind: 'COMMISSION', stockNo: null, ...over })
+
+  it('takes the number, the date, the customer, the fee and the status', () => {
+    const changes = proposeChanges(
+      fee({
+        invoiceNo: null, saleDate: day('2026-10-11'), customerName: 'Trend Sourcing',
+        saleAmount: 100_000, paymentStatus: 'PAID',
+      }),
+      invoice({ contactName: 'Al Habtoor Watches' }),
+      10_000_000,
+    )
+    expect(fields(changes)).toEqual([
+      'invoiceNo', 'saleDate', 'customerName', 'saleAmount', 'paymentStatus',
+    ])
+  })
+
+  it('is never given a due date or a paid date', () => {
+    // A fee has neither of its own, and inventing them would put two
+    // dates on the review screen that write nowhere.
+    const changes = proposeChanges(
+      fee({ paymentStatus: 'PAID' }),
+      invoice({ status: 'PAID', paidDate: day('2026-10-20'), dueDate: day('2026-10-28') }),
+      10_000_000,
+    )
+    expect(fields(changes)).not.toContain('paidOn')
+    expect(fields(changes)).not.toContain('dueOn')
+  })
+})
+
+describe('a buy-back charge', () => {
+  const charge = (over: Partial<SaleSnapshot> = {}) =>
+    sale({ kind: 'BUYBACK', stockNo: null, ...over })
+
+  it('takes the money and the status, and nothing else', () => {
+    const changes = proposeChanges(
+      charge({
+        invoiceNo: null, saleDate: day('2026-10-01'), customerName: 'Somebody Else',
+        saleAmount: 100_000, paymentStatus: 'PENDING',
+      }),
+      invoice({ status: 'PAID', paidDate: day('2026-10-20') }),
+      10_000_000,
+    )
+    expect(fields(changes)).toEqual(['saleAmount', 'paymentStatus', 'paidOn'])
+  })
+
+  it('is never allowed to reschedule the loan', () => {
+    // The day a charge falls due comes off the loan's own schedule. An
+    // invoice stating it would reschedule somebody's loan from the
+    // accounts, which is not a thing Xero gets to do.
+    const changes = proposeChanges(
+      charge({ saleDate: day('2026-01-01'), saleAmount: 10_000_000 }),
+      invoice({ invoiceDate: day('2026-10-14'), dueDate: day('2026-10-28') }),
+      10_000_000,
+    )
+    expect(fields(changes)).not.toContain('dueOn')
+    expect(fields(changes)).not.toContain('saleDate')
+  })
+
+  it('is not asked about a customer it does not own', () => {
+    // The customer is on the loan, not on the charge.
+    const changes = proposeChanges(
+      charge({ customerName: 'Daniel Buckley' }),
+      invoice({ contactName: 'Somebody Quite Different' }),
+      10_000_000,
+    )
+    expect(fields(changes)).not.toContain('customerName')
+  })
+})
+
+describe('a sale still takes everything', () => {
+  it('is unchanged by the other two kinds existing', () => {
+    const changes = proposeChanges(
+      sale({
+        invoiceNo: 'TBA-01', saleDate: day('2026-10-11'), customerName: 'Someone',
+        saleAmount: 1, saleCurrency: 'GBP', paymentStatus: 'PAID', paidOn: null, dueOn: null,
+      }),
+      invoice({ status: 'PAID', paidDate: day('2026-10-20'), dueDate: day('2026-10-28') }),
+      10_000_000,
+    )
+    expect(fields(changes)).toEqual([
+      'invoiceNo', 'saleDate', 'customerName', 'saleCurrency', 'saleAmount', 'paidOn', 'dueOn',
+    ])
+  })
+})

@@ -1,7 +1,8 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
-  customerAliases, sales, watches, xeroImports, xeroInvoices, xeroLinks,
+  brokerages, buybackCharges, buybacks, customerAliases, customers, sales, watches,
+  xeroImports, xeroInvoices, xeroLinks,
 } from '../db/schema'
 import { newId } from '@/lib/ids'
 import { NotFoundError, ConflictError } from '@/lib/errors'
@@ -18,13 +19,14 @@ import {
 } from '@/lib/xero-invoice'
 import {
   matchInvoices, looksLikeBuyBack, normaliseName,
-  type SaleCandidate, type MatchTier, type MatchedSale,
+  type SaleCandidate, type MatchTier, type MatchedSale, type CandidateKind,
 } from '@/lib/xero-match'
 import { allocate, allocationBalances } from '@/lib/xero-allocate'
 import {
   proposeChanges, exceptionsFor, FIELD_LABELS,
   type ProposedChange, type ReconcileException, type SaleSnapshot, type XeroField,
 } from '@/lib/xero-diff'
+import { feeInBase } from './brokerage-service'
 
 /**
  * Reconciling the sales ledger against Xero.
@@ -251,15 +253,49 @@ async function writeLinks(
       id: newId('xlk'),
       importId,
       xeroInvoiceId: invoiceRowId,
-      saleId: share.item.saleId,
+      ...targetColumns(share.item.kind, share.item.saleId),
       tier: share.item.tier,
       allocated: share.amount,
     }).onConflictDoNothing()
   }
 }
 
+/**
+ * Which column a link's target goes in.
+ *
+ * Three typed columns rather than one untyped id, so the database still
+ * knows the link points at something real. Exactly one is ever set, which
+ * a check constraint enforces.
+ */
+function targetColumns(kind: CandidateKind, id: string) {
+  return {
+    kind,
+    saleId: kind === 'SALE' ? id : null,
+    brokerageId: kind === 'COMMISSION' ? id : null,
+    buybackChargeId: kind === 'BUYBACK' ? id : null,
+  }
+}
+
+/** Whichever of the three a link points at. */
+function targetOf(link: { saleId: string | null; brokerageId: string | null; buybackChargeId: string | null }): string {
+  return link.saleId ?? link.brokerageId ?? link.buybackChargeId ?? ''
+}
+
 interface LiveSale {
   id: string
+  /**
+   * Which of the three books this row came out of.
+   *
+   * Alex: "there are quite a few sales that are not linking, and I think
+   * it's due to commissions not being tracked and buybacks." He was
+   * right, and it was not a tolerance problem — this query only ever read
+   * the sales table, so an invoice for a brokered fee or a buy-back
+   * charge had nothing it could match and landed in "in Xero, no sale"
+   * every time.
+   */
+  kind: CandidateKind
+  /** What to call it on the review screen. */
+  label: string
   stockNo: number | null
   invoiceNo: string | null
   saleDate: Date
@@ -282,13 +318,23 @@ interface LiveSale {
   paidOn: Date | null
   dueOn: Date | null
   channel: string
-  watchId: string
+  /** A sale always has one; a commission may; a buy-back charge never does. */
+  watchId: string | null
   purchasePriceGbp: number | null
 }
 
+/**
+ * Everything in the book an invoice could be for.
+ *
+ * Three queries rather than one: a watch sold, a fee brokered on somebody
+ * else's watch, and a charge on money lent against one. They are three
+ * tables with three shapes and one thing in common — each was invoiced out
+ * of Xero — so they are flattened into one candidate shape here and the
+ * matcher never learns there was more than one source.
+ */
 async function liveSaleCandidates(): Promise<LiveSale[]> {
-  const rows = await db
-    .select({
+  const [sold, brokered, charges] = await Promise.all([
+    db.select({
       id: sales.id,
       stockNo: watches.stockNo,
       invoiceNo: sales.invoiceNo,
@@ -303,22 +349,125 @@ async function liveSaleCandidates(): Promise<LiveSale[]> {
       channel: sales.channel,
       watchId: sales.watchId,
       purchasePriceGbp: watches.purchasePriceGbp,
+      model: watches.model,
     })
-    .from(sales)
-    .innerJoin(watches, eq(watches.id, sales.watchId))
-    .where(liveSale())
+      .from(sales)
+      .innerJoin(watches, eq(watches.id, sales.watchId))
+      .where(liveSale()),
 
-  return rows.map((row) => ({
-    ...row,
-    // A sale booked before the original-amount column existed has only its
-    // base figure. Using that rather than null keeps it matchable.
-    saleAmount: row.saleAmount ?? row.saleAmountGbp,
-    amountBase: row.saleAmountGbp,
-  }))
+    db.select({
+      id: brokerages.id,
+      description: brokerages.description,
+      // The reference is the number we have for it, and it is where a
+      // Xero invoice number gets written when somebody has one.
+      reference: brokerages.reference,
+      // Who it was sold to, which is the name Xero's contact will match.
+      soldTo: brokerages.soldTo,
+      /*
+       * The linked customer, as a fallback.
+       *
+       * `soldTo` is free text and is very often empty — the commission in
+       * the book right now has none — which left the name tier with
+       * nothing to compare and made the fee unmatchable by anything but
+       * its reference. Where the fee points at a customer record, that
+       * record's name is the better answer anyway.
+       */
+      customerFirst: customers.firstName,
+      customerLast: customers.lastName,
+      customerCompany: customers.company,
+      brokeredOn: brokerages.brokeredOn,
+      feeAmount: brokerages.feeAmount,
+      feeBase: brokerages.feeBase,
+      feeCurrency: brokerages.feeCurrency,
+      paymentStatus: brokerages.paymentStatus,
+      watchId: brokerages.watchId,
+      stockNo: watches.stockNo,
+    })
+      .from(brokerages)
+      // Left, not inner: the common commission is a fee on a watch that
+      // was never ours, and an inner join would drop every one of them.
+      .leftJoin(watches, eq(watches.id, brokerages.watchId))
+      .leftJoin(customers, eq(customers.id, brokerages.customerId))
+      .where(and(isNull(brokerages.voidedAt), isNull(brokerages.deletedAt))),
+
+    db.select({
+      id: buybackCharges.id,
+      dueOn: buybackCharges.dueOn,
+      amount: buybackCharges.amount,
+      amountBase: buybackCharges.amountBase,
+      currency: buybackCharges.currency,
+      paymentStatus: buybackCharges.paymentStatus,
+      paidOn: buybackCharges.paidOn,
+      chargeKind: buybackCharges.kind,
+      // The customer and the reference live on the loan, not the charge.
+      customerName: buybacks.customerName,
+      reference: buybacks.reference,
+    })
+      .from(buybackCharges)
+      .innerJoin(buybacks, eq(buybacks.id, buybackCharges.buybackId))
+      .where(and(isNull(buybackCharges.voidedAt), isNull(buybacks.deletedAt))),
+  ])
+
+  return [
+    ...sold.map((row) => ({
+      ...row,
+      kind: 'SALE' as const,
+      label: `Stock ${row.stockNo}`,
+      // A sale booked before the original-amount column existed has only
+      // its base figure. Using that rather than null keeps it matchable.
+      saleAmount: row.saleAmount ?? row.saleAmountGbp,
+      amountBase: row.saleAmountGbp,
+    })),
+
+    ...brokered.map((row) => ({
+      id: row.id,
+      kind: 'COMMISSION' as const,
+      label: row.description || 'Commission',
+      stockNo: row.stockNo,
+      invoiceNo: row.reference,
+      saleDate: row.brokeredOn,
+      customerName: row.soldTo?.trim()
+        || row.customerCompany?.trim()
+        || [row.customerFirst, row.customerLast].filter(Boolean).join(' ').trim()
+        || null,
+      saleAmount: row.feeAmount,
+      amountBase: row.feeBase,
+      saleCurrency: row.feeCurrency,
+      paymentStatus: row.paymentStatus,
+      // A fee carries no paid date and no due date of its own.
+      paidOn: null,
+      dueOn: null,
+      channel: 'COMMISSION',
+      watchId: row.watchId,
+      // A fee has no cost under it, by definition.
+      purchasePriceGbp: null,
+    })),
+
+    ...charges.map((row) => ({
+      id: row.id,
+      kind: 'BUYBACK' as const,
+      label: `Buy-back ${row.chargeKind.toLowerCase()}${row.customerName ? ` — ${row.customerName}` : ''}`,
+      stockNo: null,
+      invoiceNo: row.reference,
+      // The day it falls due is the day it would be invoiced on.
+      saleDate: row.dueOn,
+      customerName: row.customerName,
+      saleAmount: row.amount,
+      amountBase: row.amountBase,
+      saleCurrency: row.currency,
+      paymentStatus: row.paymentStatus,
+      paidOn: row.paidOn,
+      dueOn: row.dueOn,
+      channel: 'BUYBACK',
+      watchId: null,
+      purchasePriceGbp: null,
+    })),
+  ]
 }
 
 const toCandidate = (sale: LiveSale): SaleCandidate => ({
   id: sale.id,
+  kind: sale.kind,
   stockNo: sale.stockNo,
   invoiceNo: sale.invoiceNo,
   customerName: sale.customerName,
@@ -328,6 +477,7 @@ const toCandidate = (sale: LiveSale): SaleCandidate => ({
 
 const toSnapshot = (sale: LiveSale): SaleSnapshot => ({
   id: sale.id,
+  kind: sale.kind,
   stockNo: sale.stockNo,
   invoiceNo: sale.invoiceNo,
   saleDate: sale.saleDate,
@@ -343,6 +493,10 @@ const toSnapshot = (sale: LiveSale): SaleSnapshot => ({
 
 export interface ReviewSale {
   saleId: string
+  /** Which of the three books this row lives in. */
+  kind: CandidateKind
+  /** What to call it: "Stock 1366", a fee's description, a charge. */
+  label: string
   stockNo: number | null
   tier: MatchTier
   allocated: number
@@ -377,8 +531,11 @@ export interface Review {
   appliedAt: Date | null
   skippedRows: number
   invoices: ReviewInvoice[]
-  /** Live sales no invoice in this file accounted for. */
-  unmatchedSales: Array<{ saleId: string; stockNo: number | null; invoiceNo: string | null; customerName: string | null; saleDate: Date }>
+  /** Rows of the book — of any kind — no invoice in this file accounted for. */
+  unmatchedSales: Array<{
+    saleId: string; kind: CandidateKind; label: string; stockNo: number | null
+    invoiceNo: string | null; customerName: string | null; saleDate: Date; amountBase: number
+  }>
   exceptions: ReconcileException[]
   /** How many field changes are waiting to be approved. */
   changeCount: number
@@ -403,7 +560,7 @@ export async function buildReview(importId: string): Promise<Review> {
     linksByInvoice.set(link.xeroInvoiceId, [...(linksByInvoice.get(link.xeroInvoiceId) ?? []), link])
   }
   const knownAlias = new Set(aliases.map((a) => a.xeroKey))
-  const linkedSaleIds = new Set(linkRows.map((link) => link.saleId))
+  const linkedSaleIds = new Set(linkRows.map(targetOf))
   const exceptions: ReconcileException[] = []
 
   const invoices: ReviewInvoice[] = invoiceRows.map((row) => {
@@ -412,12 +569,14 @@ export async function buildReview(importId: string): Promise<Review> {
     const rate = row.fxRate ?? (row.currency === BASE_CURRENCY ? RATE_SCALE : rates[row.currency] ?? RATE_SCALE)
 
     const reviewSales: ReviewSale[] = links.flatMap((link) => {
-      const sale = byId.get(link.saleId)
+      const sale = byId.get(targetOf(link))
       if (!sale) return []
       const found = exceptionsFor(toSnapshot(sale), asInvoice, link.allocated)
       exceptions.push(...found)
       return [{
         saleId: sale.id,
+        kind: sale.kind,
+        label: sale.label,
         stockNo: sale.stockNo,
         tier: link.tier as MatchTier,
         allocated: link.allocated,
@@ -491,10 +650,13 @@ export async function buildReview(importId: string): Promise<Review> {
       || (sale.saleDate >= from && sale.saleDate <= to))
     .map((sale) => ({
       saleId: sale.id,
+      kind: sale.kind,
+      label: sale.label,
       stockNo: sale.stockNo,
       invoiceNo: sale.invoiceNo,
       customerName: sale.customerName,
       saleDate: sale.saleDate,
+      amountBase: sale.amountBase,
     }))
   for (const sale of unmatchedSales) {
     exceptions.push({
@@ -542,19 +704,25 @@ function rowToInvoice(row: typeof xeroInvoices.$inferSelect): XeroInvoice {
 /* ================= editing the review ================= */
 
 /** Link a sale to an invoice by hand, or move it from another one. */
-export async function linkSale(importId: string, xeroInvoiceId: string, saleId: string): Promise<void> {
+/** Whichever of the three columns holds this target, for a lookup. */
+const isTarget = (id: string) =>
+  sql`coalesce(${xeroLinks.saleId}, ${xeroLinks.brokerageId}, ${xeroLinks.buybackChargeId}) = ${id}`
+
+export async function linkSale(
+  importId: string, xeroInvoiceId: string, saleId: string, kind: CandidateKind = 'SALE',
+): Promise<void> {
   const [invoice] = await db.select().from(xeroInvoices)
     .where(and(eq(xeroInvoices.id, xeroInvoiceId), eq(xeroInvoices.importId, importId))).limit(1)
   if (!invoice) throw new NotFoundError('That invoice is not part of this import.')
 
   await withTransaction(async () => {
     await db.delete(xeroLinks)
-      .where(and(eq(xeroLinks.importId, importId), eq(xeroLinks.saleId, saleId)))
+      .where(and(eq(xeroLinks.importId, importId), isTarget(saleId)))
     await db.insert(xeroLinks).values({
       id: newId('xlk'),
       importId,
       xeroInvoiceId,
-      saleId,
+      ...targetColumns(kind, saleId),
       tier: 'manual',
       allocated: 0,
     })
@@ -564,7 +732,7 @@ export async function linkSale(importId: string, xeroInvoiceId: string, saleId: 
 
 export async function unlinkSale(importId: string, saleId: string): Promise<void> {
   const [link] = await db.select().from(xeroLinks)
-    .where(and(eq(xeroLinks.importId, importId), eq(xeroLinks.saleId, saleId))).limit(1)
+    .where(and(eq(xeroLinks.importId, importId), isTarget(saleId))).limit(1)
   if (!link) return
   await db.delete(xeroLinks).where(eq(xeroLinks.id, link.id))
   await reallocate(link.xeroInvoiceId)
@@ -583,14 +751,30 @@ async function reallocate(xeroInvoiceId: string): Promise<void> {
   const links = await db.select().from(xeroLinks).where(eq(xeroLinks.xeroInvoiceId, xeroInvoiceId))
   if (links.length === 0) return
 
-  // The base figure, for the same reason the first allocation uses it.
-  const amounts = await db
-    .select({ id: sales.id, amountBase: sales.saleAmountGbp })
-    .from(sales).where(inArray(sales.id, links.map((link) => link.saleId)))
-  const weightOf = new Map(amounts.map((row) => [row.id, row.amountBase ?? 0]))
+  /*
+   * The base figure, for the same reason the first allocation uses it —
+   * and now from whichever of the three books each target lives in, since
+   * an invoice can cover a watch and a fee at once.
+   */
+  const weightOf = new Map<string, number>()
+  const saleIds = links.map((l) => l.saleId).filter((id): id is string => id !== null)
+  const feeIds = links.map((l) => l.brokerageId).filter((id): id is string => id !== null)
+  const chargeIds = links.map((l) => l.buybackChargeId).filter((id): id is string => id !== null)
+  if (saleIds.length) {
+    for (const row of await db.select({ id: sales.id, w: sales.saleAmountGbp })
+      .from(sales).where(inArray(sales.id, saleIds))) weightOf.set(row.id, row.w ?? 0)
+  }
+  if (feeIds.length) {
+    for (const row of await db.select({ id: brokerages.id, w: brokerages.feeBase })
+      .from(brokerages).where(inArray(brokerages.id, feeIds))) weightOf.set(row.id, row.w ?? 0)
+  }
+  if (chargeIds.length) {
+    for (const row of await db.select({ id: buybackCharges.id, w: buybackCharges.amountBase })
+      .from(buybackCharges).where(inArray(buybackCharges.id, chargeIds))) weightOf.set(row.id, row.w ?? 0)
+  }
 
   const shares = allocate(invoice.total, links.map((link) => ({
-    item: link, weight: weightOf.get(link.saleId) ?? 0,
+    item: link, weight: weightOf.get(targetOf(link)) ?? 0,
   })))
   if (!allocationBalances(invoice.total, shares)) {
     throw new ConflictError(`Invoice ${invoice.invoiceNo} could not be split across its sales.`)
@@ -640,6 +824,79 @@ export interface ApplyResult {
 }
 
 /**
+ * Write Xero's answer onto a brokered fee.
+ *
+ * The abstract field names the review screen uses map onto this table's
+ * own columns here, in one place, so nothing upstream has to know that a
+ * commission calls its customer `soldTo` and its date `brokeredOn`.
+ */
+async function applyToCommission(
+  id: string, taking: ProposedChange[], rates: RateTable,
+): Promise<{ entityType: string; entityId: string; what: string } | null> {
+  const [current] = await db.select().from(brokerages).where(eq(brokerages.id, id)).limit(1)
+  if (!current || current.voidedAt || current.deletedAt) return null
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() }
+  for (const change of taking) {
+    if (change.field === 'invoiceNo') patch['reference'] = change.to
+    if (change.field === 'saleDate') patch['brokeredOn'] = change.to
+    if (change.field === 'customerName') patch['soldTo'] = change.to
+    if (change.field === 'paymentStatus') patch['paymentStatus'] = change.to
+    if (change.field === 'saleAmount') patch['feeAmount'] = change.to
+    if (change.field === 'saleCurrency') patch['feeCurrency'] = change.to
+  }
+
+  // The fee in base is what every report adds up, so it is re-derived
+  // rather than left stating what the old fee came to.
+  if (taking.some((c) => c.field === 'saleAmount' || c.field === 'saleCurrency')) {
+    const currency = (patch['feeCurrency'] as CurrencyCode | undefined) ?? current.feeCurrency
+    const amount = (patch['feeAmount'] as number | undefined) ?? current.feeAmount
+    const { feeBase, feeFxRate } = feeInBase(amount, currency, rates)
+    patch['feeBase'] = feeBase
+    patch['feeFxRate'] = feeFxRate
+  }
+
+  await db.update(brokerages).set(patch).where(eq(brokerages.id, id))
+  return { entityType: 'Brokerage', entityId: id, what: `commission "${current.description}"` }
+}
+
+/**
+ * Write Xero's answer onto a buy-back charge.
+ *
+ * Only the money and the status. The date a charge falls due comes off the
+ * loan's own schedule, and the customer off the loan — letting an invoice
+ * state either would quietly reschedule somebody's loan from the accounts.
+ */
+async function applyToCharge(
+  id: string, taking: ProposedChange[], rates: RateTable,
+): Promise<{ entityType: string; entityId: string; what: string } | null> {
+  const [current] = await db.select().from(buybackCharges).where(eq(buybackCharges.id, id)).limit(1)
+  if (!current || current.voidedAt) return null
+
+  const patch: Record<string, unknown> = {}
+  for (const change of taking) {
+    if (change.field === 'paymentStatus') patch['paymentStatus'] = change.to
+    if (change.field === 'paidOn') patch['paidOn'] = change.to
+    if (change.field === 'saleAmount') patch['amount'] = change.to
+    if (change.field === 'saleCurrency') patch['currency'] = change.to
+  }
+
+  if (taking.some((c) => c.field === 'saleAmount' || c.field === 'saleCurrency')) {
+    const currency = (patch['currency'] as CurrencyCode | undefined) ?? current.currency
+    const amount = (patch['amount'] as number | undefined) ?? current.amount
+    const rate = currency === BASE_CURRENCY ? RATE_SCALE : rates[currency] ?? RATE_SCALE
+    patch['amountBase'] = currency === BASE_CURRENCY
+      ? amount
+      : Math.round((amount * RATE_SCALE) / rate)
+    patch['fxRate'] = rate
+  }
+  if (Object.keys(patch).length === 0) return null
+
+  await db.update(buybackCharges).set(patch).where(eq(buybackCharges.id, id))
+  return { entityType: 'Buyback', entityId: current.buybackId, what: 'buy-back charge' }
+}
+
+/**
  * Write the changes somebody ticked, and nothing else.
  *
  * `approvals` is sale id → the fields approved for it. A sale missing from
@@ -675,6 +932,39 @@ export async function applyImport(
         if (!wanted || wanted.length === 0) continue
         const taking = line.changes.filter((change) => wanted.includes(change.field))
         if (taking.length === 0) continue
+
+        /*
+         * A commission and a buy-back charge live in their own tables with
+         * their own column names, so each is written by its own small
+         * function rather than by widening the sale's.
+         *
+         * They are audited against the fee and the loan rather than
+         * against a watch, because that is where their history is read —
+         * and a fee on somebody else's watch has no watch of ours to
+         * write a trail on.
+         */
+        if (line.kind !== 'SALE') {
+          const wrote = line.kind === 'COMMISSION'
+            ? await applyToCommission(line.saleId, taking, rates)
+            : await applyToCharge(line.saleId, taking, rates)
+          if (!wrote) continue
+          await recordAudit({
+            entityType: wrote.entityType,
+            entityId: wrote.entityId,
+            action: 'UPDATE',
+            actorId: actor.id,
+            summary: `Reconciled ${wrote.what} against Xero invoice ${invoice.invoiceNo} (${header.fileName})`,
+            changes: Object.fromEntries(taking.map((change) => [
+              FIELD_LABELS[change.field],
+              { from: change.fromText, to: change.toText },
+            ])),
+          })
+          await db.update(xeroLinks).set({ approved: true })
+            .where(and(eq(xeroLinks.importId, importId), isTarget(line.saleId)))
+          salesChanged += 1
+          fieldsChanged += taking.length
+          continue
+        }
 
         const [current] = await db
           .select({
@@ -726,7 +1016,7 @@ export async function applyImport(
         })
 
         await db.update(xeroLinks).set({ approved: true })
-          .where(and(eq(xeroLinks.importId, importId), eq(xeroLinks.saleId, line.saleId)))
+          .where(and(eq(xeroLinks.importId, importId), isTarget(line.saleId)))
         salesChanged += 1
         fieldsChanged += taking.length
       }

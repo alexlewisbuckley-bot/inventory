@@ -24,6 +24,7 @@ const invoice = (over: Partial<XeroInvoice> = {}): XeroInvoice => ({
 
 const sale = (over: Partial<SaleCandidate> = {}): SaleCandidate => ({
   id: 's1',
+  kind: 'SALE',
   stockNo: 1366,
   invoiceNo: 'INV-0241',
   customerName: 'Sweepings Hands',
@@ -40,7 +41,7 @@ describe('matching in order of confidence', () => {
   it('takes the invoice number first', () => {
     const { matched } = matchInvoices([invoice()], [sale()], { toBase })
     expect(matched).toHaveLength(1)
-    expect(matched[0]!.sales).toEqual([{ saleId: 's1', tier: 'invoice' }])
+    expect(matched[0]!.sales).toEqual([{ saleId: 's1', kind: 'SALE', tier: 'invoice' }])
   })
 
   it('ignores spacing and case in an invoice number', () => {
@@ -71,7 +72,7 @@ describe('matching in order of confidence', () => {
       [sale({ invoiceNo: 'TBA-01' })],
       { toBase },
     )
-    expect(matched[0]!.sales).toEqual([{ saleId: 's1', tier: 'stock' }])
+    expect(matched[0]!.sales).toEqual([{ saleId: 's1', kind: 'SALE', tier: 'stock' }])
   })
 
   it('reads a stock number out of a line description', () => {
@@ -103,7 +104,7 @@ describe('matching in order of confidence', () => {
       [sale({ invoiceNo: null, stockNo: null, customerName: 'Trend Sourcing' })],
       { toBase },
     )
-    expect(matched[0]!.sales).toEqual([{ saleId: 's1', tier: 'fuzzy' }])
+    expect(matched[0]!.sales).toEqual([{ saleId: 's1', kind: 'SALE', tier: 'fuzzy' }])
     expect(matched[0]?.proposedAlias).toEqual({
       systemName: 'Trend Sourcing', xeroName: 'Trendsourcing Dubai',
     })
@@ -284,8 +285,8 @@ describe('an invoice keeps collecting watches after its first hit', () => {
     )
     expect(matched).toHaveLength(1)
     expect(matched[0]!.sales).toEqual([
-      { saleId: 'known', tier: 'invoice' },
-      { saleId: 'hidden', tier: 'stock' },
+      { saleId: 'known', kind: 'SALE', tier: 'invoice' },
+      { saleId: 'hidden', kind: 'SALE', tier: 'stock' },
     ])
   })
 
@@ -330,5 +331,154 @@ describe('a file that repeats an invoice number', () => {
     expect(matched).toHaveLength(1)
     expect(matched.flatMap((m) => m.sales.map((s) => s.saleId))).toEqual(['s1'])
     expect(matched[0]!.at).toBe(0)
+  })
+})
+
+/**
+ * The reason "quite a few sales are not linking".
+ *
+ * Alex: "I think it's due to commissions not being tracked and buybacks.
+ * Like Daniel Buckley, for example, has a buyback for that exact amount or
+ * close to that should have been flagged and given the name is the same...
+ * Same detail for things like commission that are both 1500 dollars that
+ * are in the same week."
+ *
+ * He was right about the cause and it was not a tolerance problem: the
+ * candidate list was the sales table and nothing else, so neither of these
+ * had anything it could match against.
+ */
+describe('commissions and buy-backs are candidates too', () => {
+  it('links a buy-back charge on the name and the amount', () => {
+    // Daniel Buckley's case: same name, same money, a few days apart.
+    const { matched } = matchInvoices(
+      [invoice({
+        invoiceNo: 'INV-9100', contactName: 'Daniel Buckley',
+        invoiceDate: day('2026-10-14'), total: 1_500_000,
+      })],
+      [sale({
+        id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+        customerName: 'Daniel Buckley', saleDate: day('2026-10-16'),
+        amountBase: 1_500_000,
+      })],
+      { toBase },
+    )
+    expect(matched[0]!.sales).toEqual([{ saleId: 'chg1', kind: 'BUYBACK', tier: 'fuzzy' }])
+  })
+
+  it('links a commission the same way', () => {
+    const { matched } = matchInvoices(
+      [invoice({
+        invoiceNo: 'INV-9101', contactName: 'Trendsourcing Dubai',
+        invoiceDate: day('2026-10-14'), total: 150_000,
+      })],
+      [sale({
+        id: 'brk1', kind: 'COMMISSION', stockNo: null, invoiceNo: null,
+        customerName: 'Trend Sourcing', saleDate: day('2026-10-15'),
+        amountBase: 150_000,
+      })],
+      { toBase },
+    )
+    expect(matched[0]!.sales).toEqual([{ saleId: 'brk1', kind: 'COMMISSION', tier: 'fuzzy' }])
+  })
+
+  it('links a commission by its reference when it has one', () => {
+    const { matched } = matchInvoices(
+      [invoice({ invoiceNo: 'BRK-001', contactName: 'Nobody Alike' })],
+      [sale({ id: 'brk1', kind: 'COMMISSION', stockNo: null, invoiceNo: 'BRK-001', customerName: null })],
+      { toBase },
+    )
+    expect(matched[0]!.sales).toEqual([{ saleId: 'brk1', kind: 'COMMISSION', tier: 'invoice' }])
+  })
+
+  it('does not go looking for a stock number on a buy-back', () => {
+    // A charge has no watch. Nothing should pair it with one by accident.
+    const { matched } = matchInvoices(
+      [invoice({ invoiceNo: 'INV-9102', reference: 'Stock 1366', contactName: '' })],
+      [sale({ id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null })],
+      { toBase },
+    )
+    expect(matched).toHaveLength(0)
+  })
+})
+
+/**
+ * Alex: "That is likely going to be the same thing. It could flag as
+ * amber, but I'm surprised that the reconcile didn't flag that."
+ */
+describe('the amber tier: likely, not certain', () => {
+  const sameWeek = invoice({
+    invoiceNo: 'INV-9200', contactName: 'Daniel Buckley',
+    invoiceDate: day('2026-10-14'), total: 1_500_000,
+  })
+
+  it('offers a match six days out that the tight bar misses', () => {
+    const { matched } = matchInvoices([sameWeek], [sale({
+      id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+      customerName: 'Daniel Buckley', saleDate: day('2026-10-20'),
+      amountBase: 1_500_000,
+    })], { toBase })
+    expect(matched[0]!.sales).toEqual([{ saleId: 'chg1', kind: 'BUYBACK', tier: 'probable' }])
+  })
+
+  it('offers a match whose amount is close rather than equal', () => {
+    // "that exact amount or close to that"
+    const { matched } = matchInvoices([sameWeek], [sale({
+      id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+      customerName: 'Daniel Buckley', saleDate: day('2026-10-15'),
+      amountBase: 1_527_000,
+    })], { toBase })
+    expect(matched[0]!.sales[0]!.tier).toBe('probable')
+  })
+
+  it('still will not pair two different customers', () => {
+    // Looser on the money and the date; never loose on who it was.
+    const { matched } = matchInvoices([sameWeek], [sale({
+      id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+      customerName: 'Al Habtoor Watches', saleDate: day('2026-10-15'),
+      amountBase: 1_500_000,
+    })], { toBase })
+    expect(matched).toHaveLength(0)
+  })
+
+  it('stops at a fortnight', () => {
+    const { matched } = matchInvoices([sameWeek], [sale({
+      id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+      customerName: 'Daniel Buckley', saleDate: day('2026-10-28'),
+      amountBase: 1_500_000,
+    })], { toBase })
+    expect(matched).toHaveLength(0)
+  })
+
+  it('never lets a likely guess take a row a confident reading wanted', () => {
+    // The two passes exist for this. Taken invoice by invoice, the first
+    // invoice would claim the charge on a probable hit and the second —
+    // which matches it on the day, to the penny — would find it gone.
+    const { matched } = matchInvoices(
+      [
+        invoice({ invoiceNo: 'LOOSE', contactName: 'Daniel Buckley', invoiceDate: day('2026-10-20'), total: 1_520_000 }),
+        invoice({ invoiceNo: 'TIGHT', contactName: 'Daniel Buckley', invoiceDate: day('2026-10-14'), total: 1_500_000 }),
+      ],
+      [sale({
+        id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+        customerName: 'Daniel Buckley', saleDate: day('2026-10-14'), amountBase: 1_500_000,
+      })],
+      { toBase },
+    )
+    expect(matched).toHaveLength(1)
+    expect(matched[0]!.invoiceNo).toBe('TIGHT')
+    expect(matched[0]!.sales[0]!.tier).toBe('fuzzy')
+  })
+
+  it('prefers the closer amount when two rows are equally named', () => {
+    // "commission that are both 1500 dollars that are in the same week"
+    const { matched } = matchInvoices(
+      [invoice({ invoiceNo: 'INV-9300', contactName: 'A Dealer', invoiceDate: day('2026-10-14'), total: 150_000 })],
+      [
+        sale({ id: 'near', kind: 'COMMISSION', stockNo: null, invoiceNo: null, customerName: 'A Dealer', saleDate: day('2026-10-15'), amountBase: 150_000 }),
+        sale({ id: 'far', kind: 'COMMISSION', stockNo: null, invoiceNo: null, customerName: 'A Dealer', saleDate: day('2026-10-15'), amountBase: 151_400 }),
+      ],
+      { toBase },
+    )
+    expect(matched[0]!.sales[0]!.saleId).toBe('near')
   })
 })

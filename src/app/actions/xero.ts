@@ -113,10 +113,16 @@ export async function linkSaleAction(formData: FormData): Promise<{ ok: boolean;
   rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
   const importId = formData.get('importId')?.toString()
   const invoiceId = formData.get('invoiceId')?.toString()
-  const saleId = formData.get('saleId')?.toString()
-  if (!importId || !invoiceId || !saleId) return { ok: false, message: 'Pick a sale to link.' }
+  // The picker posts "KIND:id", because the three books can hold the same
+  // id shape and the link has to go in the right column.
+  const picked = formData.get('saleId')?.toString()
+  const [kind, saleId] = picked?.includes(':') ? picked.split(':') : ['SALE', picked]
+  if (!importId || !invoiceId || !saleId) return { ok: false, message: 'Pick something to link.' }
+  if (kind !== 'SALE' && kind !== 'COMMISSION' && kind !== 'BUYBACK') {
+    return { ok: false, message: 'That is not something that can be linked.' }
+  }
   try {
-    await linkSale(importId, invoiceId, saleId)
+    await linkSale(importId, invoiceId, saleId, kind)
     revalidatePath('/sales/reconcile')
     return { ok: true }
   } catch (error) {
