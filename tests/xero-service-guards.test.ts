@@ -57,7 +57,21 @@ describe('what reconciling may not do', () => {
   })
 
   it('writes nothing to a sale from a buy back', () => {
-    expect(apply).toContain("if (invoice.bucket !== 'SALE') continue")
+    /*
+     * Still true, by a better mechanism. This used to be the bucket skip
+     * — an invoice marked Buy Back was dropped whole — which also meant
+     * a buy-back charge linked to it could never be written either.
+     *
+     * What guarantees it now is the link's own kind: anything that is
+     * not a SALE branches away before the sale path, into the writer for
+     * its own table. A charge cannot reach `db.update(sales)` at all.
+     */
+    expect(apply).toContain("if (line.kind !== 'SALE') {")
+    expect(apply).toContain("? await applyToCommission(line.saleId, taking, rates)")
+    expect(apply).toContain(": await applyToCharge(line.saleId, taking, rates)")
+    // The sale path is after that branch, so it is only ever reached by a sale.
+    expect(apply.indexOf("if (line.kind !== 'SALE') {"))
+      .toBeLessThan(apply.indexOf('await db.update(sales).set(patch)'))
   })
 
   it('re-derives the money that hangs off an amount', () => {
@@ -118,5 +132,34 @@ describe('an import accounts for all three books', () => {
     // the loan's reference cannot stand for any one of them.
     expect(service).toContain("if (change.field === 'invoiceNo') patch['invoiceNo'] = change.to")
     expect(ledger).toContain('row.invoiceNo ?? row.reference')
+  })
+})
+
+/**
+ * Alex, on a buy-back that reconciled and changed nothing: "Didn't
+ * identify this and update it for some reason why?"
+ *
+ * An invoice bucketed Buy Back was skipped outright at apply time, and
+ * its changes were never even put in the payload. That was right when a
+ * buy-back was something the reconcile could only set aside; once a
+ * charge became linkable, the same two lines started refusing to write
+ * the very thing they had just been linked to.
+ */
+describe('a Buy Back invoice can be applied', () => {
+  const review = readFileSync(join(process.cwd(), 'src/components/sales/ReconcileReview.tsx'), 'utf8')
+
+  it('skips only what the user said is none of ours', () => {
+    expect(apply).toContain("if (invoice.bucket === 'NOT_A_SALE') continue")
+    expect(apply).not.toContain("if (invoice.bucket !== 'SALE') continue")
+  })
+
+  it('puts its changes in the payload', () => {
+    expect(review).toContain("filter((invoice) => invoice.bucket !== 'NOT_A_SALE')")
+    expect(review).not.toContain("filter((invoice) => invoice.bucket === 'SALE')")
+  })
+
+  it('calls an invoice that matched a charge a buy-back', () => {
+    // What it matched is better evidence than the words on it.
+    expect(service).toContain("if (matched.some((m) => m.kind === 'BUYBACK')) return 'BUYBACK'")
   })
 })

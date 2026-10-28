@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   matchInvoices, nameSimilarity, mentionsStockNo, isPlaceholderInvoiceNo,
-  looksLikeBuyBack, NAME_THRESHOLD, type SaleCandidate,
+  looksLikeBuyBack, nearestInvoice, NAME_THRESHOLD, type SaleCandidate,
 } from '@/lib/xero-match'
 import type { XeroInvoice } from '@/lib/xero-invoice'
 
@@ -480,5 +480,61 @@ describe('the amber tier: likely, not certain', () => {
       { toBase },
     )
     expect(matched[0]!.sales[0]!.saleId).toBe('near')
+  })
+})
+
+/**
+ * Alex, on a buy-back that stayed unmatched: "Didn't identify this and
+ * update it for some reason why?"
+ *
+ * A fair question the screen could not answer. The three signals were
+ * already measured during matching and then thrown away.
+ */
+describe('why a row found nothing', () => {
+  const charge = sale({
+    id: 'chg1', kind: 'BUYBACK', stockNo: null, invoiceNo: null,
+    customerName: 'Daniel Buckley', saleDate: day('2026-10-28'), amountBase: 659_900,
+  })
+
+  it('says which of the three kept the closest invoice out', () => {
+    const near = nearestInvoice(charge, [invoice({
+      invoiceNo: 'INV-0120', contactName: 'Daniel Buckley',
+      invoiceDate: day('2026-10-10'), total: 750_000,
+    })], { toBase })
+    expect(near).toMatchObject({ invoiceNo: 'INV-0120', blockers: ['amount', 'date'] })
+    expect(near!.daysApart).toBe(18)
+    expect(near!.amountDrift).toBeCloseTo(0.1201, 3)
+  })
+
+  it('reports no blockers when the only thing wrong is that it was taken', () => {
+    // An invoice already claimed by another row is not offered here, so
+    // one that clears all three is one somebody linked by hand.
+    const near = nearestInvoice(charge, [invoice({
+      invoiceNo: 'INV-0121', contactName: 'Daniel Buckley',
+      invoiceDate: day('2026-10-28'), total: 659_900,
+    })], { toBase })
+    expect(near!.blockers).toEqual([])
+  })
+
+  it('prefers the invoice with the right name over a closer amount', () => {
+    const near = nearestInvoice(charge, [
+      invoice({ invoiceNo: 'EXACT-MONEY', contactName: 'Somebody Else', invoiceDate: day('2026-10-28'), total: 659_900 }),
+      invoice({ invoiceNo: 'RIGHT-NAME', contactName: 'Daniel Buckley', invoiceDate: day('2026-10-28'), total: 900_000 }),
+    ], { toBase })
+    expect(near!.invoiceNo).toBe('RIGHT-NAME')
+  })
+
+  it('counts an approved alias as the same name', () => {
+    const near = nearestInvoice(
+      sale({ id: 's1', customerName: 'Henry Fisher', saleDate: day('2026-10-28'), amountBase: 659_900 }),
+      [invoice({ invoiceNo: 'INV-1', contactName: 'Sweepings Hands', invoiceDate: day('2026-10-28'), total: 659_900 })],
+      { toBase, aliases: [{ systemName: 'Henry Fisher', xeroName: 'Sweepings Hands' }] },
+    )
+    expect(near!.nameScore).toBe(1)
+    expect(near!.blockers).toEqual([])
+  })
+
+  it('says nothing when the file is empty', () => {
+    expect(nearestInvoice(charge, [], { toBase })).toBeNull()
   })
 })

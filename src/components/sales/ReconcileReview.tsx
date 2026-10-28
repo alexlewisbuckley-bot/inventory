@@ -72,6 +72,11 @@ export interface ReviewView {
     stockNo: number | null; invoiceNo: string | null
     customerName: string | null; saleDate: string
     amount: number | null; currency: string; amountBase: number
+    nearest: {
+      invoiceNo: string; contactName: string; nameScore: number
+      amountDrift: number | null; daysApart: number | null
+      blockers: Array<'name' | 'amount' | 'date'>
+    } | null
   }>
   exceptions: Array<{ kind: string; invoiceNo: string | null; stockNo: number | null; detail: string }>
   changeCount: number
@@ -100,6 +105,32 @@ const KIND_WORDS: Record<string, string> = {
  * tier where somebody has to agree before anything is written.
  */
 const isProbable = (tier: string) => tier === 'probable'
+
+/**
+ * Why the closest invoice in the file was not this row's.
+ *
+ * Alex, on a buy-back that stayed unmatched: "Didn't identify this and
+ * update it for some reason why?" The three signals were already measured
+ * and then thrown away; this says what they came to, so the question is
+ * answered on the screen rather than asked of somebody.
+ */
+function whyNot(near: NonNullable<ReviewView['unmatchedSales'][number]['nearest']>): string {
+  const said: string[] = []
+  if (near.blockers.includes('name')) {
+    said.push(near.nameScore > 0.4 ? 'a different customer' : 'another customer entirely')
+  }
+  if (near.blockers.includes('amount')) {
+    said.push(near.amountDrift === null
+      ? 'no amount to compare'
+      : `${(near.amountDrift * 100).toFixed(near.amountDrift < 0.1 ? 1 : 0)}% out on the amount`)
+  }
+  if (near.blockers.includes('date')) {
+    said.push(near.daysApart === null
+      ? 'no date on it'
+      : `${near.daysApart} days apart`)
+  }
+  return said.length === 0 ? 'already linked to another row' : said.join(' · ')
+}
 
 const IMAGE = /\.(png|jpe?g|webp|gif)$/i
 
@@ -157,8 +188,12 @@ export function ReconcileReview({ review, canApply }: {
   }
 
   const allKeys = useMemo(
+    // Everything except an invoice the user has said is none of ours. It
+    // used to be SALE only, which silently dropped every change on a
+    // Buy Back invoice from the payload: the rows showed, the boxes
+    // ticked, and Apply sent nothing for them.
     () => (review?.invoices ?? [])
-      .filter((invoice) => invoice.bucket === 'SALE')
+      .filter((invoice) => invoice.bucket !== 'NOT_A_SALE')
       .flatMap((invoice) => invoice.sales.flatMap(
         (sale) => sale.changes.map((change) => keyFor(sale.saleId, change.field)))),
     [review],
@@ -609,7 +644,7 @@ export function ReconcileReview({ review, canApply }: {
                     <TH width="130px" align="right">Amount</TH>
                     <TH width="130px">Reference here</TH>
                     <TH width="160px">Customer</TH>
-                    <TH width="105px">Dated</TH>
+                    <TH width="190px">Dated · closest in the file</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -640,7 +675,17 @@ export function ReconcileReview({ review, canApply }: {
                       </TD>
                       <TD className="truncate">{sale.invoiceNo ?? '—'}</TD>
                       <TD className="truncate">{sale.customerName ?? '—'}</TD>
-                      <TD className="tabular-nums text-content-secondary">{sale.saleDate}</TD>
+                      <TD className="tabular-nums text-content-secondary">
+                        {sale.saleDate}
+                        {/* Why nothing in the file claimed it. Without
+                            this the table says a row did not match and
+                            leaves every "but why?" to somebody else. */}
+                        {sale.nearest && (
+                          <span className="mt-0.5 block whitespace-normal text-caption text-content-muted">
+                            closest {sale.nearest.invoiceNo}: {whyNot(sale.nearest)}
+                          </span>
+                        )}
+                      </TD>
                     </TR>
                   ))}
                 </TBody>

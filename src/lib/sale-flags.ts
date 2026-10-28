@@ -35,7 +35,7 @@ export const FLAG_LABELS: Record<SaleFlagKind, string> = {
   INVOICE_TBA: 'No invoice number',
   NO_CUSTOMER: 'No customer',
   NO_STOCK_NO: 'No stock number',
-  ZERO_COST: 'No cost',
+  ZERO_COST: 'Likely a commission',
   PAST_DUE: 'Past due',
   NOT_IN_XERO: 'Not in Xero',
 }
@@ -111,11 +111,24 @@ export function flagsFor(
    * non-commission sale with cost $0 as an error." A zero cost on a watch
    * we bought is not a bargain, it is a blank — and it reports as 100%
    * margin, which flatters every total it is counted in.
+   *
+   * And later, on two of them: "If there is no cost it's likely a
+   * commision invoice not a sale to purchase." Which is the usual cause,
+   * so the flag says so rather than only stating the symptom. The remedy
+   * is already one click away in the row's own menu — "Record as a
+   * commission…" — and naming the likely diagnosis is what connects the
+   * two. Hedged, because the other cause is a cost somebody has not
+   * typed in yet, and that is a different fix.
    */
   if (!sale.stockless
     && (sale.channel === 'TRADE' || sale.channel === 'RETAIL')
     && sale.costGbp === 0) {
-    flags.push({ kind: 'ZERO_COST', detail: 'Reports as pure profit until this is filled in' })
+    flags.push({
+      kind: 'ZERO_COST',
+      detail: 'A sale with no cost is usually a commission booked as a sale — '
+        + 'use "Record as a commission" on this row. Until it is one or the other, '
+        + 'it reports as pure profit at 100% margin.',
+    })
   }
 
   // Unpaid and past the date it was due, which is a different question

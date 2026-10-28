@@ -362,6 +362,86 @@ export function matchInvoices(
 }
 
 /**
+ * Why a row of the book found nothing, in numbers.
+ *
+ * Alex, on a buy-back that stayed unmatched: "Didn't identify this and
+ * update it for some reason why?"
+ *
+ * A fair question that the screen could not answer. "In the book, not in
+ * this file" says a row matched nothing; it never said how close anything
+ * came, so every one of these was a question for somebody else. The three
+ * signals are already measured during matching — this reports them for
+ * the nearest invoice instead of throwing them away.
+ *
+ * Nearest is by name first, because a name that does not look like the
+ * customer means the other two tell you nothing. Among names that are
+ * close, the nearest amount wins.
+ */
+export interface NearMiss {
+  invoiceNo: string
+  contactName: string
+  /** 0 to 1, where 1 is the same name. */
+  nameScore: number
+  /** How far the amount is out, as a fraction. Null if nothing to compare. */
+  amountDrift: number | null
+  daysApart: number | null
+  /** Which of the three kept it out, in the order they are checked. */
+  blockers: Array<'name' | 'amount' | 'date'>
+}
+
+export function nearestInvoice(
+  sale: SaleCandidate,
+  invoices: XeroInvoice[],
+  { toBase, aliases = [] }: MatchOptions,
+): NearMiss | null {
+  if (invoices.length === 0) return null
+  const aliasFor = new Map(
+    aliases.map((pair) => [normaliseName(pair.xeroName), normaliseName(pair.systemName)]),
+  )
+
+  let best: { miss: NearMiss; rank: number } | null = null
+  for (const invoice of invoices) {
+    const wanted = toBase(invoice.total, invoice.currency)
+    const alias = invoice.contactName
+      ? aliasFor.get(normaliseName(invoice.contactName))
+      : undefined
+    const nameScore = !sale.customerName || !invoice.contactName
+      ? 0
+      : alias && alias === normaliseName(sale.customerName)
+        ? 1
+        : nameSimilarity(sale.customerName, invoice.contactName)
+
+    const amountDrift = wanted > 0 ? Math.abs(sale.amountBase - wanted) / wanted : null
+    const daysApart = invoice.invoiceDate
+      ? Math.round(Math.abs(sale.saleDate.getTime() - invoice.invoiceDate.getTime()) / DAY)
+      : null
+
+    const blockers: NearMiss['blockers'] = []
+    if (nameScore < NAME_THRESHOLD) blockers.push('name')
+    if (amountDrift === null || amountDrift > PROBABLE_AMOUNT_TOLERANCE) blockers.push('amount')
+    if (daysApart === null || daysApart > PROBABLE_DAY_TOLERANCE) blockers.push('date')
+
+    // Name dominates: the other two say nothing about an invoice raised
+    // for somebody else entirely.
+    const rank = nameScore * 100 - Math.min(amountDrift ?? 10, 10)
+    if (!best || rank > best.rank) {
+      best = {
+        rank,
+        miss: {
+          invoiceNo: invoice.invoiceNo,
+          contactName: invoice.contactName,
+          nameScore,
+          amountDrift,
+          daysApart,
+          blockers,
+        },
+      }
+    }
+  }
+  return best?.miss ?? null
+}
+
+/**
  * An invoice nobody sold anything for, which is probably a Buy Back.
  *
  * Alex: "Invoices that don't match any sale and are tagged or named as Buy
