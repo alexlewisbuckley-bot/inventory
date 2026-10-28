@@ -728,6 +728,13 @@ export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000): Pr
       currency: buybackCharges.currency,
       amountBase: buybackCharges.amountBase,
       paymentStatus: buybackCharges.paymentStatus,
+      // The charge's own Xero invoice, and which import accounted for it.
+      // Both were declared on the return type above and never selected,
+      // so they arrived undefined: the ledger showed "—" for a charge
+      // that had an invoice number, and called it "Not in Xero" when an
+      // import had just accounted for it.
+      invoiceNo: buybackCharges.invoiceNo,
+      xeroSeenImportId: buybackCharges.xeroSeenImportId,
       reference: buybacks.reference,
       customerName: buybacks.customerName,
       soldByName: salesPeople.name,
@@ -739,7 +746,21 @@ export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000): Pr
     .orderBy(desc(buybackCharges.dueOn))
     .limit(cap)
 
-  return rows as Awaited<ReturnType<typeof listBuybackCharges>>
+  /*
+   * Returned unCAST, on purpose.
+   *
+   * This was `rows as Awaited<ReturnType<typeof listBuybackCharges>>`,
+   * which is a cast to the function's own promise — so it asserted that
+   * the query returns whatever the signature claims, whatever the query
+   * actually selects. That turned a compile error into a runtime one: two
+   * fields were added to the type, never added to the select, and nothing
+   * said a word until a buy-back on the ledger was missing its invoice
+   * number.
+   *
+   * Without it the compiler checks the two against each other, which is
+   * the only thing that was ever going to catch this.
+   */
+  return rows
 }
 
 /** Buy-back earnings per person, with the name and the latest date. */

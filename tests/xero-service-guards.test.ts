@@ -240,3 +240,64 @@ describe('a likely match is never left behind quietly', () => {
     expect(table).toContain('href="/sales/reconcile"')
   })
 })
+
+/**
+ * Alex, on a buy-back the reconcile screen plainly said was linked:
+ * "There is nothing to do or tick and it doesn't link."
+ *
+ * The reconcile screen was right — "matched on invoice number", "already
+ * agrees with Xero" — and the sales ledger was wrong. The ledger's query
+ * declared `invoiceNo` and `xeroSeenImportId` on its return type and
+ * never selected either, so both arrived undefined: the row showed "—"
+ * for a charge that had INV-0115 on it, and read "Not in Xero" when an
+ * import had just accounted for it.
+ *
+ * It compiled because the function returned `rows as
+ * Awaited<ReturnType<typeof listBuybackCharges>>` — a cast to its own
+ * signature, which asserts the query returns whatever the type claims
+ * however little it actually selects. That is what turned a compile
+ * error into two weeks of a figure being quietly missing.
+ */
+describe('the ledger reads what it says it reads', () => {
+  const buyback = readFileSync(join(process.cwd(), 'src/server/services/buyback-service.ts'), 'utf8')
+  const charges = buyback.slice(
+    buyback.indexOf('export async function listBuybackCharges'),
+    buyback.indexOf('export async function buybackByPersonDetailed'),
+  )
+
+  it('selects the charge’s own invoice number', () => {
+    expect(charges).toContain('invoiceNo: buybackCharges.invoiceNo')
+  })
+
+  it('selects which import accounted for it', () => {
+    expect(charges).toContain('xeroSeenImportId: buybackCharges.xeroSeenImportId')
+  })
+
+  it('no longer casts the rows to its own signature', () => {
+    // The cast is the bug, not the symptom: without it the compiler
+    // checks the select against the declared type, which is the only
+    // thing that was ever going to catch a field nobody fetched.
+    // Matched on the return statement rather than on the words, since
+    // the comment above it quotes the cast it is warning about.
+    expect(charges).not.toContain('return rows as')
+    expect(charges).toContain('return rows\n}')
+  })
+
+  it('selects every field its return type promises', () => {
+    // Belt and braces: each declared field appears in the select.
+    for (const field of [
+      'id', 'buybackId', 'kind', 'periodIndex', 'dueOn', 'amount', 'currency',
+      'amountBase', 'paymentStatus', 'invoiceNo', 'xeroSeenImportId',
+      'reference', 'customerName', 'soldByName',
+    ]) {
+      expect(charges).toMatch(new RegExp(`\\s${field}:\\s`))
+    }
+  })
+
+  it('does the same for a commission', () => {
+    const fees = buyback // the commission list lives next door
+    void fees
+    const brokerage = readFileSync(join(process.cwd(), 'src/server/services/brokerage-service.ts'), 'utf8')
+    expect(brokerage).toContain('xeroSeenImportId: brokerages.xeroSeenImportId')
+  })
+})
