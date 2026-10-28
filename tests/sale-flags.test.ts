@@ -63,6 +63,17 @@ describe('what is wrong with a sale', () => {
 })
 
 describe('a cost of zero', () => {
+  it('names the usual cause rather than only the symptom', () => {
+    // Alex: "If there is no cost it's likely a commision invoice not a
+    // sale to purchase." The remedy is already in the row's own menu, and
+    // saying the likely diagnosis is what connects the two.
+    expect(FLAG_LABELS.ZERO_COST).toBe('Likely a commission')
+    const flag = flagsFor(sale({ costGbp: 0, channel: 'RETAIL' }), { now: NOW })
+      .find((f) => f.kind === 'ZERO_COST')
+    expect(flag!.detail).toContain('Record as a commission')
+    expect(flag!.detail).toContain('100% margin')
+  })
+
   it('is an error on a trade or retail sale', () => {
     // It reports as 100% margin, which flatters every total it reaches.
     expect(kinds(sale({ costGbp: 0, channel: 'RETAIL' }))).toContain('ZERO_COST')

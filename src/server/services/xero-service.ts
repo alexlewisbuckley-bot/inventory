@@ -18,8 +18,8 @@ import {
   parseXeroExport, searchableText, type XeroInvoice,
 } from '@/lib/xero-invoice'
 import {
-  matchInvoices, looksLikeBuyBack, normaliseName,
-  type SaleCandidate, type MatchTier, type MatchedSale, type CandidateKind,
+  matchInvoices, looksLikeBuyBack, normaliseName, nearestInvoice,
+  type SaleCandidate, type MatchTier, type MatchedSale, type CandidateKind, type NearMiss,
 } from '@/lib/xero-match'
 import { allocate, allocationBalances } from '@/lib/xero-allocate'
 import {
@@ -190,10 +190,16 @@ export async function stageImport(
         reference: invoice.reference,
         lines: invoice.lines,
         sourceRows: invoice.rows,
-        // A suggestion, never a decision: the user confirms the bucket.
-        bucket: !linkedAt.has(at) && looksLikeBuyBack(invoice)
-          ? 'BUYBACK'
-          : 'SALE',
+        /*
+         * What this invoice appears to be for. A suggestion, never a
+         * decision: the user confirms it.
+         *
+         * An invoice that matched a buy-back charge is for a buy-back,
+         * whatever its wording — saying so is more honest than calling it
+         * a sale, and is now safe to say, because the bucket no longer
+         * decides whether anything gets written.
+         */
+        bucket: bucketFor(invoice, linkedAt.get(at)?.sales ?? []),
       })
 
       const match = linkedAt.get(at)
@@ -213,6 +219,18 @@ export async function stageImport(
     skippedRows: skipped,
     fromScreenshots,
   }
+}
+
+/**
+ * What an invoice is for, as far as the file can tell.
+ *
+ * What it matched comes first, because a charge it was paired with is
+ * better evidence than the words on it. Failing that, the words.
+ */
+function bucketFor(invoice: XeroInvoice, matched: MatchedSale[]): string {
+  if (matched.some((m) => m.kind === 'BUYBACK')) return 'BUYBACK'
+  if (matched.length > 0) return 'SALE'
+  return looksLikeBuyBack(invoice) ? 'BUYBACK' : 'SALE'
 }
 
 /** The type a dropped file did not declare, from what it is called. */
@@ -540,6 +558,8 @@ export interface Review {
     invoiceNo: string | null; customerName: string | null; saleDate: Date
     /** As invoiced, and in base — the two figures a row is reconciled on. */
     amount: number | null; currency: CurrencyCode; amountBase: number
+    /** The closest invoice in the file, and what kept it out. */
+    nearest: NearMiss | null
   }>
   exceptions: ReconcileException[]
   /** How many field changes are waiting to be approved. */
@@ -556,8 +576,14 @@ export async function buildReview(importId: string): Promise<Review> {
     db.select().from(xeroLinks).where(eq(xeroLinks.importId, importId)),
     liveSaleCandidates(),
     getRateTable(),
-    db.select({ xeroKey: customerAliases.xeroKey }).from(customerAliases),
+    db.select({
+      xeroKey: customerAliases.xeroKey,
+      systemName: customerAliases.systemName,
+      xeroName: customerAliases.xeroName,
+    }).from(customerAliases),
   ])
+  const toBase = toBaseWith(rates)
+  const aliasPairs = aliases.map((a) => ({ systemName: a.systemName, xeroName: a.xeroName }))
 
   const byId = new Map(candidates.map((sale) => [sale.id, sale]))
   const linksByInvoice = new Map<string, typeof linkRows>()
@@ -566,6 +592,10 @@ export async function buildReview(importId: string): Promise<Review> {
   }
   const knownAlias = new Set(aliases.map((a) => a.xeroKey))
   const linkedSaleIds = new Set(linkRows.map(targetOf))
+  const claimedInvoiceIds = new Set(linkRows.map((link) => link.xeroInvoiceId))
+  const freeInvoices = invoiceRows
+    .filter((row) => !claimedInvoiceIds.has(row.id))
+    .map(rowToInvoice)
   const exceptions: ReconcileException[] = []
 
   const invoices: ReviewInvoice[] = invoiceRows.map((row) => {
@@ -664,6 +694,9 @@ export async function buildReview(importId: string): Promise<Review> {
       amount: sale.saleAmount,
       currency: sale.saleCurrency,
       amountBase: sale.amountBase,
+      // Measured against the invoices nothing claimed, since an invoice
+      // already spoken for is not an answer to "why did this not match".
+      nearest: nearestInvoice(toCandidate(sale), freeInvoices, { toBase, aliases: aliasPairs }),
     }))
     // Newest first, which is the order a Xero export is worked through.
     // Returned in candidate order it came out as every sale, then every
@@ -936,8 +969,22 @@ export async function applyImport(
 
   await withTransaction(async () => {
     for (const invoice of review.invoices) {
-      // A buy back is not a sale, so nothing on it is written to one.
-      if (invoice.bucket !== 'SALE') continue
+      /*
+       * Only an invoice the user has said is none of ours is skipped.
+       *
+       * This used to skip everything that was not bucketed SALE, which
+       * was right when a buy-back was something the reconcile could only
+       * put in a pending pile: "not a sale" meant "do not invent a sale
+       * from this". Once a buy-back charge became linkable, the same line
+       * started refusing to write the very thing it had just been linked
+       * to — an invoice marked Buy Back could be matched to its charge,
+       * show the changes on screen, and apply nothing at all.
+       *
+       * The per-kind writers already put each change in the right table,
+       * so the bucket no longer needs to gate that. It only answers
+       * whether this invoice is ours to act on.
+       */
+      if (invoice.bucket === 'NOT_A_SALE') continue
 
       for (const line of invoice.sales) {
         const wanted = approvals[line.saleId]

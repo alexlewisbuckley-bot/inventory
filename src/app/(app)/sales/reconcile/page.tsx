@@ -79,6 +79,7 @@ export default async function ReconcilePage({ searchParams }: {
       amount: sale.amount,
       currency: sale.currency,
       amountBase: sale.amountBase,
+      nearest: sale.nearest,
     })),
     exceptions: review.exceptions.map((issue) => ({
       kind: issue.kind, invoiceNo: issue.invoiceNo, stockNo: issue.stockNo, detail: issue.detail,
