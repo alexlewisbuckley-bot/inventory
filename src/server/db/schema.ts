@@ -1635,6 +1635,14 @@ export const buybackCharges = pgTable(
     amountBase: integer('amount_base').notNull(),
     paymentStatus: text('payment_status', { enum: PAYMENT_STATUSES }).notNull().default('PENDING'),
     paidOn: timestamp('paid_on', { withTimezone: true }),
+    /**
+     * The Xero invoice for this charge.
+     *
+     * Its own, not the loan's: a loan running six months is six charges
+     * and six invoices, so the reference on the loan cannot stand for any
+     * one of them.
+     */
+    invoiceNo: text('invoice_no'),
     /** Which Xero import last accounted for this charge, if any. */
     xeroSeenImportId: text('xero_seen_import_id'),
     voidedAt: timestamp('voided_at', { withTimezone: true }),

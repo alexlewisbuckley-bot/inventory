@@ -175,3 +175,39 @@ describe('a sale with everything wrong', () => {
     ])
   })
 })
+
+/**
+ * Alex, looking at the ledger straight after an import: "Once reconciled
+ * it is not correct as they have been linked with Xero."
+ *
+ * Every commission and every buy-back charge on the screen was flagged
+ * "Not in Xero" despite carrying an invoice number from that very import.
+ * Two causes, both real: `applyImport` marked only sales as seen, and the
+ * ledger hard-coded the seen-import to null for the other two kinds. So
+ * the flag was structurally incapable of ever clearing for them.
+ */
+describe('a reconciled commission or charge stops saying "Not in Xero"', () => {
+  const lastImport = { id: 'xim_1', coversFrom: day('2026-10-01'), coversTo: day('2026-10-31') }
+  const inPeriod = { saleDate: day('2026-10-22'), stockless: true, stockNo: null, costGbp: 0 }
+
+  it('clears once the import has accounted for it', () => {
+    expect(kinds(sale({ ...inPeriod, channel: 'COMMISSION', xeroSeenImportId: 'xim_1' }), { lastImport }))
+      .not.toContain('NOT_IN_XERO')
+  })
+
+  it('still flags one the import never saw', () => {
+    expect(kinds(sale({ ...inPeriod, channel: 'COMMISSION', xeroSeenImportId: null }), { lastImport }))
+      .toContain('NOT_IN_XERO')
+  })
+
+  it('clears for a buy-back charge too', () => {
+    expect(kinds(sale({ ...inPeriod, channel: 'BUYBACK', xeroSeenImportId: 'xim_1' }), { lastImport }))
+      .not.toContain('NOT_IN_XERO')
+  })
+
+  it('flags again after a later import that did not account for it', () => {
+    // The flag is about the *last* import, so an older one does not count.
+    expect(kinds(sale({ ...inPeriod, channel: 'COMMISSION', xeroSeenImportId: 'xim_0' }),
+      { lastImport: { ...lastImport, id: 'xim_2' } })).toContain('NOT_IN_XERO')
+  })
+})

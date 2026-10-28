@@ -258,6 +258,8 @@ export interface BrokerageRow {
   feeCurrency: string
   feeBase: number
   paymentStatus: string
+  /** Which Xero import last accounted for this fee, if any. */
+  xeroSeenImportId: string | null
   soldByName: string | null
   notes: string | null
 }
@@ -280,6 +282,9 @@ export async function listBrokerages(from?: Date, to?: Date, limit = 100): Promi
       feeCurrency: brokerages.feeCurrency,
       feeBase: brokerages.feeBase,
       paymentStatus: brokerages.paymentStatus,
+      // So the ledger can say whether the last Xero import accounted for
+      // this fee, rather than reporting every one of them as missing.
+      xeroSeenImportId: brokerages.xeroSeenImportId,
       soldByName: salesPeople.name,
       notes: brokerages.notes,
       // The linked watch, so the row can carry a stock number and a link

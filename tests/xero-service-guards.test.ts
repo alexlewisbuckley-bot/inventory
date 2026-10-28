@@ -85,3 +85,38 @@ describe('what reconciling may not do', () => {
     expect(service).toContain('if (!allocationBalances(invoice.total, shares))')
   })
 })
+
+/**
+ * Alex: "Once reconciled it is not correct as they have been linked with
+ * Xero."
+ *
+ * Applying an import marked only sales as accounted for, so a commission
+ * and a buy-back charge went on reading "Not in Xero" however well they
+ * had just reconciled. The ledger made the same mistake from the other
+ * end by hard-coding the seen-import to null for both kinds.
+ */
+describe('an import accounts for all three books', () => {
+  const ledger = readFileSync(join(process.cwd(), 'src/server/services/sales-ledger.ts'), 'utf8')
+
+  it('marks commissions and charges as seen, not only sales', () => {
+    expect(apply).toContain("await db.update(brokerages).set({ xeroSeenImportId: importId })")
+    expect(apply).toContain("await db.update(buybackCharges).set({ xeroSeenImportId: importId })")
+  })
+
+  it('marks each kind against its own rows', () => {
+    expect(apply).toContain("const seenOf = (kind: CandidateKind)")
+    expect(apply).toContain("review.invoices\n      .flatMap((invoice) => invoice.sales.filter((s) => s.kind === kind)")
+  })
+
+  it('no longer hard-codes the ledger rows as never seen', () => {
+    expect(ledger).not.toContain('xeroSeenImportId: null')
+    expect(ledger).toContain('xeroSeenImportId: row.xeroSeenImportId')
+  })
+
+  it('gives a buy-back charge an invoice number of its own', () => {
+    // A loan running six months is six charges and six Xero invoices, so
+    // the loan's reference cannot stand for any one of them.
+    expect(service).toContain("if (change.field === 'invoiceNo') patch['invoiceNo'] = change.to")
+    expect(ledger).toContain('row.invoiceNo ?? row.reference')
+  })
+})

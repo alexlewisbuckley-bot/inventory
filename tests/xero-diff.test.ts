@@ -281,7 +281,11 @@ describe('a buy-back charge', () => {
   const charge = (over: Partial<SaleSnapshot> = {}) =>
     sale({ kind: 'BUYBACK', stockNo: null, ...over })
 
-  it('takes the money and the status, and nothing else', () => {
+  it('takes its invoice number, the money and the status', () => {
+    // The invoice number is its own, not the loan's: a loan running six
+    // months is six charges and six Xero invoices. Without it a charge
+    // reconciled perfectly well and still read "—" in the invoice column
+    // afterwards, which looks exactly like a reconciliation that failed.
     const changes = proposeChanges(
       charge({
         invoiceNo: null, saleDate: day('2026-10-01'), customerName: 'Somebody Else',
@@ -290,7 +294,7 @@ describe('a buy-back charge', () => {
       invoice({ status: 'PAID', paidDate: day('2026-10-20') }),
       10_000_000,
     )
-    expect(fields(changes)).toEqual(['saleAmount', 'paymentStatus', 'paidOn'])
+    expect(fields(changes)).toEqual(['invoiceNo', 'saleAmount', 'paymentStatus', 'paidOn'])
   })
 
   it('is never allowed to reschedule the loan', () => {

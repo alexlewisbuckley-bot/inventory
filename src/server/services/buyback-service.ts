@@ -598,6 +598,8 @@ export async function getBuyback(id: string): Promise<{
       .orderBy(asc(buybackItems.createdAt)),
     db.select({
       id: buybackCharges.id,
+      invoiceNo: buybackCharges.invoiceNo,
+      xeroSeenImportId: buybackCharges.xeroSeenImportId,
       kind: buybackCharges.kind,
       periodIndex: buybackCharges.periodIndex,
       dueOn: buybackCharges.dueOn,
@@ -702,6 +704,9 @@ export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000): Pr
   currency: CurrencyCode
   amountBase: number
   paymentStatus: string
+  /** Its own Xero invoice, not the loan's. */
+  invoiceNo: string | null
+  xeroSeenImportId: string | null
   reference: string | null
   customerName: string
   soldByName: string | null
