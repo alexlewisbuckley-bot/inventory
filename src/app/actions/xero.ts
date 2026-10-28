@@ -93,9 +93,18 @@ export async function applyXeroImportAction(formData: FormData): Promise<ApplyRe
     approvals[saleId] = [...(approvals[saleId] ?? []), field as XeroField]
   }
 
-  if (Object.keys(approvals).length === 0) {
-    return { ok: false, message: 'Nothing was ticked, so nothing was changed.' }
-  }
+  /*
+   * An empty tick list is not an error.
+   *
+   * It used to be refused, which meant an import where everything already
+   * agreed with Xero could never be applied — and applying is the only
+   * thing that records which rows the import accounted for. So the rows
+   * that matched Xero perfectly, with nothing to correct, were the ones
+   * left reading "Not in Xero" afterwards. Exactly backwards.
+   *
+   * Applying nothing still means something: this file has been through,
+   * and these rows are reconciled.
+   */
 
   try {
     const result = await applyImport(importId, approvals, actor)

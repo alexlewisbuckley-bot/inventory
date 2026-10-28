@@ -163,3 +163,38 @@ describe('a Buy Back invoice can be applied', () => {
     expect(service).toContain("if (matched.some((m) => m.kind === 'BUYBACK')) return 'BUYBACK'")
   })
 })
+
+/**
+ * Alex: "Luis Suarez is showing as not in zero, but it is in zero."
+ *
+ * It was, and it matched his invoice number exactly. What it could not do
+ * was get recorded as accounted for: applying is the only thing that
+ * writes the seen-import, and applying was refused when nothing was
+ * ticked. An import where everything already agreed with Xero could
+ * therefore never be applied — so the rows that matched perfectly, with
+ * nothing to correct, were the ones left reading "Not in Xero".
+ */
+describe('an import with nothing to correct can still be applied', () => {
+  const action = readFileSync(join(process.cwd(), 'src/app/actions/xero.ts'), 'utf8')
+  const review = readFileSync(join(process.cwd(), 'src/components/sales/ReconcileReview.tsx'), 'utf8')
+
+  it('no longer refuses an empty tick list', () => {
+    expect(action).not.toContain('Nothing was ticked, so nothing was changed.')
+  })
+
+  it('still only writes fields that were ticked', () => {
+    // Applying nothing must mean nothing is written, not everything.
+    expect(apply).toContain('const wanted = approvals[line.saleId]')
+    expect(apply).toContain('if (!wanted || wanted.length === 0) continue')
+  })
+
+  it('still records what the import accounted for', () => {
+    expect(apply).toContain("const seenOf = (kind: CandidateKind)")
+  })
+
+  it('offers the button on a linked row rather than on a change', () => {
+    expect(review).toContain('linkedCount > 0 &&')
+    expect(review).toContain('`Mark ${linkedCount} as reconciled`')
+    expect(review).not.toContain('disabled={pending || onCount === 0}')
+  })
+})
