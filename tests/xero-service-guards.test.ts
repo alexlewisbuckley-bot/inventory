@@ -198,3 +198,45 @@ describe('an import with nothing to correct can still be applied', () => {
     expect(review).not.toContain('disabled={pending || onCount === 0}')
   })
 })
+
+/**
+ * Alex, after pressing the button: "done and mark as reconciled still
+ * remains without inv number".
+ *
+ * A likely match starts unticked by design — he asked for amber, not for
+ * a guess applied on his behalf — but that was said only in small grey
+ * text under the counts. So the button gets pressed, the row he was
+ * looking at does not move, and the reconcile looks broken rather than
+ * cautious.
+ */
+describe('a likely match is never left behind quietly', () => {
+  const review = readFileSync(join(process.cwd(), 'src/components/sales/ReconcileReview.tsx'), 'utf8')
+  const table = readFileSync(join(process.cwd(), 'src/components/sales/SalesTable.tsx'), 'utf8')
+
+  it('says how many are waiting, in its own panel', () => {
+    expect(review).toContain('likely {probableCount === 1 ? \'match is\' : \'matches are\'} waiting for you')
+  })
+
+  it('offers to accept them all in one press', () => {
+    expect(review).toContain("Accept the likely {probableCount === 1 ? 'one' : 'ones'} too")
+  })
+
+  it('counts rows rather than fields, which is what a person sees', () => {
+    expect(review).toContain('.filter((s) => isProbable(s.tier)).length')
+  })
+
+  it('reports any left unticked after applying', () => {
+    expect(review).toContain('const leftBehind = probableKeys.filter((key) => off.has(key)).length')
+    expect(review).toContain('left unticked, still waiting')
+  })
+
+  it('still starts them unticked', () => {
+    // The point of amber. Accepting one has to stay an act.
+    expect(review).toContain('const [off, setOff] = useState<Set<string>>(() => new Set(probableKeys))')
+  })
+
+  it('links "Not in Xero" to the page that explains it', () => {
+    expect(table).toContain("flag.kind === 'NOT_IN_XERO' ? (")
+    expect(table).toContain('href="/sales/reconcile"')
+  })
+})

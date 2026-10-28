@@ -199,6 +199,10 @@ export function ReconcileReview({ review, canApply }: {
     [review],
   )
   const onCount = allKeys.filter((key) => !off.has(key)).length
+  /** How many rows, rather than how many fields, were matched that way. */
+  const probableCount = (review?.invoices ?? [])
+    .reduce((n, invoice) => n + invoice.sales.filter((s) => isProbable(s.tier)).length, 0)
+
   /** Rows this file accounts for, whether or not any of them need changing. */
   const linkedCount = (review?.invoices ?? [])
     .filter((invoice) => invoice.bucket !== 'NOT_A_SALE')
@@ -253,13 +257,19 @@ export function ReconcileReview({ review, canApply }: {
         toast.error('Nothing was applied', result.message)
         return
       }
+      // Never let a likely match be left behind quietly: that is somebody
+      // pressing the button and watching the row they care about not move.
+      const leftBehind = probableKeys.filter((key) => off.has(key)).length
+      const andTheRest = leftBehind > 0
+        ? ` · ${leftBehind} likely ${leftBehind === 1 ? 'change' : 'changes'} left unticked, still waiting`
+        : ''
       toast.success(
         result.fieldsChanged === 0
           ? 'Marked as reconciled'
           : `${result.fieldsChanged} changes applied`,
-        result.fieldsChanged === 0
-          ? 'Everything already agreed with Xero. These rows now count as accounted for.'
-          : `across ${result.salesChanged} ${result.salesChanged === 1 ? 'row' : 'rows'}`,
+        (result.fieldsChanged === 0
+          ? 'Everything ticked already agreed with Xero. These rows now count as accounted for.'
+          : `across ${result.salesChanged} ${result.salesChanged === 1 ? 'row' : 'rows'}`) + andTheRest,
       )
       router.refresh()
     })
@@ -418,6 +428,43 @@ export function ReconcileReview({ review, canApply }: {
               </div>
             )}
           </Card>
+
+          {/*
+            * Likely matches, said out loud.
+            *
+            * They start unticked on purpose — Alex asked for amber, not
+            * for a guess applied on his behalf — but "2 on a likely
+            * match, left for you" in small grey text under the counts is
+            * too quiet. Somebody presses the big button, the row they
+            * were looking at does not change, and the reconcile looks
+            * broken rather than cautious.
+            */}
+          {probableKeys.length > 0 && !review.appliedAt && (
+            <Card>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-l-4 border-state-warning px-6 py-4">
+                <div>
+                  <p className="text-small font-bold text-content-primary">
+                    {probableCount} likely {probableCount === 1 ? 'match is' : 'matches are'} waiting for you
+                  </p>
+                  <p className="mt-0.5 text-caption text-content-secondary">
+                    Same customer, close amount, same week — near enough to offer, not near
+                    enough to apply on your say-so. Nothing below is written until you accept it.
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={() => setOff((current) => {
+                    const next = new Set(current)
+                    for (const key of probableKeys) next.delete(key)
+                    return next
+                  })}
+                  disabled={pending || probableKeys.every((key) => !off.has(key))}
+                >
+                  Accept the likely {probableCount === 1 ? 'one' : 'ones'} too
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* ---------------- invoice by invoice ---------------- */}
           {review.invoices.map((invoice) => (

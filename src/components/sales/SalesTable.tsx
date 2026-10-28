@@ -199,18 +199,34 @@ export function SalesTable({
                   * these, an invoice still reading "TBA", is a problem
                   * measured in days.
                   */}
-                {flagsOf(sale).map((flag) => (
-                  <span
-                    key={flag.kind}
-                    title={flag.detail}
-                    className={cn(
-                      'mt-0.5 block whitespace-nowrap text-caption font-semibold',
-                      flagTone(flag.kind) === 'serious' ? 'text-state-danger' : 'text-state-warning',
-                    )}
-                  >
-                    {FLAG_LABELS[flag.kind]}
-                  </span>
-                ))}
+                {flagsOf(sale).map((flag) => {
+                  const tone = cn(
+                    'mt-0.5 block whitespace-nowrap text-caption font-semibold',
+                    flagTone(flag.kind) === 'serious' ? 'text-state-danger' : 'text-state-warning',
+                  )
+                  /*
+                   * "Not in Xero" is the one flag whose answer is on
+                   * another page. Saying it here and making somebody go
+                   * and find the row is how a flag turns into a question
+                   * for whoever built it — the reconcile screen states
+                   * which invoice came closest and what kept it out, so
+                   * this links straight there.
+                   */
+                  return flag.kind === 'NOT_IN_XERO' ? (
+                    <Link
+                      key={flag.kind}
+                      href="/sales/reconcile"
+                      title={`${flag.detail}. Open the reconcile screen to see which invoice came closest.`}
+                      className={cn(tone, 'underline decoration-dotted underline-offset-2')}
+                    >
+                      {FLAG_LABELS[flag.kind]}
+                    </Link>
+                  ) : (
+                    <span key={flag.kind} title={flag.detail} className={tone}>
+                      {FLAG_LABELS[flag.kind]}
+                    </span>
+                  )
+                })}
               </TD>
               {/* A commission has no stock number and no watch to open:
                   the watch was never ours. A dash and plain text rather
