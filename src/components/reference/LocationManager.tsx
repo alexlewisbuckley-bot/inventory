@@ -23,6 +23,7 @@ export interface LocationRow {
   notes: string | null
   isActive: boolean
   publishToStorefront: boolean
+  showInTradeCatalogue: boolean
   watchCount: number
   valueGbp: number
 }
@@ -104,6 +105,9 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                     </Chip>
                     {!location.publishToStorefront && (
                       <Chip tone="neutral">Not on the website</Chip>
+                    )}
+                    {!location.showInTradeCatalogue && (
+                      <Chip tone="neutral">Not on the trade list</Chip>
                     )}
                   </div>
                 </div>
@@ -203,16 +207,24 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
   */
   const [type, setType] = useState<LocationType>(location?.type ?? 'STORE')
   const [publishes, setPublishes] = useState(location?.publishToStorefront ?? true)
+  const [onTradeList, setOnTradeList] = useState(location?.showInTradeCatalogue ?? true)
   const [shownFor, setShownFor] = useState<string | null>(location?.id ?? null)
   if ((location?.id ?? null) !== shownFor) {
     setShownFor(location?.id ?? null)
     setType(location?.type ?? 'STORE')
     setPublishes(location?.publishToStorefront ?? true)
+    setOnTradeList(location?.showInTradeCatalogue ?? true)
   }
 
   const chooseType = (next: LocationType) => {
     setType(next)
-    if (!location) setPublishes(next !== 'TRANSIT')
+    // Transit is off both lists, which is the one case where the two
+    // questions have the same answer: a watch being carried somewhere
+    // cannot be shown to a customer or offered to a dealer today.
+    if (!location) {
+      setPublishes(next !== 'TRANSIT')
+      setOnTradeList(next !== 'TRANSIT')
+    }
   }
 
   if (state.ok && open && !wasOpen) {
@@ -255,6 +267,17 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Off for stock nobody can come and see — in transit, away at service, on loan. Those pieces stay as drafts on Shopify and publish themselves when they move somewhere that does sell."
             checked={publishes}
             onChange={(event) => setPublishes(event.target.checked)} />
+          {/*
+            A separate question from the one above, and Hong Kong is why.
+            That stock is real stock the website may well sell; what it is
+            not is stock we want on a list handed round the trade. One
+            switch for both would have meant taking it off the website as
+            the price of taking it off the dealer list.
+          */}
+          <Checkbox name="showInTradeCatalogue" label="Show this location's stock on trade catalogue links"
+            hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
+            checked={onTradeList}
+            onChange={(event) => setOnTradeList(event.target.checked)} />
         </div>
       </form>
     </Modal>

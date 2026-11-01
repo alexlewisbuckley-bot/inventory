@@ -55,7 +55,15 @@ export default async function TradePage({ params }: { params: { token: string } 
   return (
     <TradeRoom
       token={params.token}
-      reseller={room.reseller}
+      brand={{
+        name: room.reseller.name,
+        brandColor: room.reseller.brandColor,
+        accentColor: room.reseller.accentColor,
+        // Their own mark, from their own token's route. The shop window's
+        // token is deliberately not passed to this page, so the trade token
+        // is the only one that can find it.
+        logoSrc: room.reseller.hasLogo ? `/t/${params.token}/logo` : null,
+      }}
       items={room.items}
     />
   )

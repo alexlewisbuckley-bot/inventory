@@ -623,6 +623,19 @@ export const locationSchema = z.object({
   country: optionalText(80),
   notes: optionalText(1000),
   isActive: z.coerce.boolean().default(true),
+  /*
+   * The two switches that decide who may be shown what is sitting here.
+   *
+   * Both were missing from this schema, and the first of them had been on
+   * the locations form — with a label, a hint and a default that changes
+   * with the location type — since migration 0036. The action never read
+   * it and this schema would have stripped it if it had, so unticking
+   * "sell this location's stock on the website" saved nothing and the
+   * column was only ever writable by that migration. Nobody noticed
+   * because transit, the case it was built for, was already set.
+   */
+  publishToStorefront: z.coerce.boolean().default(true),
+  showInTradeCatalogue: z.coerce.boolean().default(true),
 })
 
 // --- Users & settings ------------------------------------------------------

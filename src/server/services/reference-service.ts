@@ -152,6 +152,7 @@ export async function listLocations() {
       notes: locations.notes,
       isActive: locations.isActive,
       publishToStorefront: locations.publishToStorefront,
+      showInTradeCatalogue: locations.showInTradeCatalogue,
       sortOrder: locations.sortOrder,
       watchCount: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then 1 else 0 end), 0)`,
       valueGbp: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then ${watches.purchasePriceGbp} else 0 end), 0)`,
@@ -194,7 +195,13 @@ export async function updateLocation(id: string, input: Partial<LocationInput>, 
     await recordAudit({
       entityType: 'Location', entityId: id, action: 'UPDATE', actorId: actor.id,
       summary: `Location ${existing.name} updated`,
-      changes: diff(existing, input, ['name', 'type', 'addressLine', 'city', 'country', 'notes', 'isActive']),
+      // Both switches included: who may be shown the stock in a place is
+      // exactly the sort of change somebody asks about afterwards, and a
+      // change absent from the audit is a change nobody can account for.
+      changes: diff(existing, input, [
+        'name', 'type', 'addressLine', 'city', 'country', 'notes', 'isActive',
+        'publishToStorefront', 'showInTradeCatalogue',
+      ]),
     })
   })
 }
