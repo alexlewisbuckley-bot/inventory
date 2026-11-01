@@ -48,6 +48,10 @@ const SEED_LOCATIONS = [
   { name: 'Chrono Hub', type: 'STORE' as const, city: 'Dubai', country: 'United Arab Emirates', sortOrder: 2, notes: 'Retail showroom — display stock.' },
   { name: 'Own inventory', type: 'VAULT' as const, city: 'Manchester', country: 'United Kingdom', sortOrder: 3, notes: 'Head office safe. Not on display.' },
   { name: 'In transit', type: 'TRANSIT' as const, city: null, country: null, sortOrder: 4, notes: 'Between locations — courier or staff carry.' },
+  // A real place, and the reason the trade-catalogue switch is not the
+  // storefront switch: this stock sells on the website and stays off the
+  // list we hand the trade.
+  { name: 'Hong Kong', type: 'VAULT' as const, city: 'Hong Kong', country: 'Hong Kong', sortOrder: 5, notes: 'Partner safe — sells on the site, not offered to the trade.' },
 ]
 
 const SETTINGS: Record<string, string> = {
@@ -91,8 +95,15 @@ export async function seed(): Promise<void> {
       // on the rows that existed then, but the seed builds its locations
       // fresh and would otherwise hand every new database a transit
       // location whose stock goes live on the website.
+      //
+      // The trade list excludes transit for the same reason and Hong Kong
+      // for a different one — see migration 0055. Stated here as well so a
+      // fresh database agrees with a migrated one, which is the whole job
+      // of this line.
       await db.insert(locations).values({
-        id, slug, ...spec, publishToStorefront: spec.type !== 'TRANSIT',
+        id, slug, ...spec,
+        publishToStorefront: spec.type !== 'TRANSIT',
+        showInTradeCatalogue: spec.type !== 'TRANSIT' && spec.name !== 'Hong Kong',
       })
       locationIds.set(spec.name, id)
     }

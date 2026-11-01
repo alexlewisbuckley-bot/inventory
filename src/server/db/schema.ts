@@ -158,6 +158,22 @@ export const locations = pgTable(
      * column existed.
      */
     publishToStorefront: boolean('publish_to_storefront').notNull().default(true),
+    /**
+     * Whether a trade partner may be shown stock sitting here.
+     *
+     * A second switch rather than a reuse of the one above, because they are
+     * two different questions. Hong Kong is the proof: that stock is real
+     * stock the website may well sell, and what it is not is stock we want
+     * on a list handed round the trade. One switch would have taken it off
+     * the website as the price of taking it off the dealer list.
+     *
+     * Transit is where the two agree, and for the same reason: a watch in a
+     * courier's bag cannot be offered to anybody today.
+     *
+     * True by default, as the storefront switch is, so a place nobody has an
+     * opinion about stays on the list.
+     */
+    showInTradeCatalogue: boolean('show_in_trade_catalogue').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1864,6 +1880,56 @@ export const customerAliases = pgTable(
   },
   (t) => ({ keyIdx: uniqueIndex('customer_aliases_key_idx').on(t.xeroKey) }),
 )
+
+/**
+ * A link we hand the trade, so they can see what we have.
+ *
+ * Alex: "Create a catalogue link that shows all the watches except in
+ * transit & hong kong to show traders what we have with filtering and no
+ * pricing."
+ *
+ * Several rather than one. A single standing URL cannot be withdrawn from
+ * one dealer without being withdrawn from all of them, and the first thing
+ * wanted after sending a link to one WhatsApp group is a different link for
+ * the next. Each carries a label so that a revoked token can be named.
+ *
+ * Distinct from a reseller's trade room, which is a reseller's own shop with
+ * their branding and their passphrase on it. This is ours, it has no
+ * passphrase, and the token is the whole of the secret.
+ */
+export const catalogueLinks = pgTable(
+  'catalogue_links',
+  {
+    id: text('id').primaryKey(),
+    /** Who it was made for, in our own words: "Dubai dealers". */
+    label: text('label').notNull(),
+    /** The credential in the URL. Long, random, and revocable on its own. */
+    token: text('token').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    /**
+     * Whether this link offers the trade shots behind the tap.
+     *
+     * Off by default. A trade shot is a record picture, taken on whatever
+     * surface was to hand and often with the papers in frame, and a link
+     * that may be forwarded is the wrong home for it until somebody decides
+     * otherwise.
+     */
+    showTradePhotos: boolean('show_trade_photos').notNull().default(false),
+    /** Proof of life, so a link nobody opens can be recognised as spent. */
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }),
+    viewCount: integer('view_count').notNull().default(0),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex('catalogue_links_token_idx').on(t.token),
+    activeIdx: index('catalogue_links_active_idx').on(t.isActive),
+  }),
+)
+
+export type CatalogueLink = typeof catalogueLinks.$inferSelect
 
 export type XeroImport = typeof xeroImports.$inferSelect
 export type NewXeroImport = typeof xeroImports.$inferInsert

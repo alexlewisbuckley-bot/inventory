@@ -72,6 +72,17 @@ export async function saveLocationAction(_prev: ActionState, formData: FormData)
     country: formData.get('country'),
     notes: formData.get('notes'),
     isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
+    /*
+     * An unticked checkbox is not in the payload at all, so `=== 'on'` is
+     * the whole of the read and the absence is the false. Spelled out
+     * rather than left to the schema's coercion, which would see undefined
+     * and apply the default of true -- turning every untick into a no-op.
+     * Which is exactly what used to happen here: the storefront checkbox
+     * was on the form and in neither this action nor the schema, so the
+     * column was writable only by the migration that created it.
+     */
+    publishToStorefront: formData.get('publishToStorefront') === 'on',
+    showInTradeCatalogue: formData.get('showInTradeCatalogue') === 'on',
   })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 

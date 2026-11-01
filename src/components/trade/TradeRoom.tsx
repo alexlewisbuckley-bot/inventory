@@ -70,11 +70,46 @@ function tradeAt(item: TradeItem): number {
  * photographs it describes; paging it off the server would cost a round trip
  * per keystroke to save nothing.
  */
-export function TradeRoom({ token, reseller, items }: {
+export function TradeRoom({ token, brand, items, basePath, signOut = true }: {
   token: string
-  reseller: { name: string; brandColor: string; accentColor: string; hasLogo: boolean }
+  brand: {
+    name: string
+    brandColor: string
+    accentColor: string
+    /**
+     * The mark to put at the top, or null for the name set in a serif.
+     *
+     * A URL rather than a boolean, because the two rooms keep their marks in
+     * different places: a reseller's is a blob on their row, served from
+     * their own token's logo route, and ours is the supplied wordmark sitting
+     * in `public/brand`. A boolean forced both through one route, which for
+     * our own catalogue would have been a route whose only job was to re-serve
+     * a static file.
+     */
+    logoSrc: string | null
+  }
   items: TradeItem[]
+  /**
+   * Where this room's own routes live: `/t/<token>` for a reseller's, or
+   * `/c/<token>` for one of our catalogue links.
+   *
+   * Passed in rather than built from the token, because the token says
+   * nothing about which door it came through and a room that guessed would
+   * draw every photograph from the wrong one. Defaults to the reseller
+   * room, which is where this component started.
+   */
+  basePath?: string
+  /**
+   * Whether there is anything to sign out of.
+   *
+   * A reseller's room is behind a passphrase, so leaving it is a real act.
+   * A catalogue link has no passphrase — the URL is the whole of the
+   * secret — and a sign-out button there is a control that cannot do what
+   * it says.
+   */
+  signOut?: boolean
 }) {
+  const base = basePath ?? `/t/${token}`
   const [term, setTerm] = useState('')
   const [open, setOpen] = useState<string | null>(null)
   const [picked, setPicked] = useState<Record<string, string[]>>({})
@@ -137,22 +172,22 @@ export function TradeRoom({ token, reseller, items }: {
     <main
       className="min-h-screen bg-white px-5 pb-20 pt-8 sm:px-8"
       style={{
-        ['--brand' as string]: reseller.brandColor,
-        ['--accent' as string]: reseller.accentColor,
+        ['--brand' as string]: brand.brandColor,
+        ['--accent' as string]: brand.accentColor,
       }}
     >
       <header className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 border-b border-black/10 pb-5">
         <div className="flex min-w-0 items-center gap-3">
-          {reseller.hasLogo ? (
+          {brand.logoSrc ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={`/t/${token}/logo`}
-              alt={reseller.name}
+              src={brand.logoSrc}
+              alt={brand.name}
               className="h-8 w-auto shrink-0 object-contain"
             />
           ) : (
             <span className="truncate font-serif text-[20px]" style={{ color: 'var(--brand)' }}>
-              {reseller.name}
+              {brand.name}
             </span>
           )}
           <span className="shrink-0 border border-black/15 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-black/55">
@@ -160,11 +195,13 @@ export function TradeRoom({ token, reseller, items }: {
           </span>
         </div>
 
-        <form action={leaveTradeRoomAction.bind(null, token)}>
-          <button type="submit" className="text-[12px] text-black/45 underline underline-offset-2 hover:text-black/80">
-            Sign out
-          </button>
-        </form>
+        {signOut && (
+          <form action={leaveTradeRoomAction.bind(null, token)}>
+            <button type="submit" className="text-[12px] text-black/45 underline underline-offset-2 hover:text-black/80">
+              Sign out
+            </button>
+          </form>
+        )}
       </header>
 
       <div className="mx-auto mt-5 max-w-[1180px]">
@@ -222,28 +259,47 @@ export function TradeRoom({ token, reseller, items }: {
           </p>
         ) : (
           <ul className="mt-6 grid grid-cols-2 gap-x-5 gap-y-9 md:grid-cols-3 lg:grid-cols-4">
-            {matches.map((item) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => setViewing({ item, at: 0 })}
-                  className="group block w-full text-left"
-                >
+            {matches.map((item) => {
+              /*
+               * Computed once, because a card with no photograph is a real
+               * card now.
+               *
+               * A reseller's room requires a picture to be listed at all, so
+               * this used to reach straight into `gallery(item)[0]` and was
+               * right to. A catalogue link lists every watch we hold — Alex
+               * asked for all of them, and a dealer hunting a reference
+               * wants to know we have one before they want to see it — so
+               * the first shot may not exist, and reading `.id` off it would
+               * take the whole page down rather than the one tile.
+               */
+              const shots = gallery(item)
+              const details = (
+                <>
                   <span className="block aspect-square w-full overflow-hidden bg-[#f4f3f1]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={`/t/${token}/image/${gallery(item)[0].id}`}
-                      alt={`${item.brandName} ${item.model}`}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                    />
+                    {shots.length > 0 ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={`${base}/image/${shots[0]!.id}`}
+                        alt={`${item.brandName} ${item.model}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    ) : (
+                      // Said plainly rather than left as an empty square. A
+                      // blank plate reads as a page that failed to load; this
+                      // reads as a watch we have and have not shot yet, which
+                      // is what it is.
+                      <span className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] uppercase tracking-[0.1em] text-black/35">
+                        Photograph to follow
+                      </span>
+                    )}
                   </span>
                   <span className="mt-2.5 block text-[10.5px] font-semibold uppercase tracking-[0.1em] text-black/45">
                     {item.brandName}
-                    {gallery(item).length > 1 && (
+                    {shots.length > 1 && (
                       <span className="float-right font-normal tabular-nums normal-case tracking-normal">
-                        {gallery(item).length} photos
+                        {shots.length} photos
                       </span>
                     )}
                   </span>
@@ -258,7 +314,25 @@ export function TradeRoom({ token, reseller, items }: {
                   <span className="mt-1.5 block text-[12px] text-black/50">
                     {describe(item)}
                   </span>
-                </button>
+                </>
+              )
+
+              return (
+              <li key={item.id}>
+                {/* A button only where there is something to open. A viewer
+                    with no images in it is a black screen and a dealer
+                    wondering what they broke. */}
+                {shots.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewing({ item, at: 0 })}
+                    className="group block w-full text-left"
+                  >
+                    {details}
+                  </button>
+                ) : (
+                  <div className="block w-full text-left">{details}</div>
+                )}
                 {/* Only where there is one, and only where it is not already
                     what is on the card. Offering "view trade image" on a
                     watch whose only picture is the trade image is a button
@@ -273,7 +347,8 @@ export function TradeRoom({ token, reseller, items }: {
                   </button>
                 )}
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </div>
@@ -281,7 +356,7 @@ export function TradeRoom({ token, reseller, items }: {
       {viewing && (
         <Lightbox
           images={gallery(viewing.item).map(({ id, trade }) => ({
-            src: `/t/${token}/image/${id}`,
+            src: `${base}/image/${id}`,
             alt: `${viewing.item.brandName} ${viewing.item.model}`,
             // The trade shots say so. Unlabelled, a dealer cannot tell
             // whether a mark is on the watch or on the photograph.
