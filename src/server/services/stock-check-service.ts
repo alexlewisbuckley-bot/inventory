@@ -1,8 +1,8 @@
 import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
-import { alias } from 'drizzle-orm/pg-core'
+import { alias, type AnyPgColumn } from 'drizzle-orm/pg-core'
 import { db, withTransaction } from '../db/client'
 import {
-  brands, locations, stockCheckLines, stockChecks, users, watchImages, watches,
+  brands, locations, owners, stockCheckLines, stockChecks, users, watchImages, watches,
 } from '../db/schema'
 import { recordAudit } from './audit'
 import { moveWatches } from './watch-service'
@@ -37,9 +37,25 @@ import { logger } from '@/lib/logger'
 // Starting one
 // ---------------------------------------------------------------------------
 
-/** What a check covers: everything held, optionally narrowed to one location. */
+/**
+ * What a check covers: everything held, optionally narrowed.
+ *
+ * Location and owner narrow independently, because they answer different
+ * questions -- where it sits and whose it is -- and a watch moves between
+ * vaults without changing hands. Either, both or neither.
+ *
+ * Null owner means every owner, which includes stock with none recorded.
+ * There is deliberately no third state for "only the stock with no owner":
+ * it would store as a null `owner_id` exactly as "every owner" does, and
+ * two different scopes that are one row in the database is a distinction
+ * nothing downstream could make. The gap it would have covered is reported
+ * instead -- see unownedStockCount -- so it is visible without being
+ * modelled twice.
+ */
 export interface StockCheckScope {
   locationId?: string | null
+  /** One owner, or null for all of them. */
+  ownerId?: string | null
   notes?: string | null
 }
 
@@ -80,19 +96,51 @@ export async function startStockCheck(scope: StockCheckScope, actor: SessionUser
       locationName = found[0].name
     }
 
+    const ownerId = scope.ownerId || null
+    let ownerName: string | null = null
+    if (ownerId) {
+      const found = await db.select({ name: owners.name })
+        .from(owners)
+        .where(and(eq(owners.id, ownerId), isNull(owners.deletedAt)))
+        .limit(1)
+      if (!found[0]) throw new NotFoundError('Owner')
+      ownerName = found[0].name
+    }
+
+    /*
+     * Refused where two open checks would cover any of the same watch.
+     *
+     * The rule used to be "the same location", which was right while that
+     * was the only thing a check could be narrowed by. With an owner as
+     * well, same-location is both too strict and too loose: counting
+     * Edward's shelf while somebody counts Marcus's is two people doing
+     * different work in one room and must be allowed, while counting
+     * everything in that room at the same time as counting Edward's part
+     * of it is the original fault -- two records of one watch, and no way
+     * to say which was the stock take.
+     *
+     * So the test is whether the two scopes intersect, and a null on
+     * either side of either question means "all of them", which
+     * intersects with everything.
+     */
+    const overlapping = (column: AnyPgColumn, value: string | null) =>
+      value === null
+        ? sql`true`
+        : sql`(${column} IS NULL OR ${column} = ${value})`
+
     const clash = await db.select({ id: stockChecks.id, reference: stockChecks.reference })
       .from(stockChecks)
       .where(and(
         eq(stockChecks.status, 'OPEN'),
         isNull(stockChecks.deletedAt),
-        scope.locationId
-          ? eq(stockChecks.locationId, scope.locationId)
-          : isNull(stockChecks.locationId),
+        overlapping(stockChecks.locationId, scope.locationId ?? null),
+        overlapping(stockChecks.ownerId, ownerId),
       ))
       .limit(1)
     if (clash[0]) {
       throw new ConflictError(
-        `${clash[0].reference} is still open over the same stock. Finish or abandon it before starting another.`,
+        `${clash[0].reference} is still open and covers some of the same stock. `
+        + 'Finish or abandon it before starting another.',
       )
     }
 
@@ -107,23 +155,37 @@ export async function startStockCheck(scope: StockCheckScope, actor: SessionUser
         isNull(watches.deletedAt),
         inArray(watches.status, [...ACTIVE_STATUSES]),
         scope.locationId ? eq(watches.locationId, scope.locationId) : undefined,
+        // `undefined` for every owner, which Drizzle drops from the
+        // predicate -- so an unnarrowed check still counts the stock that
+        // has no owner against it.
+        ownerId ? eq(watches.ownerId, ownerId) : undefined,
       ))
 
     if (expected.length === 0) {
+      // Named in the words the scope was chosen in, because "there is no
+      // stock to count" against a screen where two things were just picked
+      // does not say which of them was wrong.
+      const where = [
+        locationName ? `at ${locationName}` : null,
+        ownerName ? `owned by ${ownerName}` : null,
+      ].filter(Boolean).join(' ')
       throw new ValidationError(
-        locationName
-          ? `There is no stock at ${locationName} to count.`
-          : 'There is no stock to count.',
+        where ? `There is no stock ${where} to count.` : 'There is no stock to count.',
       )
     }
 
     const id = newId('stc')
-    const reference = `${locationName ?? 'All stock'} — ${monthDay(new Date())}`
+    // "Own inventory · Edward Jackson — 9 October". The owner is part of
+    // what a check was, so it belongs in the name it will be referred to by
+    // for as long as the record exists.
+    const reference = `${[locationName ?? 'All stock', ownerName].filter(Boolean).join(' · ')}`
+      + ` — ${monthDay(new Date())}`
 
     await db.insert(stockChecks).values({
       id,
       reference,
       locationId: scope.locationId ?? null,
+      ownerId,
       expectedCount: expected.length,
       notes: scope.notes?.trim() || null,
       startedById: actor.id,
@@ -141,7 +203,9 @@ export async function startStockCheck(scope: StockCheckScope, actor: SessionUser
       summary: `Stock check opened: ${reference}, ${expected.length} expected`,
     })
 
-    logger.info('stock check opened', { id, expected: expected.length, locationId: scope.locationId })
+    logger.info('stock check opened', {
+      id, expected: expected.length, locationId: scope.locationId, ownerId,
+    })
     return id
   })
 }
@@ -458,6 +522,7 @@ export async function listStockChecks(limit = 50) {
     reference: stockChecks.reference,
     status: stockChecks.status,
     locationName: locations.name,
+    ownerName: owners.name,
     expectedCount: stockChecks.expectedCount,
     foundCount: stockChecks.foundCount,
     missingCount: stockChecks.missingCount,
@@ -473,6 +538,7 @@ export async function listStockChecks(limit = 50) {
   })
     .from(stockChecks)
     .leftJoin(locations, eq(locations.id, stockChecks.locationId))
+    .leftJoin(owners, eq(owners.id, stockChecks.ownerId))
     .leftJoin(startedBy, eq(startedBy.id, stockChecks.startedById))
     .where(isNull(stockChecks.deletedAt))
     .orderBy(desc(stockChecks.startedAt))
@@ -485,11 +551,13 @@ export async function getStockCheck(id: string) {
   const rows = await db.select({
     check: stockChecks,
     locationName: locations.name,
+    ownerName: owners.name,
     startedByName: startedBy.name,
     completedByName: completedBy.name,
   })
     .from(stockChecks)
     .leftJoin(locations, eq(locations.id, stockChecks.locationId))
+    .leftJoin(owners, eq(owners.id, stockChecks.ownerId))
     .leftJoin(startedBy, eq(startedBy.id, stockChecks.startedById))
     .leftJoin(completedBy, eq(completedBy.id, stockChecks.completedById))
     .where(eq(stockChecks.id, id))
@@ -514,6 +582,16 @@ export async function getStockCheckLines(checkId: string) {
     checkedByName: checkedBy.name,
     expectedLocationName: expectedAt.name,
     foundLocationName: foundAt.name,
+    /*
+     * Whose the watch is, now.
+     *
+     * Read live rather than snapshotted, unlike the expected location. That
+     * one is frozen because the count is looking for the watch *there* and a
+     * later move must not rewrite what was being looked for. Ownership is a
+     * different kind of fact: it is not where to look, it is a label on the
+     * thing in your hand, and the useful answer is the current one.
+     */
+    ownerName: owners.name,
     stockNo: watches.stockNo,
     model: watches.model,
     serial: watches.serial,
@@ -525,11 +603,40 @@ export async function getStockCheckLines(checkId: string) {
     .from(stockCheckLines)
     .innerJoin(watches, eq(watches.id, stockCheckLines.watchId))
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .leftJoin(owners, eq(owners.id, watches.ownerId))
     .leftJoin(expectedAt, eq(expectedAt.id, stockCheckLines.expectedLocationId))
     .leftJoin(foundAt, eq(foundAt.id, stockCheckLines.foundLocationId))
     .leftJoin(checkedBy, eq(checkedBy.id, stockCheckLines.checkedById))
     .where(eq(stockCheckLines.checkId, checkId))
     .orderBy(asc(watches.stockNo))
+}
+
+/**
+ * Live stock with no owner recorded against it.
+ *
+ * Asked so the start screen can say it out loud. Narrowing by owner is how
+ * counting is done now, and a watch with nobody's name on it appears on no
+ * owner's list -- it is in the safe, it is on no count, and the only thing
+ * that would ever reach it is an every-owner check nobody is running any
+ * more. Saying the number is what stops that being discovered a year later.
+ *
+ * Counted per location as well, because the start screen is asking about one
+ * place at a time and a number for the whole business would not tell
+ * somebody standing in front of one safe anything they can act on.
+ */
+export async function unownedStockCount(): Promise<{ locationId: string | null; count: number }[]> {
+  const rows = await db.select({
+    locationId: watches.locationId,
+    count: sql<number>`count(*)::int`,
+  })
+    .from(watches)
+    .where(and(
+      isNull(watches.deletedAt),
+      inArray(watches.status, [...ACTIVE_STATUSES]),
+      isNull(watches.ownerId),
+    ))
+    .groupBy(watches.locationId)
+  return rows.map((row) => ({ locationId: row.locationId, count: Number(row.count) }))
 }
 
 /** The open check somebody should be taken back to, if there is one. */

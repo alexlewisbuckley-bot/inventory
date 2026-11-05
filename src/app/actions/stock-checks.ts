@@ -27,11 +27,15 @@ export interface StockCheckActionState {
 
 export async function startStockCheckAction(
   locationId: string | null,
+  ownerId: string | null,
   notes: string | null,
 ): Promise<StockCheckActionState> {
   const actor = await requireCapability('watch:move')
   try {
-    const id = await startStockCheck({ locationId: locationId || null, notes }, actor)
+    const id = await startStockCheck(
+      { locationId: locationId || null, ownerId: ownerId || null, notes },
+      actor,
+    )
     revalidatePath('/stock-checks')
     return { ok: true, id, message: 'Stock check opened.' }
   } catch (error) {

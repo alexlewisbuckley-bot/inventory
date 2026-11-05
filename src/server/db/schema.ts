@@ -787,6 +787,19 @@ export const stockChecks = pgTable(
     reference: text('reference').notNull(),
     /** Null means everywhere. Usually one safe or shop, because that is how counting is done. */
     locationId: text('location_id').references(() => locations.id),
+    /**
+     * Whose stock this check covers. Null means every owner.
+     *
+     * Alex: "so we can check as we store the watches" -- the stock is put
+     * away by whose it is, so that is how it is counted. A safe holding
+     * three owners' watches is three checks that can each be finished in a
+     * sitting rather than one list that cannot.
+     *
+     * Independent of the location, as ownership always is: a watch can move
+     * between vaults without changing hands and change hands without
+     * moving. Either, both or neither may narrow a check.
+     */
+    ownerId: text('owner_id').references(() => owners.id),
     status: text('status', { enum: STOCK_CHECK_STATUSES }).notNull().default('OPEN'),
 
     /** How many lines were snapshotted, so progress needs no recount. */
@@ -808,6 +821,7 @@ export const stockChecks = pgTable(
   (t) => ({
     statusIdx: index('stock_checks_status_idx').on(t.status),
     startedIdx: index('stock_checks_started_idx').on(t.startedAt),
+    ownerIdx: index('stock_checks_owner_idx').on(t.ownerId),
   }),
 )
 

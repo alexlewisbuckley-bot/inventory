@@ -25,6 +25,8 @@ export interface StockCheckLineRow {
   checkedByName: string | null
   expectedLocationName: string | null
   foundLocationName: string | null
+  /** Whose it is, shown only where the check spans more than one owner. */
+  ownerName: string | null
   stockNo: number
   model: string
   serial: string | null
@@ -70,6 +72,18 @@ export function StockCheckRunner({
   const [filter, setFilter] = useState<Filter>(open ? 'outstanding' : 'problems')
   const [search, setSearch] = useState('')
   const [elsewhereFor, setElsewhereFor] = useState<StockCheckLineRow | null>(null)
+
+  /*
+   * Whether this list holds more than one owner's stock.
+   *
+   * Read off the lines rather than passed down from the check's own scope,
+   * because the two can disagree and the lines are the ones on screen: an
+   * every-owner check over a safe that happens to hold one owner's watches
+   * needs no owner column either. Watches with nobody's name against them
+   * count as an owner here — "Edward" against a blank is exactly the
+   * difference worth seeing.
+   */
+  const mixedOwners = new Set(lines.map((line) => line.ownerName)).size > 1
   const [finishing, setFinishing] = useState(false)
   const [abandoning, setAbandoning] = useState(false)
   /** The last few scans, newest first — the feedback that makes speed safe. */
@@ -418,6 +432,11 @@ export function StockCheckRunner({
                   </div>
                   <p className="truncate text-caption text-content-secondary">
                     {line.serial ? `Serial ${line.serial}` : 'No serial recorded'}
+                    {/* Only on a list that holds more than one owner's
+                        stock. On a check already narrowed to one owner it
+                        is the same word on every row, which is noise in
+                        the one place somebody is scanning at speed. */}
+                    {mixedOwners && line.ownerName && ` · ${line.ownerName}`}
                     {line.expectedLocationName && ` · expected at ${line.expectedLocationName}`}
                     {line.foundLocationName && ` · found at ${line.foundLocationName}`}
                     {line.checkedByName && ` · by ${line.checkedByName}`}
