@@ -45,6 +45,10 @@ export default async function StockCheckPage({ params }: { params: { id: string 
         title={record.check.reference}
         description={[
           record.locationName ?? 'All stock held',
+          // Whose, where the check was narrowed to one. Nothing where it
+          // was not: "every owner" is the ordinary case and does not need
+          // saying on every screen it appears on.
+          record.ownerName,
           `${record.check.expectedCount} expected`,
           `opened ${formatDateTime(record.check.startedAt)}`,
           record.startedByName ? `by ${record.startedByName}` : null,
@@ -75,6 +79,7 @@ export default async function StockCheckPage({ params }: { params: { id: string 
           checkedByName: line.checkedByName,
           expectedLocationName: line.expectedLocationName,
           foundLocationName: line.foundLocationName,
+          ownerName: line.ownerName,
           stockNo: line.stockNo,
           model: line.model,
           serial: line.serial,
