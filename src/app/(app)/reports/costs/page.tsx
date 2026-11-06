@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { recentBusinessMonths } from '@/lib/dates'
 import Link from 'next/link'
 import { requireCapability } from '@/server/auth/session'
 import { can } from '@/lib/permissions'
@@ -37,9 +38,14 @@ export default async function RunningCostsPage() {
   const user = await requireCapability('report:read')
   const canManage = can(user.role, 'overhead:manage')
 
-  const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth(), 1)
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+  /*
+   * This month on the shop's clock, not the server's.
+   *
+   * Built from `new Date()` here too, so for the first four hours of every
+   * Dubai day this page costed the month before — and it is the page the
+   * commission base is read off.
+   */
+  const { from, to } = recentBusinessMonths(1)[0]!
   const monthStart = isoDate(from)
   const monthEnd = isoDate(to)
 
