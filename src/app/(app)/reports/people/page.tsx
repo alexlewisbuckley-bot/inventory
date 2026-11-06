@@ -603,7 +603,7 @@ export default async function SalesByPersonPage({ searchParams }: {
               <THead>
                 <TR>
                   <TH width="150px">Person</TH>
-                  <TH width="70px" align="right">Sold</TH>
+                  <TH width="104px" align="right">Sold</TH>
                   <TH width="110px" align="right">Revenue</TH>
                   <TH width="110px" align="right">Profit</TH>
                   {scope === 'all' && <TH width="90px" align="right">Margin</TH>}
@@ -636,7 +636,24 @@ export default async function SalesByPersonPage({ searchParams }: {
                         </span>
                       )}
                     </TD>
-                    <TD align="right" className="tabular-nums text-content-secondary">{person.sold}</TD>
+                    {/*
+                      What the number is made of, under it.
+                      Alex, on a figure he read as watches: "this should be 1
+                      sale for Alex in November but it's showing multiple."
+                      The column counts everything somebody brought in — a
+                      watch, a brokered fee, a buy-back charge — because that
+                      is what a commission is paid on, and the bare total
+                      cannot be checked against anything. The split can.
+                    */}
+                    <TD align="right" className="tabular-nums text-content-secondary">
+                      {person.sold}
+                      {person.sold !== person.stockSold && (
+                        <span className="block whitespace-nowrap text-micro tabular-nums text-content-muted">
+                          {person.stockSold} {person.stockSold === 1 ? 'watch' : 'watches'}
+                          {' · '}{person.sold - person.stockSold} in fees
+                        </span>
+                      )}
+                    </TD>
                     <TD align="right" className="tabular-nums">{money(person.revenue)}</TD>
                     <TD align="right" className={cn(
                       'font-bold tabular-nums',

@@ -92,3 +92,52 @@ export function endOfMonthUtc(year: number, month: number): Date {
 export function endOfDayUtc(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month, day, 23, 59, 59, 999))
 }
+
+export interface BusinessMonth {
+  /** "2026-11", which is what a month picker puts in the URL. */
+  key: string
+  /** "November 2026". */
+  label: string
+  /** "Nov", for a chart axis. */
+  short: string
+  from: Date
+  to: Date
+}
+
+/**
+ * The last `count` months, newest first, on the business's own clock.
+ *
+ * One function because three reports were each building this list for
+ * themselves out of `new Date()` and `new Date(year, month, 1)`, and both
+ * halves of that are the server's clock rather than the shop's.
+ *
+ * The bounds happen to agree while the server runs in UTC. Which month is
+ * *now* does not. Dubai is four hours ahead, so from midnight to 4am there
+ * the server is still on the previous day — and on the first of the month
+ * that is the previous *month*. A commission run opened at eight in the
+ * morning in Dubai, which is four in the morning on the server, offered
+ * October as "this month" and every figure on it was October's. That is
+ * the report the business pays people from.
+ *
+ * The same fault the people report had and had fixed; it was fixed there
+ * and nowhere else, which is why this is a shared function now rather than
+ * a fourth copy of the arithmetic.
+ */
+export function recentBusinessMonths(count = 12, now: Date = new Date()): BusinessMonth[] {
+  const { year, month } = businessToday(now)
+  return Array.from({ length: count }, (_, index) => {
+    const from = startOfMonthUtc(year, month - index)
+    // Named off `from` rather than off the arithmetic again, so a month
+    // that rolled back past January is labelled by what it became.
+    const label = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'UTC', month: 'long', year: 'numeric',
+    }).format(from)
+    return {
+      key: `${from.getUTCFullYear()}-${String(from.getUTCMonth() + 1).padStart(2, '0')}`,
+      label,
+      short: new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', month: 'short' }).format(from),
+      from,
+      to: endOfMonthUtc(year, month - index),
+    }
+  })
+}

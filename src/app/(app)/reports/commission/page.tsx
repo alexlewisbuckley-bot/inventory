@@ -16,24 +16,21 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { DEFAULT_DISPLAY_CURRENCY } from '@/lib/enums'
 import { cn } from '@/lib/cn'
+import { recentBusinessMonths } from '@/lib/dates'
 
 export const metadata: Metadata = { title: 'Commission' }
 export const dynamic = 'force-dynamic'
 
-/** The twelve months back from this one, as the picker offers them. */
-function months(count = 12): Array<{ key: string; label: string; from: Date; to: Date }> {
-  const now = new Date()
-  return Array.from({ length: count }, (_, index) => {
-    const from = new Date(now.getFullYear(), now.getMonth() - index, 1)
-    const to = new Date(now.getFullYear(), now.getMonth() - index + 1, 0, 23, 59, 59, 999)
-    return {
-      key: `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`,
-      label: from.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-      from,
-      to,
-    }
-  })
-}
+/**
+ * The twelve months back from this one, as the picker offers them.
+ *
+ * On the shop's clock, not the server's. This built the list from
+ * `new Date()` and `new Date(year, month, 1)` — both the server's — so for
+ * the first four hours of every Dubai day, and on the first of the month
+ * decisively, "this month" was the month before. This is the report the
+ * business pays commission from.
+ */
+const months = (count = 12) => recentBusinessMonths(count)
 
 /**
  * What each salesperson is owed this month.

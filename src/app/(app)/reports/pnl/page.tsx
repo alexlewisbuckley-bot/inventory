@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireCapability } from '@/server/auth/session'
 import { profitAndLoss, type PnlMonth } from '@/server/services/pnl-service'
+import { recentBusinessMonths } from '@/lib/dates'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
@@ -17,21 +18,13 @@ import { cn } from '@/lib/cn'
 export const metadata: Metadata = { title: 'Profit & loss' }
 export const dynamic = 'force-dynamic'
 
-/** The months the picker offers, newest first. */
-function months(count = 12): Array<{ key: string; label: string; short: string; from: Date; to: Date }> {
-  const now = new Date()
-  return Array.from({ length: count }, (_, index) => {
-    const from = new Date(now.getFullYear(), now.getMonth() - index, 1)
-    const to = new Date(now.getFullYear(), now.getMonth() - index + 1, 0, 23, 59, 59, 999)
-    return {
-      key: `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`,
-      label: from.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
-      short: from.toLocaleDateString('en-GB', { month: 'short' }),
-      from,
-      to,
-    }
-  })
-}
+/**
+ * The months the picker offers, newest first — on the shop's clock.
+ *
+ * Was built from the server's `new Date()`, so between midnight and 4am in
+ * Dubai it offered the previous month as the current one.
+ */
+const months = (count = 12) => recentBusinessMonths(count)
 
 /**
  * What the month actually came to.
