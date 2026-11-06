@@ -39,6 +39,14 @@ export interface ReviewSaleView {
   stockNo: number | null
   tier: string
   allocated: number
+  /**
+   * What this sale says it was for, in base.
+   *
+   * Beside `allocated`, which is its share of the invoice and is forced to
+   * sum to the invoice total — so the two agreeing is the whole point of
+   * reconciling, and only this side can show a gap.
+   */
+  ownBase: number
   changes: Array<{ field: XeroField; fromText: string; toText: string }>
   exceptions: Array<{ kind: string; detail: string }>
 }
@@ -87,6 +95,7 @@ const TIER_WORDS: Record<string, string> = {
   stock: 'stock number',
   fuzzy: 'customer, amount and date',
   probable: 'same customer, close amount, same week',
+  combination: 'this and the others add up to the invoice',
   manual: 'linked by hand',
 }
 
@@ -104,7 +113,16 @@ const KIND_WORDS: Record<string, string> = {
  * amber." So it is shown, it is marked, and it starts unticked — the one
  * tier where somebody has to agree before anything is written.
  */
-const isProbable = (tier: string) => tier === 'probable'
+/*
+ * Shown in amber and left unticked.
+ *
+ * A combination is arithmetic rather than identification — the names did
+ * not have to match for it to be found — so it is a suggestion like any
+ * other probable one, and a wrong combination is two rows to unpick rather
+ * than one. The sums are exact or it would not be offered; what is being
+ * asked is whether these are the right watches.
+ */
+const isProbable = (tier: string) => tier === 'probable' || tier === 'combination'
 
 /**
  * Why the closest invoice in the file was not this row's.
@@ -163,9 +181,28 @@ export function ReconcileReview({ review, canApply }: {
    * act rather than an oversight.
    */
   const probableKeys = useMemo(
-    () => (review?.invoices ?? []).flatMap((invoice) => invoice.sales
-      .filter((sale) => isProbable(sale.tier))
-      .flatMap((sale) => sale.changes.map((change) => keyFor(sale.saleId, change.field)))),
+    () => (review?.invoices ?? []).flatMap((invoice) => {
+      /*
+       * An invoice its linked sales do not add up to cannot be trusted
+       * about an amount.
+       *
+       * The allocation is forced to sum to the invoice, so one watch left
+       * on a two-watch invoice is allocated the whole of it — and the
+       * change that falls out of that reads "USD 5,300.00 → USD 11,500.00"
+       * against a sale that was correct. Ticked, Apply would overwrite a
+       * right figure with the total of an invoice covering a watch that is
+       * not on this screen. The shortfall is the tell, and while it stands
+       * no amount here is a proposal worth defaulting to yes.
+       */
+      const owed = invoice.totalBase
+        - invoice.sales.reduce((sum, sale) => sum + sale.ownBase, 0)
+      const adrift = invoice.sales.length > 0
+        && Math.abs(owed) > invoice.totalBase * 0.01
+
+      return invoice.sales.flatMap((sale) => sale.changes
+        .filter((change) => isProbable(sale.tier) || (adrift && change.field === 'saleAmount'))
+        .map((change) => keyFor(sale.saleId, change.field)))
+    }),
     [review],
   )
   const [off, setOff] = useState<Set<string>>(() => new Set(probableKeys))
@@ -175,6 +212,20 @@ export function ReconcileReview({ review, canApply }: {
   if (review && review.importId !== seenImport) {
     setSeenImport(review.importId)
     setOff(new Set(probableKeys))
+  }
+  /*
+   * And a suggestion that appears part-way through the same import.
+   *
+   * Unlinking one watch of a pair proposes changes that did not exist a
+   * moment ago, and a key nobody has seen is a key nobody has cleared —
+   * so it would arrive ticked, which is exactly backwards for a line this
+   * screen has just decided it is unsure about.
+   */
+  const [seenKeys, setSeenKeys] = useState<Set<string>>(() => new Set(probableKeys))
+  const fresh = probableKeys.filter((key) => !seenKeys.has(key))
+  if (fresh.length > 0) {
+    setSeenKeys(new Set([...seenKeys, ...fresh]))
+    setOff((current) => new Set([...current, ...fresh]))
   }
   const isOn = (saleId: string, field: string) => !off.has(keyFor(saleId, field))
   const toggle = (saleId: string, field: string) => {
@@ -467,7 +518,27 @@ export function ReconcileReview({ review, canApply }: {
           )}
 
           {/* ---------------- invoice by invoice ---------------- */}
-          {review.invoices.map((invoice) => (
+          {review.invoices.map((invoice) => {
+            /*
+             * What the linked sales say they were for, against what the
+             * invoice says. Both in base, because the parts can be in
+             * different currencies and the invoice total is the only thing
+             * they all have to agree with.
+             */
+            const shortfall = invoice.totalBase
+              - invoice.sales.reduce((sum, sale) => sum + sale.ownBase, 0)
+            /*
+             * Only where it is a watch rather than a rounding.
+             *
+             * Each sale was converted to base at its own rate on its own
+             * day and the invoice at the rate on its, so the two sides
+             * disagree by pennies as a matter of course -- a dirham on
+             * forty thousand, in testing. A missing watch is a third of
+             * the invoice. One per cent tells them apart, and is the same
+             * tolerance the matcher uses on an amount.
+             */
+            const missing = Math.abs(shortfall) > invoice.totalBase * 0.01
+            return (
             <Card key={invoice.id} className="overflow-hidden">
               <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line-subtle px-6 py-4">
                 <div className="min-w-0">
@@ -549,36 +620,6 @@ export function ReconcileReview({ review, canApply }: {
                           </Button>
                         </form>
                       ))}
-                      {review.unmatchedSales.length > 0 && (
-                        <form
-                          action={(data) => {
-                            data.set('importId', review.importId)
-                            data.set('invoiceId', invoice.id)
-                            run(linkSaleAction, data, 'Linked')
-                          }}
-                          className="flex items-center gap-2"
-                        >
-                          <select
-                            name="saleId"
-                            defaultValue=""
-                            className="rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-caption"
-                          >
-                            <option value="" disabled>Link from the book…</option>
-                            {review.unmatchedSales.map((sale) => (
-                              <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
-                                {KIND_WORDS[sale.kind] ?? sale.kind}
-                                {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
-                                {' · '}{money(sale.amount ?? sale.amountBase, sale.currency)}
-                                {sale.customerName ? ` · ${sale.customerName}` : ''}
-                                {' · '}{sale.saleDate}
-                              </option>
-                            ))}
-                          </select>
-                          <Button type="submit" size="sm" variant="secondary" disabled={pending}>
-                            <Link2 className="h-3.5 w-3.5" aria-hidden /> Link
-                          </Button>
-                        </form>
-                      )}
                     </div>
                   )}
                 </div>
@@ -671,6 +712,70 @@ export function ReconcileReview({ review, canApply }: {
                 </div>
               )}
 
+              {/*
+                Always, not only on an invoice with nothing against it.
+                Alex: "2 watch sales that make up 1 invoice with no way to
+                reconcile together." This was inside the empty branch, so
+                linking the first watch took the control away and there was
+                no way to add the second — the very case it was needed for.
+                The link layer has split an invoice across several sales
+                since it was built; the screen simply never let you ask.
+              */}
+              {!review.appliedAt && review.unmatchedSales.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-line-subtle px-6 py-3">
+                  {missing && invoice.sales.length > 0 && (
+                    /*
+                      What is still missing, in base, because the parts can
+                      be in different currencies and the invoice total is
+                      the only thing they have to agree with.
+
+                      Not read off the allocation: that is forced to sum to
+                      the invoice by construction, so with one watch linked
+                      it says the whole 11,500 and cannot show a gap. This
+                      is what the sales themselves say they were for.
+                    */
+                    <span className={cn(
+                      'text-caption tabular-nums',
+                      shortfall > 0 ? 'text-state-warning' : 'text-content-secondary',
+                    )}>
+                      {shortfall > 0
+                        ? `${money(shortfall, 'AED')} of this invoice is not accounted for yet`
+                        : `Linked sales come to ${money(-shortfall, 'AED')} more than the invoice`}
+                    </span>
+                  )}
+                  <form
+                    action={(data) => {
+                      data.set('importId', review.importId)
+                      data.set('invoiceId', invoice.id)
+                      run(linkSaleAction, data, 'Linked')
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <select
+                      name="saleId"
+                      defaultValue=""
+                      className="rounded-md border border-line-subtle bg-surface-raised px-2 py-1 text-caption"
+                    >
+                      <option value="" disabled>
+                        {invoice.sales.length > 0 ? 'Add another from the book…' : 'Link from the book…'}
+                      </option>
+                      {review.unmatchedSales.map((sale) => (
+                        <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
+                          {KIND_WORDS[sale.kind] ?? sale.kind}
+                          {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
+                          {' · '}{money(sale.amount ?? sale.amountBase, sale.currency)}
+                          {sale.customerName ? ` · ${sale.customerName}` : ''}
+                          {' · '}{sale.saleDate}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="submit" size="sm" variant="secondary" disabled={pending}>
+                      <Link2 className="h-3.5 w-3.5" aria-hidden /> Link
+                    </Button>
+                  </form>
+                </div>
+              )}
+
               {invoice.proposedAlias && !review.appliedAt && (
                 <form
                   action={(data) => {
@@ -687,7 +792,8 @@ export function ReconcileReview({ review, canApply }: {
                 </form>
               )}
             </Card>
-          ))}
+            )
+          })}
 
           {/* ---------------- sales Xero said nothing about ---------------- */}
           {review.unmatchedSales.length > 0 && (

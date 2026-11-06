@@ -521,6 +521,15 @@ export interface ReviewSale {
   stockNo: number | null
   tier: MatchTier
   allocated: number
+  /**
+   * What the sale itself says it was for, in base.
+   *
+   * Carried beside the allocation because the allocation cannot show a
+   * shortfall: reallocate forces the shares to sum to the invoice, so one
+   * watch linked to a two-watch invoice is allocated the whole of it. The
+   * gap only exists between the invoice and what the sales themselves say.
+   */
+  ownBase: number
   approved: boolean | null
   changes: ProposedChange[]
   exceptions: ReconcileException[]
@@ -615,6 +624,7 @@ export async function buildReview(importId: string): Promise<Review> {
         stockNo: sale.stockNo,
         tier: link.tier as MatchTier,
         allocated: link.allocated,
+        ownBase: sale.amountBase,
         approved: link.approved,
         changes: proposeChanges(toSnapshot(sale), asInvoice, link.allocated),
         exceptions: found,
@@ -631,13 +641,35 @@ export async function buildReview(importId: string): Promise<Review> {
       })
     }
 
-    // Worth offering as an alias only where the names differ and we have
-    // not already learned this one.
-    const only = reviewSales.length === 1 ? byId.get(reviewSales[0]!.saleId) : null
-    const proposedAlias = only?.customerName && row.contactName
-      && normaliseName(only.customerName) !== normaliseName(row.contactName)
+    /*
+     * Worth offering as an alias where the names differ and we have not
+     * already learned this one.
+     *
+     * Taken from every linked sale rather than from a single one. This
+     * asked for `reviewSales.length === 1`, which quietly excluded the
+     * case the alias list is most useful for: a combination is found by
+     * the arithmetic precisely because the contact name did not match
+     * anything -- "Simeon Andrew Zacharias" against our "Simon Zach" --
+     * so the one invoice that proves a name pair was the one that never
+     * offered to remember it.
+     *
+     * All the lines must agree on the customer, which a combination's do
+     * by construction. A hand-linked mixture of two different customers
+     * teaches nothing, and is left alone.
+     */
+    const names = new Set(
+      reviewSales
+        .map((entry) => byId.get(entry.saleId)?.customerName)
+        .filter((name): name is string => Boolean(name))
+        .map(normaliseName),
+    )
+    const customerName = reviewSales.length > 0 && names.size === 1
+      ? byId.get(reviewSales[0]!.saleId)?.customerName ?? null
+      : null
+    const proposedAlias = customerName && row.contactName
+      && normaliseName(customerName) !== normaliseName(row.contactName)
       && !knownAlias.has(normaliseName(row.contactName))
-      ? { systemName: only.customerName, xeroName: row.contactName }
+      ? { systemName: customerName, xeroName: row.contactName }
       : null
 
     return {
