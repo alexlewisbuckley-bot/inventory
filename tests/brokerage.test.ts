@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { feeInBase } from '@/server/services/brokerage-service'
-import { stockSalesOnly } from '@/server/services/sales-ledger'
+import { feeArms } from '@/server/services/sales-ledger'
 import type { SaleQuery } from '@/server/repositories/sale-repository'
 import { RATE_SCALE } from '@/lib/currency'
 
@@ -127,23 +127,76 @@ describe('recording one', () => {
     expect(page).toMatch(/Always offered, including on a first run/)
   })
 
+  /** A channel clause as the filter bar writes it. */
+  const channelIs = (operator: 'is' | 'isNot', ...values: string[]) =>
+    ({ f: [{ field: 'channel', operator, values }] } as unknown as SaleQuery)
+
   it('drops out of a view filtered to stock sales', () => {
     // A stock number or a supplier: a brokered deal has neither, so
     // showing one in that view answers a different question.
-    expect(stockSalesOnly({ q: '116655' } as SaleQuery)).toBe(true)
-    expect(stockSalesOnly({ f: ['brand:Rolex'] } as unknown as SaleQuery)).toBe(true)
-    expect(stockSalesOnly({ channel: ['RETAIL'] } as SaleQuery)).toBe(true)
+    expect(feeArms({ q: '116655' } as SaleQuery)).toEqual({ commissions: false, charges: false })
+    expect(feeArms({ channel: ['RETAIL'] } as SaleQuery)).toEqual({ commissions: false, charges: false })
   })
 
-  it('stays in a view filtered to the commission channel', () => {
-    // The one filter these rows are the point of. Suppressing them here
-    // returned an empty list for the only channel that matches them.
-    expect(stockSalesOnly({ channel: ['COMMISSION'] } as SaleQuery)).toBe(false)
-    expect(stockSalesOnly({ channel: ['TRADE', 'COMMISSION'] } as SaleQuery)).toBe(false)
+  it('drops out for a filter on any field but channel', () => {
+    /*
+     * The clause is applied in SQL against the sales table, and the fee
+     * ledgers are not in it — so a payment status that was never tested
+     * against these rows must not be allowed to appear to have been.
+     */
+    const payment = { f: [{ field: 'paymentStatus', operator: 'is', values: ['PENDING'] }] }
+    expect(feeArms(payment as unknown as SaleQuery)).toEqual({ commissions: false, charges: false })
+    // And a channel clause alongside another field is still that other
+    // question, so both go.
+    const mixed = { f: [
+      { field: 'channel', operator: 'is', values: ['COMMISSION'] },
+      { field: 'paymentStatus', operator: 'is', values: ['PENDING'] },
+    ] }
+    expect(feeArms(mixed as unknown as SaleQuery)).toEqual({ commissions: false, charges: false })
+  })
+
+  it('stays in a view filtered to its own channel, through the filter bar', () => {
+    /*
+     * The rule used to read `channel=` and make an exception for
+     * Commission. Then channel moved into the shared filter bar, which
+     * writes `f=` clauses, and the exception stopped applying to the only
+     * path the interface still uses — so picking Commission returned an
+     * empty list, silently, for the filter these rows are the point of.
+     */
+    expect(feeArms(channelIs('is', 'COMMISSION'))).toEqual({ commissions: true, charges: false })
+    expect(feeArms(channelIs('is', 'TRADE', 'COMMISSION'))).toEqual({ commissions: true, charges: false })
+  })
+
+  it('does the same for buy-back charges, which never worked at all', () => {
+    // Buy-back is a channel too and had an exception on neither path, so
+    // filtering to it returned an empty list from the day it existed. One
+    // boolean could not have fixed that without also putting commissions
+    // in the Buy-back view.
+    expect(feeArms(channelIs('is', 'BUYBACK'))).toEqual({ commissions: false, charges: true })
+    expect(feeArms(channelIs('is', 'COMMISSION', 'BUYBACK')))
+      .toEqual({ commissions: true, charges: true })
+  })
+
+  it('reads "is not" as the other side of the same question', () => {
+    // "Everything except the fees" is how the stock-only view is written,
+    // and it has to drop both rather than be treated as an unknown clause.
+    expect(feeArms(channelIs('isNot', 'COMMISSION', 'BUYBACK')))
+      .toEqual({ commissions: false, charges: false })
+    expect(feeArms(channelIs('isNot', 'RETAIL')))
+      .toEqual({ commissions: true, charges: true })
+  })
+
+  it('still honours the older channel= parameter', () => {
+    // Nothing writes it any more, but a bookmarked URL from before the
+    // filter bar took channel over still can.
+    expect(feeArms({ channel: ['COMMISSION'] } as SaleQuery))
+      .toEqual({ commissions: true, charges: false })
+    expect(feeArms({ channel: ['BUYBACK'] } as SaleQuery))
+      .toEqual({ commissions: false, charges: true })
   })
 
   it('shows both kinds when nothing is filtered', () => {
-    expect(stockSalesOnly({} as SaleQuery)).toBe(false)
+    expect(feeArms({} as SaleQuery)).toEqual({ commissions: true, charges: true })
   })
 
   it('carries the commission channel rather than defaulting to retail', () => {
@@ -212,9 +265,18 @@ describe('a commission counts as a sale, and as profit', () => {
     // Margin is profit over cost. A fee has no cost under it, so it has no
     // margin — undefined rather than a hundred per cent — and folding it
     // in would replace the figure with one that cannot be compared to last
-    // month's.
-    expect(page).toMatch(/value=\{formatPct\(summary\.avgMarginBps \/ 100\)\}/)
+    // month's. So the figure is still read off the stock-only average...
+    expect(page).toMatch(/formatPct\(summary\.avgMarginBps \/ 100\)/)
     expect(page).toMatch(/'on stock sold'/)
+    /*
+     * ...and now says nothing at all where the view holds no stock to have
+     * a margin on. The average is zero then, and zero prints as "0.0%",
+     * which reads as "we made nothing on these" rather than "this does not
+     * apply" — the same mistake this test exists to stop, one level up.
+     * Unreachable until the view bar put a Commission chip one click away.
+     */
+    expect(page).toMatch(/summary\.count > 0 \? formatPct\(summary\.avgMarginBps \/ 100\) : '—'/)
+    expect(page).toMatch(/nothing sold from stock in this view/)
   })
 
   it('leaves the header agreeing with the tiles', () => {
