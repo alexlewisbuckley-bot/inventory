@@ -62,6 +62,7 @@ export default async function ReconcilePage({ searchParams }: {
         stockNo: sale.stockNo,
         tier: sale.tier,
         allocated: sale.allocated,
+        ownBase: sale.ownBase,
         changes: sale.changes.map((change) => ({
           field: change.field, fromText: change.fromText, toText: change.toText,
         })),

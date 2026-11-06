@@ -859,6 +859,19 @@ export const brokerageAmendSchema = z.object({
   soldTo: z.string().trim().max(140).nullish().transform((v) => v || null),
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
   brokeredOn: z.coerce.date().optional(),
+  /*
+   * Who earned it.
+   *
+   * The one field here that moves money. The others correct paperwork; this
+   * decides whose commission run the fee lands in and whose retainer it
+   * counts against, which is why it is checked against the people list in
+   * the service and recorded from-and-to in the audit rather than as the
+   * bare word "changed".
+   *
+   * Nullable on purpose: "not recorded" is a real state a commission can be
+   * put back to, and the ledger already prints it.
+   */
+  soldById: z.string().trim().nullish().transform((v) => v || null),
   notes: z.string().trim().max(2000).nullish().transform((v) => v || null),
 }).partial()
 export type BrokerageAmendInput = z.infer<typeof brokerageAmendSchema>

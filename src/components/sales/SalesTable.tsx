@@ -319,6 +319,7 @@ export function SalesTable({
                     brokeredOn: new Date(sale.saleDate).toISOString().slice(0, 10),
                     notes: sale.notes ?? '',
                     fee: money(sale.amountGbp),
+                    soldById: sale.soldById ?? '',
                   })}
                   onOpenLoan={() => router.push('/buybacks')}
                   onCommission={() => setCommissionTarget({
@@ -397,6 +398,7 @@ export function SalesTable({
       <EditCommissionModal
         open={editCommissionTarget !== null}
         target={editCommissionTarget}
+        salesPeople={salesPeople}
         onClose={() => setEditCommissionTarget(null)}
         onDone={() => router.refresh()}
       />

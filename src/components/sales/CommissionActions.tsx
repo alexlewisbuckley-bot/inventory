@@ -133,7 +133,7 @@ export function VoidCommissionModal({ open, target, onClose, onDone }: {
  * invoice number. The fee is shown here as text, so it is clear what is being
  * corrected and what is not.
  */
-export function EditCommissionModal({ open, target, onClose, onDone }: {
+export function EditCommissionModal({ open, target, salesPeople = [], onClose, onDone }: {
   open: boolean
   target: {
     id: string
@@ -144,7 +144,10 @@ export function EditCommissionModal({ open, target, onClose, onDone }: {
     brokeredOn: string
     notes: string
     fee: string
+    /** Who earned it now, or '' where nobody was recorded. */
+    soldById: string
   } | null
+  salesPeople?: Array<{ id: string; name: string }>
   onClose: () => void
   onDone: () => void
 }) {
@@ -152,6 +155,7 @@ export function EditCommissionModal({ open, target, onClose, onDone }: {
   const [reference, setReference] = useState('')
   const [paymentStatus, setPaymentStatus] = useState('PAID')
   const [brokeredOn, setBrokeredOn] = useState('')
+  const [soldById, setSoldById] = useState('')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
   // Which commission the fields were last filled from, so re-opening on a
@@ -165,13 +169,14 @@ export function EditCommissionModal({ open, target, onClose, onDone }: {
     setReference(target.reference)
     setPaymentStatus(target.paymentStatus)
     setBrokeredOn(target.brokeredOn)
+    setSoldById(target.soldById)
     setNotes(target.notes)
   }
 
   async function submit() {
     setBusy(true)
     const result = await amendBrokerageAction(target!.id, {
-      reference, paymentStatus, brokeredOn, notes,
+      reference, paymentStatus, brokeredOn, soldById, notes,
     })
     setBusy(false)
     if (!result.ok) { toast.error('Could not update that commission', result.message); return }
@@ -206,6 +211,29 @@ export function EditCommissionModal({ open, target, onClose, onDone }: {
           label="Date"
           value={brokeredOn}
           onChange={(event) => setBrokeredOn(event.target.value)}
+        />
+        {/*
+          Who earned it. The one field on this form that moves money:
+          the commission run pays a share of what a person brought in, so
+          a fee against the wrong name — or against none, which is what a
+          quick entry leaves — is paid to the wrong person every month
+          until somebody reads the report closely. It was fixed at the
+          moment of recording and there was no way to put it right.
+
+          "Not recorded" stays on the list rather than being a value you
+          can only leave: taking a name off is as real a correction as
+          putting one on.
+        */}
+        <SelectField
+          name="soldById"
+          label="Sold by"
+          value={soldById}
+          onChange={(event) => setSoldById(event.target.value)}
+          hint="Whose commission run this fee counts towards, and whose retainer it goes against."
+          options={[
+            { value: '', label: 'Not recorded' },
+            ...salesPeople.map((person) => ({ value: person.id, label: person.name })),
+          ]}
         />
         <TextareaField
           name="notes"

@@ -161,7 +161,10 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
     notes: row.notes,
     purchaseAmount: null,
     purchaseCurrency: 'AED',
-    soldById: null,
+    // Carried, not nulled. The correction form needs the current name to
+    // open on, and a commission's salesperson is the one field on it that
+    // decides whose commission run the fee lands in.
+    soldById: row.soldById,
     soldByName: row.soldByName,
     // The fee is both what was invoiced and what was made: nothing was
     // bought, so there is no cost to take off it.

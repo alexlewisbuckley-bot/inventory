@@ -219,6 +219,41 @@ export async function amendBrokerage(
   if (input.brokeredOn !== undefined) patch.brokeredOn = input.brokeredOn
   if (input.notes !== undefined) patch.notes = blankIsNull(input.notes)
 
+  /*
+   * Who earned it, which had no way of being corrected at all.
+   *
+   * The salesperson was fixed at the moment of recording, and it is the one
+   * field on a commission that decides where money goes: the commission run
+   * pays 25% of what a person brought in, and a fee against the wrong name
+   * -- or against no name, which is what a quick entry leaves behind -- is
+   * paid to the wrong person or to nobody, quietly, every month until
+   * somebody reads the report closely.
+   *
+   * Checked against the people list rather than trusted, because an id that
+   * is not a salesperson would be accepted by the column (it is a nullable
+   * reference) and then silently drop the fee out of every per-person total
+   * that joins through it.
+   */
+  let from: string | null = null
+  let to: string | null = null
+  if (input.soldById !== undefined) {
+    const was = existing.soldById
+    if (input.soldById) {
+      const [person] = await db.select({ id: salesPeople.id, name: salesPeople.name })
+        .from(salesPeople)
+        .where(and(eq(salesPeople.id, input.soldById), isNull(salesPeople.deletedAt)))
+        .limit(1)
+      if (!person) throw new NotFoundError('Salesperson')
+      to = person.name
+    }
+    if (was) {
+      const [before] = await db.select({ name: salesPeople.name })
+        .from(salesPeople).where(eq(salesPeople.id, was)).limit(1)
+      from = before?.name ?? null
+    }
+    patch.soldById = input.soldById
+  }
+
   await db.update(brokerages).set(patch).where(eq(brokerages.id, id))
 
   // What changed, in the words of the ledger rather than the column names,
@@ -226,6 +261,7 @@ export async function amendBrokerage(
   const LABELS: Record<string, string> = {
     reference: 'invoice', soldFor: 'sold for', soldTo: 'sold to',
     paymentStatus: 'payment', brokeredOn: 'date', notes: 'notes',
+    soldById: 'salesperson',
   }
   const touched = Object.keys(patch)
     .filter((key) => key !== 'updatedAt')
@@ -239,6 +275,17 @@ export async function amendBrokerage(
       ? `${actor.name} corrected the ${touched.join(', ')} on a commission`
       : `${actor.name} saved a commission with nothing changed`,
     actorId: actor.id,
+    /*
+     * The salesperson by name, both sides of the change.
+     *
+     * "Corrected the salesperson" is the only entry here that is not enough
+     * on its own: every other field on this form is paperwork, and this one
+     * moved somebody's commission to somebody else. Who it was and who it
+     * is now is the whole of what anybody will want to know afterwards.
+     */
+    changes: input.soldById !== undefined
+      ? { soldBy: { from: from ?? 'nobody', to: to ?? 'nobody' } }
+      : undefined,
   })
 }
 
@@ -260,6 +307,8 @@ export interface BrokerageRow {
   paymentStatus: string
   /** Which Xero import last accounted for this fee, if any. */
   xeroSeenImportId: string | null
+  /** Who earned it, so the correction form can open on the right name. */
+  soldById: string | null
   soldByName: string | null
   notes: string | null
 }
@@ -285,6 +334,7 @@ export async function listBrokerages(from?: Date, to?: Date, limit = 100): Promi
       // So the ledger can say whether the last Xero import accounted for
       // this fee, rather than reporting every one of them as missing.
       xeroSeenImportId: brokerages.xeroSeenImportId,
+      soldById: brokerages.soldById,
       soldByName: salesPeople.name,
       notes: brokerages.notes,
       // The linked watch, so the row can carry a stock number and a link

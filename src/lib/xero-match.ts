@@ -34,7 +34,7 @@ import { searchableText, type XeroInvoice } from './xero-invoice'
  * the review screen disposes.
  */
 
-export type MatchTier = 'invoice' | 'stock' | 'fuzzy' | 'probable' | 'manual'
+export type MatchTier = 'invoice' | 'stock' | 'fuzzy' | 'probable' | 'combination' | 'manual'
 
 /**
  * What kind of thing in our book an invoice might be for.
@@ -220,6 +220,74 @@ const DAY = 86_400_000
 const PROBABLE_AMOUNT_TOLERANCE = 0.02
 const PROBABLE_DAY_TOLERANCE = 7
 
+/**
+ * One invoice, several watches.
+ *
+ * Alex, on an invoice for 11,500 against two sales of 6,200 and 5,300:
+ * "Here's an example of 2 watch sales that make up 1 invoice with no way to
+ * reconcile together."
+ *
+ * Every tier above compares one sale to the whole invoice total, so a
+ * customer who bought two watches on one invoice matched nothing at all:
+ * 6,200 against 11,500 is a 46% drift and 5,300 is worse. The screen then
+ * said "nothing in the system matches this invoice", which was wrong twice
+ * over — both of them were in the system, and together they were exact.
+ *
+ * What makes a combination believable is not the contact name, which here
+ * reads "Simeon Andrew Zacharias" against our "Simon Zach" and would fail
+ * any sensible threshold. It is that the parts are all the same customer in
+ * our own book, bought in the same few days, and add up to the invoice. The
+ * name is then a question for the alias list rather than a reason to reject.
+ *
+ * Bounded deliberately. Only sales, because this is watches on one invoice
+ * and mixing a fee into the arithmetic widens the search for a case nobody
+ * has. Two to four lines, from the largest dozen in a customer's group,
+ * which is a few hundred sums rather than a power set.
+ */
+const COMBINATION_MAX_LINES = 4
+const COMBINATION_POOL = 12
+
+/**
+ * The nearest subset of these sales to `wanted`, or nothing.
+ *
+ * Sorted ascending so the walk can stop a branch the moment it overshoots
+ * rather than testing the rest of it. Exact beats close, and among equals
+ * the fewest lines wins: two watches making an invoice is a likelier
+ * reading of it than four that happen to come to the same figure.
+ */
+function bestSubset(
+  items: readonly SaleCandidate[],
+  wanted: number,
+  tolerance: number,
+): { items: SaleCandidate[]; drift: number } | null {
+  const sorted = [...items].sort((a, b) => a.amountBase - b.amountBase)
+  const ceiling = wanted * (1 + tolerance)
+  let best: { items: SaleCandidate[]; drift: number } | null = null
+
+  const walk = (from: number, chosen: SaleCandidate[], sum: number) => {
+    if (chosen.length >= 2) {
+      const drift = Math.abs(sum - wanted) / wanted
+      if (drift <= tolerance
+        && (!best || drift < best.drift
+          || (drift === best.drift && chosen.length < best.items.length))) {
+        best = { items: [...chosen], drift }
+      }
+    }
+    if (chosen.length >= COMBINATION_MAX_LINES) return
+    for (let i = from; i < sorted.length; i += 1) {
+      // Ascending, so once one line takes the running total past the
+      // invoice every line after it does too.
+      if (sum + sorted[i]!.amountBase > ceiling) break
+      chosen.push(sorted[i]!)
+      walk(i + 1, chosen, sum + sorted[i]!.amountBase)
+      chosen.pop()
+    }
+  }
+
+  walk(0, [], 0)
+  return best
+}
+
 export function matchInvoices(
   invoices: XeroInvoice[],
   sales: SaleCandidate[],
@@ -341,6 +409,74 @@ export function matchInvoices(
     if (found.has(at)) continue
     takeBest(at, invoice, 'probable',
       bestFor(invoice, PROBABLE_AMOUNT_TOLERANCE, PROBABLE_DAY_TOLERANCE))
+  }
+
+  /*
+   * --- 5. several of one customer's sales, adding up to the invoice -----
+   *
+   * Last, so a single sale that answers the whole invoice is always
+   * preferred to a combination that also would. Only invoices nothing else
+   * could account for get here.
+   */
+  for (const [at, invoice] of invoices.entries()) {
+    if (found.has(at) || !invoice.invoiceDate) continue
+    const wanted = toBase(invoice.total, invoice.currency)
+    if (wanted <= 0) continue
+
+    // One customer's sales, in the days around the invoice. Grouped by the
+    // name on our side: an invoice is to one contact, and two unrelated
+    // sales that happen to sum to the total are a coincidence, not a
+    // reading of it.
+    const groups = new Map<string, SaleCandidate[]>()
+    for (const sale of sales) {
+      if (claimed.has(sale.id) || sale.kind !== 'SALE' || !sale.customerName) continue
+      const days = Math.abs(sale.saleDate.getTime() - invoice.invoiceDate.getTime()) / DAY
+      if (days > PROBABLE_DAY_TOLERANCE) continue
+      const key = normaliseName(sale.customerName)
+      groups.set(key, [...(groups.get(key) ?? []), sale])
+    }
+
+    let picked: { items: SaleCandidate[]; drift: number; name: number } | null = null
+    for (const group of groups.values()) {
+      if (group.length < 2) continue
+      /*
+       * One of theirs that answers the whole invoice on its own makes the
+       * question ambiguous, and one watch on one invoice is the likelier
+       * reading of the two. Tiers 3 and 4 would already have taken it if
+       * the contact name allowed, and where it did not, saying nothing is
+       * better than guessing across two rows — a wrong combination is two
+       * sales to unpick rather than one.
+       */
+      if (group.some((sale) => Math.abs(sale.amountBase - wanted) / wanted <= AMOUNT_TOLERANCE)) continue
+      // The largest dozen, because an invoice is made of the big lines and
+      // a long tail of small ones only widens the arithmetic.
+      const pool = [...group].sort((a, b) => b.amountBase - a.amountBase).slice(0, COMBINATION_POOL)
+      const subset = bestSubset(pool, wanted, AMOUNT_TOLERANCE)
+      if (!subset) continue
+      const alias = aliasFor.get(normaliseName(invoice.contactName ?? ''))
+      const name = alias && alias === normaliseName(group[0]!.customerName!)
+        ? 1
+        : nameSimilarity(group[0]!.customerName!, invoice.contactName ?? '')
+      // Closest sum first; a name that looks like the contact breaks a tie.
+      if (!picked || subset.drift < picked.drift
+        || (subset.drift === picked.drift && name > picked.name)) {
+        picked = { items: subset.items, drift: subset.drift, name }
+      }
+    }
+
+    if (!picked) continue
+    for (const sale of picked.items) add(at, sale.id, 'combination')
+    /*
+     * Worth proposing as an alias even on a poor name score — more so,
+     * in fact. The arithmetic is what identified this invoice, and the
+     * reason it had to is that the two names do not look alike. That is
+     * exactly the pair the alias list exists to remember.
+     */
+    const customerName = picked.items[0]!.customerName!
+    if (invoice.contactName
+      && normaliseName(customerName) !== normaliseName(invoice.contactName)) {
+      aliasProposals.set(at, { systemName: customerName, xeroName: invoice.contactName })
+    }
   }
 
   const matched: InvoiceMatch[] = invoices
