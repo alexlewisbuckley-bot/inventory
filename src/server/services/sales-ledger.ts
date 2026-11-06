@@ -1,4 +1,5 @@
 import { findSales, type SaleListItem, type SaleQuery } from '../repositories/sale-repository'
+import type { FilterClause } from '@/lib/filters'
 import { listBrokerages } from './brokerage-service'
 import { listBuybackCharges } from './buyback-service'
 
@@ -44,37 +45,98 @@ export interface Ledger {
   truncated: boolean
 }
 
+/** Which of the two fee ledgers a query is asking for. */
+export interface FeeArms {
+  /** Fees earned selling somebody else's watch. */
+  commissions: boolean
+  /** Interest and extension fees on money lent. */
+  charges: boolean
+}
+
 /**
- * Whether a filtered view is asking about our own stock only.
+ * Does this clause let a row of that channel through?
  *
- * A text search or a facet is a question about stock — a brokered deal has
- * no stock number and no supplier to match — so a commission among the
- * results would be answering a different question.
+ * `is` and `isNot` are the only operators an enum field offers, so anything
+ * else is a clause that cannot be reasoned about and the row stays out.
+ */
+function admits(clause: FilterClause, channel: string): boolean {
+  if (clause.operator === 'is') return clause.values.includes(channel)
+  if (clause.operator === 'isNot') return !clause.values.includes(channel)
+  return false
+}
+
+/**
+ * Which fee rows belong in a filtered view.
  *
- * Channel used to count the same way, and no longer does: Commission is a
- * channel now, and the one filter that names it is precisely a request for
- * these rows. Suppressing them there returned an empty list for the filter
- * they are the whole point of. Any other channel still excludes them.
+ * This was one boolean, `stockSalesOnly`, and it had gone wrong twice for
+ * the same reason: it decided for both ledgers at once and it read the
+ * wrong parameter.
+ *
+ * The wrong parameter first. The rule was written against `channel=`, and
+ * made an exception for Commission so that filtering to Commission did not
+ * return an empty list — "the filter they are the whole point of". Then
+ * channel moved into the shared filter bar, which writes `f=` clauses, and
+ * the exception stopped applying to the only path the interface still uses.
+ * Picking Commission in the filter bar has returned nothing ever since,
+ * silently, because every `f=` clause was read as a question about stock.
+ *
+ * And both ledgers at once. Buy-back is a channel too, and it never had an
+ * exception on either path — so filtering to Buy-back returned an empty
+ * list from the day the channel existed. One boolean could not have fixed
+ * that without also putting commissions in the Buy-back view.
+ *
+ * So: a channel clause is answered per ledger, from the clause itself. Any
+ * other field drops both, which is the original rule and still right — a
+ * stock number or a payment status is a question these rows are not in a
+ * position to answer, because the clause is applied in SQL against the
+ * sales table and the fee ledgers are not in it. Including them would show
+ * rows the filter never tested.
  *
  * Exported so the rule can be tested as a rule, rather than pinned as a
  * line of source.
  */
-export function stockSalesOnly(query: SaleQuery): boolean {
-  if (query.q || query.f?.length) return true
+export function feeArms(query: SaleQuery): FeeArms {
+  const neither: FeeArms = { commissions: false, charges: false }
+
+  // A text search is a question about stock: a fee has no stock number and
+  // no supplier for the needle to match.
+  if (query.q) return neither
+
+  const clauses = query.f ?? []
+  const channelClauses = clauses.filter((clause) => clause.field === 'channel')
+  if (clauses.length > channelClauses.length) return neither
+
+  if (channelClauses.length > 0) {
+    return {
+      commissions: channelClauses.every((clause) => admits(clause, 'COMMISSION')),
+      charges: channelClauses.every((clause) => admits(clause, 'BUYBACK')),
+    }
+  }
+
+  // The older `channel=` parameter. Nothing in the interface writes it any
+  // more, but a saved view or a bookmarked URL from before the filter bar
+  // took channel over still can.
   const channels = query.channel ?? []
-  return channels.length > 0 && !channels.includes('COMMISSION')
+  if (channels.length > 0) {
+    return {
+      commissions: channels.includes('COMMISSION'),
+      charges: channels.includes('BUYBACK'),
+    }
+  }
+
+  return { commissions: true, charges: true }
 }
 
 export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
   const page = Math.max(1, query.page ?? 1)
   const perPage = Math.min(200, query.perPage ?? 25)
 
-  const stockOnly = stockSalesOnly(query)
+  const arms = feeArms(query)
 
   const [sales, brokered, charges] = await Promise.all([
     findSales({ ...query, page: 1, perPage: MERGE_CAP }),
-    stockOnly ? Promise.resolve([]) : listBrokerages(query.from, query.to, MERGE_CAP),
-    stockOnly ? Promise.resolve([]) : listBuybackCharges(query.from, query.to, MERGE_CAP),
+    arms.commissions ? listBrokerages(query.from, query.to, MERGE_CAP) : Promise.resolve([]),
+    arms.charges ? listBuybackCharges(query.from, query.to, MERGE_CAP) : Promise.resolve([]),
   ])
 
   const commissions: LedgerRow[] = brokered.map((row) => ({

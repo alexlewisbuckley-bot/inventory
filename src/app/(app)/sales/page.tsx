@@ -5,7 +5,9 @@ import { summariseSales, type SaleQuery } from '@/server/repositories/sale-repos
 import { PageHeader } from '@/components/layout/PageHeader'
 import { SalesTable } from '@/components/sales/SalesTable'
 import { SalesFilterBar } from '@/components/sales/SalesFilterBar'
-import { FilterBar } from '@/components/ui/DataList'
+import { SALES_VIEWS } from '@/components/sales/views'
+import { FilterBar, ViewBar } from '@/components/ui/DataList'
+import { listViews } from '@/server/services/views-service'
 import { parseFilters, SALE_FIELDS, toSearchParams } from '@/lib/filters'
 import { Card, StatCard, LinkButton, EmptyState } from '@/components/ui'
 import { formatPct } from '@/lib/money'
@@ -19,7 +21,7 @@ import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { brokerageTotals, sellableStock } from '@/server/services/brokerage-service'
 import { buybackTotals } from '@/server/services/buyback-service'
-import { findSalesLedger } from '@/server/services/sales-ledger'
+import { feeArms, findSalesLedger } from '@/server/services/sales-ledger'
 import { RecordCommission } from '@/components/sales/RecordCommission'
 
 export const metadata: Metadata = { title: 'Sales' }
@@ -56,7 +58,21 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
   const brokerFrom = query.from ? new Date(query.from) : undefined
   const brokerTo = query.to ? new Date(query.to) : undefined
 
-  const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock, lastImport] = await Promise.all([
+  /*
+   * The cards answer for the same rows the table does.
+   *
+   * These two totals only ever took dates, so they counted every fee in the
+   * period whatever else was filtered. That was invisible while no filter
+   * could separate the kinds; now that the bar has a chip for each, the
+   * Commission view headlined "2 brokered · 1 buy-back" over a list of two
+   * commissions, and the revenue card added a buy-back the list did not
+   * contain. A total that disagrees with the rows under it is worse than no
+   * total: it is the number somebody writes down.
+   */
+  const arms = feeArms(query)
+  const noFees = { paid: 0, pending: 0, total: 0, count: 0 }
+
+  const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock, lastImport, savedViews] = await Promise.all([
     // One ledger: watches we sold, and fees we earned selling other
     // people's. Kept in the same list because that is how a month's
     // earnings are read.
@@ -65,17 +81,20 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     getRateTable(),
     getPreferencesFor(user.id),
     listSalesPeople(),
-    brokerageTotals(brokerFrom, brokerTo),
+    arms.commissions ? brokerageTotals(brokerFrom, brokerTo) : Promise.resolve(noFees),
     // Interest and extension fees on money lent. Earnings with no cost
     // under them, like a brokered fee, and in the same list for the same
     // reason: one place to read what the month made.
-    buybackTotals(brokerFrom, brokerTo),
+    arms.charges ? buybackTotals(brokerFrom, brokerTo) : Promise.resolve(noFees),
     // Stock still on the book, for a fee earned on one of ours. Only what
     // we still hold: a watch already gone cannot be sold again.
     can(user.role, 'sale:create') ? sellableStock() : Promise.resolve([]),
     // The last Xero import, so a sale inside the period it covered that
     // the accounts never saw can say so on its own row.
     lastImportWindow(),
+    // Views somebody made over this ledger, their own and anything a
+    // colleague shared.
+    listViews('sale', user.id),
   ])
 
   const currency = isCurrency(preferences?.displayCurrency) ? preferences.displayCurrency : DEFAULT_DISPLAY_CURRENCY
@@ -178,7 +197,17 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         {showCost && (
         <StatCard
           label="Weighted margin"
-          value={formatPct(summary.avgMarginBps / 100)}
+          /*
+           * A dash where there is no stock in the view to have a margin on.
+           *
+           * The average is zero when nothing was sold from stock, and zero
+           * prints as "0.0%" — which reads as "we made nothing on these"
+           * rather than "this does not apply". It was unreachable until the
+           * bar put a Commission chip one click away; now it is the first
+           * thing on screen. The same rule the table already follows for a
+           * fee's own margin: undefined is a dash, not a number to average.
+           */
+          value={summary.count > 0 ? formatPct(summary.avgMarginBps / 100) : '—'}
           /*
            * The one figure that stays stock-only, and says so.
            *
@@ -188,7 +217,8 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
            * replace it with one that cannot be compared to last month's.
            */
           caption={[
-            brokerTotals.count > 0 ? 'on stock sold' : null,
+            summary.count === 0 ? 'nothing sold from stock in this view' : null,
+            summary.count > 0 && brokerTotals.count > 0 ? 'on stock sold' : null,
             summary.bestMarginBps !== null
               ? `best ${formatPct(summary.bestMarginBps / 100)} · worst ${formatPct(summary.worstMarginBps! / 100)}`
               : null,
@@ -197,6 +227,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         />
         )}
       </section>
+
+      {/* Above the date range and the filter bar, as on the stock list: a
+          view is which list you are looking at, and the two bars below are
+          how you narrow the one you chose. */}
+      <ViewBar object="sale" builtIn={SALES_VIEWS} saved={savedViews} />
 
       {/* The date range keeps its own control — a from/to pair is the one
           filter a chip cannot express as well as two date inputs, and the
