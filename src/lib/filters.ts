@@ -242,6 +242,18 @@ export const CONTACT_FIELDS: readonly FieldSpec[] = [
 ]
 
 export const SALE_FIELDS: readonly FieldSpec[] = [
+  /*
+   * Who sold it.
+   *
+   * The repository could already filter on this column — it is in the
+   * filterable map — and nothing could ask for it, because the field was
+   * not on this list. So the one question the sales-by-person report
+   * invites you to ask of the ledger was the one question the ledger could
+   * not answer, and the report linked to a text search for the person's
+   * name instead: every sale ever whose invoice, buyer or model happened to
+   * contain "Alex".
+   */
+  { key: 'soldById', label: 'Sold by', type: 'reference', optionSource: 'salesPeople' },
   { key: 'channel', label: 'Channel', type: 'enum', options: enumOptions(SALE_CHANNELS, SALE_CHANNEL_LABELS) },
   { key: 'paymentStatus', label: 'Payment', type: 'enum', options: enumOptions(PAYMENT_STATUSES, PAYMENT_STATUS_LABELS) },
   { key: 'deliveryStatus', label: 'Delivery', type: 'enum', options: enumOptions(DELIVERY_STATUSES, DELIVERY_STATUS_LABELS) },

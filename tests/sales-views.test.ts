@@ -117,8 +117,8 @@ describe('the cards answer for the rows under them', () => {
      * headlined "2 brokered · 1 buy-back" over a list of two commissions,
      * and the revenue card added a buy-back the list did not contain.
      */
-    expect(page).toMatch(/arms\.commissions \? brokerageTotals\(brokerFrom, brokerTo\) : Promise\.resolve\(noFees\)/)
-    expect(page).toMatch(/arms\.charges \? buybackTotals\(brokerFrom, brokerTo\) : Promise\.resolve\(noFees\)/)
+    expect(page).toMatch(/arms\.commissions \? brokerageTotals\(brokerFrom, brokerTo, person\) : Promise\.resolve\(noFees\)/)
+    expect(page).toMatch(/arms\.charges \? buybackTotals\(brokerFrom, brokerTo, person\) : Promise\.resolve\(noFees\)/)
     expect(page).toMatch(/const arms = feeArms\(query\)/)
   })
 

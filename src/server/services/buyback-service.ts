@@ -625,13 +625,15 @@ export async function getBuyback(id: string): Promise<{
  * either would make a month look like a windfall or a disaster depending
  * on which way the money happened to move that week.
  */
-export async function buybackTotals(from?: Date, to?: Date): Promise<{
+export async function buybackTotals(from?: Date, to?: Date, soldById?: string): Promise<{
   paid: number
   pending: number
   total: number
   count: number
 }> {
   const window = [liveCharge()]
+  // See brokerageTotals: the cards answer for the rows under them.
+  if (soldById) window.push(eq(buybacks.soldById, soldById))
   if (from) window.push(gte(buybackCharges.dueOn, from))
   if (to) window.push(lte(buybackCharges.dueOn, to))
 
@@ -642,6 +644,7 @@ export async function buybackTotals(from?: Date, to?: Date): Promise<{
       count: sql<number>`count(*)`,
     })
     .from(buybackCharges)
+    .innerJoin(buybacks, eq(buybacks.id, buybackCharges.buybackId))
     .where(and(...window))
 
   const paid = Number(row?.paid ?? 0)
@@ -694,7 +697,7 @@ export async function buybackByPerson(from?: Date, to?: Date): Promise<
  * that is how the month's earnings are thought about — asking somebody to
  * look in three places and add up is how a figure gets missed.
  */
-export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000): Promise<Array<{
+export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000, soldById?: string): Promise<Array<{
   id: string
   buybackId: string
   kind: BuybackChargeKind
@@ -716,6 +719,9 @@ export async function listBuybackCharges(from?: Date, to?: Date, cap = 2000): Pr
   const window = [liveCharge(), isNull(buybacks.deletedAt)]
   if (from) window.push(gte(buybackCharges.dueOn, from))
   if (to) window.push(lte(buybackCharges.dueOn, to))
+  // One person's charges, so the ledger can answer the sales-by-person
+  // report's own question. See listBrokerages for the same addition.
+  if (soldById) window.push(eq(buybacks.soldById, soldById))
 
   const rows = await db
     .select({

@@ -120,6 +120,21 @@ function windowFor(key: PeriodKey): {
   }
 }
 
+/**
+ * A link to the ledger showing exactly what a figure was counted from.
+ *
+ * The dates go as plain days because that is what the ledger's own date
+ * boxes take, so arriving by this link and typing the same range by hand
+ * land on the same list.
+ */
+function salesLink(personId: string, from: Date | undefined, to: Date | undefined): string {
+  const params = new URLSearchParams()
+  params.set('f', `soldById:is:${personId}`)
+  if (from) params.set('from', from.toISOString().slice(0, 10))
+  if (to) params.set('to', to.toISOString().slice(0, 10))
+  return `/sales?${params.toString()}`
+}
+
 /** How a figure moved, as a sentence rather than a bare arrow. */
 function movement(now: number, before: number): { text: string; tone: 'up' | 'down' | 'flat' } {
   if (before === 0) return now === 0 ? { text: 'nothing either period', tone: 'flat' } : { text: 'none in the period before', tone: 'up' }
@@ -334,7 +349,23 @@ export default async function SalesByPersonPage({ searchParams }: {
       // The sales nobody is recorded against are not a seventh person, and a
       // slot colour would say they were.
       neutral: !person.id,
-      href: person.id ? `/sales?q=${encodeURIComponent(person.name)}` : undefined,
+      /*
+       * The deals this bar is made of, on the ledger.
+       *
+       * Was `?q=<their name>`, the ledger's free-text search. That search
+       * does cover the salesperson's name, which is why this looked right
+       * and went unnoticed -- but it covers the invoice number, the buyer
+       * and the model too, so anyone else's sale to a customer called Alex
+       * came back as well. Worse, it carried no period at all, so it
+       * answered with every month there has ever been; and a text search
+       * drops both fee ledgers, so it showed a fraction of the figure it
+       * was attached to. Alex: "when you click into the sales it doesn't
+       * show the correct sales for this month it shows a random list."
+       *
+       * Now: this person, this period, the same bounds the figure above was
+       * counted over.
+       */
+      href: person.id ? salesLink(person.id, from, to) : undefined,
     }))
 
   return (
