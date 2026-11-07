@@ -314,10 +314,22 @@ export interface BrokerageRow {
 }
 
 /** The commissions in a window, newest first. */
-export async function listBrokerages(from?: Date, to?: Date, limit = 100): Promise<BrokerageRow[]> {
+export async function listBrokerages(
+  from?: Date,
+  to?: Date,
+  limit = 100,
+  soldById?: string,
+): Promise<BrokerageRow[]> {
   const window = [live()]
   if (from) window.push(gte(brokerages.brokeredOn, from))
   if (to) window.push(lte(brokerages.brokeredOn, to))
+  /*
+   * Narrowed to one person, so the ledger can answer the question the
+   * sales-by-person report asks of it. Without this, clicking a person
+   * showed their watches and silently dropped every fee they earned --
+   * which is most of what that report credits them with.
+   */
+  if (soldById) window.push(eq(brokerages.soldById, soldById))
 
   return db
     .select({
@@ -360,7 +372,7 @@ export async function listBrokerages(from?: Date, to?: Date, limit = 100): Promi
  * them apart: paying somebody on an invoice the client has not settled is a
  * decision for whoever signs the cheque, not for a sum.
  */
-export async function brokerageTotals(from?: Date, to?: Date): Promise<{
+export async function brokerageTotals(from?: Date, to?: Date, soldById?: string): Promise<{
   paid: number
   pending: number
   total: number
@@ -372,6 +384,9 @@ export async function brokerageTotals(from?: Date, to?: Date): Promise<{
   // range", which is a page that does not load rather than a total that is
   // wrong.
   const window = [live()]
+  // Narrowed to one person where the view is, so the cards above the table
+  // count the same rows the table does.
+  if (soldById) window.push(eq(brokerages.soldById, soldById))
   if (from) window.push(gte(brokerages.brokeredOn, from))
   if (to) window.push(lte(brokerages.brokeredOn, to))
 

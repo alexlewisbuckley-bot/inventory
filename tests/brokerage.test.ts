@@ -250,11 +250,20 @@ describe('a commission counts as a sale, and as profit', () => {
   const page = read('src/app/(app)/sales/page.tsx')
 
   it('is in the sales count', () => {
-    expect(page).toMatch(/value=\{summary\.count \+ brokerTotals\.count \+ interest\.count\}/)
+    // Both the tile and the header read one expression now, so they cannot
+    // drift apart again; its definition is pinned in sales-by-person-link.
+    expect(page).toMatch(/value=\{ledgerCount\}/)
+    expect(page).toMatch(/const ledgerCount = summary\.count \+ brokerTotals\.count \+ interest\.count/)
   })
 
   it('is in revenue', () => {
-    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total\)/)
+    /*
+     * Interest on a buy-back is money the business took in, and it has a
+     * row in the list under this card. Revenue counted the commissions and
+     * stopped, so a view holding a charge showed a figure its own rows
+     * added up past — the count said four, the revenue covered three.
+     */
+    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total \+ interest\.total\)/)
   })
 
   it('is in realised profit', () => {
@@ -282,8 +291,8 @@ describe('a commission counts as a sale, and as profit', () => {
   it('leaves the header agreeing with the tiles', () => {
     // A header counting them apart from the rows they sit beside would be
     // describing a different table.
-    expect(page).toMatch(/\$\{summary\.count \+ brokerTotals\.count\} \$\{summary\.count \+ brokerTotals\.count === 1 \? 'sale' : 'sales'\}/)
-    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total\)\} revenue/)
+    expect(page).toMatch(/\$\{ledgerCount\} \$\{ledgerCount === 1 \? 'sale' : 'sales'\}/)
+    expect(page).toMatch(/money\(summary\.revenueGbp \+ brokerTotals\.total \+ interest\.total\)\} revenue/)
   })
 })
 

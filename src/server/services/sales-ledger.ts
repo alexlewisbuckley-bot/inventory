@@ -95,6 +95,19 @@ function admits(clause: FilterClause, channel: string): boolean {
  * Exported so the rule can be tested as a rule, rather than pinned as a
  * line of source.
  */
+/**
+ * The one salesperson a view is narrowed to, if it is narrowed to one.
+ *
+ * Only `is` with a single value. "Is not" and a list are perfectly good
+ * questions of the sales table and meaningless to hand to a fee query,
+ * which can take one id or none.
+ */
+export function soldByClause(query: SaleQuery): string | undefined {
+  const clause = (query.f ?? []).find((entry) => entry.field === 'soldById')
+  if (!clause || clause.operator !== 'is' || clause.values.length !== 1) return undefined
+  return clause.values[0]
+}
+
 export function feeArms(query: SaleQuery): FeeArms {
   const neither: FeeArms = { commissions: false, charges: false }
 
@@ -103,8 +116,20 @@ export function feeArms(query: SaleQuery): FeeArms {
   if (query.q) return neither
 
   const clauses = query.f ?? []
+  /*
+   * Two fields the fee ledgers can answer for themselves.
+   *
+   * Everything else drops them, because the clause is applied in SQL
+   * against the sales table and they are not in it. Channel is answered
+   * from the clause; who sold it is answered by passing the person down to
+   * the fee queries, which is what makes the sales-by-person report's own
+   * link show the deals it counted rather than a third of them.
+   */
+  const answerable = clauses.filter(
+    (clause) => clause.field === 'channel' || clause.field === 'soldById',
+  )
+  if (clauses.length > answerable.length) return neither
   const channelClauses = clauses.filter((clause) => clause.field === 'channel')
-  if (clauses.length > channelClauses.length) return neither
 
   if (channelClauses.length > 0) {
     return {
@@ -132,11 +157,20 @@ export async function findSalesLedger(query: SaleQuery): Promise<Ledger> {
   const perPage = Math.min(200, query.perPage ?? 25)
 
   const arms = feeArms(query)
-
+  /*
+   * One person's fees, where the view asked for one person.
+   *
+   * `is` with a single value is the whole of what the filter bar writes for
+   * a reference field, and the only form a fee ledger can honour -- "is not
+   * Alex" over three people is a question about the sales table's rows, not
+   * a person to pass down. Anything else drops the arms, as every other
+   * field does.
+   */
+  const person = soldByClause(query)
   const [sales, brokered, charges] = await Promise.all([
     findSales({ ...query, page: 1, perPage: MERGE_CAP }),
-    arms.commissions ? listBrokerages(query.from, query.to, MERGE_CAP) : Promise.resolve([]),
-    arms.charges ? listBuybackCharges(query.from, query.to, MERGE_CAP) : Promise.resolve([]),
+    arms.commissions ? listBrokerages(query.from, query.to, MERGE_CAP, person) : Promise.resolve([]),
+    arms.charges ? listBuybackCharges(query.from, query.to, MERGE_CAP, person) : Promise.resolve([]),
   ])
 
   const commissions: LedgerRow[] = brokered.map((row) => ({

@@ -21,13 +21,22 @@ import { redactRows } from '@/server/redact'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { brokerageTotals, sellableStock } from '@/server/services/brokerage-service'
 import { buybackTotals } from '@/server/services/buyback-service'
-import { feeArms, findSalesLedger } from '@/server/services/sales-ledger'
+import { feeArms, findSalesLedger, soldByClause } from '@/server/services/sales-ledger'
 import { RecordCommission } from '@/components/sales/RecordCommission'
 
 export const metadata: Metadata = { title: 'Sales' }
 export const dynamic = 'force-dynamic'
 
 type SearchParams = Record<string, string | string[] | undefined>
+
+/** A plain day from the date box, taken to its last instant. */
+function endOfDay(value: string): Date {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return parsed
+  // Only for a bare day. A full timestamp was asked for exactly.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return parsed
+  return new Date(parsed.getTime() + 86_399_999)
+}
 
 function parseQuery(searchParams: SearchParams): SaleQuery {
   const channels = searchParams.channel
@@ -38,7 +47,15 @@ function parseQuery(searchParams: SearchParams): SaleQuery {
     q: typeof searchParams.q === 'string' ? searchParams.q : undefined,
     channel: channels,
     from: searchParams.from ? new Date(String(searchParams.from)) : undefined,
-    to: searchParams.to ? new Date(String(searchParams.to)) : undefined,
+    /*
+     * To the end of that day, not its midnight.
+     *
+     * "2026-11-30" parsed plainly is 00:00 on the 30th, so a range ending
+     * there excluded almost all of its last day. A sale date is stored at
+     * midnight and survived it; a commission or a buy-back charge carries a
+     * time and did not, so the last day of any range quietly lost its fees.
+     */
+    to: searchParams.to ? endOfDay(String(searchParams.to)) : undefined,
     sort: (searchParams.sort as SaleQuery['sort']) ?? 'saleDate',
     dir: (searchParams.dir as 'asc' | 'desc') ?? 'desc',
     page: Number(searchParams.page ?? 1),
@@ -71,6 +88,16 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
    */
   const arms = feeArms(query)
   const noFees = { paid: 0, pending: 0, total: 0, count: 0 }
+  /*
+   * And narrowed to the same person the table is.
+   *
+   * The arms decide *whether* a fee ledger is counted; this decides whose.
+   * Without it, filtering to one salesperson left the cards counting
+   * everybody's fees over the period while the rows below showed one
+   * person's — a headline of 5 over a table of 4, which is the kind of
+   * disagreement somebody writes down.
+   */
+  const person = soldByClause(query)
 
   const [result, summary, rates, preferences, salesPeople, brokerTotals, interest, stock, lastImport, savedViews] = await Promise.all([
     // One ledger: watches we sold, and fees we earned selling other
@@ -81,11 +108,11 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
     getRateTable(),
     getPreferencesFor(user.id),
     listSalesPeople(),
-    arms.commissions ? brokerageTotals(brokerFrom, brokerTo) : Promise.resolve(noFees),
+    arms.commissions ? brokerageTotals(brokerFrom, brokerTo, person) : Promise.resolve(noFees),
     // Interest and extension fees on money lent. Earnings with no cost
     // under them, like a brokered fee, and in the same list for the same
     // reason: one place to read what the month made.
-    arms.charges ? buybackTotals(brokerFrom, brokerTo) : Promise.resolve(noFees),
+    arms.charges ? buybackTotals(brokerFrom, brokerTo, person) : Promise.resolve(noFees),
     // Stock still on the book, for a fee earned on one of ours. Only what
     // we still hold: a watch already gone cannot be sold again.
     can(user.role, 'sale:create') ? sellableStock() : Promise.resolve([]),
@@ -102,6 +129,9 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
 
   /** Earnings with no stock under them: brokered fees and buy-back charges. */
   const earned = brokerTotals.total + interest.total
+
+  /** Every row the table will show, counted once for both headlines. */
+  const ledgerCount = summary.count + brokerTotals.count + interest.count
 
   const exportable = can(user.role, 'report:export')
 
@@ -131,9 +161,18 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
          * deal is a sale, so a header that counted it apart from the rows
          * it sits beside would be describing a different table.
          */
-        description={summary.count + brokerTotals.count > 0
-          ? `${summary.count + brokerTotals.count} ${summary.count + brokerTotals.count === 1 ? 'sale' : 'sales'} in this view`
-            + ` · ${money(summary.revenueGbp + brokerTotals.total)} revenue`
+        /*
+         * All three income sources, as the Sales card beside it counts.
+         *
+         * This added stock sales and brokered fees and stopped — the
+         * buy-back charges were simply missing, so the header said 3 over a
+         * card saying 5 over a table of 4. The file's own warning, written
+         * a few lines down about a different loop: the second place is
+         * where the third income source gets forgotten.
+         */
+        description={ledgerCount > 0
+          ? `${ledgerCount} ${ledgerCount === 1 ? 'sale' : 'sales'} in this view`
+            + ` · ${money(summary.revenueGbp + brokerTotals.total + interest.total)} revenue`
           : 'Every watch you have sold, with the margin you actually realised.'}
         actions={
           <>
@@ -170,7 +209,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
             reason rather than an omission. */}
         <StatCard
           label="Sales"
-          value={summary.count + brokerTotals.count + interest.count}
+          value={ledgerCount}
           caption={[
             `${summary.count} from stock`,
             brokerTotals.count > 0 ? `${brokerTotals.count} brokered` : null,
@@ -241,6 +280,12 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
       <FilterBar
         fields={SALE_FIELDS}
         placeholder="Search by invoice number, buyer, model or stock number…"
+        options={{
+          // So "Sold by" offers the people rather than a box to type an id
+          // into — and so a link from the sales-by-person report lands on a
+          // chip that reads their name.
+          salesPeople: salesPeople.map((person) => ({ value: person.id, label: person.name })),
+        }}
       />
 
       <Card className="overflow-hidden">
