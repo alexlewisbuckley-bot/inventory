@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { groupUnpaidByInvoice } from '@/server/services/insights-service'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -19,8 +20,35 @@ import { describe, expect, it } from 'vitest'
 describe('a date that came out of an aggregate', () => {
   const insights = readFileSync('src/server/services/insights-service.ts', 'utf8')
 
-  it('is mapped back to a Date at the driver boundary', () => {
-    expect(insights).toMatch(/min\(\$\{sales\.saleDate\}\)`\.mapWith\(sales\.saleDate\)/)
+  it('comes back a Date, whatever the grouping does to it', () => {
+    /*
+     * This used to pin the text `min(...).mapWith(...)`, which is the fix
+     * the aggregate needed. The grouping has since moved into TypeScript —
+     * saleDate is a plain column again, so the driver parses it and the
+     * aggregate hazard is gone from this query.
+     *
+     * The test the comment above asks for is now possible, so it is the
+     * one here: ask the grouping for a date and check what comes back.
+     * That holds however the query underneath is written.
+     */
+    const line = (id: string, on: string) => ({
+      id, invoiceNo: 'INV-9', amountGbp: 1_000,
+      saleDate: new Date(on), customerName: 'Chrono Hub',
+    })
+    const [group] = groupUnpaidByInvoice([
+      line('sal_1', '2026-11-05'), line('sal_2', '2026-11-01'),
+    ])
+    expect(group.saleDate).toBeInstanceOf(Date)
+    expect(Number.isNaN(group.saleDate.getTime())).toBe(false)
+    // Waiting since its oldest line — the figure the sort below depends on.
+    expect(group.saleDate).toEqual(new Date('2026-11-01'))
+  })
+
+  it('leaves no aggregate in this file unmapped', () => {
+    // The class of bug, not the one instance: an aggregate typed `sql<Date>`
+    // is an assertion to the compiler and a string at runtime.
+    const aggregates = insights.match(/sql<Date>`[^`]*`(?!\.mapWith)/g) ?? []
+    expect(aggregates).toEqual([])
   })
 
   it('is what the waiting list then sorts on', () => {
