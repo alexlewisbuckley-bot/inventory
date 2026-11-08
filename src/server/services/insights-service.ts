@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
+import { isPlaceholderInvoiceNo, normaliseInvoiceNo } from '@/lib/xero-match'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
@@ -326,6 +327,81 @@ export interface WaitingItem {
 }
 
 /**
+ * How many unpaid sale rows the chase list reads before grouping them.
+ *
+ * Every row older than a week that is still owed for. Hundreds in a bad
+ * year, not thousands, and the list that comes out of it is capped at a
+ * handful — the cap is only here so a runaway book cannot pull the whole
+ * sales table into memory to build a five-line panel.
+ */
+const UNPAID_SCAN_CAP = 500
+
+interface UnpaidRow {
+  id: string
+  invoiceNo: string
+  amountGbp: number
+  saleDate: Date
+  customerName: string | null
+}
+
+export interface UnpaidInvoice {
+  /** Identity for keying: the reference, or the sale id where there is none. */
+  key: string
+  invoiceNo: string
+  /** False where the reference is a placeholder, so there is no invoice yet. */
+  invoiced: boolean
+  /** The first sale in the group, for linking where the reference cannot. */
+  saleId: string
+  lines: number
+  amountGbp: number
+  saleDate: Date
+  customerName: string | null
+}
+
+/**
+ * Unpaid sale rows, gathered into the invoices they belong to.
+ *
+ * A real reference gathers its rows: one invoice over three watches is one
+ * debt to chase, for the sum of the three, dated from the first.
+ *
+ * A placeholder gathers nothing. "TBC" is how the business says an invoice
+ * has not been written yet, so every sale waiting on one carries it —
+ * grouping on it merged unrelated customers into a single item, under one
+ * of their names, for the total of both. The smaller debt disappeared into
+ * the larger and nobody was asked for it.
+ */
+export function groupUnpaidByInvoice(rows: UnpaidRow[]): UnpaidInvoice[] {
+  const groups = new Map<string, UnpaidInvoice>()
+
+  for (const row of rows) {
+    const invoiced = !isPlaceholderInvoiceNo(row.invoiceNo)
+    const key = invoiced ? normaliseInvoiceNo(row.invoiceNo) : row.id
+    const seen = groups.get(key)
+    if (!seen) {
+      groups.set(key, {
+        key,
+        invoiceNo: row.invoiceNo.trim() || '\u2014',
+        invoiced,
+        saleId: row.id,
+        lines: 1,
+        amountGbp: row.amountGbp,
+        saleDate: row.saleDate,
+        customerName: row.customerName,
+      })
+      continue
+    }
+    seen.lines += 1
+    seen.amountGbp += row.amountGbp
+    // The invoice has been waiting since its earliest line, whatever order
+    // the rows arrived in.
+    if (row.saleDate < seen.saleDate) seen.saleDate = row.saleDate
+    seen.customerName ??= row.customerName
+  }
+
+  return [...groups.values()]
+}
+
+/**
  * Work that is not yours to do and has stopped moving anyway.
  *
  * Generated, never entered. The band exists because the commonest way a deal
@@ -374,29 +450,27 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       .limit(limit),
 
     /*
-     * By invoice, not by sale row.
+     * By invoice, not by sale row — grouped in TypeScript, just below.
      *
-     * One invoice can cover ten watches, which is ten rows — and chasing
+     * One invoice can cover ten watches, which is ten rows, and chasing
      * one payment is one job however many watches it bought. Ungrouped,
      * a single unpaid invoice filled the whole list with ten copies of
      * itself and pushed everything else off it.
+     *
+     * Grouping it in SQL, by the invoice_no column, went wrong the other
+     * way: "TBC" is not an invoice number, several sales carry it at
+     * once, and SQL read them as one invoice — so two unrelated debts
+     * became one chase item for their sum, and the smaller one simply
+     * stopped being asked for. Which references name an invoice is a
+     * judgement, and it is made in one place, so the rows come back
+     * whole and are grouped here against it.
      */
     db.select({
+      id: sales.id,
       invoiceNo: sales.invoiceNo,
-      amountGbp: sql<number>`sum(${sales.saleAmountGbp})`.mapWith(Number),
-      /*
-       * mapWith, or this comes back a string.
-       *
-       * A plain column is parsed by the driver from its type; an
-       * aggregate over one is just an expression, and `sql<Date>` is a
-       * type assertion rather than a conversion — so the promise of a
-       * Date was kept to the compiler and broken at runtime, and the
-       * sort below died on `.getTime is not a function`, taking the
-       * whole Today page down with it.
-       */
-      saleDate: sql<Date>`min(${sales.saleDate})`.mapWith(sales.saleDate),
-      customerName: sql<string | null>`min(${sales.customerName})`,
-      lines: sql<number>`count(*)`.mapWith(Number),
+      amountGbp: sales.saleAmountGbp,
+      saleDate: sales.saleDate,
+      customerName: sales.customerName,
     })
       .from(sales)
       .where(and(
@@ -404,9 +478,11 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
         sql`${sales.paymentStatus} IN ('PENDING', 'OVERDUE')`,
         lt(sales.saleDate, new Date(now - 7 * DAY)),
       ))
-      .groupBy(sales.invoiceNo)
-      .orderBy(sql`min(${sales.saleDate})`)
-      .limit(limit),
+      .orderBy(sales.saleDate)
+      // Grouped below rather than here, so the oldest debts are the ones
+      // that survive the cut. Generous enough that the grouping sees every
+      // line of any invoice it reports on.
+      .limit(UNPAID_SCAN_CAP),
   ])
 
   const items: WaitingItem[] = [
@@ -426,15 +502,19 @@ export async function waitingOnThem(limit = 8): Promise<WaitingItem[]> {
       amountGbp: row.valueGbp,
       href: `/deals/${row.id}`,
     })),
-    ...unpaid.map((row) => ({
-      id: `invoice-${row.invoiceNo}`,
-      title: row.lines > 1
-        ? `${row.invoiceNo} is unpaid (${row.lines} watches)`
-        : `${row.invoiceNo} is unpaid`,
-      who: row.customerName,
-      since: row.saleDate,
-      amountGbp: row.amountGbp,
-      href: `/sales?invoice=${row.invoiceNo}`,
+    ...groupUnpaidByInvoice(unpaid).map((group) => ({
+      // The sale id for a placeholder, which names no invoice to key on:
+      // two "TBC" debts are two items and must not collide here either.
+      id: `invoice-${group.key}`,
+      title: group.lines > 1
+        ? `${group.invoiceNo} is unpaid (${group.lines} watches)`
+        : `${group.invoiceNo} is unpaid`,
+      who: group.customerName,
+      since: group.saleDate,
+      amountGbp: group.amountGbp,
+      // A placeholder matches half the book, so send them to the sale
+      // itself. ?invoice=TBC was a search for everything not yet invoiced.
+      href: group.invoiced ? `/sales?invoice=${group.invoiceNo}` : `/sales/${group.saleId}`,
     })),
   ]
 

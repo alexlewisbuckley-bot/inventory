@@ -4,6 +4,7 @@ import { liveSale } from '../db/predicates'
 import { brands, locations, sales, salesPeople, suppliers, users, watches } from '../db/schema'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { SALE_FIELDS, type FilterClause } from '@/lib/filters'
+import { isPlaceholderInvoiceNo, normaliseInvoiceNo } from '@/lib/xero-match'
 import type {
   CurrencyCode, DeliveryStatus, PaymentStatus, SaleChannel,
 } from '@/lib/enums'
@@ -14,8 +15,14 @@ export interface SaleListItem {
   /**
    * How many live sales share this invoice number, this row included.
    *
-   * Counted in SQL rather than over the page, so an invoice covering ten
-   * watches still says ten when a filter has narrowed the view to three.
+   * Counted across the book rather than over the page, so an invoice
+   * covering ten watches still says ten when a filter has narrowed the
+   * view to three.
+   *
+   * Always 1 where the reference is a placeholder. "TBC" is not an
+   * invoice number, it is the absence of one, and several sales carry it
+   * at once — counting them together said "2 watches" over two unrelated
+   * single sales.
    */
   invoiceLines: number
   saleDate: Date
@@ -131,6 +138,46 @@ function order(query: SaleQuery): SQL {
   }
 }
 
+/**
+ * How many live sales carry each of these references.
+ *
+ * A second query rather than a correlated subquery on the page, because
+ * which references count as references is a rule with judgement in it —
+ * "TBC" and "N/A" name no invoice — and that rule lives in one place, in
+ * TypeScript. Writing it in SQL as well would be two copies of it, free to
+ * drift apart silently. SQL is left doing only the mechanical half:
+ * matching the text the way normaliseInvoiceNo does, so that "INV-1" and
+ * "inv-1 " are the one invoice they plainly are.
+ *
+ * Placeholders are never asked about, so they are absent from the map and
+ * every caller reads them as a single line.
+ */
+async function invoiceLineCounts(references: string[]): Promise<Map<string, number>> {
+  const keys = [...new Set(
+    references.filter((ref) => !isPlaceholderInvoiceNo(ref)).map(normaliseInvoiceNo),
+  )]
+  if (keys.length === 0) return new Map()
+
+  const rows = await db.select({
+    key: NORMALISED_INVOICE_NO,
+    lines: count(),
+  })
+    .from(sales)
+    .where(and(liveSale(), inArray(NORMALISED_INVOICE_NO, keys)))
+    .groupBy(NORMALISED_INVOICE_NO)
+
+  return new Map(rows.map((row) => [row.key, Number(row.lines)]))
+}
+
+/**
+ * normaliseInvoiceNo, in SQL.
+ *
+ * Kept beside the query that needs it and pinned against its TypeScript
+ * twin by test, since the two have to agree for the counts to land on the
+ * right rows.
+ */
+const NORMALISED_INVOICE_NO = sql<string>`upper(regexp_replace(btrim(${sales.invoiceNo}), '[\s_]+', '', 'g'))`
+
 export async function findSales(query: SaleQuery) {
   const page = Math.max(1, query.page ?? 1)
   const perPage = Math.min(200, query.perPage ?? 25)
@@ -152,11 +199,6 @@ export async function findSales(query: SaleQuery) {
       costGbp: watches.purchasePriceGbp, costUsd: watches.purchasePriceUsd,
       estSaleGbp: watches.estSaleGbp,
       brandName: brands.name, supplierName: suppliers.name, recordedByName: users.name,
-      invoiceLines: sql<number>`(
-        SELECT count(*) FROM sales line
-        WHERE line.invoice_no = ${sales.invoiceNo}
-          AND line.deleted_at IS NULL AND line.voided_at IS NULL
-      )`.mapWith(Number),
     })
       .from(sales)
       .innerJoin(watches, eq(watches.id, sales.watchId))
@@ -182,9 +224,11 @@ export async function findSales(query: SaleQuery) {
   ])
 
   const total = Number(totals[0]?.value ?? 0)
+  const lines = await invoiceLineCounts(rows.map((row) => row.invoiceNo))
   return {
     items: rows.map((row): SaleListItem => ({
       ...row,
+      invoiceLines: lines.get(normaliseInvoiceNo(row.invoiceNo)) ?? 1,
       channel: row.channel as SaleChannel,
       saleCurrency: row.saleCurrency as CurrencyCode,
       paymentStatus: row.paymentStatus as PaymentStatus,

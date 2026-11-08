@@ -100,18 +100,40 @@ export interface MatchResult {
 }
 
 /**
+ * The words people type where an invoice number will go.
+ *
+ * Each is a way of writing "not yet", so each sits on several sales at
+ * once — which is the whole point of the list below. A real reference
+ * identifies one invoice; these identify nothing, and any code that
+ * treats them as an identity groups unrelated sales together.
+ */
+const NOT_YET = new Set([
+  '-', '–', '—', '?', 'N/A', 'NA', 'NONE', 'NIL', 'PENDING', 'AWAITING',
+])
+
+/**
  * An invoice number that is not yet an invoice number.
  *
- * "TBA" sits on a sale for days before Xero catches up — it is the thing
+ * "TBC" sits on a sale for days before Xero catches up — it is the thing
  * this whole feature exists to clear — and several sales carry it at once.
- * Matching on it would pair a Xero invoice with whichever TBA sale came
+ * Matching on it would pair a Xero invoice with whichever TBC sale came
  * first, which is worse than not matching at all.
+ *
+ * The same reasoning holds well beyond Xero, so this is the one place that
+ * decides it: the ledger's "2 watches" badge and the unpaid-invoice chase
+ * list both ask here rather than comparing the text themselves. They used
+ * to compare it themselves, and both read two single sales both reading
+ * "TBC" as one invoice covering two watches.
  */
 export function isPlaceholderInvoiceNo(value: string | null): boolean {
   if (!value) return true
   const text = value.trim().toUpperCase()
-  if (!text || text === '-' || text === 'N/A') return true
-  return /^TB[AD]\b/.test(text) || /^TB[AD][-_ ]?\d*$/.test(text)
+  if (!text) return true
+  if (NOT_YET.has(text)) return true
+  // TBA, TBC and TBD, alone or with a counter after them ("TBC-2") — still
+  // the same non-answer. TBC is the one Alex's team types, and it was the
+  // one letter this test did not cover.
+  return /^TB[ACD]\b/.test(text) || /^TB[ACD][-_ ]?\d*$/.test(text)
 }
 
 /** Invoice numbers compare without their spacing or case. */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { groupUnpaidByInvoice } from '@/server/services/insights-service'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { saleAmendSchema, fieldErrors } from '@/lib/validation'
@@ -329,12 +330,13 @@ describe('an invoice that covers several watches', () => {
     expect(migration).not.toMatch(/CREATE UNIQUE INDEX/)
   })
 
-  it('counts its lines in SQL, not over the page', () => {
+  it('counts its lines across the book, not over the page', () => {
     // A filter narrowing the view to three of ten watches must not make the
-    // invoice claim it covers three.
+    // invoice claim it covers three. So the count is its own query over the
+    // sales table, not a tally of the rows being rendered.
     const repo = readFileSync('src/server/repositories/sale-repository.ts', 'utf8')
-    expect(repo).toMatch(/SELECT count\(\*\) FROM sales line/)
-    expect(repo).toMatch(/line\.deleted_at IS NULL AND line\.voided_at IS NULL/)
+    const body = repo.slice(repo.indexOf('async function invoiceLineCounts'))
+    expect(body.slice(0, body.indexOf('\n}'))).toMatch(/\.from\(sales\)[\s\S]*liveSale\(\)/)
   })
 
   it('says so on the ledger instead of looking like a duplicate row', () => {
@@ -344,9 +346,14 @@ describe('an invoice that covers several watches', () => {
 
   it('is chased once, not once per watch', () => {
     // Ten rows for one unpaid invoice filled the waiting list with ten
-    // copies of itself and pushed everything else off it.
-    const insights = readFileSync('src/server/services/insights-service.ts', 'utf8')
-    expect(insights).toMatch(/\.groupBy\(sales\.invoiceNo\)/)
-    expect(insights).toMatch(/id: `invoice-\$\{row\.invoiceNo\}`/)
+    // copies of itself and pushed everything else off it. Grouped in
+    // TypeScript now, so this can ask rather than read the source.
+    const line = (id: string) => ({
+      id, invoiceNo: 'INV-9', amountGbp: 1_000,
+      saleDate: new Date('2026-11-01'), customerName: 'Chrono Hub',
+    })
+    const groups = groupUnpaidByInvoice([line('sal_1'), line('sal_2'), line('sal_3')])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].lines).toBe(3)
   })
 })
