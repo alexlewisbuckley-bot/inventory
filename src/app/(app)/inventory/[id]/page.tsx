@@ -20,10 +20,12 @@ import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
 import { formatDate, formatDateTime, daysHeld } from '@/lib/dates'
 import {
-  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, DEFAULT_DISPLAY_CURRENCY,
+  BOX_PAPERS, BOX_PAPERS_LABELS, CONDITION_LABELS, CONDITIONS,
   PRODUCT_TYPE_LABELS, referenceLabel, SALE_CHANNEL_LABELS,
-  type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
+  type AuditAction, type ProductType, type WatchStatus,
 } from '@/lib/enums'
+import { QuickPick } from '@/components/inventory/QuickPick'
 import { watchChecks } from '@/lib/checks'
 import { WATCH_REGISTER_URL } from '@/server/services/compliance-service'
 import { WatchChecksCard } from '@/components/compliance/WatchChecksCard'
@@ -180,10 +182,34 @@ export default async function WatchDetailPage({ params }: { params: { id: string
               <Row label={referenceLabel(watch.productType as ProductType)} value={watch.model} />
               <Row label="Serial" value={watch.serial ?? 'Not recorded'} />
               <Row label="Year" value={watch.year ? String(watch.year) : '—'} />
-              <Row label="Condition" value={CONDITION_LABELS[watch.condition as Condition]} />
+              {/* Answerable here too, and by the same control: the drawer
+                  and the full record showing one fact two different ways is
+                  how somebody learns the panel is read-only. */}
+              <Row
+                label="Condition"
+                value={
+                  <QuickPick
+                    watchId={watch.id}
+                    field="condition"
+                    label="Condition"
+                    value={watch.condition}
+                    options={CONDITIONS.map((value) => ({ value, label: CONDITION_LABELS[value] }))}
+                    canEdit={can(user.role, 'watch:amend')}
+                  />
+                }
+              />
               <Row
                 label={accessoriesLabel(watch.productType as ProductType)}
-                value={BOX_PAPERS_LABELS[watch.boxPapers as BoxPapers]}
+                value={
+                  <QuickPick
+                    watchId={watch.id}
+                    field="boxPapers"
+                    label={accessoriesLabel(watch.productType as ProductType)}
+                    value={watch.boxPapers}
+                    options={BOX_PAPERS.map((value) => ({ value, label: BOX_PAPERS_LABELS[value] }))}
+                    canEdit={can(user.role, 'watch:amend')}
+                  />
+                }
               />
               <Row label="Supplier" value={supplier.name} />
               <Row label="Location" value={location.name} />
