@@ -8,13 +8,15 @@ import { formatPct } from '@/lib/money'
 import { formatDate } from '@/lib/dates'
 import { RelativeTime } from '@/components/ui/RelativeTime'
 import {
-  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS_LABELS, CONDITION_LABELS, PRODUCT_TYPE_LABELS,
-  type AuditAction, type BoxPapers, type Condition, type ProductType, type WatchStatus,
+  accessoriesLabel, AUDIT_ACTION_LABELS, BASE_CURRENCY, BOX_PAPERS, BOX_PAPERS_LABELS,
+  CONDITION_LABELS, CONDITIONS, PRODUCT_TYPE_LABELS,
+  type AuditAction, type ProductType, type WatchStatus,
 } from '@/lib/enums'
 import type { Capability } from '@/lib/permissions'
 import type { WatchChecks } from '@/lib/checks'
 import { CheckLight } from '@/components/compliance/CheckLight'
 import { MoveWatchModal } from './MoveWatchModal'
+import { QuickPick } from './QuickPick'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { WhatsAppPost } from './WhatsAppPost'
 import { pickPostImage } from '@/lib/whatsapp-post'
@@ -162,11 +164,30 @@ export function WatchDrawerClient({
 
         <dl className="mb-6">
           <Fact label="Serial" value={record.serial ?? 'Not recorded'} />
-          <Fact label="Condition" value={CONDITION_LABELS[record.condition as Condition]} />
-          <Fact
-            label={accessoriesLabel(record.productType)}
-            value={BOX_PAPERS_LABELS[record.boxPapers as BoxPapers]}
-          />
+          {/* The two closed lists answer themselves here. Both are commonly
+              unknown at booking-in and known a minute later with the piece
+              in hand, and sending somebody to the edit form for one word is
+              why so many records still read "Not recorded". */}
+          <FactRow label="Condition">
+            <QuickPick
+              watchId={record.id}
+              field="condition"
+              label="Condition"
+              value={record.condition}
+              options={CONDITIONS.map((value) => ({ value, label: CONDITION_LABELS[value] }))}
+              canEdit={capabilities['watch:amend']}
+            />
+          </FactRow>
+          <FactRow label={accessoriesLabel(record.productType)}>
+            <QuickPick
+              watchId={record.id}
+              field="boxPapers"
+              label={accessoriesLabel(record.productType)}
+              value={record.boxPapers}
+              options={BOX_PAPERS.map((value) => ({ value, label: BOX_PAPERS_LABELS[value] }))}
+              canEdit={capabilities['watch:amend']}
+            />
+          </FactRow>
           <Fact label="Supplier" value={record.supplierName} />
           <div className="flex items-start justify-between gap-4 border-b border-line-subtle py-2.5 last:border-0">
             <dt className="text-small text-content-secondary">Checks</dt>
@@ -286,9 +307,24 @@ export function WatchDrawerClient({
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
+    <FactRow label={label}>
+      <span className="text-small font-bold text-content-primary">{value}</span>
+    </FactRow>
+  )
+}
+
+/**
+ * The same row, holding a control instead of a sentence.
+ *
+ * Negative margin on the value, so a control with its own padding lines its
+ * text up with the plain facts above and below it rather than sitting a few
+ * pixels in from them.
+ */
+function FactRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
     <div className="flex items-center justify-between gap-4 border-b border-line-subtle py-2.5">
       <dt className="text-small text-content-secondary">{label}</dt>
-      <dd className="text-small font-bold text-content-primary">{value}</dd>
+      <dd className="-my-1 text-right">{children}</dd>
     </div>
   )
 }
