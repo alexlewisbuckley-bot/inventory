@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { IMAGE_KINDS, type ImageKind } from '@/lib/enums'
 import { logger } from '@/lib/logger'
+import { recordUsage, spendingAllowed } from './ai-usage'
 
 /**
  * Reading a watch off its own photographs.
@@ -246,6 +247,11 @@ export async function readWatchPhotos(
   const usable = images.filter((image) => IMAGE_TYPES.has(image.mimeType)).slice(0, MAX_IMAGES)
   if (usable.length === 0) return { reading: null, error: 'none of those files could be read as images' }
 
+  // Before the images are encoded, let alone sent: a ceiling that is checked
+  // after the money is spent is a report, not a ceiling.
+  const budget = await spendingAllowed()
+  if (!budget.allowed) return { reading: null, error: budget.reason }
+
   const content: Anthropic.Beta.BetaContentBlockParam[] = []
   usable.forEach((image, index) => {
     // Numbered out loud, because "one entry per image in the same order" is
@@ -288,15 +294,28 @@ export async function readWatchPhotos(
     const call = response.content.find((block) => block.type === 'tool_use')
     if (!call || call.name !== 'record_watch') {
       logger.warn('watch photo reading returned no tool call', { stopReason: response.stop_reason })
-      return {
-        reading: null,
-        error: response.stop_reason === 'refusal'
-          ? 'the request was declined'
-          : `no reading came back (stopped: ${response.stop_reason})`,
-      }
+      const reason = response.stop_reason === 'refusal'
+        ? 'the request was declined'
+        : `no reading came back (stopped: ${response.stop_reason})`
+      await recordUsage({
+        feature: 'watch-photo',
+        model: MODEL,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        ok: false,
+        error: reason,
+      })
+      return { reading: null, error: reason }
     }
 
     const reading = coerceReading(call.input, usable.length)
+    await recordUsage({
+      feature: 'watch-photo',
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      ok: true,
+    })
     logger.info('watch read from photographs', {
       images: usable.length,
       gotReference: Boolean(reading?.model),
@@ -310,10 +329,14 @@ export async function readWatchPhotos(
     // person can type. Logged rather than raised, with the reason carried
     // out — a lapsed key and a timeout need different fixes and looked
     // identical from the other side of the screen.
+    const reason = describeFailure(error)
     logger.warn('watch photo reading failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    return { reading: null, error: describeFailure(error) }
+    // No tokens, because nothing was read — but the row matters most here:
+    // a run of these is what a lapsed key looks like from the outside.
+    await recordUsage({ feature: 'watch-photo', model: MODEL, ok: false, error: reason })
+    return { reading: null, error: reason }
   }
 }
 
