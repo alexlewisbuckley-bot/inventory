@@ -1022,6 +1022,37 @@ export const stockMovements = pgTable(
 // Observability & platform
 // ---------------------------------------------------------------------------
 
+/**
+ * One row per call to a model, including the ones that failed.
+ *
+ * The token counts came back on every response and went into the log, which
+ * is visible to whoever has it open at the time and to nobody afterwards —
+ * so "what did this cost us last month" had no answer. The cost is frozen at
+ * the moment of the call, because published prices change.
+ */
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: text('id').primaryKey(),
+    /** Which feature spent it, so a bill can be attributed. */
+    feature: text('feature').notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    /** Millionths of a dollar. Null means unpriced, not free. */
+    costMicros: integer('cost_micros'),
+    /** A run of failures is the clearest sign a key has lapsed. */
+    ok: boolean('ok').notNull().default(true),
+    error: text('error'),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    createdIdx: index('ai_usage_created_idx').on(t.createdAt),
+    featureIdx: index('ai_usage_feature_idx').on(t.feature, t.createdAt),
+  }),
+)
+
 export const auditLogs = pgTable(
   'audit_logs',
   {

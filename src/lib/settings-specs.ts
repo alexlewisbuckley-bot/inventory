@@ -10,7 +10,7 @@ export interface SettingSpec {
   key: string
   label: string
   description: string
-  group: 'Company' | 'Finance' | 'Inventory'
+  group: 'Company' | 'Finance' | 'Inventory' | 'AI'
   type: 'text' | 'number' | 'currency'
   validate?: (value: string) => string | null
 }
@@ -26,6 +26,21 @@ export const SETTING_SPECS: SettingSpec[] = [
     validate: (value) => {
       const pct = Number(value)
       if (!Number.isFinite(pct) || pct < 0 || pct > 100) return 'Enter a percentage between 0 and 100.'
+      return null
+    },
+  },
+  {
+    key: 'ai.monthlyBudgetUsd', label: 'Monthly AI budget (USD)', group: 'AI', type: 'number',
+    description:
+      'A ceiling on what reading invoices and photographs may cost in a month. '
+      + 'Reached, those features stop and say so rather than spending more. Leave blank for no ceiling.',
+    validate: (value) => {
+      // Blank is a real answer: no ceiling, which is how this behaved before
+      // the setting existed and must stay the default.
+      if (value.trim() === '') return null
+      const usd = Number(value)
+      if (!Number.isFinite(usd) || usd < 0) return 'Enter an amount in dollars, or leave it blank for no ceiling.'
+      if (usd > 10_000) return 'That is higher than any plausible month. Enter a smaller amount.'
       return null
     },
   },

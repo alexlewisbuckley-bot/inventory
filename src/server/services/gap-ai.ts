@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { logger } from '@/lib/logger'
+import { recordUsage, spendingAllowed } from './ai-usage'
 import {
   acceptProposals,
   type GapField,
@@ -37,7 +38,9 @@ import {
 /** Under Vercel's 60s ceiling, with room for the page around it. */
 const TIMEOUT_MS = 45_000
 
-const MODEL = 'claude-opus-5'
+// Opus 5.5 rather than Opus 5: newer, and cheaper per token ($4/$20 a
+// million against $5/$25), so there was nothing to weigh.
+const MODEL = 'claude-opus-5-5'
 
 /**
  * One call, not one per watch.
@@ -151,6 +154,11 @@ export async function suggestFromClaude(
     '\nCall propose_models with one entry per watch.',
   ].join('\n')
 
+  // Before the request is built: a ceiling checked after the money is
+  // spent is a report, not a ceiling.
+  const budget = await spendingAllowed()
+  if (!budget.allowed) return { suggestions: [], error: budget.reason, asked: 0 }
+
   const client = new Anthropic({
     apiKey: anthropicKey(), timeout: TIMEOUT_MS, maxRetries: 1, defaultHeaders: workspaceHeaders(),
   })
@@ -176,6 +184,13 @@ export async function suggestFromClaude(
     const proposals = (call.input as { proposals?: Proposal[] }).proposals ?? []
     const { suggestions, dropped } = acceptProposals(proposals, batch, choices)
 
+    await recordUsage({
+      feature: 'gap',
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      ok: true,
+    })
     logger.info('gap suggestions from claude', {
       asked: batch.length,
       returned: proposals.length,
@@ -193,7 +208,11 @@ export async function suggestFromClaude(
     logger.warn('gap suggestions failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    return { suggestions: [], error: describeFailure(error), asked: batch.length }
+    const reason = describeFailure(error)
+    // No tokens, because nothing was read — but the row matters most
+    // here: a run of these is what a lapsed key looks like.
+    await recordUsage({ feature: 'gap', model: MODEL, ok: false, error: reason })
+    return { suggestions: [], error: reason, asked: batch.length }
   }
 }
 

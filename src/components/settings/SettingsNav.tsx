@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Building2, Coins, History, ShieldCheck, ShoppingBag, SlidersHorizontal, UserCircle } from 'lucide-react'
+import { Building2, Coins, History, ShieldCheck, ShoppingBag, SlidersHorizontal, Sparkles, UserCircle } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { can, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -11,6 +11,7 @@ const ITEMS: Array<{ href: string; label: string; icon: typeof UserCircle; capab
   { href: '/settings', label: 'Application', icon: SlidersHorizontal, capability: 'settings:read' },
   { href: '/settings/currencies', label: 'Currencies & FX', icon: Coins, capability: 'settings:read' },
   { href: '/settings/storefront', label: 'Online shop', icon: ShoppingBag, capability: 'watch:update' },
+  { href: '/settings/ai', label: 'AI and costs', icon: Sparkles, capability: 'settings:manage' },
   { href: '/settings/users', label: 'Users & permissions', icon: ShieldCheck, capability: 'user:read' },
   { href: '/settings/audit', label: 'Audit trail', icon: History, capability: 'audit:read' },
 ]

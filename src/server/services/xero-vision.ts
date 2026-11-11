@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { logger } from '@/lib/logger'
+import { recordUsage, spendingAllowed } from './ai-usage'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import type { XeroInvoice } from '@/lib/xero-invoice'
 import { coerceXeroInvoices, XERO_VISION_SCHEMA, VISION_CURRENCIES } from '@/lib/xero-vision-shape'
@@ -23,7 +24,9 @@ import { coerceXeroInvoices, XERO_VISION_SCHEMA, VISION_CURRENCIES } from '@/lib
  * only sends the pictures and hands back what came out.
  */
 
-const MODEL = 'claude-opus-5'
+// Opus 5.5 rather than Opus 5: newer, and cheaper per token ($4/$20 a
+// million against $5/$25), so there was nothing to weigh.
+const MODEL = 'claude-opus-5-5'
 /** A screen of invoices is a bigger read than a single document. */
 const TIMEOUT_MS = 60_000
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
@@ -110,6 +113,11 @@ export async function readXeroScreenshots(
       : `Record every Xero invoice visible across these ${shots.length} screenshots, each one once.`,
   })
 
+  // Before the request is built: a ceiling checked after the money is
+  // spent is a report, not a ceiling.
+  const budget = await spendingAllowed()
+  if (!budget.allowed) return { invoices: [], dropped: 0, error: budget.reason }
+
   const client = new Anthropic({
     apiKey: anthropicKey(),
     timeout: TIMEOUT_MS,
@@ -145,6 +153,13 @@ export async function readXeroScreenshots(
     }
 
     const { invoices, dropped } = coerceXeroInvoices(call.input, base)
+    await recordUsage({
+      feature: 'xero-screenshot',
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      ok: true,
+    })
     logger.info('xero screenshots read', {
       shots: shots.length,
       invoices: invoices.length,
@@ -157,7 +172,11 @@ export async function readXeroScreenshots(
     logger.warn('xero screenshot read failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    return { invoices: [], dropped: 0, error: describeFailure(error) }
+    const reason = describeFailure(error)
+    // No tokens, because nothing was read — but the row matters most
+    // here: a run of these is what a lapsed key looks like.
+    await recordUsage({ feature: 'xero-screenshot', model: MODEL, ok: false, error: reason })
+    return { invoices: [], dropped: 0, error: reason }
   }
 }
 

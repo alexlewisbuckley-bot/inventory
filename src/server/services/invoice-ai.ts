@@ -3,6 +3,7 @@ import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/
 import { coerceExtraction, type ExtractedInvoice } from '@/lib/invoice'
 import { CURRENCIES, PRODUCT_TYPES, VAT_SCHEMES } from '@/lib/enums'
 import { logger } from '@/lib/logger'
+import { recordUsage, spendingAllowed } from './ai-usage'
 
 /**
  * Reading an invoice with Claude.
@@ -27,7 +28,9 @@ import { logger } from '@/lib/logger'
  */
 const TIMEOUT_MS = 50_000
 
-const MODEL = 'claude-opus-5'
+// Opus 5.5 rather than Opus 5: newer, and cheaper per token ($4/$20 a
+// million against $5/$25), so there was nothing to weigh.
+const MODEL = 'claude-opus-5-5'
 
 /** The document types worth sending. Anything else goes to the rules alone. */
 const DOCUMENT_TYPES = new Set(['application/pdf'])
@@ -235,6 +238,11 @@ export async function extractWithClaude(
   }
   content.push({ type: 'text', text: 'Record every watch on this invoice by calling record_invoice.' })
 
+  // Before the request is built: a ceiling checked after the money is
+  // spent is a report, not a ceiling.
+  const budget = await spendingAllowed()
+  if (!budget.allowed) return { extraction: null, error: budget.reason }
+
   const client = new Anthropic({
     apiKey: anthropicKey(),
     timeout: TIMEOUT_MS,
@@ -271,6 +279,13 @@ export async function extractWithClaude(
     }
 
     const extraction = coerceExtraction(call.input)
+    await recordUsage({
+      feature: 'invoice',
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      ok: true,
+    })
     logger.info('invoice read by claude', {
       file: file.name,
       lines: extraction?.lines.length ?? 0,
@@ -287,7 +302,11 @@ export async function extractWithClaude(
       file: file.name,
       error: error instanceof Error ? error.message : String(error),
     })
-    return { extraction: null, error: describeFailure(error) }
+    const reason = describeFailure(error)
+    // No tokens, because nothing was read — but the row matters most
+    // here: a run of these is what a lapsed key looks like.
+    await recordUsage({ feature: 'invoice', model: MODEL, ok: false, error: reason })
+    return { extraction: null, error: reason }
   }
 }
 
