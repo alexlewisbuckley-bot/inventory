@@ -518,7 +518,7 @@ export const watches = pgTable(
     nickname: text('nickname'),
     serial: text('serial'),
     condition: text('condition', { enum: CONDITIONS }).notNull().default('UNKNOWN'),
-    boxPapers: text('box_papers', { enum: BOX_PAPERS }).notNull().default('UNKNOWN'),
+    boxPapers: text('box_papers', { enum: BOX_PAPERS }).notNull().default('FULL_SET'),
     year: integer('year'),
 
     supplierId: text('supplier_id').notNull().references(() => suppliers.id),

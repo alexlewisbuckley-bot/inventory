@@ -57,7 +57,10 @@ export interface WatchFormValues {
 const EMPTY: WatchFormValues = {
   productType: DEFAULT_PRODUCT_TYPE,
   brandId: '', model: '', serial: '', year: '',
-  condition: 'UNKNOWN', boxPapers: 'UNKNOWN', supplierId: '',
+  // Condition is genuinely unknown until somebody looks; box and papers is
+  // not, because the shop buys full sets. The dropdown on the watch is one
+  // click for the rest.
+  condition: 'UNKNOWN', boxPapers: 'FULL_SET', supplierId: '',
   purchaseDate: toDateInput(new Date()),
   purchaseAmount: '', purchaseCurrency: BASE_CURRENCY,
   estSaleAmount: '', estSaleCurrency: BASE_CURRENCY,
@@ -129,11 +132,18 @@ export function WatchForm({
   const [values, setValues] = useState<WatchFormValues>({ ...EMPTY, ...initial })
   /** Held until the watch exists to own them. */
   const [photos, setPhotos] = useState<HeldPhoto[]>([])
-  // Opened automatically when editing a record that already has these set.
+  /*
+   * Opened automatically when editing a record with something notable in here.
+   *
+   * Full set is not notable — it is what nearly every watch is, and now the
+   * default, so counting it would open this section on every edit and the
+   * fold would stop meaning anything. The exceptions still open it, which is
+   * the whole point of opening it.
+   */
   const [showOptional, setShowOptional] = useState(
     Boolean(initial && (
       (initial.condition && initial.condition !== 'UNKNOWN') ||
-      (initial.boxPapers && initial.boxPapers !== 'UNKNOWN') ||
+      (initial.boxPapers && initial.boxPapers !== 'UNKNOWN' && initial.boxPapers !== 'FULL_SET') ||
       initial.year
     )),
   )
