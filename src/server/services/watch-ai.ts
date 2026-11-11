@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
+import { anthropicConfigured, anthropicKey, describeKeyProblem } from './ai-key-service'
 import { IMAGE_KINDS, type ImageKind } from '@/lib/enums'
 import { logger } from '@/lib/logger'
 import { recordUsage, spendingAllowed } from './ai-usage'
@@ -57,7 +57,7 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 /** How many images one reading will look at. */
 export const MAX_IMAGES = 6
 
-export function watchAiConfigured(): boolean {
+export async function watchAiConfigured(): Promise<boolean> {
   return anthropicConfigured()
 }
 
@@ -242,7 +242,7 @@ export function coerceReading(input: unknown, imageCount: number): WatchReading 
 export async function readWatchPhotos(
   images: { mimeType: string; buffer: ArrayBuffer }[],
 ): Promise<WatchAiResult> {
-  if (!watchAiConfigured()) return { reading: null, error: null }
+  if (!await watchAiConfigured()) return { reading: null, error: null }
 
   const usable = images.filter((image) => IMAGE_TYPES.has(image.mimeType)).slice(0, MAX_IMAGES)
   if (usable.length === 0) return { reading: null, error: 'none of those files could be read as images' }
@@ -270,7 +270,7 @@ export async function readWatchPhotos(
   content.push({ type: 'text', text: 'Record this watch by calling record_watch.' })
 
   const client = new Anthropic({
-    apiKey: anthropicKey(),
+    apiKey: await anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -329,7 +329,7 @@ export async function readWatchPhotos(
     // person can type. Logged rather than raised, with the reason carried
     // out — a lapsed key and a timeout need different fixes and looked
     // identical from the other side of the screen.
-    const reason = describeFailure(error)
+    const reason = await describeFailure(error)
     logger.warn('watch photo reading failed', {
       error: error instanceof Error ? error.message : String(error),
     })
@@ -340,9 +340,9 @@ export async function readWatchPhotos(
   }
 }
 
-export function describeFailure(error: unknown): string {
+export async function describeFailure(error: unknown): Promise<string> {
   if (error instanceof Anthropic.AuthenticationError) {
-    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
+    return `the API key was rejected: ${await describeKeyProblem()}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'

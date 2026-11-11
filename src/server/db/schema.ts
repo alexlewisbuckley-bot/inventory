@@ -1030,6 +1030,24 @@ export const stockMovements = pgTable(
  * so "what did this cost us last month" had no answer. The cost is frozen at
  * the moment of the call, because published prices change.
  */
+/**
+ * Secrets the application holds, sealed.
+ *
+ * Its own table rather than app_settings, because updateSettings writes the
+ * old and new values of every changed setting into the audit trail — a page
+ * in this application — and getSettings hands every setting to the form that
+ * renders them. A key routed through either would be on screen.
+ */
+export const storedSecrets = pgTable('stored_secrets', {
+  name: text('name').primaryKey(),
+  /** Sealed with AES-256-GCM. Never read by anything that renders. */
+  secret: text('secret').notNull(),
+  /** The prefix and length, which are safe to show and identify the key. */
+  hint: text('hint').notNull(),
+  updatedAt: updatedAt(),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+})
+
 export const aiUsage = pgTable(
   'ai_usage',
   {

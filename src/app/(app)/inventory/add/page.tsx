@@ -88,7 +88,7 @@ export default async function BringStockInPage() {
       <StockIntake
         candidates={candidates}
         locationNames={locationRows.map((l) => l.name)}
-        aiEnabled={aiConfigured()}
+        aiEnabled={await aiConfigured()}
         canImport={canImport}
         canPhotograph={canPhotograph}
       />

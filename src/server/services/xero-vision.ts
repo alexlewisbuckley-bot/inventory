@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
+import { anthropicConfigured, anthropicKey, describeKeyProblem } from './ai-key-service'
 import { logger } from '@/lib/logger'
 import { recordUsage, spendingAllowed } from './ai-usage'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
@@ -34,7 +34,7 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 /** More than this in one go is a scroll somebody should export instead. */
 export const MAX_SHOTS = 8
 
-export function visionConfigured(): boolean {
+export async function visionConfigured(): Promise<boolean> {
   return anthropicConfigured()
 }
 
@@ -119,7 +119,7 @@ export async function readXeroScreenshots(
   if (!budget.allowed) return { invoices: [], dropped: 0, error: budget.reason }
 
   const client = new Anthropic({
-    apiKey: anthropicKey(),
+    apiKey: await anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -172,7 +172,7 @@ export async function readXeroScreenshots(
     logger.warn('xero screenshot read failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    const reason = describeFailure(error)
+    const reason = await describeFailure(error)
     // No tokens, because nothing was read — but the row matters most
     // here: a run of these is what a lapsed key looks like.
     await recordUsage({ feature: 'xero-screenshot', model: MODEL, ok: false, error: reason })
@@ -180,9 +180,9 @@ export async function readXeroScreenshots(
   }
 }
 
-function describeFailure(error: unknown): string {
+async function describeFailure(error: unknown): Promise<string> {
   if (error instanceof Anthropic.AuthenticationError) {
-    return `The API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}.`
+    return `The API key was rejected: ${await describeKeyProblem()}.`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'The API key is not permitted to use this model.'

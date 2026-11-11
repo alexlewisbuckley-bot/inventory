@@ -30,11 +30,14 @@ export function KeyCheck({ configured }: { configured: boolean }) {
 
   return (
     <Card>
+      {/* The other card says which key is in use and lets it be changed.
+          This one asks the only question that card cannot answer from
+          looking at it: whether the key still works today. */}
       <CardHeader
-        title="The API key"
+        title="Is it working?"
         description={configured
-          ? 'Set on this deployment. Whether it still works is a different question.'
-          : 'Not set on this deployment, so every AI feature is switched off rather than broken.'}
+          ? 'Asks the API about the key in use, now, without waiting for somebody to drop a file on it.'
+          : 'There is no key to ask about yet. Connect one above.'}
       />
       <CardBody className="space-y-3">
         <Button size="sm" variant="secondary" onClick={() => void check()} disabled={testing}>

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
+import { anthropicConfigured, anthropicKey, describeKeyProblem } from './ai-key-service'
 import { coerceExtraction, type ExtractedInvoice } from '@/lib/invoice'
 import { CURRENCIES, PRODUCT_TYPES, VAT_SCHEMES } from '@/lib/enums'
 import { logger } from '@/lib/logger'
@@ -36,7 +36,7 @@ const MODEL = 'claude-opus-5-5'
 const DOCUMENT_TYPES = new Set(['application/pdf'])
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
-export function aiConfigured(): boolean {
+export async function aiConfigured(): Promise<boolean> {
   return anthropicConfigured()
 }
 
@@ -202,7 +202,7 @@ export async function extractWithClaude(
   file: { name: string; mimeType: string; buffer: ArrayBuffer },
   text: string | null,
 ): Promise<AiReading> {
-  if (!aiConfigured()) return { extraction: null, error: null }
+  if (!await aiConfigured()) return { extraction: null, error: null }
 
   const content: Anthropic.Beta.BetaContentBlockParam[] = []
 
@@ -244,7 +244,7 @@ export async function extractWithClaude(
   if (!budget.allowed) return { extraction: null, error: budget.reason }
 
   const client = new Anthropic({
-    apiKey: anthropicKey(),
+    apiKey: await anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -302,7 +302,7 @@ export async function extractWithClaude(
       file: file.name,
       error: error instanceof Error ? error.message : String(error),
     })
-    const reason = describeFailure(error)
+    const reason = await describeFailure(error)
     // No tokens, because nothing was read — but the row matters most
     // here: a run of these is what a lapsed key looks like.
     await recordUsage({ feature: 'invoice', model: MODEL, ok: false, error: reason })
@@ -310,9 +310,9 @@ export async function extractWithClaude(
   }
 }
 
-function describeFailure(error: unknown): string {
+async function describeFailure(error: unknown): Promise<string> {
   if (error instanceof Anthropic.AuthenticationError) {
-    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
+    return `the API key was rejected: ${await describeKeyProblem()}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'
