@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { coerceTray, MAX_TRAY_IMAGES, TRAY_TOOL } from '@/server/services/tray-ai'
+import { costInBase } from '@/lib/tray-cost'
 import { yearFromCard } from '@/lib/card-date'
 
 const read = (path: string) => readFileSync(path, 'utf8')
@@ -193,7 +194,7 @@ describe('booking the tray in', () => {
 
 describe('the screen in front of it', () => {
   it('shows nothing until somebody has looked at it', () => {
-    expect(screen).toMatch(/Check each against the picture/)
+    expect(screen).toMatch(/Check each one against its picture/)
     expect(screen).toMatch(/Book in \{rows\.length\}/)
   })
 
@@ -214,5 +215,80 @@ describe('the screen in front of it', () => {
   it('looks at a bounded number of photographs', () => {
     expect(MAX_TRAY_IMAGES).toBeGreaterThanOrEqual(1)
     expect(route).toMatch(/files\.slice\(0, MAX_TRAY_IMAGES\)/)
+  })
+})
+
+describe('what a watch cost, and in what', () => {
+  const rates = { AED: 10_000, USD: 2_723, GBP: 2_047, HKD: 21_088 }
+  const line = (cost: string, currency: string) => ({
+    model: '126500LN', serial: '', brand: 'Rolex', modelName: '', year: '',
+    dial: '', caseMaterial: '', bracelet: '', cost, currency,
+  })
+
+  it('converts into the base before it is stored', () => {
+    /*
+     * Alex: "the cost which currency is it seeking and this could be
+     * different for different watches".
+     *
+     * It was seeking nothing, and taking whatever was typed as the base. A
+     * watch bought for 19,750 dollars went into the book as 19,750 dirhams
+     * — about a quarter of what it cost — on a record nothing downstream
+     * had any reason to question.
+     */
+    // Major units, which is what an import row carries and the commit turns
+    // back into minor — so the pennies are real rather than a rounding slip.
+    expect(costInBase(line('19750', 'USD'), rates)).toBeCloseTo(72_530.3, 2)
+    expect(costInBase(line('28500', 'AED'), rates)).toBe(28_500)
+  })
+
+  it('lets a delivery mix currencies, because they do', () => {
+    const total = [line('28500', 'AED'), line('19750', 'USD')]
+      .reduce((sum, one) => sum + (costInBase(one, rates) ?? 0), 0)
+    expect(total).toBeCloseTo(101_030.3, 2)
+  })
+
+  it('leaves a cost nobody has yet as nothing', () => {
+    // Blank is a real answer: a watch whose cost is not to hand.
+    expect(costInBase(line('', 'AED'), rates)).toBeNull()
+    expect(costInBase(line('  ', 'USD'), rates)).toBeNull()
+  })
+
+  it('falls back to the base for a currency that is not one of ours', () => {
+    // Rather than throwing on a value a caller could put there by hand.
+    expect(costInBase(line('100', 'XXX'), rates)).toBe(100)
+  })
+})
+
+describe('a photograph the library already holds', () => {
+  it('is looked up on the same pair the commit dresses from', () => {
+    /*
+     * Alex: "It should also try and find a stock image from the library for
+     * the reference number should they exist." The commit has always done
+     * it; this is the same lookup run early, so what the screen promises and
+     * what the commit does cannot come apart.
+     */
+    expect(route).toMatch(/eq\(referenceImages\.brandId, brandId\), eq\(referenceImages\.reference, key\)/)
+    expect(route).toMatch(/referenceKey\(reference\)/)
+  })
+
+  it('is shown on the row, which also checks the reference', () => {
+    // A library photograph of a Daytona against a row reading GMT-Master is
+    // a reference read wrong, and that is visible at a glance.
+    expect(screen).toMatch(/\/api\/reference-images\/\$\{row\.libraryImageId\}/)
+    expect(screen).toMatch(/will arrive wearing it/)
+  })
+})
+
+describe('the watch itself, cut out of the photograph', () => {
+  it('is asked for as percentages, so it survives the downscale', () => {
+    const box = (TRAY_TOOL.input_schema as unknown as {
+      properties: { watches: { items: { properties: { box: { properties: Record<string, unknown> } } } } }
+    }).properties.watches.items.properties.box
+    expect(Object.keys(box.properties).sort()).toEqual(['h', 'w', 'x', 'y'])
+  })
+
+  it('falls back to words where it could not be placed', () => {
+    // A missing thumbnail is a worse row, not a broken screen.
+    expect(screen).toMatch(/\{row\.position \?\? 'not placed'\}/)
   })
 })

@@ -80,6 +80,35 @@ export const TRAY_TOOL: Anthropic.Beta.BetaTool = {
               'Where this watch is in the frame, in plain words — "top left", "bottom right", '
               + '"second from the left". This is how somebody checks the pairing, so it must be accurate.',
             ),
+            /*
+             * Where to cut this watch out of the picture.
+             *
+             * Position in words was all there was, and on a tray of seven it
+             * reads as a paragraph per row and still has to be held in the
+             * head against the photograph. A crop of the watch itself puts
+             * the answer on the row, where the pairing can be seen rather
+             * than worked out.
+             *
+             * Percentages, not pixels, so the box survives the downscale
+             * between what was read and what the browser holds. Plain
+             * numbers rather than nullable ones: a strict schema counts
+             * union-typed parameters against a ceiling, and a zero-sized
+             * box already says "I could not place it".
+             */
+            box: {
+              type: 'object',
+              additionalProperties: false,
+              description:
+                'The rectangle around this watch AND its card, as percentages of the whole image. '
+                + 'All four zero if you cannot place it.',
+              properties: {
+                x: { type: 'number', description: 'Left edge, 0-100, as a percentage of image width.' },
+                y: { type: 'number', description: 'Top edge, 0-100, as a percentage of image height.' },
+                w: { type: 'number', description: 'Width, 0-100, as a percentage of image width.' },
+                h: { type: 'number', description: 'Height, 0-100, as a percentage of image height.' },
+              },
+              required: ['x', 'y', 'w', 'h'],
+            },
             model: absentAsEmpty(
               'The manufacturer reference from the card lying with THIS watch, exactly as printed — '
               + 'e.g. "126500LN". Cards print it after MODEL. Not the model name, not the serial.',
@@ -106,7 +135,7 @@ export const TRAY_TOOL: Anthropic.Beta.BetaTool = {
             ),
           },
           required: [
-            'position', 'model', 'serial', 'brand', 'modelName',
+            'position', 'box', 'model', 'serial', 'brand', 'modelName',
             'cardDate', 'dial', 'caseMaterial', 'bracelet', 'unreadable',
           ],
         },
@@ -127,14 +156,24 @@ Record one entry per watch.
 
 - Pair each watch with the card lying WITH it, not the nearest card on the page. This is the thing that matters most here. A serial recorded against the wrong watch produces two records that each look right and are both wrong, and nobody finds out until the watch is sold. Work watch by watch: find the card touching or overlapping it, and read that card.
 - Give each watch's position in the frame in plain words, accurately, so a person can check your pairing against the picture.
+- Give the rectangle around each watch and its card as percentages of the whole image, so that watch can be cut out and shown beside what you read from it. Include the card: the pairing is what somebody is checking. All four numbers zero if you cannot place it.
 - The reference and the serial come from the card, transcribed character by character with case preserved. Do not correct, reformat or complete them. If a character is obscured, reflected or cut off, leave that whole field empty and say so in that watch's "unreadable".
 - The dial, metal and bracelet come from looking at the watch. The model name may come from the dial. Leave anything you cannot see empty — do not infer it from what the reference usually is.
 - Copy the date of purchase exactly as written on the card. Do not decide which number is the month.
 - Count carefully. A card with no watch, or a watch whose card is not in frame, goes in "note" rather than becoming an entry with half its fields empty.`
 
 /** One watch as the photograph gave it up. */
+export interface TrayBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 export interface TrayWatch {
   position: string | null
+  /** Null where it could not be placed, which is a crop nobody can show. */
+  box: TrayBox | null
   model: string | null
   serial: string | null
   brand: string | null
@@ -163,6 +202,28 @@ const text = (value: unknown): string | null => {
 }
 
 /**
+ * A rectangle worth cutting a picture on.
+ *
+ * Null for anything that would not produce a recognisable crop: all zeroes,
+ * which is how the model says it could not place the watch; a sliver, which
+ * is a misread rather than a watch; and anything running past the edge of
+ * the image, which would crop to something nobody can identify. The row
+ * then falls back to the position in words, which is what it had before.
+ */
+function coerceBox(value: unknown): TrayBox | null {
+  if (!value || typeof value !== 'object') return null
+  const raw = value as Record<string, unknown>
+  const n = (key: string) => (typeof raw[key] === 'number' && Number.isFinite(raw[key]) ? raw[key] : NaN)
+  const [x, y, w, h] = [n('x'), n('y'), n('w'), n('h')]
+  if ([x, y, w, h].some(Number.isNaN)) return null
+  // Two per cent of an edge is smaller than any watch on a tray photographed
+  // whole, so anything under it is noise rather than a find.
+  if (w < 2 || h < 2) return null
+  if (x < 0 || y < 0 || x + w > 100.5 || y + h > 100.5) return null
+  return { x, y, w, h }
+}
+
+/**
  * The tool's arguments, turned into a reading.
  *
  * Pure and exported so the shape can be tested without a request. A watch
@@ -180,6 +241,7 @@ export function coerceTray(input: unknown): TrayReading | null {
     .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
     .map((entry) => ({
       position: text(entry.position),
+      box: coerceBox(entry.box),
       model: text(entry.model),
       serial: text(entry.serial),
       brand: text(entry.brand),
