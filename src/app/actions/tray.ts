@@ -6,7 +6,8 @@ import { db } from '@/server/db/client'
 import { watches } from '@/server/db/schema'
 import { commitImport, type ImportRow } from '@/server/services/import-service'
 import { DEFAULT_PRODUCT_TYPE } from '@/lib/enums'
-import { parseMoneyInput, toMajor } from '@/lib/money'
+import { costInBase, yearOrNull } from '@/lib/tray-cost'
+import { getRateTable } from '@/server/services/fx-service'
 import { logger } from '@/lib/logger'
 import { revalidatePath } from 'next/cache'
 import { isAppError } from '@/lib/errors'
@@ -34,8 +35,18 @@ export interface TrayLine {
   dial: string
   caseMaterial: string
   bracelet: string
-  /** What this one cost, in the batch's currency. Blank is allowed. */
+  /** What this one cost, as typed. Blank is allowed. */
   cost: string
+  /**
+   * The currency that cost was agreed in.
+   *
+   * The whole of the first complaint about this screen. A bare "cost" was
+   * taken as the shop's base, so a watch bought for 28,500 dollars went into
+   * the book at 28,500 dirhams — a quarter of what it cost, on a record
+   * nothing downstream had reason to doubt. A delivery can mix currencies,
+   * so it is per watch rather than per batch.
+   */
+  currency: string
 }
 
 export interface TrayBooking {
@@ -89,6 +100,9 @@ export async function bookInTrayAction(booking: TrayBooking): Promise<ActionStat
     }
   }
 
+  // The day's rates, read once for the batch rather than per row.
+  const rates = await getRateTable()
+
   const rows: ImportRow[] = lines.map((line, index) => ({
     line: index + 1,
     watchId: null,
@@ -107,7 +121,7 @@ export async function bookInTrayAction(booking: TrayBooking): Promise<ActionStat
     // owner bought it from a retailer, which for a second-hand watch is a
     // different fact and belongs to the watch's year rather than to ours.
     purchaseDate: booking.purchaseDate,
-    purchasePriceGbp: majorOrNull(line.cost),
+    purchasePriceGbp: costInBase(line, rates),
     estSaleGbp: null,
     tradePriceGbp: null,
     spec: {
@@ -142,16 +156,4 @@ export async function bookInTrayAction(booking: TrayBooking): Promise<ActionStat
     logger.error('tray booking failed', { error: (error as Error).message })
     return { ok: false, message: 'Those watches could not be booked in.' }
   }
-}
-
-/** Blank is a real answer: a watch whose cost is not to hand yet. */
-function majorOrNull(raw: string): number | null {
-  const minor = parseMoneyInput(raw)
-  return minor === null ? null : toMajor(minor)
-}
-
-function yearOrNull(raw: string): number | null {
-  const year = Number(raw.trim())
-  if (!Number.isInteger(year)) return null
-  return year >= 1900 && year <= new Date().getFullYear() + 1 ? year : null
 }
