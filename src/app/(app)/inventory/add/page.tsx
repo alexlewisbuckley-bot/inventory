@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
-import { asc, count, eq, isNull } from 'drizzle-orm'
+import { and, asc, count, eq, isNull } from 'drizzle-orm'
 import { requireCapability } from '@/server/auth/session'
 import { can } from '@/lib/permissions'
 import { db } from '@/server/db/client'
-import { brands, locations, watchImages, watches } from '@/server/db/schema'
+import { brands, locations, owners, suppliers, watchImages, watches } from '@/server/db/schema'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { StockIntake } from '@/components/inventory/StockIntake'
+import { TrayIntake } from '@/components/inventory/TrayIntake'
 import { aiConfigured } from '@/server/services/invoice-ai'
 
 export const metadata: Metadata = { title: 'Bring stock in' }
@@ -62,12 +63,27 @@ export default async function BringStockInPage() {
       : Promise.resolve([]),
   ])
 
+  // Only for somebody who may import: the tray creates stock in a batch,
+  // which is the same door the spreadsheet goes through.
+  const [supplierRows, ownerRows, locationOptions] = canImport
+    ? await Promise.all([
+      db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers)
+        .where(isNull(suppliers.deletedAt)).orderBy(asc(suppliers.name)),
+      db.select({ id: owners.id, name: owners.name }).from(owners)
+        .where(and(isNull(owners.deletedAt), eq(owners.isActive, true))).orderBy(asc(owners.sortOrder)),
+      db.select({ id: locations.id, name: locations.name }).from(locations)
+        .where(isNull(locations.deletedAt)).orderBy(asc(locations.sortOrder)),
+    ])
+    : [[], [], []]
+
   const byKind = new Map<string, Record<string, number>>()
   for (const tally of tallies) {
     const held = byKind.get(tally.watchId) ?? {}
     held[tally.kind] = tally.n
     byKind.set(tally.watchId, held)
   }
+
+  const aiOn = await aiConfigured()
 
   const candidates = stock.map((watch) => {
     const held = byKind.get(watch.id) ?? {}
@@ -85,10 +101,24 @@ export default async function BringStockInPage() {
         title="Bring stock in"
         description="An invoice, a spreadsheet or a batch of photographs — drop it and it goes where it goes."
       />
+      {/* Above the three existing doors, because a tray photograph is how a
+          delivery actually arrives and the others are what you reach for
+          when it did not. */}
+      {canImport && aiOn && (
+        <div className="mb-6">
+          <TrayIntake
+            suppliers={supplierRows}
+            locations={locationOptions}
+            owners={ownerRows}
+            enabled
+          />
+        </div>
+      )}
+
       <StockIntake
         candidates={candidates}
         locationNames={locationRows.map((l) => l.name)}
-        aiEnabled={await aiConfigured()}
+        aiEnabled={aiOn}
         canImport={canImport}
         canPhotograph={canPhotograph}
       />
