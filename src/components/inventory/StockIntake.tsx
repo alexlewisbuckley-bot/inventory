@@ -256,6 +256,19 @@ export function StockIntake({ candidates, locationNames, aiEnabled, canImport, c
               An invoice, a spreadsheet of stock, or a batch of photographs. What it is decides what happens
               — there is nothing to choose first.
             </p>
+            {/* Photographs here are filed against watches that already exist,
+                which is the opposite errand from photographing a piece that
+                has just come in. The two are one drag apart and nothing said
+                so, so somebody with two pictures of a new watch would have
+                landed in the matcher and found nothing to match. */}
+            <p className="mx-auto mt-2 max-w-lg text-small text-content-secondary">
+              Photographs here are matched to stock you already hold. For a watch that is not
+              booked in yet,{' '}
+              <Link href="/inventory/new" className="font-bold text-content-accent hover:underline">
+                add it
+              </Link>{' '}
+              and its photographs fill in the reference and serial.
+            </p>
           </div>
           <Button variant="secondary" onClick={() => input.current?.click()}>Choose files</Button>
           <input

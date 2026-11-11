@@ -60,6 +60,16 @@ export const LIMITS = {
   // turns the tail of such a batch into failures. Counted over ten minutes so
   // a long batch passes and a runaway client still meets a wall.
   upload: { limit: 400, windowMs: 10 * 60_000 },
+  /*
+   * Reading photographs costs money on every call.
+   *
+   * Tighter than `upload` for that reason and no other: a batch of
+   * photographs is cheap to store and each reading is a paid request to a
+   * model. Three a minute sustained is faster than anybody can photograph a
+   * watch, check the reading and type a cost — and a client stuck in a loop
+   * meets a wall before it spends the month's budget.
+   */
+  read: { limit: 30, windowMs: 10 * 60_000 },
   // Public: reachable by anybody holding a shop link, so the ceiling is what
   // keeps one of them from filling the enquiries table overnight. Generous
   // enough that a genuine customer asking about three watches never meets it.
