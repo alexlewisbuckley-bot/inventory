@@ -138,7 +138,10 @@ export const watchCreateSchema = z.object({
     ]),
   ).optional(),
   condition: z.enum(CONDITIONS).default('UNKNOWN'),
-  boxPapers: z.enum(BOX_PAPERS).default('UNKNOWN'),
+  // Full set unless somebody says otherwise: the shop buys full sets, so
+  // UNKNOWN on 99% of rows was noise rather than caution. A want keeps
+  // UNKNOWN, where it means "no preference" and is a real answer.
+  boxPapers: z.enum(BOX_PAPERS).default('FULL_SET'),
   supplierId: trimmed.min(1, 'Choose a supplier.'),
   purchaseDate: z.coerce.date({ invalid_type_error: 'Enter a valid purchase date.' })
     .max(new Date(Date.now() + 86_400_000), 'Purchase date cannot be in the future.'),
