@@ -48,7 +48,7 @@ export default async function NewWatchPage({ searchParams }: {
       <div className="max-w-4xl">
         <WatchForm
           mode="create"
-          aiEnabled={watchAiConfigured()}
+          aiEnabled={await watchAiConfigured()}
           brands={brandRows}
           suppliers={supplierRows}
           locations={locationRows}

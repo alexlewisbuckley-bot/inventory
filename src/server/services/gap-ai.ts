@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
+import { anthropicConfigured, anthropicKey, describeKeyProblem } from './ai-key-service'
 import { logger } from '@/lib/logger'
 import { recordUsage, spendingAllowed } from './ai-usage'
 import {
@@ -52,7 +52,7 @@ const MODEL = 'claude-opus-5-5'
  */
 const MAX_BATCH = 40
 
-export function gapAiConfigured(): boolean {
+export async function gapAiConfigured(): Promise<boolean> {
   return anthropicConfigured()
 }
 
@@ -125,7 +125,7 @@ export async function suggestFromClaude(
   items: Array<{ row: GapRow; fields: GapField[] }>,
   choices: Record<string, string[]>,
 ): Promise<GapAiResult> {
-  if (!gapAiConfigured()) return { suggestions: [], error: null, asked: 0 }
+  if (!await gapAiConfigured()) return { suggestions: [], error: null, asked: 0 }
   if (!items.length) return { suggestions: [], error: null, asked: 0 }
 
   // Nothing to check an answer against means nothing can be offered safely.
@@ -160,7 +160,7 @@ export async function suggestFromClaude(
   if (!budget.allowed) return { suggestions: [], error: budget.reason, asked: 0 }
 
   const client = new Anthropic({
-    apiKey: anthropicKey(), timeout: TIMEOUT_MS, maxRetries: 1, defaultHeaders: workspaceHeaders(),
+    apiKey: await anthropicKey(), timeout: TIMEOUT_MS, maxRetries: 1, defaultHeaders: workspaceHeaders(),
   })
 
   try {
@@ -208,7 +208,7 @@ export async function suggestFromClaude(
     logger.warn('gap suggestions failed', {
       error: error instanceof Error ? error.message : String(error),
     })
-    const reason = describeFailure(error)
+    const reason = await describeFailure(error)
     // No tokens, because nothing was read — but the row matters most
     // here: a run of these is what a lapsed key looks like.
     await recordUsage({ feature: 'gap', model: MODEL, ok: false, error: reason })
@@ -216,9 +216,9 @@ export async function suggestFromClaude(
   }
 }
 
-function describeFailure(error: unknown): string {
+async function describeFailure(error: unknown): Promise<string> {
   if (error instanceof Anthropic.AuthenticationError) {
-    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
+    return `the API key was rejected: ${await describeKeyProblem()}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'

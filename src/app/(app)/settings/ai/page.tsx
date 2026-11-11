@@ -4,7 +4,8 @@ import { requireCapability } from '@/server/auth/session'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardBody, CardHeader, StatCard } from '@/components/ui'
 import { KeyCheck } from '@/components/settings/AiSpend'
-import { anthropicConfigured } from '@/lib/anthropic-key'
+import { ConnectAiKey } from '@/components/settings/ConnectAiKey'
+import { keyStatus } from '@/server/services/ai-key-service'
 import { formatMicros } from '@/lib/ai-pricing'
 import { formatDate } from '@/lib/dates'
 import {
@@ -30,10 +31,11 @@ export default async function AiSettingsPage() {
   await requireCapability('settings:manage')
 
   const month = monthStart()
-  const [thisMonth, budgetUsd, recent] = await Promise.all([
+  const [thisMonth, budgetUsd, recent, key] = await Promise.all([
     spendSince(month),
     configuredBudgetUsd(),
     recentCalls(10),
+    keyStatus(),
   ])
 
   const spentUsd = thisMonth.costMicros / 1_000_000
@@ -46,6 +48,14 @@ export default async function AiSettingsPage() {
         description="Reading invoices, photographs and screenshots. What it has cost this month, and whether it still works."
         breadcrumbs={[{ label: 'Settings', href: '/settings' }, { label: 'AI' }]}
       />
+
+      <div className="mb-6">
+        <ConnectAiKey
+          source={key.source}
+          hint={key.hint}
+          updatedAt={key.updatedAt ? formatDate(key.updatedAt) : null}
+        />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
@@ -127,7 +137,7 @@ export default async function AiSettingsPage() {
           </CardBody>
         </Card>
 
-        <KeyCheck configured={anthropicConfigured()} />
+        <KeyCheck configured={key.source !== 'none'} />
       </div>
 
       <Card className="mt-6">

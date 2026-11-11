@@ -178,7 +178,9 @@ describe('the reading reaching the form', () => {
     // Not an error and not a broken button: the form simply opens as it
     // always did.
     expect(zone).toMatch(/if \(!enabled\) return null/)
-    expect(service).toMatch(/if \(!watchAiConfigured\(\)\) return \{ reading: null, error: null \}/)
+    // Awaited now: the key can come from the database as well as the
+    // environment, so asking whether one exists is a read.
+    expect(service).toMatch(/if \(!await watchAiConfigured\(\)\) return \{ reading: null, error: null \}/)
   })
 })
 

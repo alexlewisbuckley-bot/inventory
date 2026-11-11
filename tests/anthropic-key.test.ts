@@ -109,12 +109,15 @@ describe('what to say once the API has refused it', () => {
 })
 
 describe('every service that holds a key', () => {
-  it('hands the SDK the normalised one rather than the raw variable', () => {
-    // The SDK reads the environment itself if you let it, and it does not
-    // strip quotes. Passing the value explicitly is what makes the repair
-    // above reach the request.
+  it('hands the SDK the resolved key rather than the raw variable', () => {
+    /*
+     * The SDK reads the environment itself if you let it, and it does not
+     * strip quotes — which is what the repair above exists for. It also
+     * cannot see the key set in the application, which now takes
+     * precedence, so the value is resolved and passed explicitly.
+     */
     for (const path of SERVICES) {
-      expect(read(path), path).toMatch(/apiKey: anthropicKey\(\)/)
+      expect(read(path), path).toMatch(/apiKey: await anthropicKey\(\)/)
     }
   })
 
@@ -129,8 +132,10 @@ describe('every service that holds a key', () => {
   })
 
   it('says what is in the box when the key is refused', () => {
+    // And now also which box: with two places a key can live, the shape
+    // alone leaves somebody to guess which one is in play.
     for (const path of SERVICES) {
-      expect(read(path), path).toMatch(/describeApiKeyProblem\(process\.env\.ANTHROPIC_API_KEY\)/)
+      expect(read(path), path).toMatch(/\$\{await describeKeyProblem\(\)\}/)
       expect(read(path), path).not.toMatch(/rejected — check ANTHROPIC_API_KEY/)
     }
   })
