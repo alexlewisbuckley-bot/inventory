@@ -1,10 +1,13 @@
 'use client'
 import { useFormState, useFormStatus } from 'react-dom'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { Button, TextField, SelectField, TextareaField, Card, CardBody, CardFooter, ComboSelect, MoneyField, useToast, useCurrency } from '@/components/ui'
 import { BrandField } from './BrandField'
+import { ReadFromPhotos, type HeldPhoto } from './ReadFromPhotos'
+import { downscaleImage } from '@/lib/downscale'
+import type { IntakeReading } from '@/app/api/intake/read/route'
 import { createWatchAction, updateWatchAction } from '@/app/actions/watches'
 import { createSupplierInlineAction } from '@/app/actions/reference'
 import { ChevronDown } from 'lucide-react'
@@ -104,7 +107,9 @@ const INITIAL: ActionState = { ok: false }
  * drift apart. In edit mode a hidden `version` field carries the optimistic
  * concurrency token read when the form was opened.
  */
-export function WatchForm({ mode, initial, brands, suppliers, locations, owners = [], requestId }: {
+export function WatchForm({
+  mode, initial, brands, suppliers, locations, owners = [], requestId, aiEnabled = false,
+}: {
   mode: 'create' | 'edit'
   initial?: Partial<WatchFormValues>
   /** Set when intake is fulfilling a want: the action settles the request. */
@@ -113,6 +118,8 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
   suppliers: Option[]
   locations: Option[]
   owners?: Option[]
+  /** Whether photographs can be read into the form. Off without an API key. */
+  aiEnabled?: boolean
 }) {
   const router = useRouter()
   const toast = useToast()
@@ -120,6 +127,8 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
   const currency = useCurrency()
   const [state, formAction] = useFormState(action, INITIAL)
   const [values, setValues] = useState<WatchFormValues>({ ...EMPTY, ...initial })
+  /** Held until the watch exists to own them. */
+  const [photos, setPhotos] = useState<HeldPhoto[]>([])
   // Opened automatically when editing a record that already has these set.
   const [showOptional, setShowOptional] = useState(
     Boolean(initial && (
@@ -131,13 +140,24 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
 
   useEffect(() => {
     if (!state.ok) return
-    toast.success(
-      mode === 'create'
-        ? `${noun.charAt(0).toUpperCase()}${noun.slice(1)} added to stock`
-        : 'Changes saved',
-      state.message,
-    )
-    router.push('/inventory')
+    void (async () => {
+      // The photographs that filled this form in, filed against the watch
+      // they describe. They could not be uploaded before now because the
+      // watch did not exist to own them, and they are the pictures of this
+      // piece — making somebody find the same two files again, on the
+      // gallery, would be the whole saving given back.
+      const attached = state.id ? await attachPhotos(state.id, photos) : null
+
+      toast.success(
+        mode === 'create'
+          ? `${noun.charAt(0).toUpperCase()}${noun.slice(1)} added to stock`
+          : 'Changes saved',
+        attached === null || attached.failed === 0
+          ? state.message
+          : `${state.message ?? ''} ${attached.failed} of the photographs could not be attached — add them from the record.`.trim(),
+      )
+      router.push('/inventory')
+    })()
     // Only fire on a successful submission.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.ok])
@@ -151,6 +171,42 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
 
   const setField = (key: keyof WatchFormValues) => (value: string) =>
     setValues((current) => ({ ...current, [key]: value }))
+
+  /**
+   * What the photographs said, written into the form.
+   *
+   * Only over blanks. Somebody who typed the reference while the reading was
+   * in flight has told us something a photograph has not, and having it
+   * overwritten a second later by a machine is the behaviour that makes
+   * people stop trusting the feature. A reading is a head start, not a
+   * correction.
+   */
+  const applyReading = useCallback((reading: IntakeReading) => {
+    setValues((current) => {
+      const next: Record<string, string> = {}
+      const fill = (key: keyof WatchFormValues, value: string | number | null) => {
+        if (value === null || value === '') return
+        if (String(current[key] ?? '').trim() !== '') return
+        next[key] = String(value)
+      }
+      fill('brandId', reading.brandId)
+      fill('model', reading.model)
+      fill('serial', reading.serial)
+      fill('modelName', reading.modelName)
+      fill('year', reading.year)
+      fill('dial', reading.dial)
+      fill('caseMaterial', reading.caseMaterial)
+      fill('bracelet', reading.bracelet)
+      fill('caseSizeMm', reading.caseSizeMm)
+      return { ...current, ...next }
+    })
+    // The fields below the fold are where most of a reading lands, and a
+    // form that silently filled in six boxes somebody cannot see is worse
+    // than one that filled in none.
+    if (reading.year || reading.dial || reading.caseMaterial || reading.bracelet || reading.caseSizeMm) {
+      setShowOptional(true)
+    }
+  }, [])
 
 
   /**
@@ -185,6 +241,13 @@ export function WatchForm({ mode, initial, brands, suppliers, locations, owners 
           <input type="hidden" name="id" value={values.id ?? ''} />
           <input type="hidden" name="version" value={values.version ?? 1} />
         </>
+      )}
+
+      {/* Create only. An edit is a record that already answered these
+          questions, and re-reading a photograph over it is a correction
+          nobody asked for. */}
+      {mode === 'create' && (
+        <ReadFromPhotos enabled={aiEnabled} onReading={applyReading} onPhotos={setPhotos} />
       )}
 
       {state.message && !state.ok && (
@@ -420,3 +483,40 @@ function SubmitButton({ mode, noun }: { mode: 'create' | 'edit'; noun: string })
 }
 
 export { toMajor }
+
+/**
+ * The photographs that filled the form in, filed against the new watch.
+ *
+ * Deliberately not fatal. The watch is in stock by the time this runs — that
+ * is a fact, and a flaky upload must not unmake it or leave somebody staring
+ * at a form that looks like it failed. What it can do is say how many did
+ * not make it, so nobody discovers an empty gallery a week later.
+ *
+ * Each goes up at the gallery's own size, not the larger copy that was sent
+ * to be read: the reading copy existed to make a serial legible and is of no
+ * use once the serial has been read.
+ */
+async function attachPhotos(
+  watchId: string,
+  photos: HeldPhoto[],
+): Promise<{ failed: number } | null> {
+  if (photos.length === 0) return null
+
+  let failed = 0
+  for (const photo of photos) {
+    try {
+      const { file, width, height } = await downscaleImage(photo.file)
+      const body = new FormData()
+      body.set('file', file)
+      body.set('watchId', watchId)
+      body.set('kind', photo.kind)
+      body.set('width', String(width))
+      body.set('height', String(height))
+      const response = await fetch('/api/images/upload', { method: 'POST', body })
+      if (!response.ok) failed += 1
+    } catch {
+      failed += 1
+    }
+  }
+  return { failed }
+}

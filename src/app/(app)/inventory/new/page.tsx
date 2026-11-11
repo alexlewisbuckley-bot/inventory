@@ -6,9 +6,13 @@ import { brands, locations, owners, suppliers } from '@/server/db/schema'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { WatchForm } from '@/components/inventory/WatchForm'
 import { sourcingPrefill } from '@/server/services/sourcing-service'
+import { watchAiConfigured } from '@/server/services/watch-ai'
 
 export const metadata: Metadata = { title: 'Add an item' }
 export const dynamic = 'force-dynamic'
+
+/** Reading photographs takes longer than a page render. Vercel's ceiling is 60s. */
+export const maxDuration = 60
 
 export default async function NewWatchPage({ searchParams }: {
   searchParams: { request?: string; enquiry?: string }
@@ -44,6 +48,7 @@ export default async function NewWatchPage({ searchParams }: {
       <div className="max-w-4xl">
         <WatchForm
           mode="create"
+          aiEnabled={watchAiConfigured()}
           brands={brandRows}
           suppliers={supplierRows}
           locations={locationRows}

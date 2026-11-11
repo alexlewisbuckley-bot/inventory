@@ -108,7 +108,11 @@ export async function createWatchAction(_prev: ActionState, formData: FormData):
 
     refreshInventory()
     await mirror(id)
-    return { ok: true, message: 'Watch added to stock.', errors: { id } }
+    // `id`, not `errors`. ActionState keeps a field for exactly this and
+    // `errors` is the field-error channel a form renders beside its inputs;
+    // the new watch's id is neither an error nor about a field. Nothing read
+    // it from the old place.
+    return { ok: true, message: 'Watch added to stock.', id }
   } catch (error) {
     return toState(error, 'Could not add the watch.')
   }
