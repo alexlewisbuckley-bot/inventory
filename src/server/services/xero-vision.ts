@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { logger } from '@/lib/logger'
 import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
 import type { XeroInvoice } from '@/lib/xero-invoice'
@@ -31,7 +32,7 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 export const MAX_SHOTS = 8
 
 export function visionConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return anthropicConfigured()
 }
 
 function workspaceHeaders(): Record<string, string> | undefined {
@@ -110,6 +111,7 @@ export async function readXeroScreenshots(
   })
 
   const client = new Anthropic({
+    apiKey: anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -161,7 +163,7 @@ export async function readXeroScreenshots(
 
 function describeFailure(error: unknown): string {
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'The API key was rejected — check ANTHROPIC_API_KEY on the deployment.'
+    return `The API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}.`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'The API key is not permitted to use this model.'

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { coerceExtraction, type ExtractedInvoice } from '@/lib/invoice'
 import { CURRENCIES, PRODUCT_TYPES, VAT_SCHEMES } from '@/lib/enums'
 import { logger } from '@/lib/logger'
@@ -33,7 +34,7 @@ const DOCUMENT_TYPES = new Set(['application/pdf'])
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 export function aiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return anthropicConfigured()
 }
 
 /**
@@ -235,6 +236,7 @@ export async function extractWithClaude(
   content.push({ type: 'text', text: 'Record every watch on this invoice by calling record_invoice.' })
 
   const client = new Anthropic({
+    apiKey: anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -291,7 +293,7 @@ export async function extractWithClaude(
 
 function describeFailure(error: unknown): string {
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'the API key was rejected — check ANTHROPIC_API_KEY in the deployment'
+    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'

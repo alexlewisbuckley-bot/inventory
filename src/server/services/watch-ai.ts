@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { IMAGE_KINDS, type ImageKind } from '@/lib/enums'
 import { logger } from '@/lib/logger'
 
@@ -56,7 +57,7 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif
 export const MAX_IMAGES = 6
 
 export function watchAiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return anthropicConfigured()
 }
 
 /** An identity-linked key must name its workspace; a workspace key needs none. */
@@ -263,6 +264,7 @@ export async function readWatchPhotos(
   content.push({ type: 'text', text: 'Record this watch by calling record_watch.' })
 
   const client = new Anthropic({
+    apiKey: anthropicKey(),
     timeout: TIMEOUT_MS,
     maxRetries: 1,
     defaultHeaders: workspaceHeaders(),
@@ -317,7 +319,7 @@ export async function readWatchPhotos(
 
 export function describeFailure(error: unknown): string {
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'the API key was rejected — check ANTHROPIC_API_KEY in the deployment'
+    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'

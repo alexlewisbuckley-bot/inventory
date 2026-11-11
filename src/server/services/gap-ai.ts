@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { anthropicConfigured, anthropicKey, describeApiKeyProblem } from '@/lib/anthropic-key'
 import { logger } from '@/lib/logger'
 import {
   acceptProposals,
@@ -49,7 +50,7 @@ const MODEL = 'claude-opus-5'
 const MAX_BATCH = 40
 
 export function gapAiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY)
+  return anthropicConfigured()
 }
 
 /** Keys issued against a person must name their workspace; see invoice-ai. */
@@ -150,7 +151,9 @@ export async function suggestFromClaude(
     '\nCall propose_models with one entry per watch.',
   ].join('\n')
 
-  const client = new Anthropic({ timeout: TIMEOUT_MS, maxRetries: 1, defaultHeaders: workspaceHeaders() })
+  const client = new Anthropic({
+    apiKey: anthropicKey(), timeout: TIMEOUT_MS, maxRetries: 1, defaultHeaders: workspaceHeaders(),
+  })
 
   try {
     const response = await client.messages.create({
@@ -196,7 +199,7 @@ export async function suggestFromClaude(
 
 function describeFailure(error: unknown): string {
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'the API key was rejected — check ANTHROPIC_API_KEY in the deployment'
+    return `the API key was rejected: ${describeApiKeyProblem(process.env.ANTHROPIC_API_KEY)}`
   }
   if (error instanceof Anthropic.PermissionDeniedError) {
     return 'the API key is not permitted to use this model'
