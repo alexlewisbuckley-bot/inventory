@@ -302,10 +302,10 @@ export async function listEnquiries(actor: SessionUser): Promise<EnquiryRow[]> {
       traderReadAt: tradeEnquiries.traderReadAt,
       staffReadAt: tradeEnquiries.staffReadAt,
       messages: sql<number>`(
-        select count(*)::int from ${tradeMessages} where ${tradeMessages.enquiryId} = ${tradeEnquiries.id}
+        select count(*)::int from ${tradeMessages} where trade_messages.enquiry_id = trade_enquiries.id
       )`,
       lastAt: sql<Date | null>`(
-        select max(created_at) from ${tradeMessages} where ${tradeMessages.enquiryId} = ${tradeEnquiries.id}
+        select max(created_at) from ${tradeMessages} where trade_messages.enquiry_id = trade_enquiries.id
       )`,
     })
     .from(tradeEnquiries)

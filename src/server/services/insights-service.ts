@@ -168,10 +168,10 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     matches: sql<number>`(
       SELECT count(*) FROM watches w
       WHERE w.deleted_at IS NULL AND w.status = 'IN_STOCK'
-        AND (${watchRequests.brandId} IS NULL OR w.brand_id = ${watchRequests.brandId})
-        AND (${watchRequests.model} IS NULL OR w.model ILIKE '%' || ${watchRequests.model} || '%')
-        AND (${watchRequests.budgetGbp} IS NULL OR w.est_sale_gbp IS NULL
-             OR w.est_sale_gbp <= ${watchRequests.budgetGbp})
+        AND (watch_requests.brand_id IS NULL OR w.brand_id = watch_requests.brand_id)
+        AND (watch_requests.model IS NULL OR w.model ILIKE '%' || watch_requests.model || '%')
+        AND (watch_requests.budget_gbp IS NULL OR w.est_sale_gbp IS NULL
+             OR w.est_sale_gbp <= watch_requests.budget_gbp)
     )`,
   })
     .from(watchRequests)
@@ -242,7 +242,7 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     lastContactedAt: customers.lastContactedAt,
     lifetime: sql<number>`(
       SELECT coalesce(sum(sale_amount_gbp), 0) FROM sales
-      WHERE sales.customer_id = ${customers.id}
+      WHERE sales.customer_id = customers.id
         AND sales.voided_at IS NULL AND sales.deleted_at IS NULL
     )`,
   })

@@ -72,16 +72,16 @@ export async function listCampaigns(partnerId: string) {
       createdAt: partnerCampaigns.createdAt,
       recipientCount: sql<number>`(
         SELECT count(*) FROM partner_campaign_recipients r
-        WHERE r.campaign_id = ${partnerCampaigns.id} AND r.deleted_at IS NULL
+        WHERE r.campaign_id = partner_campaigns.id AND r.deleted_at IS NULL
       )`,
       claimedCount: sql<number>`(
         SELECT count(*) FROM partner_campaign_recipients r
-        WHERE r.campaign_id = ${partnerCampaigns.id} AND r.deleted_at IS NULL
+        WHERE r.campaign_id = partner_campaigns.id AND r.deleted_at IS NULL
           AND r.claimed_at IS NOT NULL
       )`,
       itemCount: sql<number>`(
         SELECT count(*) FROM partner_campaign_items i
-        WHERE i.campaign_id = ${partnerCampaigns.id}
+        WHERE i.campaign_id = partner_campaigns.id
       )`,
     })
     .from(partnerCampaigns)
@@ -456,7 +456,7 @@ async function choicesFor(campaign: {
     sql`${watches.estSaleGbp} IS NOT NULL`,
     sql`EXISTS (
       SELECT 1 FROM watch_images i
-      WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+      WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
     )`,
   ]
 
@@ -474,7 +474,7 @@ async function choicesFor(campaign: {
       askingGbp: watches.estSaleGbp,
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
     })
     .from(watches)

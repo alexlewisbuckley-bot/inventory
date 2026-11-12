@@ -182,7 +182,7 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
        */
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
     })
     .from(watches)
@@ -202,7 +202,7 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
        */
       sql`EXISTS (
         SELECT 1 FROM watch_images i
-        WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       )`,
     ))
     .orderBy(asc(brands.name), asc(watches.model))
@@ -493,4 +493,63 @@ export async function closePortal(id: string, actor: SessionUser): Promise<void>
       summary: `${existing.name}: portal closed`,
     })
   })
+}
+
+/**
+ * The stock a partner could be offered, by partner id rather than by token.
+ *
+ * The portal's own list answers through the door, which is right for a page
+ * behind a passphrase and wrong for our side of it: somebody here building a
+ * shortlist for a company whose portal has not been opened yet would
+ * otherwise be shown nothing at all, and would reasonably conclude there is
+ * no stock.
+ *
+ * The same rules and the same arithmetic as the portal, so a shortlist is
+ * picked from exactly what the partner would see.
+ */
+export async function stockForPartner(partnerId: string): Promise<PortalItem[]> {
+  const [partner] = await db
+    .select({ discountBps: partners.discountBps })
+    .from(partners)
+    .where(and(eq(partners.id, partnerId), isNull(partners.deletedAt)))
+    .limit(1)
+  if (!partner) return []
+
+  const rows = await db
+    .select({
+      id: watches.id,
+      brandName: brands.name,
+      model: watches.model,
+      modelName: watches.modelName,
+      year: watches.year,
+      condition: watches.condition,
+      boxPapers: watches.boxPapers,
+      caseSizeMm: watches.caseSizeMm,
+      caseMaterial: watches.caseMaterial,
+      dial: watches.dial,
+      bracelet: watches.bracelet,
+      askingGbp: watches.estSaleGbp,
+      imageIds: sql<string[]>`coalesce((
+        SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
+      ), ARRAY[]::text[])`,
+    })
+    .from(watches)
+    .innerJoin(brands, eq(brands.id, watches.brandId))
+    .where(and(
+      ...onOffer(),
+      sql`${watches.estSaleGbp} IS NOT NULL`,
+      sql`EXISTS (
+        SELECT 1 FROM watch_images i
+        WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
+      )`,
+    ))
+    .orderBy(asc(brands.name), asc(watches.model))
+
+  return rows.map((row) => ({
+    ...row,
+    askingGbp: row.askingGbp as number,
+    priceGbp: partnerPrice(row.askingGbp, partner.discountBps) as number,
+    imageIds: row.imageIds ?? [],
+  }))
 }

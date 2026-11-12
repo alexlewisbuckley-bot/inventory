@@ -548,15 +548,15 @@ export async function listBuybacks(status?: BuybackStatus[]): Promise<BuybackSum
       notes: buybacks.notes,
       chargedBase: sql<number>`(
         SELECT coalesce(sum(c.amount_base), 0) FROM buyback_charges c
-        WHERE c.buyback_id = ${buybacks.id} AND c.voided_at IS NULL
+        WHERE c.buyback_id = buybacks.id AND c.voided_at IS NULL
       )`.mapWith(Number),
       paidBase: sql<number>`(
         SELECT coalesce(sum(c.amount_base), 0) FROM buyback_charges c
-        WHERE c.buyback_id = ${buybacks.id} AND c.voided_at IS NULL
+        WHERE c.buyback_id = buybacks.id AND c.voided_at IS NULL
           AND c.payment_status = 'PAID'
       )`.mapWith(Number),
       items: sql<number>`(
-        SELECT count(*) FROM buyback_items i WHERE i.buyback_id = ${buybacks.id}
+        SELECT count(*) FROM buyback_items i WHERE i.buyback_id = buybacks.id
       )`.mapWith(Number),
     })
     .from(buybacks)

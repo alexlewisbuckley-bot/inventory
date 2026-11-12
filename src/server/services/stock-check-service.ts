@@ -69,7 +69,7 @@ export interface StockCheckScope {
  */
 const primaryImage = sql<string | null>`(
   SELECT wi.id FROM ${watchImages} wi
-  WHERE wi.watch_id = ${watches.id}
+  WHERE wi.watch_id = watches.id
   ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
   LIMIT 1
 )`
@@ -533,7 +533,7 @@ export async function listStockChecks(limit = 50) {
     // Live progress for an open check, which has no stored tally yet.
     countedSoFar: sql<number>`(
       SELECT count(*) FROM ${stockCheckLines} l
-      WHERE l.check_id = ${stockChecks.id} AND l.status <> 'PENDING'
+      WHERE l.check_id = stock_checks.id AND l.status <> 'PENDING'
     )`,
   })
     .from(stockChecks)

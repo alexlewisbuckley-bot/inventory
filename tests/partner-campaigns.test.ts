@@ -297,6 +297,89 @@ describe('running one', () => {
   })
 })
 
+describe('running one from our own system', () => {
+  const staffPage = read('src/app/(app)/partners/[id]/page.tsx')
+  const staffUi = read('src/components/reference/PartnerCampaigns.tsx')
+  const manager = read('src/components/reference/PartnerManager.tsx')
+  const partnersAction = read('src/app/actions/partners.ts')
+  const portalService = read('src/server/services/partner-portal-service.ts')
+
+  it('is reachable without a partner\u2019s portal link', () => {
+    /*
+     * Alex: "I cant see anywhere to run a campaign."
+     *
+     * They lived only behind a company's own link, which put them out of
+     * reach of the people who actually sell these arrangements — and most
+     * partners would rather we set theirs up anyway. An estate agency
+     * rewarding fifteen staff does not want a login; it wants somebody here
+     * to put the list in and send the links back.
+     */
+    expect(staffPage).toContain("requireCapability('partner:read')")
+    expect(staffPage).toContain('listCampaigns(partner.id)')
+    expect(staffUi).toContain('Reward campaigns')
+  })
+
+  it('is signposted from the partner card, not left to be guessed at', () => {
+    // A card with nothing clickable on it is where somebody looks for this
+    // and gives up.
+    expect(manager).toContain('href={`/partners/${partner.id}`}')
+    expect(manager).toContain('Set up a reward campaign')
+  })
+
+  it('uses the same service as the portal, so the two cannot drift', () => {
+    /*
+     * A campaign built here and one built in the portal are the same record.
+     * A second implementation would be two screens quietly disagreeing about
+     * what a company's staff were offered.
+     */
+    expect(partnersAction).toContain("from '@/server/services/partner-campaign-service'")
+    expect(partnersAction).toContain('await openCampaign(partnerId, campaignId)')
+    expect(partnersAction).toContain('await setShortlist(partnerId, campaignId, watchIds)')
+  })
+
+  it('is behind partner:manage rather than a passphrase', () => {
+    /*
+     * Every exported action in this file, not a count across it.
+     *
+     * A count passes while one action quietly loses its gate, and the one
+     * that loses it is the one somebody edited last.
+     */
+    const exported = [...partnersAction.matchAll(/export async function (\w+)/g)].map((m) => m[1])
+    expect(exported.length).toBeGreaterThanOrEqual(12)
+    for (const name of exported) {
+      const start = partnersAction.indexOf(`export async function ${name}`)
+      const next = partnersAction.indexOf('\nexport async function', start + 1)
+      const body = partnersAction.slice(start, next === -1 ? undefined : next)
+      expect(body, `${name} must be gated`).toMatch(/requireCapability\('partner:(manage|read)'\)/)
+    }
+    const staffBlock = partnersAction.slice(partnersAction.indexOf('saveCampaignForPartnerAction'))
+    expect(staffBlock).not.toContain('hasPortalPass')
+  })
+
+  it('can build a shortlist before a portal has been opened', () => {
+    /*
+     * The portal's own stock list answers through the door, which is right
+     * for a page behind a passphrase and wrong for ours: somebody building a
+     * shortlist for a company whose portal is not open yet would be shown
+     * nothing, and would reasonably conclude there is no stock.
+     */
+    expect(portalService).toMatch(/export async function stockForPartner\(/)
+    expect(staffPage).toContain('stockForPartner(partner.id)')
+  })
+
+  it('does not give the status and the button the same word', () => {
+    // The chip already says OPEN. A button wearing the same word beside it
+    // reads as a second label rather than as something to press.
+    expect(staffUi).toContain("'Close it' : 'Open it'")
+  })
+
+  it('warns when nobody at the company can see their own campaigns', () => {
+    // The recipients' links still work, so this is a note rather than an
+    // error — but it is the question somebody will ask.
+    expect(staffUi).toContain('This partner has no portal open')
+  })
+})
+
 describe('on our side of it', () => {
   it('names the campaign on the held-stock list', () => {
     /*

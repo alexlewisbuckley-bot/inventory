@@ -58,6 +58,10 @@ export async function listPartners() {
     portalToken: partners.portalToken,
     portalOpen: sql<boolean>`${partners.portalPasswordHash} is not null`,
     portalPasswordSetAt: partners.portalPasswordSetAt,
+    campaignCount: sql<number>`(
+      SELECT count(*) FROM partner_campaigns c
+      WHERE c.partner_id = partners.id AND c.deleted_at IS NULL
+    )`,
   })
     .from(partners)
     .where(isNull(partners.deletedAt))
