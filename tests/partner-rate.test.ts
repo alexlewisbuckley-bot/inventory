@@ -170,7 +170,9 @@ describe('the trade price is a floor the rate cannot go through', () => {
     // A floor the query forgets to select is a floor that is not there.
     const portal = read('src/server/services/partner-portal-service.ts')
     const campaign = read('src/server/services/partner-campaign-service.ts')
-    expect(portal.match(/tradeGbp: watches\.tradePriceGbp/g)?.length).toBe(3)
+    // Four now: the portal list, a single order, the staff list, and the
+    // bulk basket, which prices each line it confirms.
+    expect(portal.match(/tradeGbp: watches\.tradePriceGbp/g)?.length).toBe(4)
     expect(campaign.match(/tradeGbp: watches\.tradePriceGbp/g)?.length).toBe(2)
   })
 

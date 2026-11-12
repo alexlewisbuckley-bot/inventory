@@ -192,7 +192,14 @@ describe('what a partner is shown', () => {
      * having one.
      */
     expect(room).toContain('const brands = useMemo')
-    expect(room).toContain('[...new Set(items.map((item) => item.brandName))]')
+    /*
+     * With their counts now, biggest first: a chip saying "Rolex 142" tells
+     * somebody how much of the case it is before they tap it, and the one
+     * most people want should be under their thumb rather than wherever the
+     * alphabet left it.
+     */
+    expect(room).toContain('counts.set(item.brandName, (counts.get(item.brandName) ?? 0) + 1)')
+    expect(room).toContain('.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))')
     expect(room).toContain('item.priceGbp < floor')
     expect(room).toContain('item.priceGbp > ceiling')
     expect(room).toContain("if (sort === 'priceUp')")
@@ -261,7 +268,20 @@ describe('taking one off the market', () => {
      * guards the list and nothing on it, and anybody holding the link could
      * take stock off the market without ever getting through the door.
      */
-    expect(action).toContain('await hasPortalPass(token, door.passwordHash, door.passwordSetAt)')
+    /*
+     * Both of them, sliced out and checked separately.
+     *
+     * Asserting the string appears somewhere in the file passed happily with
+     * the single order's guard removed, because the bulk one still had it —
+     * a test that cannot tell which door it is looking at.
+     */
+    for (const name of ['placeOrderAction', 'placeOrdersAction']) {
+      const start = action.indexOf(`export async function ${name}`)
+      const end = action.indexOf('export ', start + 10)
+      const body = action.slice(start, end === -1 ? undefined : end)
+      expect(body, `${name} must check the pass`)
+        .toContain('await hasPortalPass(token, door.passwordHash, door.passwordSetAt)')
+    }
   })
 
   it('takes no money and says so', () => {
@@ -374,6 +394,108 @@ describe('a hold ends when a person ends it', () => {
     // themselves once per release.
     expect(orders).toContain('if (person.id === notice.exceptUserId) continue')
     expect(orders).toContain('exceptUserId: actor.id')
+  })
+})
+
+describe('buying several at once', () => {
+  const action = read('src/app/actions/partner-portal.ts')
+
+  it('reserves a basket rather than one dialog at a time', () => {
+    /*
+     * Alex: "think about more features like bulk select and order for
+     * somebody trying to purchase multiple watches."
+     *
+     * A company buying for five directors was placing five orders through
+     * five dialogs, typing its name into each. That is the ordinary case for
+     * a partner, not an edge one — and doing it one at a time is also how
+     * somebody gives up halfway and rings instead.
+     */
+    expect(service).toContain('export async function placeOrders')
+    expect(room).toContain('placeOrdersAction.bind(null, token)')
+    expect(room).toContain('name="watchIds"')
+  })
+
+  it('does not throw away four good reservations because a fifth has gone', () => {
+    /*
+     * Deliberately not one transaction. An all-or-nothing basket would lose
+     * four watches a partner can have because a fifth sold this morning, and
+     * leave them to work out which.
+     */
+    const bulk = service.slice(
+      service.indexOf('export async function placeOrders('),
+      service.indexOf('export const MAX_BULK_ORDER'),
+    )
+    // Each one placed on its own, inside a try, so a failure is recorded and
+    // the loop carries on rather than taking the basket down with it.
+    expect(bulk).toContain('for (const watchId of watchIds.slice(0, MAX_BULK_ORDER))')
+    expect(bulk).toContain('await placeOrder(token, { watchId, ...details })')
+    expect(bulk).toContain('} catch (error) {')
+    expect(bulk).toContain('missed.push({')
+    // And not wrapped in one transaction, which would undo the good ones.
+    expect(bulk).not.toContain('withTransaction')
+  })
+
+  it('reports a partly full basket as a success, because it is', () => {
+    // Four reserved and one gone is a good outcome. Calling the whole thing a
+    // failure is the one way to make somebody think they have nothing.
+    expect(action).toContain('${outcome.taken.length} reserved. ${outcome.missed.length} had already gone.')
+    expect(action).toContain("if (outcome.taken.length === 0)")
+  })
+
+  it('stops counting the basket once it has been taken', () => {
+    /*
+     * The basket is drawn from the stock list, and reserved pieces leave it
+     * immediately — so the header read "Reserve these 0 watches · AED 0"
+     * above a message saying three were reserved.
+     */
+    expect(room).toContain("${state.taken} reserved for you")
+    expect(room).toContain('state.ok ? (')
+  })
+
+  it('says which ones had gone rather than rolling them into a total', () => {
+    // Hiding the miss is how somebody turns up expecting five.
+    expect(room).toContain('state.missed && state.missed.length > 0')
+  })
+
+  it('checks the pass before taking stock off the market in bulk', () => {
+    const bulk = action.slice(action.indexOf('export async function placeOrdersAction'))
+    expect(bulk).toContain('await hasPortalPass(token, door.passwordHash, door.passwordSetAt)')
+  })
+
+  it('caps one basket, because the page could post any list it liked', () => {
+    // Not a commercial limit — a partner may buy the whole case, one basket
+    // after another. It is a guard on a loop that moves a watch each time.
+    expect(service).toContain('export const MAX_BULK_ORDER = 25')
+    expect(service).toContain('watchIds.slice(0, MAX_BULK_ORDER)')
+  })
+})
+
+describe('finding something in two hundred watches', () => {
+  it('leads with one search and the brands, not six equal selects', () => {
+    /*
+     * Alex: "Filtering is terrible and not stremalined." Six selects in a
+     * row, each the same weight as the next, meant reading a toolbar before
+     * touching it — and on a phone it was a wall before the stock.
+     */
+    expect(room).toContain('placeholder="Search model, reference, dial or metal"')
+    expect(room).toContain('More filters')
+    expect(room).toContain('brands.map(({ name, count })')
+  })
+
+  it('says what is applied, in things that come off one at a time', () => {
+    /*
+     * The worst state in a filtered list is an empty one whose cause is
+     * off-screen: somebody sets a price ceiling, collapses the panel,
+     * searches for a Daytona and concludes we have none.
+     */
+    expect(room).toContain('pills.map((pill)')
+    expect(room).toContain('onClick={pill.clear}')
+    expect(room).toContain('Clear all')
+  })
+
+  it('counts the hidden filters on its own button', () => {
+    // So a collapsed panel with two filters in it does not look empty.
+    expect(room).toContain('const narrowed = [size, boxPapers, min, max].filter(Boolean).length')
   })
 })
 

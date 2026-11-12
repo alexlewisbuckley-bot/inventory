@@ -4,7 +4,7 @@ import { db, withTransaction } from '../db/client'
 import { brands, locations, partnerOrders, partners, users, watchImages, watches, notifications } from '../db/schema'
 import { recordAudit } from './audit'
 import { newId } from '@/lib/ids'
-import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
+import { ConflictError, NotFoundError, ValidationError, isAppError } from '@/lib/errors'
 import { partnerPrice } from '@/lib/partner-rate'
 import { logger } from '@/lib/logger'
 import { hashPassword } from '../auth/password'
@@ -590,3 +590,68 @@ export async function stockForPartner(partnerId: string): Promise<PortalItem[]> 
     imageIds: row.imageIds ?? [],
   }))
 }
+
+export interface BulkOrderOutcome {
+  taken: Array<{ watchId: string; stockNo: number; priceGbp: number }>
+  /** The ones that went between the page rendering and the button. */
+  missed: Array<{ watchId: string; reason: string }>
+}
+
+/**
+ * Reserving several watches at once.
+ *
+ * Alex: "think about more features like bulk select and order for somebody
+ * trying to purchase multiple watches."
+ *
+ * A partner buying five pieces was placing five orders through five dialogs,
+ * typing their name into each. That is the common case for a company buying
+ * for its directors, and doing it one at a time is also how somebody gives up
+ * halfway and rings instead.
+ *
+ * Deliberately NOT one transaction. If a watch has gone in the meantime, the
+ * other four should still be theirs — an all-or-nothing basket would throw
+ * away four good reservations because a fifth was sold this morning, and the
+ * partner would have to work out which. Each is placed on its own and the
+ * result says plainly what was taken and what was missed.
+ */
+export async function placeOrders(
+  token: string,
+  watchIds: string[],
+  details: { placedByName: string | null; placedByEmail: string | null; note: string | null },
+): Promise<BulkOrderOutcome> {
+  const door = await getPortalDoor(token)
+  if (!door) throw new NotFoundError('Portal')
+
+  const taken: BulkOrderOutcome['taken'] = []
+  const missed: BulkOrderOutcome['missed'] = []
+
+  for (const watchId of watchIds.slice(0, MAX_BULK_ORDER)) {
+    try {
+      await placeOrder(token, { watchId, ...details })
+      const [row] = await db
+        .select({ stockNo: watches.stockNo, askingGbp: watches.estSaleGbp, tradeGbp: watches.tradePriceGbp })
+        .from(watches).where(eq(watches.id, watchId)).limit(1)
+      taken.push({
+        watchId,
+        stockNo: row?.stockNo ?? 0,
+        priceGbp: partnerPrice(row?.askingGbp, door.discountBps, row?.tradeGbp) ?? 0,
+      })
+    } catch (error) {
+      missed.push({
+        watchId,
+        reason: isAppError(error) ? error.message : 'That one could not be reserved.',
+      })
+    }
+  }
+
+  return { taken, missed }
+}
+
+/**
+ * A ceiling on one basket.
+ *
+ * Not a commercial limit — a partner may buy the whole case if they like, one
+ * basket after another. It is a guard on a loop that writes a row and moves a
+ * watch each time, against a page that could post any list it pleased.
+ */
+export const MAX_BULK_ORDER = 25

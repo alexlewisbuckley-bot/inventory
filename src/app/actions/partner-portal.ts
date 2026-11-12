@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { getPortalDoor, placeOrder } from '@/server/services/partner-portal-service'
+import { getPortalDoor, placeOrder, placeOrders } from '@/server/services/partner-portal-service'
 import { verifyPassword } from '@/server/auth/password'
 import { clearPortalPass, grantPortalPass, hasPortalPass } from '@/server/auth/portal-pass'
 import { isAppError } from '@/lib/errors'
@@ -95,5 +95,68 @@ export async function placeOrderAction(
     if (isAppError(error)) return { ok: false, message: error.message }
     logger.error('partner order failed', { error: (error as Error).message })
     return { ok: false, message: 'That could not be reserved. Please try again.' }
+  }
+}
+
+export interface BulkState {
+  ok: boolean
+  message: string
+  /** What was taken and what had gone, so the page can say both. */
+  taken?: number
+  missed?: string[]
+}
+
+/**
+ * Reserve several at once.
+ *
+ * The pass is checked here as it is for a single order: a server action is a
+ * route, and this one takes stock off the market in bulk.
+ *
+ * A partly successful basket comes back as ok, because it is: four watches
+ * are reserved and the fifth is gone. Reporting the whole thing as a failure
+ * would be the one way to make somebody think they have nothing.
+ */
+export async function placeOrdersAction(
+  token: string,
+  _previous: BulkState,
+  formData: FormData,
+): Promise<BulkState> {
+  const door = await getPortalDoor(token)
+  if (!door) return { ok: false, message: 'That link is no longer open.' }
+  if (!await hasPortalPass(token, door.passwordHash, door.passwordSetAt)) {
+    return { ok: false, message: 'Please enter the passphrase again.' }
+  }
+
+  const watchIds = (formData.get('watchIds')?.toString() ?? '')
+    .split(',').map((id) => id.trim()).filter(Boolean)
+  if (watchIds.length === 0) return { ok: false, message: 'Pick at least one watch.' }
+
+  try {
+    const outcome = await placeOrders(token, watchIds, {
+      placedByName: formData.get('placedByName')?.toString() ?? null,
+      placedByEmail: formData.get('placedByEmail')?.toString() ?? null,
+      note: formData.get('note')?.toString() ?? null,
+    })
+    revalidatePath(`/p/${token}`)
+
+    if (outcome.taken.length === 0) {
+      return {
+        ok: false,
+        message: 'None of those could be reserved — they have all gone.',
+        missed: outcome.missed.map((row) => row.reason),
+      }
+    }
+    return {
+      ok: true,
+      taken: outcome.taken.length,
+      missed: outcome.missed.map((row) => row.reason),
+      message: outcome.missed.length === 0
+        ? `${outcome.taken.length} reserved. Somebody will be in touch to settle them.`
+        : `${outcome.taken.length} reserved. ${outcome.missed.length} had already gone.`,
+    }
+  } catch (error) {
+    if (isAppError(error)) return { ok: false, message: error.message }
+    logger.error('bulk partner order failed', { error: (error as Error).message })
+    return { ok: false, message: 'Those could not be reserved. Please try again.' }
   }
 }
