@@ -1,6 +1,8 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { brands, notifications, partnerOrders, partners, users, watches } from '../db/schema'
+import {
+  brands, notifications, partnerCampaigns, partnerOrders, partners, users, watches,
+} from '../db/schema'
 import { recordAudit } from './audit'
 import { newId } from '@/lib/ids'
 import { ConflictError, NotFoundError } from '@/lib/errors'
@@ -35,6 +37,8 @@ export interface HeldRow {
   discountBpsAtOrder: number
   /** Whether the watch is still actually held, or has moved on beneath us. */
   watchStatus: string
+  /** The reward campaign it came from, where it came from one. */
+  campaignName: string | null
 }
 
 /**
@@ -64,11 +68,20 @@ export async function listHeldStock(): Promise<HeldRow[]> {
       askingAtOrder: partnerOrders.askingAtOrder,
       discountBpsAtOrder: partnerOrders.discountBpsAtOrder,
       watchStatus: watches.status,
+      /*
+       * The campaign behind it, where there was one.
+       *
+       * On this list it is the difference between "somebody at the company
+       * wants this" and "this is Priya's ten-year award" — which changes how
+       * the phone call goes, and is not a thing to make our side guess at.
+       */
+      campaignName: partnerCampaigns.name,
     })
     .from(partnerOrders)
     .innerJoin(watches, eq(watches.id, partnerOrders.watchId))
     .innerJoin(brands, eq(brands.id, watches.brandId))
     .innerJoin(partners, eq(partners.id, partnerOrders.partnerId))
+    .leftJoin(partnerCampaigns, eq(partnerCampaigns.id, partnerOrders.campaignId))
     .where(and(eq(partnerOrders.status, 'PLACED'), isNull(watches.deletedAt)))
     .orderBy(partnerOrders.placedAt)
 }

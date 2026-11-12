@@ -6,6 +6,7 @@ import {
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
+  CAMPAIGN_KINDS, CAMPAIGN_STATUSES,
   ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, PARTNER_ORDER_STATUSES,
   TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
   ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
@@ -297,6 +298,17 @@ export const partnerOrders = pgTable(
     /** PLACED while held, RELEASED when let go, COMPLETED once invoiced. */
     status: text('status', { enum: PARTNER_ORDER_STATUSES }).notNull().default('PLACED'),
 
+    /*
+     * Which campaign this came from, where it came from one at all.
+     *
+     * Nullable: a partner buying for itself is still the ordinary case. On the
+     * held-stock list this is the difference between "somebody at the company
+     * wants this" and "this is Priya's ten-year award", which is not a
+     * difference to make our side guess at on the phone.
+     */
+    campaignId: text('campaign_id'),
+    recipientId: text('recipient_id'),
+
     placedAt: timestamp('placed_at', { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
     releasedById: text('released_by_id').references(() => users.id, { onDelete: 'set null' }),
@@ -316,6 +328,99 @@ export const partnerOrders = pgTable(
     liveWatchIdx: uniqueIndex('partner_orders_live_watch_idx')
       .on(t.watchId).where(sql`status = 'PLACED'`),
     partnerIdx: index('partner_orders_partner_idx').on(t.partnerId, t.placedAt),
+  }),
+)
+
+
+/**
+ * A reward campaign a partner runs for its own people.
+ *
+ * A company decides to reward some of its staff with a watch, sets it up in
+ * its portal, and sends each person a link. The person picks one, and we get a
+ * hold and a phone call to make — the same machinery a partner's own order
+ * uses, with a name attached to who chose it and why.
+ */
+export const partnerCampaigns = pgTable(
+  'partner_campaigns',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** What each recipient reads at the top of their page, in the company's words. */
+    intro: text('intro'),
+    kind: text('kind', { enum: CAMPAIGN_KINDS }).notNull().default('SHORTLIST'),
+    /*
+     * For a BUDGET campaign: what each recipient may spend, measured against
+     * the partner's own price rather than the asking price. Their rate is the
+     * arrangement, so measuring against the asking price would quietly hand
+     * back the discount the company negotiated.
+     */
+    budgetBase: integer('budget_base'),
+    status: text('status', { enum: CAMPAIGN_STATUSES }).notNull().default('DRAFT'),
+    openedAt: timestamp('opened_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    partnerIdx: index('partner_campaigns_partner_idx').on(t.partnerId, t.createdAt),
+  }),
+)
+
+/**
+ * The watches a shortlist campaign offers.
+ *
+ * A row here is a nomination, not a reservation: the piece stays on sale to
+ * everybody until somebody actually claims it. A campaign that held its whole
+ * shortlist would take twenty watches off the market for a month to give away
+ * three.
+ */
+export const partnerCampaignItems = pgTable(
+  'partner_campaign_items',
+  {
+    id: text('id').primaryKey(),
+    campaignId: text('campaign_id').notNull()
+      .references(() => partnerCampaigns.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').notNull().references(() => watches.id, { onDelete: 'cascade' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    uniqueIdx: uniqueIndex('partner_campaign_items_unique_idx').on(t.campaignId, t.watchId),
+  }),
+)
+
+/** The people being rewarded, and the link each one is sent. */
+export const partnerCampaignRecipients = pgTable(
+  'partner_campaign_recipients',
+  {
+    id: text('id').primaryKey(),
+    campaignId: text('campaign_id').notNull()
+      .references(() => partnerCampaigns.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    email: text('email'),
+    /*
+     * One long random token per person, and no passphrase over it.
+     *
+     * The one place in this system where a door has a single lock. The
+     * alternative is asking somebody's warehouse manager to remember a phrase
+     * to collect a gift they did not ask for. The token is per person, so a
+     * forwarded link is traceable to whoever forwarded it, and what it opens
+     * is one campaign's watches and nothing else.
+     */
+    token: text('token').notNull(),
+    claimedOrderId: text('claimed_order_id'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    /** Their own words at the moment of choosing, for whoever rings them. */
+    claimNote: text('claim_note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex('partner_campaign_recipients_token_idx').on(t.token),
+    campaignIdx: index('partner_campaign_recipients_campaign_idx').on(t.campaignId, t.createdAt),
   }),
 )
 
