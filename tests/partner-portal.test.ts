@@ -147,6 +147,60 @@ describe('what a partner is shown', () => {
     expect(room).toContain('CONDITION_LABELS[item.condition as Condition]')
   })
 
+  it('never shows a trade photograph', () => {
+    /*
+     * Alex: "do not use any trade images what so ever."
+     *
+     * A trade shot is a record picture — taken to prove a piece is in hand,
+     * marks and all, on whatever surface was nearest. A dealer wants exactly
+     * that. A partner is buying the watch for somebody's wrist, and a page
+     * asking a negotiated price with a record picture on it undercuts the
+     * price it is asking.
+     */
+    expect(service).toContain("i.kind = 'WATCH'")
+    expect(service).not.toMatch(/kind IN \('WATCH', 'TRADE'\)/)
+    expect(service).toContain("${watchImages.kind} = 'WATCH'")
+  })
+
+  it('lists nothing it cannot show a photograph of', () => {
+    /*
+     * Asked for in the query rather than filtered afterwards, so the count on
+     * the page and the rows on the page agree. A card reading "no photograph"
+     * is a line of text claiming we have something, and a partner cannot
+     * judge a watch from it anyway.
+     */
+    expect(service).toContain('sql`EXISTS (\n        SELECT 1 FROM watch_images i')
+  })
+
+  it('can be filtered the way any shop can', () => {
+    /*
+     * Two hundred watches is past the point where a list is browsable. Alex:
+     * "add filtering like it is any other website to find watch easily."
+     *
+     * The choices come from the stock rather than from a fixed list: a brand
+     * filter offering Patek when there is none in the building returns
+     * nothing, which reads as the page being broken rather than as us not
+     * having one.
+     */
+    expect(room).toContain('const brands = useMemo')
+    expect(room).toContain('[...new Set(items.map((item) => item.brandName))]')
+    expect(room).toContain('item.priceGbp < floor')
+    expect(room).toContain('item.priceGbp > ceiling')
+    expect(room).toContain("if (sort === 'priceUp')")
+  })
+
+  it('lays out five to a row with cards that cannot go ragged', () => {
+    /*
+     * One watch called "Royal Oak Offshore Chronograph" would otherwise drop
+     * the button on its card below the four beside it, and the row reads as
+     * broken.
+     */
+    expect(room).toContain('xl:grid-cols-5')
+    expect(room).toContain('flex h-full flex-col')
+    expect(room).toContain('line-clamp-2 min-h-[2.6em]')
+    expect(room).toContain('line-clamp-1 min-h-[1.3em]')
+  })
+
   it('states the rate once rather than badging every row', () => {
     // A page that says "8.5% off" forty times reads as a sale. This is not a
     // sale; it is what this company always pays.
