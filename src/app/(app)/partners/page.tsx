@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { requireCapability } from '@/server/auth/session'
 import { listPartners } from '@/server/services/partner-service'
 import { listHeldStock } from '@/server/services/partner-order-service'
-import { sampleAskingPrice } from '@/server/services/partner-stock'
+import { sampleWatchPrice } from '@/server/services/partner-stock'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { CreateAction } from '@/components/ui'
 import { PartnerManager } from '@/components/reference/PartnerManager'
@@ -24,7 +24,7 @@ export const dynamic = 'force-dynamic'
 export default async function PartnersPage() {
   const user = await requireCapability('partner:read')
   const [partners, sampleAsking, held] = await Promise.all([
-    listPartners(), sampleAskingPrice(), listHeldStock(),
+    listPartners(), sampleWatchPrice(), listHeldStock(),
   ])
 
   return (
@@ -52,7 +52,8 @@ export default async function PartnersPage() {
           displayCurrency: partner.displayCurrency as CurrencyCode,
           campaignCount: Number(partner.campaignCount),
         }))}
-        sampleAsking={sampleAsking}
+        sampleAsking={sampleAsking.askingGbp}
+        sampleTrade={sampleAsking.tradeGbp}
         canManage={can(user.role, 'partner:manage')}
       />
     </>

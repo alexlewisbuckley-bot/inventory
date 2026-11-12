@@ -14,7 +14,7 @@ import {
 } from '@/app/actions/partners'
 import type { ActionState } from '@/app/actions/auth'
 import { CURRENCIES, type CurrencyCode } from '@/lib/enums'
-import { MAX_DISCOUNT_BPS, partnerPrice, percentFromBps } from '@/lib/partner-rate'
+import { MAX_DISCOUNT_BPS, isFloored, partnerPrice, percentFromBps } from '@/lib/partner-rate'
 
 export interface PartnerRow {
   id: string
@@ -47,7 +47,7 @@ const INITIAL: ActionState = { ok: false }
  * ever a handful, and the one number that matters on each — the rate — is
  * worth more room than a column.
  */
-export function PartnerManager({ partners, canManage, sampleAsking }: {
+export function PartnerManager({ partners, canManage, sampleAsking, sampleTrade }: {
   partners: PartnerRow[]
   canManage: boolean
   /**
@@ -56,6 +56,8 @@ export function PartnerManager({ partners, canManage, sampleAsking }: {
    * the thing somebody is actually agreeing to.
    */
   sampleAsking: number | null
+  /** That watch's trade price, so the example obeys the floor the real ones do. */
+  sampleTrade: number | null
 }) {
   const toast = useToast()
   const { money } = useCurrency()
@@ -129,9 +131,20 @@ export function PartnerManager({ partners, canManage, sampleAsking }: {
                     A watch at <span className="font-bold text-content-primary">{money(sampleAsking)}</span>{' '}
                     is{' '}
                     <span className="font-bold text-content-primary">
-                      {money(partnerPrice(sampleAsking, partner.discountBps))}
+                      {money(partnerPrice(sampleAsking, partner.discountBps, sampleTrade))}
                     </span>{' '}
                     to them.
+                    {isFloored(sampleAsking, partner.discountBps, sampleTrade) && (
+                      /*
+                       * Said out loud, because the arithmetic has stopped
+                       * matching the headline. Somebody checking a rate
+                       * against a figure that is quietly the trade price
+                       * would otherwise conclude the percentage is wrong.
+                       */
+                      <span className="mt-1 block text-caption">
+                        Held at the trade price — the rate would have gone below it.
+                      </span>
+                    )}
                   </p>
                 )}
 

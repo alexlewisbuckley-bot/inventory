@@ -121,7 +121,10 @@ describe('what a partner is shown', () => {
   })
 
   it('works the price out from the rate rather than reading one back', () => {
-    expect(service).toContain('partnerPrice(row.askingGbp, door.discountBps)')
+    // The floor travels with it now: the rate decides the price until it
+    // would go below what another dealer is quoted, and then the trade price
+    // does.
+    expect(service).toContain('partnerPrice(row.askingGbp, door.discountBps, row.tradeGbp)')
   })
 
   it('shows them their own holds, so the portal has not eaten them', () => {
@@ -286,7 +289,7 @@ describe('what an order remembers', () => {
     // The same function on both sides, so what somebody clicked and what gets
     // written down cannot be two different numbers.
     expect(partnerPrice(12_000_000, 850)).toBe(10_980_000)
-    expect(service).toContain('partnerPrice(watch.askingGbp, door.discountBps)')
+    expect(service).toContain('partnerPrice(watch.askingGbp, door.discountBps, watch.tradeGbp)')
   })
 })
 
