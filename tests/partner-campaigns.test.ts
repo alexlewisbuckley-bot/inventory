@@ -78,18 +78,68 @@ describe('the link each person gets', () => {
     expect(service).toContain('randomBytes(24)')
   })
 
-  it('opens nothing unless the campaign is actually running', () => {
+  it('offers nothing unless the campaign is actually running', () => {
     /*
-     * A draft link that works is a half-built campaign sent out by accident; a
-     * closed one still giving away stock is a campaign that never ended.
+     * A draft link that offered stock would be a half-built campaign giving
+     * watches away; a closed one would be a campaign that never ended. The
+     * list is empty for both, and claiming is refused outright — belt as well
+     * as braces, because a claim is the one thing here that takes a watch off
+     * the market.
      */
-    expect(service).toContain("if (row.status !== 'OPEN') return null")
+    expect(service).toContain('const open = row.status === \'OPEN\'')
+    expect(service).toContain('choices: row.claimedAt || !open ? [] : await choicesFor({')
+    expect(service).toContain("if (view.campaign.status !== 'OPEN') throw new ConflictError")
     expect(CAMPAIGN_STATUSES).toEqual(['DRAFT', 'OPEN', 'CLOSED'])
   })
 
-  it('answers an unknown, withdrawn or finished link the same way', () => {
-    // Anything more specific tells whoever holds a dead link that there is
-    // something real behind it.
+  it('says which it is rather than answering with nothing', () => {
+    /*
+     * The first thing that went wrong in production: a link copied and sent
+     * the moment somebody was added, before the campaign was opened. It
+     * answered 404, which tells an employee their company's gift does not
+     * exist.
+     *
+     * They are holding a token we issued them — the token IS the secret — so
+     * saying "not open yet" or "this has closed" gives nothing away that they
+     * do not already have, and a dead page for a real recipient is the worse
+     * failure by a distance.
+     */
+    expect(service).toContain('status: row.status as CampaignStatus')
+    expect(choice).toContain('This is not open yet')
+    expect(choice).toContain('This has closed')
+    expect(choice).toContain('Your link works')
+  })
+
+  it('still answers an unknown token with nothing at all', () => {
+    // The distinction that makes the above safe: a token we never issued
+    // learns nothing, so the page cannot be used to find real links.
+    // Scoped to the lookup itself: the same line appears in the image door,
+    // and a pin that matches a sibling is a pin that holds nothing.
+    const lookup = service.slice(
+      service.indexOf('export async function getRecipientView'),
+      service.indexOf('async function choicesFor'),
+    )
+    expect(lookup).toContain('if (!row) return null')
+    expect(page).toContain('if (!view) notFound()')
+  })
+
+  it('does not offer a link to send before the campaign is open', () => {
+    /*
+     * The link exists from the moment somebody is added, which is how the
+     * first one went out early. It is real either way; what changes is
+     * whether it is worth sending.
+     */
+    const staffUi = read('src/components/reference/PartnerCampaigns.tsx')
+    const portalUi = read('src/components/portal/CampaignDetail.tsx')
+    expect(staffUi).toContain("live ? 'Copy their link' : 'Open it first'")
+    expect(staffUi).toContain('disabled={!live}')
+    expect(portalUi).toContain("live ? 'Copy link' : 'Open it first'")
+    expect(portalUi).toContain('disabled={!live}')
+  })
+
+  it('answers an unknown or withdrawn link with nothing', () => {
+    // Anything more specific tells whoever holds a link we never issued, or
+    // one we took back, that there is something real behind it.
     expect(page).toContain('if (!view) notFound()')
     expect(service).toContain('isNull(partnerCampaignRecipients.deletedAt)')
   })

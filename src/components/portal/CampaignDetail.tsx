@@ -131,6 +131,7 @@ export function CampaignDetail({ token, campaign, recipients, stock, shortlist }
                   token={token}
                   campaignId={campaign.id}
                   person={person}
+                  live={live}
                 />
               ))}
             </ul>
@@ -211,10 +212,12 @@ export function CampaignDetail({ token, campaign, recipients, stock, shortlist }
   )
 }
 
-function RecipientLine({ token, campaignId, person }: {
+function RecipientLine({ token, campaignId, person, live }: {
   token: string
   campaignId: string
   person: RecipientRow
+  /** Whether the campaign is running, and so whether the link is worth sending. */
+  live: boolean
 }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -262,13 +265,18 @@ function RecipientLine({ token, campaignId, person }: {
         </p>
       ) : (
         <>
+          {/* Not offered until the campaign is open: the link exists from the
+              moment somebody is added, and sending it early lands them on a
+              page with nothing on it. */}
           <button
             type="button"
             onClick={() => void copy()}
-            className="flex items-center gap-1.5 text-[12.5px] text-black/50 hover:text-black"
+            disabled={!live}
+            title={live ? undefined : 'Open the campaign first.'}
+            className="flex items-center gap-1.5 text-[12.5px] text-black/50 hover:text-black disabled:cursor-not-allowed disabled:opacity-40"
           >
             {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-            {copied ? 'Copied' : 'Copy link'}
+            {copied ? 'Copied' : live ? 'Copy link' : 'Open it first'}
           </button>
           <button
             type="button"
