@@ -1,0 +1,18 @@
+-- What the company's award covered, on the order it was spent against.
+--
+-- Alex: "We should show all the watches they can get upfront at the beggining
+-- but we should also show all other watches with the amount they've won
+-- deducted from it."
+--
+-- A budget campaign used to hide everything above the award, which made the
+-- award a ceiling. It is better read as a starting point: the pieces it covers
+-- outright first, then everything else with the award taken off and the
+-- difference stated, for somebody who would rather put their own money toward
+-- something they actually want.
+--
+-- Which means an order can now be part-paid by the company and part-paid by
+-- the person. Without this column our side sees a hold at the full price and
+-- no way to know that the employer covers thirty of it — so the invoice goes
+-- to the wrong party for the wrong amount. Null for an order with no campaign
+-- behind it, and for a shortlist campaign, where the company pays all of it.
+ALTER TABLE partner_orders ADD COLUMN IF NOT EXISTS budget_applied integer;

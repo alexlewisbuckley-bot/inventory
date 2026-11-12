@@ -24,6 +24,7 @@ export interface HeldView {
   askingAtOrder: number
   discountBpsAtOrder: number
   campaignName: string | null
+  budgetApplied: number | null
 }
 
 const INITIAL: ActionState = { ok: false }
@@ -113,6 +114,21 @@ export function HeldStock({ rows, canManage }: { rows: HeldView[]; canManage: bo
                   <p className="text-caption text-content-secondary">
                     {percentFromBps(row.discountBpsAtOrder)} off {money(row.askingAtOrder)}
                   </p>
+                  {/*
+                    * Split out where an award paid part of it, because the
+                    * two halves go to two different payers. A single total
+                    * here is how an employee gets invoiced for a watch their
+                    * employer has already covered.
+                    */}
+                  {row.budgetApplied !== null && row.budgetApplied < row.priceAtOrder && (
+                    <p className="text-caption text-content-secondary">
+                      {money(row.budgetApplied)} from the award ·{' '}
+                      <span className="font-semibold text-content-primary">
+                        {money(row.priceAtOrder - row.budgetApplied)}
+                      </span>{' '}
+                      from {row.placedByName ?? 'them'}
+                    </p>
+                  )}
                 </div>
 
                 {/*

@@ -19,6 +19,18 @@ type Choice = RecipientView['choices'][number]
 const describe = (item: { brandName: string; model: string | null; modelName: string | null }): string =>
   [item.brandName, item.model, item.modelName].filter(Boolean).join(' ')
 
+/** The line under the name, in the plainest words a dealer would use. */
+const details = (item: Choice): string =>
+  [
+    item.year,
+    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
+    item.dial,
+    item.condition ? CONDITION_LABELS[item.condition as Condition] : null,
+    item.boxPapers && item.boxPapers !== 'UNKNOWN'
+      ? BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
+      : null,
+  ].filter(Boolean).join(' · ')
+
 /**
  * What one person sees when they open their link.
  *
@@ -39,6 +51,16 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
   const { campaign, recipient } = view
   const showPrices = campaign.kind === 'BUDGET'
   const live = campaign.status === 'OPEN'
+
+  /*
+   * Split once, here, rather than filtered twice in the markup.
+   *
+   * The service has already worked out what each watch leaves to pay and
+   * sorted the covered ones first, so this is only where one list becomes
+   * two headings.
+   */
+  const covered = view.choices.filter((item) => item.topUpGbp === 0)
+  const topUp = view.choices.filter((item) => item.topUpGbp > 0)
 
   return (
     <main
@@ -74,10 +96,19 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
             </p>
           )}
           {!recipient.claimedAt && live && showPrices && campaign.budgetBase !== null && (
-            <p className="mt-3 text-[13.5px] text-black/60">
-              Anything up to{' '}
-              <span className="font-semibold text-black">{money(campaign.budgetBase)}</span>.
-              Everything below is within that.
+            /*
+             * The award, and what it means for the two groups below.
+             *
+             * It used to read "everything below is within that", which was
+             * true and also the whole problem: the list stopped at the award.
+             * Said this way the award is a starting point, and the second
+             * group is an invitation rather than a tease.
+             */
+            <p className="mt-3 max-w-[620px] text-[13.5px] leading-relaxed text-black/60">
+              You have{' '}
+              <span className="font-semibold text-black">{money(campaign.budgetBase)}</span>{' '}
+              to put toward a watch. The first ones below are yours for that
+              alone — for any of the others, you add the difference shown.
             </p>
           )}
         </div>
@@ -132,8 +163,13 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
         </div>
       ) : (
         <div className="mx-auto max-w-[1180px] px-5 py-9 sm:px-8">
+          {showPrices && covered.length > 0 && (
+            <h2 className="mb-5 font-serif text-[21px] text-black">
+              Yours for the award alone
+            </h2>
+          )}
           <ul className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-            {view.choices.map((item) => (
+            {(showPrices ? covered : view.choices).map((item) => (
               <li key={item.id} className="flex h-full flex-col">
                 <div className="aspect-square w-full overflow-hidden bg-black/[0.02]">
                   {item.imageIds[0] && (
@@ -151,20 +187,23 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
                   {describe(item)}
                 </p>
                 <p className="mt-1 line-clamp-1 min-h-[1.3em] text-[12.5px] text-black/50">
-                  {[
-                    item.year,
-                    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
-                    item.dial,
-                    item.condition ? CONDITION_LABELS[item.condition as Condition] : null,
-                    item.boxPapers && item.boxPapers !== 'UNKNOWN'
-                      ? BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
-                      : null,
-                  ].filter(Boolean).join(' · ')}
+                  {details(item)}
                 </p>
 
                 {showPrices && (
-                  <p className="mt-2 text-[15px] font-semibold tabular-nums text-black">
-                    {money(item.priceGbp)}
+                  /*
+                   * The value, said to be covered.
+                   *
+                   * A bare price under "yours for the award alone" reads as
+                   * something to pay — which is the opposite of what it is.
+                   * Keeping the figure is worth it: somebody should see what
+                   * they are being given is worth.
+                   */
+                  <p className="mt-2 text-[15px] tabular-nums text-black">
+                    <span className="font-semibold">{money(item.priceGbp)}</span>
+                    <span className="ml-2 text-[12.5px] font-normal text-black/45">
+                      covered by your award
+                    </span>
                   </p>
                 )}
 
@@ -179,6 +218,63 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
               </li>
             ))}
           </ul>
+
+          {showPrices && topUp.length > 0 && (
+            <>
+              <h2 className="mb-2 mt-14 font-serif text-[21px] text-black">
+                Or put your award toward one of these
+              </h2>
+              <p className="mb-5 max-w-[620px] text-[13.5px] leading-relaxed text-black/55">
+                Your {campaign.budgetBase !== null ? money(campaign.budgetBase) : 'award'} comes
+                off each of these. The figure shown is what would be left for you to pay.
+              </p>
+              <ul className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
+                {topUp.map((item) => (
+                  <li key={item.id} className="flex h-full flex-col">
+                    <div className="aspect-square w-full overflow-hidden bg-black/[0.02]">
+                      {item.imageIds[0] && (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={`/r/${token}/image/${item.imageIds[0]}`}
+                          alt={describe(item)}
+                          loading="lazy"
+                          className="h-full w-full object-contain p-4 mix-blend-multiply"
+                        />
+                      )}
+                    </div>
+
+                    <p className="mt-4 line-clamp-2 min-h-[2.6em] font-serif text-[18px] leading-snug text-black">
+                      {describe(item)}
+                    </p>
+                    <p className="mt-1 line-clamp-1 min-h-[1.3em] text-[12.5px] text-black/50">
+                      {details(item)}
+                    </p>
+
+                    {/*
+                      * The number that decides this, which is what is left to
+                      * pay — not the price. The price is there underneath so
+                      * nobody feels a figure has been kept from them.
+                      */}
+                    <p className="mt-2 text-[15px] font-semibold tabular-nums text-black">
+                      {money(item.topUpGbp)} to pay
+                    </p>
+                    <p className="text-[12px] tabular-nums text-black/45">
+                      {money(item.priceGbp)} less your award
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => setTaking(item)}
+                      className="mt-4 h-11 w-full border text-[12px] font-semibold uppercase tracking-[0.08em]"
+                      style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                    >
+                      Choose this one
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
 
@@ -224,9 +320,25 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
           <div>
             <p className="font-serif text-[20px] leading-snug text-black">{describe(item)}</p>
             {showPrice && (
-              <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-black/80">
-                {money(item.priceGbp)}
-              </p>
+              /*
+               * What they pay, said before they commit and not after.
+               *
+               * A dialog that showed the watch's price on a piece needing a
+               * top-up would be the last thing somebody read before agreeing
+               * to a number nobody had put in front of them.
+               */
+              item.topUpGbp > 0 ? (
+                <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-black/80">
+                  {money(item.topUpGbp)} for you to pay
+                  <span className="ml-1.5 text-[12.5px] font-normal text-black/45">
+                    ({money(item.priceGbp)} less your award)
+                  </span>
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-black/80">
+                  Covered by your award
+                </p>
+              )
             )}
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black">
@@ -252,6 +364,12 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
             <p className="text-[13.5px] leading-relaxed text-black/60">
               This is your choice, and it is one watch — once it is made, we set this
               one aside for you.
+              {showPrice && item.topUpGbp > 0 && (
+                <> Nothing is charged now: somebody will be in touch about the{' '}
+                  <span className="font-semibold text-black">{money(item.topUpGbp)}</span>{' '}
+                  before anything is arranged.
+                </>
+              )}
             </p>
             <label className="block">
               <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">

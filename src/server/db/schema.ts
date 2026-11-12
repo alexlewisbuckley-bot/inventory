@@ -322,6 +322,16 @@ export const partnerOrders = pgTable(
      */
     campaignId: text('campaign_id'),
     recipientId: text('recipient_id'),
+    /*
+     * What the company's award covered, where one was spent against this.
+     *
+     * A budget campaign lets somebody put the award toward a dearer watch and
+     * pay the difference, so an order can be part-paid by the employer and
+     * part-paid by the person. Without this our side sees a hold at the full
+     * price and no way to know who owes what, and the invoice goes to the
+     * wrong party for the wrong amount.
+     */
+    budgetApplied: integer('budget_applied'),
 
     placedAt: timestamp('placed_at', { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp('released_at', { withTimezone: true }),
