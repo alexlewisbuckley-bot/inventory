@@ -145,6 +145,8 @@ export interface PortalRoom {
 export interface PortalOrder {
   id: string
   status: string
+  /** What the watch itself says. A hold is only live while this is RESERVED. */
+  watchStatus: string
   placedAt: Date
   priceAtOrder: number
   brandName: string
@@ -233,6 +235,19 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
       model: watches.model,
       modelName: watches.modelName,
       placedByName: partnerOrders.placedByName,
+      /*
+       * The watch's own status, carried so the page can check rather than
+       * trust.
+       *
+       * The order used to be the only word on whether something was held, and
+       * the two drifted the moment a watch was taken off hold by any route
+       * other than the Release button: the piece went back on sale to
+       * everybody while the company that reserved it was still being told it
+       * was theirs. Writes now close the order wherever the watch moves, and
+       * this is the second belt — it heals a row that drifted before that
+       * existed, on the next page load, without anybody running anything.
+       */
+      watchStatus: watches.status,
     })
     .from(partnerOrders)
     .innerJoin(watches, eq(watches.id, partnerOrders.watchId))

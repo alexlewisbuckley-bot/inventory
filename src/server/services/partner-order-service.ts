@@ -92,7 +92,20 @@ export async function listHeldStock(): Promise<HeldRow[]> {
     .innerJoin(brands, eq(brands.id, watches.brandId))
     .innerJoin(partners, eq(partners.id, partnerOrders.partnerId))
     .leftJoin(partnerCampaigns, eq(partnerCampaigns.id, partnerOrders.campaignId))
-    .where(and(eq(partnerOrders.status, 'PLACED'), isNull(watches.deletedAt)))
+    .where(and(
+      eq(partnerOrders.status, 'PLACED'),
+      isNull(watches.deletedAt),
+      /*
+       * And the watch still agrees it is held.
+       *
+       * An order whose watch has moved on is not a hold, whatever the row
+       * says — a piece sold last week should not sit here as something
+       * waiting on a phone call. Writes close the order wherever the watch
+       * moves; this keeps a row that drifted before that out of the list
+       * rather than leaving it to be noticed.
+       */
+      eq(watches.status, 'RESERVED'),
+    ))
     .orderBy(partnerOrders.placedAt)
 }
 

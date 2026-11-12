@@ -135,7 +135,13 @@ describe('what a partner is shown', () => {
      */
     expect(service).toContain('.from(partnerOrders)')
     expect(room).toContain('On hold for you')
-    expect(room).toContain("orders.filter((order) => order.status === 'PLACED')")
+    /*
+     * Held now means the order says so AND the watch agrees. The order was
+     * once the only word on it, and the two drifted the moment a watch came
+     * off hold by any route but the Release button — leaving a partner told a
+     * piece was theirs while it was back on sale to everybody.
+     */
+    expect(room).toContain("order.status === 'PLACED' && order.watchStatus === 'RESERVED'")
   })
 
   it('shows words rather than the values we store', () => {
@@ -368,6 +374,61 @@ describe('a hold ends when a person ends it', () => {
     // themselves once per release.
     expect(orders).toContain('if (person.id === notice.exceptUserId) continue')
     expect(orders).toContain('exceptUserId: actor.id')
+  })
+})
+
+describe('a hold and its watch cannot drift apart', () => {
+  const sync = read('src/server/services/partner-hold-sync.ts')
+  const watchService = read('src/server/services/watch-service.ts')
+  const orders = read('src/server/services/partner-order-service.ts')
+
+  it('closes the order wherever the watch moves', () => {
+    /*
+     * Alex: "I removed this from hold and synced but still shows as on hold
+     * on Partner portal."
+     *
+     * He was right and the portal was wrong. The order carried its own status
+     * and the portal read that alone, so taking the watch off hold by any
+     * route but the Release button left the order saying PLACED for ever —
+     * the piece back on sale to everybody while the company that reserved it
+     * was still being told it was theirs.
+     */
+    expect(sync).toContain('export async function closeHoldsForWatch')
+    expect(watchService).toContain('await closeHoldsForWatch(id, status, actor.id, watch.stockNo)')
+    expect(watchService).toContain("await closeHoldsForWatch(watch.id, 'SOLD', actor.id, watch.stockNo)")
+  })
+
+  it('leaves a hold alone while the watch is still held', () => {
+    // A watch arriving at or staying at RESERVED is not a release.
+    expect(sync).toContain("if (newStatus === 'RESERVED') return")
+  })
+
+  it('closes a sold one as sold, not as released', () => {
+    /*
+     * A partner order that ends in a sale is the happy ending. Filing it as
+     * "released" would read on the campaign screen as somebody changing their
+     * mind, which is a different conversation from the one that happened.
+     */
+    expect(sync).toContain("const completed = newStatus === 'SOLD'")
+    expect(sync).toContain("completed ? 'COMPLETED' : 'RELEASED'")
+  })
+
+  it('says in the audit why the order closed', () => {
+    // Otherwise a partner asks why their hold went and nobody can answer.
+    expect(sync).toContain('so the partner order was released with it')
+    expect(sync).toContain('so the partner order closed with it')
+  })
+
+  it('heals a row that drifted before any of this existed', () => {
+    /*
+     * The write path only helps from now on. Both screens check the watch as
+     * well as the order, so a row that already drifted stops claiming the
+     * watch the moment anybody loads the page — without anybody running
+     * anything against the database.
+     */
+    expect(service).toContain('watchStatus: watches.status')
+    expect(room).toContain("order.watchStatus === 'RESERVED'")
+    expect(orders).toContain("eq(watches.status, 'RESERVED')")
   })
 })
 

@@ -139,7 +139,17 @@ export function PortalRoom({ token, partner, items, orders }: {
     setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setMin(''); setMax('')
   }
 
-  const held = orders.filter((order) => order.status === 'PLACED')
+  /*
+   * Held means the ORDER says so and the WATCH agrees.
+   *
+   * Taking a watch off hold anywhere else used to leave the order saying
+   * PLACED for ever, so a partner kept being shown a piece that had gone back
+   * on sale. Checking both means a row that drifted stops claiming the watch
+   * the moment anybody looks at it.
+   */
+  const held = orders.filter(
+    (order) => order.status === 'PLACED' && order.watchStatus === 'RESERVED',
+  )
 
   return (
     <main
