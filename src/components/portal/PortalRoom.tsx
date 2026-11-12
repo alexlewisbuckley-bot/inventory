@@ -69,7 +69,13 @@ function priceSteps(items: PortalItem[]): number[] {
  */
 export function PortalRoom({ token, partner, items, orders }: {
   token: string
-  partner: { name: string; brandColor: string; accentColor: string; discountBps: number }
+  partner: {
+    name: string
+    hasLogo: boolean
+    brandColor: string
+    accentColor: string
+    discountBps: number
+  }
   items: PortalItem[]
   orders: PortalOrder[]
 }) {
@@ -146,9 +152,14 @@ export function PortalRoom({ token, partner, items, orders }: {
       <header className="border-b border-black/10 px-5 py-7 sm:px-8">
         <div className="mx-auto flex max-w-[1480px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <div>
-            <p className="font-serif text-[26px] leading-tight" style={{ color: 'var(--brand)' }}>
-              {partner.name}
-            </p>
+            {partner.hasLogo ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={`/p/${token}/logo`} alt={partner.name} className="h-9 w-auto object-contain" />
+            ) : (
+              <p className="font-serif text-[26px] leading-tight" style={{ color: 'var(--brand)' }}>
+                {partner.name}
+              </p>
+            )}
             <p className="mt-1 text-[13px] text-black/55">
               {partner.discountBps > 0
                 /*

@@ -16,9 +16,10 @@ import { enterPortalAction, type GateState } from '@/app/actions/partner-portal'
  * their own office, and a page that looks like a stranger's software is a page
  * they check twice before typing anything into.
  */
-export function PortalGate({ token, name, brandColor, accentColor }: {
+export function PortalGate({ token, name, hasLogo, brandColor, accentColor }: {
   token: string
   name: string
+  hasLogo: boolean
   brandColor: string
   accentColor: string
 }) {
@@ -40,12 +41,24 @@ export function PortalGate({ token, name, brandColor, accentColor }: {
       }}
     >
       <div className="w-full max-w-[360px]">
-        <p
-          className="mb-8 text-center font-serif text-[22px] tracking-tight"
-          style={{ color: 'var(--brand)' }}
-        >
-          {name}
-        </p>
+        {hasLogo ? (
+          /* Their mark, on the door. Somebody handed this link by their own
+             office checks twice before typing anything into a page that looks
+             like a stranger's software. */
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={`/p/${token}/logo`}
+            alt={name}
+            className="mx-auto mb-8 h-10 w-auto object-contain"
+          />
+        ) : (
+          <p
+            className="mb-8 text-center font-serif text-[22px] tracking-tight"
+            style={{ color: 'var(--brand)' }}
+          >
+            {name}
+          </p>
+        )}
 
         <div className="border border-black/10 p-7">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-black/80">

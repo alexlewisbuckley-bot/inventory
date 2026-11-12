@@ -9,6 +9,7 @@ import {
 import { stockForPartner } from '@/server/services/partner-portal-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PartnerCampaigns } from '@/components/reference/PartnerCampaigns'
+import { PartnerBrand } from '@/components/reference/PartnerBrand'
 import { can } from '@/lib/permissions'
 import { percentFromBps } from '@/lib/partner-rate'
 import type { CampaignKind, CampaignStatus } from '@/lib/enums'
@@ -65,6 +66,21 @@ export default async function PartnerPage({ params }: { params: { id: string } }
           All partners
         </Link>}
       />
+
+      {can(user.role, 'partner:manage') && (
+        <PartnerBrand
+          partner={{
+            id: partner.id,
+            name: partner.name,
+            website: partner.website,
+            brandColor: partner.brandColor,
+            accentColor: partner.accentColor,
+            hasLogo: partner.logoData !== null,
+            brandSourceUrl: partner.brandSourceUrl,
+            brandTakenAt: partner.brandTakenAt ? partner.brandTakenAt.toISOString() : null,
+          }}
+        />
+      )}
 
       <PartnerCampaigns
         partnerId={partner.id}

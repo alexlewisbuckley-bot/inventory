@@ -35,6 +35,8 @@ function newPortalToken(): string {
 export interface PortalDoor {
   id: string
   name: string
+  /** Whether there is a mark to draw. The bytes come from their own route. */
+  hasLogo: boolean
   brandColor: string
   accentColor: string
   discountBps: number
@@ -52,6 +54,7 @@ export async function getPortalDoor(token: string): Promise<PortalDoor | null> {
       id: partners.id,
       name: partners.displayName,
       fallbackName: partners.name,
+      hasLogo: sql<boolean>`${partners.logoData} is not null`,
       brandColor: partners.brandColor,
       accentColor: partners.accentColor,
       discountBps: partners.discountBps,
@@ -76,6 +79,7 @@ export async function getPortalDoor(token: string): Promise<PortalDoor | null> {
   return {
     id: row.id,
     name: row.name || row.fallbackName,
+    hasLogo: row.hasLogo,
     brandColor: row.brandColor,
     accentColor: row.accentColor,
     discountBps: row.discountBps,
@@ -126,7 +130,14 @@ export interface PortalItem {
 }
 
 export interface PortalRoom {
-  partner: { id: string; name: string; brandColor: string; accentColor: string; discountBps: number }
+  partner: {
+    id: string
+    name: string
+    hasLogo: boolean
+    brandColor: string
+    accentColor: string
+    discountBps: number
+  }
   items: PortalItem[]
   orders: PortalOrder[]
 }
@@ -234,6 +245,7 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
     partner: {
       id: door.id,
       name: door.name,
+      hasLogo: door.hasLogo,
       brandColor: door.brandColor,
       accentColor: door.accentColor,
       discountBps: door.discountBps,

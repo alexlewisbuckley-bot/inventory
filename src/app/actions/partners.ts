@@ -3,7 +3,11 @@ import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
 import { partnerSchema, fieldErrors } from '@/lib/validation'
-import { createPartner, deletePartner, updatePartner } from '@/server/services/partner-service'
+import {
+  createPartner, deletePartner, updatePartner, setPartnerBrand, setPartnerLogo,
+} from '@/server/services/partner-service'
+import { proposeBrand, normaliseHex } from '@/server/services/brand-fetch'
+import { assertLogoAcceptable } from '@/server/services/reseller-service'
 import { closePortal, setPortalAccess } from '@/server/services/partner-portal-service'
 import { completeOrder, releaseHold } from '@/server/services/partner-order-service'
 import {
@@ -302,5 +306,130 @@ export async function deleteCampaignForPartnerAction(
     return { ok: true, message: 'Campaign removed.' }
   } catch (error) {
     return toState(error, 'That campaign could not be removed.')
+  }
+}
+
+/**
+ * Look at a partner's website and propose how their portal should look.
+ *
+ * It proposes and nothing more. The colours and the logo are shown back for a
+ * person to accept, because the failure to avoid is a portal that their own
+ * staff open to find it quietly the wrong colour — and a parser that liked a
+ * stylesheet is not a reason anybody would accept for that.
+ *
+ * The logo bytes travel back as a data URL rather than being stored on the
+ * way past: nothing is written until somebody says yes.
+ */
+export async function proposeBrandAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  try {
+    const proposal = await proposeBrand(formData.get('url')?.toString() ?? '')
+    return {
+      ok: true,
+      message: JSON.stringify({
+        sourceUrl: proposal.sourceUrl,
+        brandColor: proposal.brandColor,
+        accentColor: proposal.accentColor,
+        logo: proposal.logo
+          ? {
+            mimeType: proposal.logo.mimeType,
+            dataUrl: `data:${proposal.logo.mimeType};base64,${proposal.logo.data.toString('base64')}`,
+          }
+          : null,
+        notes: proposal.notes,
+      }),
+    }
+  } catch (error) {
+    return toState(error, 'That site could not be read.')
+  }
+}
+
+/** Accept a proposal, or a pair of colours typed by hand. */
+export async function savePartnerBrandAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const id = formData.get('id')?.toString() ?? ''
+  const brandColor = normaliseHex(formData.get('brandColor')?.toString())
+  const accentColor = normaliseHex(formData.get('accentColor')?.toString())
+  if (!brandColor || !accentColor) {
+    return { ok: false, message: 'Those colours are not valid hex values.' }
+  }
+
+  try {
+    await setPartnerBrand(id, {
+      brandColor,
+      accentColor,
+      sourceUrl: formData.get('sourceUrl')?.toString() || null,
+    }, actor)
+
+    /*
+     * The logo comes through as the data URL the proposal returned.
+     *
+     * Decoded here rather than refetched from their site: refetching would
+     * mean the thing somebody approved and the thing that gets stored are two
+     * different requests, and the second could answer differently.
+     */
+    const dataUrl = formData.get('logoDataUrl')?.toString()
+    if (dataUrl) {
+      const match = dataUrl.match(/^data:([a-z+/-]+);base64,(.+)$/i)
+      if (match) {
+        const data = Buffer.from(match[2], 'base64')
+        assertLogoAcceptable(match[1], data.byteLength)
+        await setPartnerLogo(id, { data, mimeType: match[1] }, actor)
+      }
+    }
+
+    revalidatePath('/partners')
+    revalidatePath(`/partners/${id}`)
+    return { ok: true, message: 'Branding saved.' }
+  } catch (error) {
+    return toState(error, 'That branding could not be saved.')
+  }
+}
+
+export async function uploadPartnerLogoAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const id = formData.get('id')?.toString()
+  const file = formData.get('logo')
+  if (!id) return { ok: false, message: 'No partner was named.' }
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, message: 'Choose a logo file first.' }
+  }
+
+  try {
+    assertLogoAcceptable(file.type, file.size)
+    await setPartnerLogo(id, { data: Buffer.from(await file.arrayBuffer()), mimeType: file.type }, actor)
+    revalidatePath('/partners')
+    revalidatePath(`/partners/${id}`)
+    return { ok: true, message: 'Logo updated.' }
+  } catch (error) {
+    return toState(error, 'Could not save that logo.')
+  }
+}
+
+export async function removePartnerLogoAction(id: string): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    await setPartnerLogo(id, null, actor)
+    revalidatePath('/partners')
+    revalidatePath(`/partners/${id}`)
+    return { ok: true, message: 'Logo removed.' }
+  } catch (error) {
+    return toState(error, 'Could not remove that logo.')
   }
 }

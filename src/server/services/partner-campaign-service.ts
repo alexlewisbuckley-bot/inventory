@@ -332,6 +332,8 @@ export interface RecipientView {
      */
     status: CampaignStatus
     partnerName: string
+    /** Whether the company has a mark to draw at the top of the page. */
+    hasLogo: boolean
     brandColor: string
     accentColor: string
     discountBps: number
@@ -382,6 +384,7 @@ export async function getRecipientView(token: string): Promise<RecipientView | n
       partnerId: partners.id,
       partnerName: partners.name,
       partnerDisplayName: partners.displayName,
+      hasLogo: sql<boolean>`${partners.logoData} is not null`,
       brandColor: partners.brandColor,
       accentColor: partners.accentColor,
       discountBps: partners.discountBps,
@@ -428,6 +431,7 @@ export async function getRecipientView(token: string): Promise<RecipientView | n
       budgetBase: row.budgetBase,
       status: row.status as CampaignStatus,
       partnerName: row.partnerDisplayName || row.partnerName,
+      hasLogo: row.hasLogo,
       brandColor: row.brandColor,
       accentColor: row.accentColor,
       discountBps: row.discountBps,
@@ -681,4 +685,24 @@ export async function shortlistIds(campaignId: string): Promise<string[]> {
     .where(eq(partnerCampaignItems.campaignId, campaignId))
     .orderBy(asc(partnerCampaignItems.sortOrder))
   return rows.map((row) => row.watchId)
+}
+
+/** The company's mark, by a recipient's token. Nothing for a dead invitation. */
+export async function getRecipientLogo(token: string) {
+  if (!token || token.length < 16) return null
+  const [row] = await db
+    .select({ data: partners.logoData, mime: partners.logoMime })
+    .from(partnerCampaignRecipients)
+    .innerJoin(partnerCampaigns, eq(partnerCampaigns.id, partnerCampaignRecipients.campaignId))
+    .innerJoin(partners, eq(partners.id, partnerCampaigns.partnerId))
+    .where(and(
+      eq(partnerCampaignRecipients.token, token),
+      isNull(partnerCampaignRecipients.deletedAt),
+      isNull(partnerCampaigns.deletedAt),
+      isNull(partners.deletedAt),
+      eq(partners.isActive, true),
+    ))
+    .limit(1)
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
 }

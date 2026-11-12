@@ -50,9 +50,17 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
     >
       <header className="border-b border-black/10 px-5 py-9 sm:px-8">
         <div className="mx-auto max-w-[1180px]">
-          <p className="text-[12px] uppercase tracking-[0.1em] text-black/40">
-            {campaign.partnerName}
-          </p>
+          {campaign.hasLogo ? (
+            /* Their employer's mark, not ours. Somebody opening this has been
+               told by their own office to expect it, and a page carrying a
+               watch dealer's branding instead reads as a mailshot. */
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={`/r/${token}/logo`} alt={campaign.partnerName} className="h-8 w-auto object-contain" />
+          ) : (
+            <p className="text-[12px] uppercase tracking-[0.1em] text-black/40">
+              {campaign.partnerName}
+            </p>
+          )}
           <h1 className="mt-2 font-serif text-[30px] leading-tight text-black sm:text-[34px]">
             {recipient.claimedAt
               ? `Thank you, ${recipient.name}`

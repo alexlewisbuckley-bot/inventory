@@ -58,6 +58,11 @@ export async function listPartners() {
     portalToken: partners.portalToken,
     portalOpen: sql<boolean>`${partners.portalPasswordHash} is not null`,
     portalPasswordSetAt: partners.portalPasswordSetAt,
+    brandSourceUrl: partners.brandSourceUrl,
+    brandTakenAt: partners.brandTakenAt,
+    // Whether, not what: a list of twenty partners should not carry twenty
+    // logos' worth of bytes to draw a tick.
+    hasLogo: sql<boolean>`${partners.logoData} is not null`,
     campaignCount: sql<number>`(
       SELECT count(*) FROM partner_campaigns c
       WHERE c.partner_id = partners.id AND c.deleted_at IS NULL
@@ -200,4 +205,96 @@ export async function deletePartner(id: string, actor: SessionUser): Promise<voi
     entityType: 'Partner', entityId: id, action: 'DELETE', actorId: actor.id,
     summary: `${before.name} removed`,
   })
+}
+
+/**
+ * A partner's mark.
+ *
+ * Bytes rather than a link to their site: a hotlinked logo is a broken image
+ * on our page the day they redesign, on a page their own staff are looking at.
+ */
+export async function setPartnerLogo(
+  id: string,
+  logo: { data: Buffer; mimeType: string } | null,
+  actor: SessionUser,
+): Promise<void> {
+  const before = await getPartner(id)
+  await db.update(partners).set({
+    logoData: logo?.data ?? null,
+    logoMime: logo?.mimeType ?? null,
+    logoByteSize: logo?.data.byteLength ?? null,
+    updatedAt: new Date(),
+  }).where(eq(partners.id, id))
+
+  await recordAudit({
+    entityType: 'Partner', entityId: id, action: 'UPDATE', actorId: actor.id,
+    summary: `${before.name}: logo ${logo ? 'updated' : 'removed'}`,
+  })
+}
+
+/**
+ * Their colours, and where they came from.
+ *
+ * The source is kept so a screen can say "taken from theircompany.com in
+ * March" rather than presenting colours as if somebody here chose them. A
+ * partner who redesigns is then something to notice and redo, instead of a
+ * portal that quietly looks a year out of date.
+ */
+export async function setPartnerBrand(
+  id: string,
+  brand: { brandColor: string; accentColor: string; sourceUrl?: string | null },
+  actor: SessionUser,
+): Promise<void> {
+  const before = await getPartner(id)
+  await db.update(partners).set({
+    brandColor: brand.brandColor,
+    accentColor: brand.accentColor,
+    brandSourceUrl: brand.sourceUrl ?? null,
+    brandTakenAt: brand.sourceUrl ? new Date() : null,
+    updatedAt: new Date(),
+  }).where(eq(partners.id, id))
+
+  await recordAudit({
+    entityType: 'Partner', entityId: id, action: 'UPDATE', actorId: actor.id,
+    summary: brand.sourceUrl
+      ? `${before.name}: branding taken from ${brand.sourceUrl}`
+      : `${before.name}: colours changed by hand`,
+    changes: {
+      brandColor: { from: before.brandColor, to: brand.brandColor },
+      accentColor: { from: before.accentColor, to: brand.accentColor },
+    },
+  })
+}
+
+/** The logo, by partner id, for our own screens. */
+export async function getPartnerLogo(id: string) {
+  const [row] = await db
+    .select({ data: partners.logoData, mime: partners.logoMime })
+    .from(partners)
+    .where(and(eq(partners.id, id), isNull(partners.deletedAt)))
+    .limit(1)
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
+}
+
+/**
+ * The logo, by a portal or recipient token.
+ *
+ * A separate lookup rather than the id one with a join bolted on, because the
+ * pages that need it have a token and nothing else — and a route that took an
+ * id would let anybody holding one read any partner's mark.
+ */
+export async function getPartnerLogoByPortalToken(token: string) {
+  if (!token || token.length < 16) return null
+  const [row] = await db
+    .select({ data: partners.logoData, mime: partners.logoMime })
+    .from(partners)
+    .where(and(
+      eq(partners.portalToken, token),
+      eq(partners.isActive, true),
+      isNull(partners.deletedAt),
+    ))
+    .limit(1)
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
 }
