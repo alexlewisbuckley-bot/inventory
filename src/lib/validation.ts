@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_DISCOUNT_BPS } from './partner-rate'
 import type { FilterClause } from './filters'
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, BASE_CURRENCY, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
@@ -573,6 +574,33 @@ export function parseNavLinks(raw: string | null): NavLink[] {
     return []
   }
 }
+
+/**
+ * A corporate partner and the rate they buy at.
+ *
+ * The rate arrives as a percentage, because that is what gets negotiated and
+ * said out loud, and leaves as basis points, which is what every price is
+ * then worked out from. Bounded well below anything plausible: the failure
+ * being guarded against is somebody typing 80 meaning 8, which would quote
+ * the next order at a fifth of its price and look entirely deliberate.
+ */
+export const partnerSchema = z.object({
+  name: trimmed.min(1, 'The company name is required.').max(120),
+  displayName: optionalText(120),
+  contactName: optionalText(120),
+  contactEmail: optionalEmail,
+  contactPhone: optionalText(40),
+  website: websiteUrl,
+  discountPercent: z.coerce.number()
+    .min(0, 'A rate cannot be negative.')
+    .max(MAX_DISCOUNT_BPS / 100, `A rate above ${MAX_DISCOUNT_BPS / 100}% is almost certainly a typo.`)
+    .default(0),
+  displayCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  brandColor: hexColour('Brand colour').default('#04173A'),
+  accentColor: hexColour('Accent colour').default('#0F766E'),
+  notes: optionalText(1000),
+  isActive: z.coerce.boolean().default(true),
+})
 
 export const resellerSchema = z.object({
   navLinks: z.array(navLinkSchema).max(6).default([]),
