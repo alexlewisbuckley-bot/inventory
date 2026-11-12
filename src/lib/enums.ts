@@ -241,7 +241,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number]
 
 export const NOTIFICATION_TYPES = [
   'STOCK_ADDED', 'SALE_RECORDED', 'WATCH_MOVED', 'PRICE_MISSING', 'AGEING_STOCK',
-  'TRADE_ENQUIRY', 'SYSTEM',
+  'TRADE_ENQUIRY', 'PARTNER_ORDER', 'SYSTEM',
 ] as const
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
@@ -252,6 +252,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   PRICE_MISSING: 'Price missing',
   AGEING_STOCK: 'Ageing stock',
   TRADE_ENQUIRY: 'Trade enquiry',
+  PARTNER_ORDER: 'Partner order',
   SYSTEM: 'System',
 }
 
@@ -936,6 +937,27 @@ export type TradeEnquiryKind = (typeof TRADE_ENQUIRY_KINDS)[number]
 export const TRADE_ENQUIRY_KIND_LABELS: Record<TradeEnquiryKind, string> = {
   INTEREST: 'Asking about it',
   OFFER: 'Offering to buy',
+}
+
+/**
+ * Where a partner's order stands.
+ *
+ * No EXPIRED. Alex: "If they reserve the watches they should go on hold and
+ * we have a way to retract them if payment isn't made manually." A hold that
+ * aged out on its own would put a watch back on offer in the middle of a
+ * conversation nobody here knew was still running — and the piece would be
+ * sold twice before anybody noticed it had come back.
+ */
+export const PARTNER_ORDER_STATUSES = ['PLACED', 'RELEASED', 'COMPLETED'] as const
+export type PartnerOrderStatus = (typeof PARTNER_ORDER_STATUSES)[number]
+
+export const PARTNER_ORDER_STATUS_LABELS: Record<PartnerOrderStatus, string> = {
+  // "On hold" rather than "placed": the word on the stock screen is Hold, and
+  // the thing somebody needs to know about this row is that a watch is off the
+  // market because of it.
+  PLACED: 'On hold',
+  RELEASED: 'Released',
+  COMPLETED: 'Sold',
 }
 
 export const TRADE_ENQUIRY_STATUSES = ['OPEN', 'APPROVED', 'DECLINED', 'WITHDRAWN'] as const

@@ -84,7 +84,14 @@ describe('the door', () => {
 })
 
 describe('the pass a browser is given', () => {
-  const pass = read('src/server/auth/trade-pass.ts')
+  /*
+   * The mechanism moved to `door-pass.ts` when the partner portal needed the
+   * same door, so these read it there. Each property below is the same
+   * property it always was; what changed is that one implementation now
+   * answers for both doors rather than two copies drifting apart.
+   */
+  const pass = read('src/server/auth/door-pass.ts')
+  const trade = read('src/server/auth/trade-pass.ts')
 
   it('dies when the passphrase changes', () => {
     // Without this, "we changed the passphrase" is true on paper and false in
@@ -99,17 +106,36 @@ describe('the pass a browser is given', () => {
     // second room to whoever got into the first.
     expect(pass).toMatch(/\.setSubject\(token\)/)
     expect(pass).toMatch(/subject: token/)
-    expect(pass).toMatch(/path: `\/t\/\$\{token\}`/)
+    expect(pass).toMatch(/path: scope\.path\(token\)/)
+    expect(trade).toMatch(/path: \(token\) => `\/t\/\$\{token\}`/)
   })
 
   it('does not put the secret from the URL into a cookie name', () => {
     expect(pass).toMatch(/createHash\('sha256'\)\.update\(token\)/)
-    expect(pass).not.toMatch(/`osw_trade_\$\{token\}`/)
+    expect(pass).not.toMatch(/\$\{scope\.prefix\}_\$\{token\}/)
   })
 
   it('is httpOnly, and does not follow a link in from elsewhere', () => {
     expect(pass).toMatch(/httpOnly: true/)
     expect(pass).toMatch(/sameSite: 'strict'/)
+  })
+
+  it('keeps the cookie prefix it had, so dealers already inside stay inside', () => {
+    /*
+     * The prefix is part of the cookie's name, and the name is how a browser
+     * finds the pass it was given. Renaming it while generalising the file
+     * would have signed every dealer out at once for no reason any of them
+     * could see.
+     */
+    expect(trade).toContain("prefix: 'osw_trade'")
+  })
+
+  it('is a different door from the partner portal', () => {
+    // Different companies, different stock, different prices. One shared
+    // cookie is the only thing needed to hand one of them the other's.
+    const portal = read('src/server/auth/portal-pass.ts')
+    expect(portal).toContain("prefix: 'osw_portal'")
+    expect(portal).toMatch(/path: \(token\) => `\/p\/\$\{token\}`/)
   })
 })
 
