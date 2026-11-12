@@ -120,6 +120,8 @@ export interface PortalItem {
   /** The asking price, and what this partner pays for it. */
   askingGbp: number
   priceGbp: number
+  /** The floor, where one is recorded. Null means there is nothing to hold to. */
+  tradeGbp: number | null
   imageIds: string[]
 }
 
@@ -170,6 +172,9 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
       dial: watches.dial,
       bracelet: watches.bracelet,
       askingGbp: watches.estSaleGbp,
+      // The floor the rate may not go through. Fetched everywhere a partner
+      // price is worked out, because a floor the query forgets is not a floor.
+      tradeGbp: watches.tradePriceGbp,
       /*
        * The website photographs, and only those.
        *
@@ -239,7 +244,7 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
       // The price is worked out here, from the rate on the partner and the
       // watch's asking price as it stands right now. Nothing is stored until
       // somebody orders, and then it is stored as history.
-      priceGbp: partnerPrice(row.askingGbp, door.discountBps) as number,
+      priceGbp: partnerPrice(row.askingGbp, door.discountBps, row.tradeGbp) as number,
       imageIds: row.imageIds ?? [],
     })),
     orders,
@@ -313,6 +318,7 @@ export async function placeOrder(token: string, input: PlaceOrderInput): Promise
       status: watches.status,
       version: watches.version,
       askingGbp: watches.estSaleGbp,
+      tradeGbp: watches.tradePriceGbp,
       deletedAt: watches.deletedAt,
     }).from(watches).where(eq(watches.id, input.watchId)).limit(1)
 
@@ -334,7 +340,7 @@ export async function placeOrder(token: string, input: PlaceOrderInput): Promise
       throw new ValidationError('That watch has no price yet.')
     }
 
-    const price = partnerPrice(watch.askingGbp, door.discountBps)
+    const price = partnerPrice(watch.askingGbp, door.discountBps, watch.tradeGbp)
     if (price === null) throw new ValidationError('That watch has no price yet.')
 
     const id = newId('pord')
@@ -529,6 +535,10 @@ export async function stockForPartner(partnerId: string): Promise<PortalItem[]> 
       dial: watches.dial,
       bracelet: watches.bracelet,
       askingGbp: watches.estSaleGbp,
+      // The floor the rate may not go through. Selected everywhere a partner
+      // price is worked out, because a floor the query forgets to fetch is a
+      // floor that is not there.
+      tradeGbp: watches.tradePriceGbp,
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
         FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
@@ -549,7 +559,7 @@ export async function stockForPartner(partnerId: string): Promise<PortalItem[]> 
   return rows.map((row) => ({
     ...row,
     askingGbp: row.askingGbp as number,
-    priceGbp: partnerPrice(row.askingGbp, partner.discountBps) as number,
+    priceGbp: partnerPrice(row.askingGbp, partner.discountBps, row.tradeGbp) as number,
     imageIds: row.imageIds ?? [],
   }))
 }

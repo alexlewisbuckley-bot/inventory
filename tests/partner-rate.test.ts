@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
-  MAX_DISCOUNT_BPS, RATE_PRECISION, bpsFromPercent, isUsableRate,
+  MAX_DISCOUNT_BPS, RATE_PRECISION, bpsFromPercent, isFloored, isUsableRate,
   partnerPrice, partnerSaving, percentFromBps,
 } from '@/lib/partner-rate'
 import { partnerSchema } from '@/lib/validation'
@@ -81,6 +81,105 @@ describe('what a partner pays', () => {
      */
     expect(partnerPrice(12_000_000, 8_000)).toBe(12_000_000)
     expect(partnerPrice(12_000_000, -500)).toBe(12_000_000)
+  })
+})
+
+describe('the trade price is a floor the rate cannot go through', () => {
+  /*
+   * Alex: "Can we ensure this discount never ever goes past trade price."
+   *
+   * A partner is a retail buyer with terms, not a dealer. Selling one a watch
+   * for less than another dealer would be quoted inverts the whole price list,
+   * and it happens silently: a rate agreed when a piece was priced at one
+   * number keeps applying after somebody marks it down, and the day it crosses
+   * the trade price nothing announces it.
+   */
+  it('stops at the trade price rather than going under it', () => {
+    // 20% off 100,000 would be 80,000; the trade price is 90,000.
+    expect(partnerPrice(10_000_000, 2_000, 9_000_000)).toBe(9_000_000)
+  })
+
+  it('leaves a price alone when the rate does not reach the floor', () => {
+    // 2% off 100,000 is 98,000, comfortably above a 90,000 floor.
+    expect(partnerPrice(10_000_000, 200, 9_000_000)).toBe(9_800_000)
+  })
+
+  it('holds exactly at the floor rather than a unit under it', () => {
+    // The boundary is the whole point: equal is allowed, below is not.
+    expect(partnerPrice(10_000_000, 1_000, 9_000_000)).toBe(9_000_000)
+    expect(partnerPrice(10_000_000, 1_001, 9_000_000)).toBe(9_000_000)
+    expect(partnerPrice(10_000_000, 999, 9_000_000)).toBe(9_001_000)
+  })
+
+  it('applies no floor where no trade price is recorded', () => {
+    /*
+     * There is nothing to measure against, and inventing one — from cost,
+     * say — would be a number nobody agreed to, quietly deciding what a
+     * partner pays.
+     */
+    expect(partnerPrice(10_000_000, 2_000, null)).toBe(8_000_000)
+    expect(partnerPrice(10_000_000, 2_000, undefined)).toBe(8_000_000)
+    expect(partnerPrice(10_000_000, 2_000)).toBe(8_000_000)
+  })
+
+  it('never quotes a partner above the asking price', () => {
+    /*
+     * A trade price higher than retail is a data error, not an arrangement.
+     * Clamping blindly to the floor would quote a partner MORE than a member
+     * of the public walking in — the same failure in the other direction, and
+     * it reads just as deliberate.
+     */
+    expect(partnerPrice(10_000_000, 2_000, 12_000_000)).toBe(10_000_000)
+  })
+
+  it('says when the floor decided the price, not the rate', () => {
+    // So a screen can explain a number that no longer matches the headline
+    // percentage, rather than leaving somebody to conclude the rate is wrong.
+    expect(isFloored(10_000_000, 2_000, 9_000_000)).toBe(true)
+    expect(isFloored(10_000_000, 200, 9_000_000)).toBe(false)
+    expect(isFloored(10_000_000, 2_000, null)).toBe(false)
+    // A floor above retail is the data error above, not a floored price.
+    expect(isFloored(10_000_000, 2_000, 12_000_000)).toBe(false)
+  })
+
+  it('counts the saving against what is actually paid', () => {
+    // Otherwise a floored line reports a discount nobody gave.
+    expect(partnerSaving(10_000_000, 2_000, 9_000_000)).toBe(1_000_000)
+  })
+
+  it('is applied everywhere a partner price is worked out', () => {
+    /*
+     * A floor that one of four code paths forgets is not a floor. Each of
+     * these is a place a partner is quoted: the portal list, an order placed
+     * from it, the staff-side stock list, a campaign's choices and a claim.
+     */
+    const portal = read('src/server/services/partner-portal-service.ts')
+    const campaign = read('src/server/services/partner-campaign-service.ts')
+    const calls = [
+      ...portal.matchAll(/partnerPrice\([^)]*\)/g),
+      ...campaign.matchAll(/partnerPrice\([^)]*\)/g),
+    ].map((m) => m[0])
+
+    expect(calls.length).toBeGreaterThanOrEqual(5)
+    for (const call of calls) {
+      expect(call, `${call} must pass a trade floor`).toMatch(/trade/i)
+    }
+  })
+
+  it('fetches the floor in every query that prices for a partner', () => {
+    // A floor the query forgets to select is a floor that is not there.
+    const portal = read('src/server/services/partner-portal-service.ts')
+    const campaign = read('src/server/services/partner-campaign-service.ts')
+    expect(portal.match(/tradeGbp: watches\.tradePriceGbp/g)?.length).toBe(3)
+    expect(campaign.match(/tradeGbp: watches\.tradePriceGbp/g)?.length).toBe(2)
+  })
+
+  it('does not promise a flat percentage on a page that has floors in it', () => {
+    // Stating the rate as "every price" would make the page contradict its
+    // own numbers on the floored rows.
+    const room = read('src/components/portal/PortalRoom.tsx')
+    expect(room).toContain('Prices below are up to')
+    expect(room).not.toContain('Every price below is')
   })
 })
 
@@ -254,16 +353,20 @@ describe('the rate on screen', () => {
      * thing being decided — and a mistyped rate is obvious rather than
      * plausible.
      */
-    expect(manager).toContain('partnerPrice(sampleAsking, partner.discountBps)')
+    expect(manager).toContain('partnerPrice(sampleAsking, partner.discountBps, sampleTrade)')
     expect(manager).toContain('is{\' \'}')
-    expect(page).toContain('sampleAskingPrice()')
+    expect(page).toContain('sampleWatchPrice()')
   })
 
   it('leaves the panel out when nothing priced is in stock', () => {
     // Rather than demonstrating the rate against a figure nobody chose.
     expect(manager).toContain('sampleAsking !== null && partner.discountBps > 0')
     expect(stock).toContain('isNotNull(watches.estSaleGbp)')
-    expect(stock).toContain('return row?.estSaleGbp ?? null')
+    // The sample now carries the watch's trade price with it, so the worked
+    // example obeys the same floor every real quote does — an illustration
+    // that ignored it would show a figure we would never actually offer.
+    expect(stock).toContain('askingGbp: row?.askingGbp ?? null')
+    expect(stock).toContain('tradeGbp: row?.tradeGbp ?? null')
   })
 
   it('samples only stock that is actually here', () => {

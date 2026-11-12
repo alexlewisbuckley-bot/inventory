@@ -151,7 +151,16 @@ export function PortalRoom({ token, partner, items, orders }: {
             </p>
             <p className="mt-1 text-[13px] text-black/55">
               {partner.discountBps > 0
-                ? `Every price below is ${percentFromBps(partner.discountBps)} off our asking price.`
+                /*
+                 * "Up to", not "every".
+                 *
+                 * A handful of pieces sit at a floor the rate would have gone
+                 * through, so they are discounted by less. Stating the rate as
+                 * a flat promise would make the page contradict its own
+                 * numbers on those rows, and a partner checking the
+                 * arithmetic would find us short rather than careful.
+                 */
+                ? `Prices below are up to ${percentFromBps(partner.discountBps)} off our asking price.`
                 : 'Stock available to you now.'}
             </p>
           </div>

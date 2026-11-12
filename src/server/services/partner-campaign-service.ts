@@ -491,6 +491,7 @@ async function choicesFor(campaign: {
       boxPapers: watches.boxPapers,
       condition: watches.condition,
       askingGbp: watches.estSaleGbp,
+      tradeGbp: watches.tradePriceGbp,
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
         FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
@@ -511,7 +512,7 @@ async function choicesFor(campaign: {
   return rows
     .map((row) => ({
       ...row,
-      priceGbp: partnerPrice(row.askingGbp, campaign.discountBps) as number,
+      priceGbp: partnerPrice(row.askingGbp, campaign.discountBps, row.tradeGbp) as number,
     }))
     .filter((row) => campaign.kind !== 'BUDGET'
       || (campaign.budgetBase !== null && row.priceGbp <= campaign.budgetBase))
@@ -550,6 +551,7 @@ export async function claim(
       status: watches.status,
       version: watches.version,
       askingGbp: watches.estSaleGbp,
+      tradeGbp: watches.tradePriceGbp,
     }).from(watches).where(eq(watches.id, watchId)).limit(1)
 
     if (!watch || watch.status !== 'IN_STOCK' || watch.askingGbp === null) {
@@ -563,7 +565,7 @@ export async function claim(
       .limit(1)
     if (!partner) throw new NotFoundError('Partner')
 
-    const price = partnerPrice(watch.askingGbp, partner.discountBps)
+    const price = partnerPrice(watch.askingGbp, partner.discountBps, watch.tradeGbp)
     if (price === null) throw new ConflictError('That one has just gone.')
 
     const orderId = newId('pord')
