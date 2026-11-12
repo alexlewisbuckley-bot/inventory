@@ -4,6 +4,7 @@ import { liveSale } from '../db/predicates'
 import {
   customers, locations, notifications, sales, stockMovements, users, watches,
 } from '../db/schema'
+import { closeHoldsForWatch } from './partner-hold-sync'
 import { recordAudit } from './audit'
 import { diff } from '@/lib/diff'
 import { findWatchById, nextStockNo } from '../repositories/watch-repository'
@@ -419,6 +420,8 @@ export async function recordSale(
       .set({ status: 'SOLD', updatedAt: new Date(), version: watch.version + 1 })
       .where(eq(watches.id, watch.id))
 
+    await closeHoldsForWatch(watch.id, 'SOLD', actor.id, watch.stockNo)
+
     await recordAudit({
       entityType: 'Watch', entityId: watch.id, action: 'SELL', actorId: actor.id,
       summary: `Stock ${watch.stockNo} sold on invoice ${input.invoiceNo}`,
@@ -773,6 +776,11 @@ export async function setWatchStatus(
       summary: `Stock ${watch.stockNo} marked ${WATCH_STATUS_LABELS[status].toLowerCase()}`,
       changes: { status: { from: watch.status, to: status } },
     })
+
+    // A partner holding this watch is told by their portal that it is theirs.
+    // Moving it here without closing that hold leaves the piece on sale to
+    // everybody and the company still being promised it.
+    await closeHoldsForWatch(id, status, actor.id, watch.stockNo)
   })
 }
 
