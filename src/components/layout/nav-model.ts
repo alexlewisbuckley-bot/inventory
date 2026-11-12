@@ -3,7 +3,7 @@ import {
   BarChart3, Building2, CheckSquare, ClipboardCheck, Clock, Coins, KanbanSquare,
   Landmark, LayoutDashboard, MapPin, MessageSquare, Package, Receipt, Scale, Search, Store, Users2,
   type LucideIcon,
-  HandCoins,
+  HandCoins, Handshake,
 } from 'lucide-react'
 import { can, canAny, isExternalRole, salesScope, type Capability } from '@/lib/permissions'
 import type { Role } from '@/lib/enums'
@@ -131,6 +131,10 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
         { href: '/locations', label: 'Locations', icon: MapPin, capability: 'location:read', match: '/locations' },
         { href: '/owners', label: 'Owners', icon: Landmark, capability: 'owner:read', match: '/owners' },
         { href: '/resellers', label: 'Resellers', icon: Store, capability: 'reseller:read', match: '/resellers' },
+        // Beside Resellers: the other kind of outside organisation this
+        // business sells through. A reseller sells our stock on to the
+        // public; a partner buys it for itself and its people.
+        { href: '/partners', label: 'Partners', icon: Handshake, capability: 'partner:read', match: '/partners' },
         { href: '/sales-people', label: 'Sales people', icon: Users2, capability: 'user:read', match: '/sales-people' },
         // Under Manage rather than Needs attention: counting the stock is a
         // job somebody schedules, not one the system nags about.

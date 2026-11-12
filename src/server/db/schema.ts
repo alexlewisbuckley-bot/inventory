@@ -196,6 +196,58 @@ export const locations = pgTable(
  * apart from the id so it can be rotated without breaking anything that refers
  * to the reseller; rotating it revokes every link already handed out.
  */
+/**
+ * A corporate partner: a company that buys at an agreed rate and runs reward
+ * campaigns for its staff.
+ *
+ * Its own table rather than a flag on resellers. A reseller is a shop selling
+ * on our behalf to the public and carries a shop window, a trade room, a
+ * custom domain and a passphrase; a partner is a buyer and carries a rate and
+ * terms. The overlap is a name, a logo and somebody to ring.
+ */
+export const partners = pgTable(
+  'partners',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    /** What they call themselves, where it differs from our filing name. */
+    displayName: text('display_name'),
+
+    contactName: text('contact_name'),
+    contactEmail: text('contact_email'),
+    contactPhone: text('contact_phone'),
+    website: text('website'),
+
+    /**
+     * The rate, in basis points off the asking price. 8% is 800.
+     *
+     * Never a stored price: the figure a partner is quoted is worked out from
+     * the watch's current asking price at the moment it is read, so repricing
+     * stock moves every partner's price with it.
+     */
+    discountBps: integer('discount_bps').notNull().default(0),
+
+    /** What their people are quoted in. Our books stay in the base. */
+    displayCurrency: text('display_currency', { enum: CURRENCIES }).notNull().default('AED'),
+
+    brandColor: text('brand_color').notNull().default('#04173A'),
+    accentColor: text('accent_color').notNull().default('#0F766E'),
+
+    notes: text('notes'),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex('partners_slug_idx').on(t.slug),
+    activeIdx: index('partners_active_idx').on(t.isActive, t.sortOrder),
+  }),
+)
+
 export const resellers = pgTable(
   'resellers',
   {

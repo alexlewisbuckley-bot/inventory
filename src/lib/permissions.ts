@@ -26,6 +26,7 @@ export const CAPABILITIES = [
   'location:read', 'location:manage',
   'owner:read', 'owner:manage',
   'reseller:read', 'reseller:manage',
+  'partner:read', 'partner:manage',
   /**
    * The trade catalogue: our stock at trade and retail prices, and nothing
    * else. Held apart from `watch:read` on purpose — the inventory list is
@@ -217,6 +218,7 @@ const MANAGER: Capability[] = [
   'sale:update', 'sale:delete',
   'supplier:manage', 'location:manage', 'owner:manage',
   'reseller:read', 'reseller:manage',
+  'partner:read', 'partner:manage',
   'data:import', 'user:read', 'settings:read', 'audit:read',
   'customer:delete', 'deal:delete',
 ]
