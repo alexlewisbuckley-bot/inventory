@@ -349,6 +349,15 @@ export interface RecipientView {
     boxPapers: string | null
     condition: string | null
     priceGbp: number
+    /*
+     * What the person pays on top of the award, in base minor units.
+     *
+     * Zero where the award covers it outright, which is the case the page
+     * leads with. Above zero it is the difference, and it is the number that
+     * decides whether somebody chooses this watch — so it is worked out here
+     * rather than left to a component to subtract and round differently.
+     */
+    topUpGbp: number
     imageIds: string[]
   }>
   chosen: {
@@ -456,11 +465,20 @@ export async function getRecipientView(token: string): Promise<RecipientView | n
 /**
  * What this campaign puts in front of somebody.
  *
- * A shortlist shows what their employer picked. A budget shows everything they
- * can actually afford at the partner's rate — measured against the partner's
- * price, not the asking price, because their rate is the arrangement and
- * measuring the other way would quietly hand back the discount the company
- * negotiated.
+ * A shortlist shows what their employer picked. A budget shows EVERYTHING, at
+ * the partner's rate: the pieces the award covers outright, and then the rest
+ * with the award taken off and the difference stated.
+ *
+ * It used to show only what the award covered, which made the award a ceiling.
+ * Alex: "we should also show all other watches with the amount they've won
+ * deducted from it." The award is better read as a starting point — somebody
+ * being given thirty thousand toward a watch may well put their own money to
+ * it for the one they actually want, and hiding that costs the sale and the
+ * goodwill both.
+ *
+ * The award is measured against the partner's price, not the asking price,
+ * because their rate is the arrangement and measuring the other way would
+ * quietly hand back the discount the company negotiated.
  *
  * Held stock is absent from both, by the same rule as the portal: a piece
  * somebody else has taken is gone rather than greyed out. Here it matters
@@ -514,12 +532,24 @@ async function choicesFor(campaign: {
     .orderBy(asc(brands.name), asc(watches.model))
 
   return rows
-    .map((row) => ({
-      ...row,
-      priceGbp: partnerPrice(row.askingGbp, campaign.discountBps, row.tradeGbp) as number,
-    }))
-    .filter((row) => campaign.kind !== 'BUDGET'
-      || (campaign.budgetBase !== null && row.priceGbp <= campaign.budgetBase))
+    .map((row) => {
+      const priceGbp = partnerPrice(row.askingGbp, campaign.discountBps, row.tradeGbp) as number
+      /*
+       * The award never pays out more than the watch costs.
+       *
+       * A twenty thousand piece against a thirty thousand award is covered,
+       * and the ten thousand left is not change — nobody is owed the
+       * difference, and treating it as a negative top-up would eventually
+       * print a refund on somebody's screen.
+       */
+      const covered = campaign.kind === 'BUDGET' && campaign.budgetBase !== null
+        ? Math.min(campaign.budgetBase, priceGbp)
+        : 0
+      return { ...row, priceGbp, topUpGbp: Math.max(0, priceGbp - covered) }
+    })
+    // Dearest first within each group is wrong here: somebody reading this is
+    // choosing, and the thing they can have for nothing should come first.
+    .sort((a, b) => a.topUpGbp - b.topUpGbp || a.priceGbp - b.priceGbp)
 }
 
 /**
@@ -585,6 +615,16 @@ export async function claim(
       status: 'PLACED',
       campaignId: view.campaign.id,
       recipientId: view.recipient.id,
+      /*
+       * What the award covered, at the moment it was spent.
+       *
+       * Capped at the price for the same reason the screen is: the award pays
+       * for the watch, not out to the person. Null for a shortlist, where the
+       * company pays all of it and there is no split to record.
+       */
+      budgetApplied: view.campaign.kind === 'BUDGET' && view.campaign.budgetBase !== null
+        ? Math.min(view.campaign.budgetBase, price)
+        : null,
     })
 
     await db.update(partnerCampaignRecipients)

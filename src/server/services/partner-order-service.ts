@@ -39,6 +39,8 @@ export interface HeldRow {
   watchStatus: string
   /** The reward campaign it came from, where it came from one. */
   campaignName: string | null
+  /** What the employer covered. The rest is the recipient's to pay. */
+  budgetApplied: number | null
 }
 
 /**
@@ -76,6 +78,14 @@ export async function listHeldStock(): Promise<HeldRow[]> {
        * the phone call goes, and is not a thing to make our side guess at.
        */
       campaignName: partnerCampaigns.name,
+      /*
+       * What the employer's award covered, where there was one.
+       *
+       * The rest is the person's. Without it this list shows a hold at the
+       * full price and nothing to say the company pays thirty of it — and
+       * the invoice goes to the wrong party for the wrong amount.
+       */
+      budgetApplied: partnerOrders.budgetApplied,
     })
     .from(partnerOrders)
     .innerJoin(watches, eq(watches.id, partnerOrders.watchId))

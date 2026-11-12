@@ -60,7 +60,13 @@ describe('the two kinds', () => {
      * watch we ask 21,700 for; measuring the other way quietly hands back the
      * discount the company negotiated.
      */
-    expect(service).toContain('row.priceGbp <= campaign.budgetBase')
+    /*
+     * Still true, now expressed as what the award covers rather than as a
+     * filter: `priceGbp` is the partner price with their rate and the trade
+     * floor already applied, and the award is measured against that.
+     */
+    expect(service).toContain('Math.min(campaign.budgetBase, priceGbp)')
+    expect(service).toContain('const priceGbp = partnerPrice(row.askingGbp, campaign.discountBps, row.tradeGbp)')
     expect(migration).toContain('budget_base integer')
   })
 })
@@ -210,6 +216,94 @@ describe('choosing', () => {
   it('tells our team', () => {
     expect(service).toContain("eq(users.role, 'OWNER')")
     expect(service).toContain("type: 'PARTNER_ORDER'")
+  })
+})
+
+describe('an award is a starting point, not a ceiling', () => {
+  const migration64 = read('src/server/db/migrations/0064_award_towards_a_watch.sql')
+  const held = read('src/components/reference/HeldStock.tsx')
+  const orders = read('src/server/services/partner-order-service.ts')
+
+  it('shows everything, not only what the award covers', () => {
+    /*
+     * Alex: "We should show all the watches they can get upfront at the
+     * beggining but we should also show all other watches with the amount
+     * they've won deducted from it."
+     *
+     * It used to filter the list down to the award, which made the award a
+     * ceiling. Somebody given thirty thousand toward a watch may well put
+     * their own money to it for the one they actually want, and hiding that
+     * costs the sale and the goodwill both.
+     */
+    expect(service).not.toContain('row.priceGbp <= campaign.budgetBase')
+    expect(service).toContain('topUpGbp: Math.max(0, priceGbp - covered)')
+  })
+
+  it('never pays the award out as change', () => {
+    /*
+     * A twenty thousand piece against a thirty thousand award is covered, and
+     * the ten thousand left is not owed to anybody. Treating it as a negative
+     * top-up would eventually print a refund on somebody's screen.
+     */
+    expect(service).toContain('Math.min(campaign.budgetBase, priceGbp)')
+    expect(service).toContain('Math.max(0, priceGbp - covered)')
+  })
+
+  it('puts what they can have for nothing first', () => {
+    // Somebody reading this is choosing, and dearest-first would bury it.
+    expect(service).toContain('.sort((a, b) => a.topUpGbp - b.topUpGbp || a.priceGbp - b.priceGbp)')
+    expect(choice).toContain('Yours for the award alone')
+    expect(choice).toContain('Or put your award toward one of these')
+  })
+
+  it('does not let a covered watch read as a price to pay', () => {
+    // A bare figure under "yours for the award alone" is the opposite of
+    // what it means. The value stays, because somebody should see what they
+    // are being given is worth.
+    expect(choice).toContain('covered by your award')
+  })
+
+  it('leads with what is left to pay, and still shows the price', () => {
+    // The top-up is the number that decides it; the price underneath means
+    // nobody feels a figure has been kept from them.
+    expect(choice).toContain('{money(item.topUpGbp)} to pay')
+    expect(choice).toContain('{money(item.priceGbp)} less your award')
+  })
+
+  it('says what they are agreeing to before they agree to it', () => {
+    /*
+     * A dialog showing the watch's price on a piece needing a top-up would be
+     * the last thing somebody read before committing to a number nobody had
+     * put in front of them.
+     */
+    expect(choice).toContain('{money(item.topUpGbp)} for you to pay')
+    expect(choice).toContain('Covered by your award')
+    expect(choice).toContain('Nothing is charged now')
+  })
+
+  it('records what the employer covered, on the order', () => {
+    /*
+     * An order can now be part-paid by the company and part-paid by the
+     * person. Without this our side sees a hold at the full price and no way
+     * to know the employer covers thirty of it.
+     */
+    expect(migration64).toContain('ADD COLUMN IF NOT EXISTS budget_applied integer')
+    expect(service).toContain('budgetApplied: view.campaign.kind === \'BUDGET\'')
+    expect(service).toContain('Math.min(view.campaign.budgetBase, price)')
+  })
+
+  it('leaves it null where there is no split to record', () => {
+    // A shortlist campaign is paid for by the company in full, and an
+    // ordinary partner order has no award behind it at all.
+    expect(service).toMatch(/budgetApplied:[\s\S]{0,160}: null,/)
+  })
+
+  it('shows our side who owes which half', () => {
+    // A single total is how an employee gets invoiced for a watch their
+    // employer has already covered.
+    expect(orders).toContain('budgetApplied: partnerOrders.budgetApplied')
+    expect(held).toContain('row.budgetApplied < row.priceAtOrder')
+    expect(held).toContain('from the award')
   })
 })
 
