@@ -236,6 +236,20 @@ export const partners = pgTable(
     brandColor: text('brand_color').notNull().default('#04173A'),
     accentColor: text('accent_color').notNull().default('#0F766E'),
 
+    /**
+     * Their mark, beside their colours.
+     *
+     * Bytes rather than a URL to their site: a logo hotlinked from somebody
+     * else's server is a broken image on our page the day they redesign, on a
+     * page their own staff are looking at.
+     */
+    logoMime: text('logo_mime'),
+    logoData: bytea('logo_data'),
+    logoByteSize: integer('logo_byte_size'),
+    /** Where the branding came from, so a stale portal is noticeable. */
+    brandSourceUrl: text('brand_source_url'),
+    brandTakenAt: timestamp('brand_taken_at', { withTimezone: true }),
+
     notes: text('notes'),
 
     /**

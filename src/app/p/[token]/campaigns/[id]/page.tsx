@@ -25,6 +25,7 @@ export default async function CampaignPage({ params }: { params: { token: string
       <PortalGate
         token={params.token}
         name={door.name}
+        hasLogo={door.hasLogo}
         brandColor={door.brandColor}
         accentColor={door.accentColor}
       />

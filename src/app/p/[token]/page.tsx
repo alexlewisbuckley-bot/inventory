@@ -39,6 +39,7 @@ export default async function PortalPage({ params }: { params: { token: string }
       <PortalGate
         token={params.token}
         name={door.name}
+        hasLogo={door.hasLogo}
         brandColor={door.brandColor}
         accentColor={door.accentColor}
       />
