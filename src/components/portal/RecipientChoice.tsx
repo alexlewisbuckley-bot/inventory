@@ -38,6 +38,7 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
   const [taking, setTaking] = useState<Choice | null>(null)
   const { campaign, recipient } = view
   const showPrices = campaign.kind === 'BUDGET'
+  const live = campaign.status === 'OPEN'
 
   return (
     <main
@@ -53,14 +54,18 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
             {campaign.partnerName}
           </p>
           <h1 className="mt-2 font-serif text-[30px] leading-tight text-black sm:text-[34px]">
-            {recipient.claimedAt ? `Thank you, ${recipient.name}` : `${recipient.name}, choose your watch`}
+            {recipient.claimedAt
+              ? `Thank you, ${recipient.name}`
+              : live
+                ? `${recipient.name}, choose your watch`
+                : `Hello, ${recipient.name}`}
           </h1>
           {campaign.intro && (
             <p className="mt-3 max-w-[620px] text-[14.5px] leading-relaxed text-black/60">
               {campaign.intro}
             </p>
           )}
-          {!recipient.claimedAt && showPrices && campaign.budgetBase !== null && (
+          {!recipient.claimedAt && live && showPrices && campaign.budgetBase !== null && (
             <p className="mt-3 text-[13.5px] text-black/60">
               Anything up to{' '}
               <span className="font-semibold text-black">{money(campaign.budgetBase)}</span>.
@@ -70,7 +75,27 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
         </div>
       </header>
 
-      {recipient.claimedAt ? (
+      {!live && !recipient.claimedAt ? (
+        /*
+         * A real link to a campaign that is not running.
+         *
+         * The first thing that went wrong in practice: a link copied and sent
+         * the moment somebody was added, before the campaign was opened. It
+         * used to answer with nothing at all, which tells an employee their
+         * company's gift does not exist. They are holding a token we issued
+         * them, so saying which of the two it is costs nothing.
+         */
+        <div className="mx-auto max-w-[620px] px-5 py-16 text-center sm:px-8">
+          <p className="font-serif text-[22px] leading-snug text-black">
+            {campaign.status === 'DRAFT' ? 'This is not open yet' : 'This has closed'}
+          </p>
+          <p className="mt-3 text-[14px] leading-relaxed text-black/55">
+            {campaign.status === 'DRAFT'
+              ? 'Your link works — there is simply nothing to choose from yet. Keep it, and try again shortly.'
+              : 'The time for choosing has passed. If you think that is a mistake, speak to whoever sent you this.'}
+          </p>
+        </div>
+      ) : recipient.claimedAt ? (
         /*
          * Afterwards.
          *

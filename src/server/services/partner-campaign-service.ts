@@ -11,7 +11,7 @@ import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { partnerPrice } from '@/lib/partner-rate'
 import { logger } from '@/lib/logger'
 import { sendWhatsApp } from './whatsapp'
-import type { CampaignKind } from '@/lib/enums'
+import type { CampaignKind, CampaignStatus } from '@/lib/enums'
 
 /**
  * Reward campaigns a partner runs for its own people.
@@ -321,6 +321,16 @@ export interface RecipientView {
     intro: string | null
     kind: CampaignKind
     budgetBase: number | null
+    /*
+     * Carried through rather than used to refuse the whole page.
+     *
+     * A recipient holding a real token is somebody we meant to invite. Telling
+     * them "not yet" or "this has closed" costs nothing — the token is the
+     * secret, and they have it — whereas a dead page tells an employee their
+     * company's gift does not exist. That was the first thing to go wrong in
+     * practice: a link copied before the campaign was opened.
+     */
+    status: CampaignStatus
     partnerName: string
     brandColor: string
     accentColor: string
@@ -389,10 +399,11 @@ export async function getRecipientView(token: string): Promise<RecipientView | n
     .limit(1)
 
   const row = rows[0]
+  // An unknown or withdrawn token is still nothing at all: anything more
+  // specific tells whoever holds a dead link that there is something real
+  // behind it. A KNOWN token is different — see `status` above.
   if (!row) return null
-  // A draft link that works is a half-built campaign sent out by accident; a
-  // closed one still giving away stock is a campaign that never ended.
-  if (row.status !== 'OPEN') return null
+  const open = row.status === 'OPEN'
 
   const chosen = row.claimedOrderId
     ? (await db.select({
@@ -415,12 +426,20 @@ export async function getRecipientView(token: string): Promise<RecipientView | n
       intro: row.intro,
       kind: row.kind as CampaignKind,
       budgetBase: row.budgetBase,
+      status: row.status as CampaignStatus,
       partnerName: row.partnerDisplayName || row.partnerName,
       brandColor: row.brandColor,
       accentColor: row.accentColor,
       discountBps: row.discountBps,
     },
-    choices: row.claimedAt ? [] : await choicesFor({
+    /*
+     * Nothing to choose from unless it is actually running.
+     *
+     * A draft link that offered stock would be a half-built campaign giving
+     * watches away; a closed one would be a campaign that never ended. The
+     * page still opens and explains itself — it simply has nothing on it.
+     */
+    choices: row.claimedAt || !open ? [] : await choicesFor({
       campaignId: row.campaignId,
       kind: row.kind as CampaignKind,
       budgetBase: row.budgetBase,
@@ -513,6 +532,9 @@ export async function claim(
 ): Promise<void> {
   const view = await getRecipientView(token)
   if (!view) throw new NotFoundError('Invitation')
+  // Belt as well as braces: an empty choices list already refuses this, but a
+  // claim is the one thing here that takes a watch off the market.
+  if (view.campaign.status !== 'OPEN') throw new ConflictError('This is not open.')
   if (view.recipient.claimedAt) throw new ConflictError('You have already chosen.')
 
   // Checked against the campaign's own list rather than against the watch id

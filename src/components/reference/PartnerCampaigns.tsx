@@ -249,6 +249,7 @@ function CampaignBody({ partnerId, campaign, recipients, stock, shortlist, canMa
                 partnerId={partnerId}
                 campaignId={campaign.id}
                 person={person}
+                live={campaign.status === 'OPEN'}
                 canManage={canManage}
               />
             ))}
@@ -316,10 +317,12 @@ function CampaignBody({ partnerId, campaign, recipients, stock, shortlist, canMa
   )
 }
 
-function RecipientLine({ partnerId, campaignId, person, canManage }: {
+function RecipientLine({ partnerId, campaignId, person, live, canManage }: {
   partnerId: string
   campaignId: string
   person: RecipientView
+  /** Whether the campaign is actually running, and so whether links work. */
+  live: boolean
   canManage: boolean
 }) {
   const toast = useToast()
@@ -366,13 +369,23 @@ function RecipientLine({ partnerId, campaignId, person, canManage }: {
         </p>
       ) : (
         <>
+          {/*
+            * The link is only offered once the campaign is open.
+            *
+            * It existed from the moment somebody was added, which is how the
+            * first one went out before the campaign was opened and landed the
+            * recipient on a page with nothing on it. The link is real either
+            * way; what changes is whether it is worth sending.
+            */}
           <button
             type="button"
             onClick={() => void copy()}
-            className="flex items-center gap-1.5 text-caption text-content-secondary hover:text-content-primary"
+            disabled={!live}
+            title={live ? undefined : 'Open the campaign first — the link works, but there is nothing on it yet.'}
+            className="flex items-center gap-1.5 text-caption text-content-secondary hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-40"
           >
             {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-            {copied ? 'Copied' : 'Copy their link'}
+            {copied ? 'Copied' : live ? 'Copy their link' : 'Open it first'}
           </button>
           {canManage && (
             <button
