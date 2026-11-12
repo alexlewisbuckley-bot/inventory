@@ -6,7 +6,8 @@ import {
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
-  ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
+  ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, PARTNER_ORDER_STATUSES,
+  TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
   ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
   OFFER_STATUSES, OWNER_TYPES, type OverheadCadence, type OverheadCategory,
   EXTRACTION_METHODS, PAYMENT_STATUSES, PAYMENT_TERMS, PRIORITIES, PRODUCT_TYPES,
@@ -235,6 +236,19 @@ export const partners = pgTable(
     accentColor: text('accent_color').notNull().default('#0F766E'),
 
     notes: text('notes'),
+
+    /**
+     * The portal door: a long token in the link and a shared passphrase over
+     * it. Null until somebody opens one, so a token existing is itself the
+     * record that this company was given access — rather than every partner
+     * quietly having a door nobody decided to give them.
+     */
+    portalToken: text('portal_token'),
+    /** Scrypt-hashed exactly as a staff password is, and never read back. */
+    portalPasswordHash: text('portal_password_hash'),
+    /** Changing the passphrase turns out every browser already holding one. */
+    portalPasswordSetAt: timestamp('portal_password_set_at', { withTimezone: true }),
+
     isActive: boolean('is_active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
@@ -245,6 +259,63 @@ export const partners = pgTable(
   (t) => ({
     slugIdx: uniqueIndex('partners_slug_idx').on(t.slug),
     activeIdx: index('partners_active_idx').on(t.isActive, t.sortOrder),
+  }),
+)
+
+/**
+ * What a partner asked to buy.
+ *
+ * An order holds a watch and records what was agreed for it. Not a sale: no
+ * money moves in the portal, and the piece is ours until somebody here raises
+ * an invoice the ordinary way.
+ */
+export const partnerOrders = pgTable(
+  'partner_orders',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    watchId: text('watch_id').notNull().references(() => watches.id, { onDelete: 'cascade' }),
+
+    /*
+     * The three numbers as they stood when the order was placed.
+     *
+     * Not the stored partner price the rate deliberately avoids: that would be
+     * a price kept alongside a live one, which goes stale and then quotes a
+     * figure we no longer offer. This is history — what the asking price was,
+     * what the rate was, and therefore what was agreed — at a moment that has
+     * already happened, and repricing the watch afterwards must not move it.
+     */
+    askingAtOrder: integer('asking_at_order').notNull(),
+    discountBpsAtOrder: integer('discount_bps_at_order').notNull(),
+    priceAtOrder: integer('price_at_order').notNull(),
+
+    /** A name and an email somebody typed, to ring the right person back. */
+    placedByName: text('placed_by_name'),
+    placedByEmail: text('placed_by_email'),
+    note: text('note'),
+
+    /** PLACED while held, RELEASED when let go, COMPLETED once invoiced. */
+    status: text('status', { enum: PARTNER_ORDER_STATUSES }).notNull().default('PLACED'),
+
+    placedAt: timestamp('placed_at', { withTimezone: true }).notNull().defaultNow(),
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+    releasedById: text('released_by_id').references(() => users.id, { onDelete: 'set null' }),
+    releaseReason: text('release_reason'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    /*
+     * One live hold per watch, in the database rather than in a check.
+     *
+     * Two partners reserving the same piece seconds apart is a race no amount
+     * of reading-then-writing in the application wins on its own, and the
+     * losing half of it is a watch promised to two companies.
+     */
+    liveWatchIdx: uniqueIndex('partner_orders_live_watch_idx')
+      .on(t.watchId).where(sql`status = 'PLACED'`),
+    partnerIdx: index('partner_orders_partner_idx').on(t.partnerId, t.placedAt),
   }),
 )
 

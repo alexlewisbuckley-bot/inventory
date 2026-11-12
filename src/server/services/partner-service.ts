@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { partners } from '../db/schema'
 import { newId, slugify } from '@/lib/ids'
@@ -49,6 +49,15 @@ export async function listPartners() {
     notes: partners.notes,
     isActive: partners.isActive,
     sortOrder: partners.sortOrder,
+    /*
+     * The portal link, for staff to copy and hand over. The passphrase is
+     * only ever a yes-or-no here: it is stored hashed and shown to nobody
+     * again, including us, so a column that could answer "what is it" would
+     * be a column that could leak it.
+     */
+    portalToken: partners.portalToken,
+    portalOpen: sql<boolean>`${partners.portalPasswordHash} is not null`,
+    portalPasswordSetAt: partners.portalPasswordSetAt,
   })
     .from(partners)
     .where(isNull(partners.deletedAt))

@@ -1,12 +1,14 @@
 'use client'
 import { useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Building2, Mail, Pencil, Phone, Trash2 } from 'lucide-react'
+import { Building2, Check, Copy, KeyRound, Link2, Mail, Pencil, Phone, Trash2 } from 'lucide-react'
 import {
   Button, Card, Chip, ConfirmDialog, EmptyState, Modal, SelectField, TextField,
   TextareaField, useCreateFlag, useCurrency, useToast,
 } from '@/components/ui'
-import { savePartnerAction, deletePartnerAction } from '@/app/actions/partners'
+import {
+  savePartnerAction, deletePartnerAction, setPortalAccessAction, closePortalAction,
+} from '@/app/actions/partners'
 import type { ActionState } from '@/app/actions/auth'
 import { CURRENCIES, type CurrencyCode } from '@/lib/enums'
 import { MAX_DISCOUNT_BPS, partnerPrice, percentFromBps } from '@/lib/partner-rate'
@@ -25,6 +27,10 @@ export interface PartnerRow {
   accentColor: string
   notes: string | null
   isActive: boolean
+  /** The link staff hand over. Null until somebody opens a portal. */
+  portalToken: string | null
+  /** Whether a passphrase is set. Never the passphrase itself. */
+  portalOpen: boolean
 }
 
 const INITIAL: ActionState = { ok: false }
@@ -115,6 +121,8 @@ export function PartnerManager({ partners, canManage, sampleAsking }: {
                     to them.
                   </p>
                 )}
+
+                <PortalRow partner={partner} canManage={canManage} />
 
                 {(partner.contactName || partner.contactEmail || partner.contactPhone) && (
                   <div className="space-y-1 text-small text-content-secondary">
@@ -264,4 +272,185 @@ function PartnerForm({ partner, onDone, onSaved }: {
 function SaveButton({ editing }: { editing: boolean }) {
   const { pending } = useFormStatus()
   return <Button type="submit" loading={pending}>{editing ? 'Save changes' : 'Add partner'}</Button>
+}
+
+/**
+ * The portal door, on the partner's card.
+ *
+ * Three states and they look different, because the difference matters: no
+ * door at all, a door with a link to hand over, and the moment just after a
+ * passphrase is set — which is the only time anybody will ever see it.
+ */
+function PortalRow({ partner, canManage }: { partner: PartnerRow; canManage: boolean }) {
+  const toast = useToast()
+  const [opening, setOpening] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const link = partner.portalToken
+    ? `${typeof window === 'undefined' ? '' : window.location.origin}/p/${partner.portalToken}`
+    : null
+
+  const copy = async () => {
+    if (!link) return
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // A clipboard that refuses is not an error worth a dialog: the link is
+      // on the screen and can be selected by hand.
+      toast.error('Could not copy', 'Select the link and copy it by hand.')
+    }
+  }
+
+  const close = async () => {
+    setBusy(true)
+    const result = await closePortalAction(partner.id)
+    setBusy(false)
+    if (result.ok) toast.success('Portal closed', result.message)
+    else toast.error('Could not close that portal', result.message)
+  }
+
+  return (
+    <div className="rounded-md border border-line-subtle px-3 py-2.5">
+      {partner.portalOpen && link ? (
+        <>
+          <p className="flex items-center gap-1.5 text-caption font-semibold text-content-secondary">
+            <Link2 className="h-3.5 w-3.5" aria-hidden />
+            Portal open
+          </p>
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="mt-1 flex w-full items-center gap-1.5 text-left text-small text-content-secondary hover:text-content-primary"
+          >
+            <span className="truncate font-mono text-caption">{link}</span>
+            {copied
+              ? <Check className="h-3.5 w-3.5 shrink-0 text-state-success" aria-hidden />
+              : <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+            <span className="sr-only">Copy the portal link</span>
+          </button>
+          {canManage && (
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setOpening(true)}>
+                New passphrase
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => void close()} disabled={busy}>
+                Close
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-caption text-content-secondary">
+            No portal. They cannot see stock or reserve anything yet.
+          </p>
+          {canManage && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="mt-1.5"
+              icon={<KeyRound className="h-4 w-4" />}
+              onClick={() => setOpening(true)}
+            >
+              Open a portal
+            </Button>
+          )}
+        </>
+      )}
+
+      {opening && (
+        <PassphraseForm
+          partner={partner}
+          onDone={() => setOpening(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Setting the passphrase, and showing the link once.
+ *
+ * The passphrase is hashed and never read back, so this dialog is the only
+ * moment it and the link exist in the same place. It stays open on success
+ * with both on screen rather than closing with a toast, because a toast that
+ * vanishes after four seconds is how somebody ends up setting a second
+ * passphrase ten minutes later.
+ */
+function PassphraseForm({ partner, onDone }: { partner: PartnerRow; onDone: () => void }) {
+  const [state, action] = useFormState(setPortalAccessAction, INITIAL)
+  const [phrase, setPhrase] = useState('')
+
+  const token = state.ok ? state.message : null
+  const link = token
+    ? `${typeof window === 'undefined' ? '' : window.location.origin}/p/${token}`
+    : null
+
+  return (
+    <Modal
+      open
+      title={partner.portalOpen ? `New passphrase for ${partner.name}` : `Open a portal for ${partner.name}`}
+      onClose={onDone}
+    >
+      {link ? (
+        <div className="space-y-4">
+          <p className="text-small text-content-secondary">
+            Hand these over together. The passphrase cannot be shown again — if it is
+            lost, set a new one.
+          </p>
+          <div className="space-y-1">
+            <p className="text-caption font-semibold text-content-secondary">Link</p>
+            <p className="break-all rounded-md bg-surface-subtle px-3 py-2 font-mono text-caption text-content-primary">
+              {link}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-caption font-semibold text-content-secondary">Passphrase</p>
+            <p className="rounded-md bg-surface-subtle px-3 py-2 font-mono text-caption text-content-primary">
+              {phrase}
+            </p>
+          </div>
+          <p className="text-caption text-content-secondary">
+            Everybody already signed in on an old passphrase has been signed out.
+          </p>
+          <div className="flex justify-end">
+            <Button onClick={onDone}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <form action={action} className="space-y-4">
+          <input type="hidden" name="id" value={partner.id} />
+          <TextField
+            name="passphrase"
+            label="Passphrase"
+            required
+            autoComplete="off"
+            value={phrase}
+            onChange={(event) => setPhrase(event.target.value)}
+            error={state.errors?.passphrase}
+            hint="At least 12 characters. A short phrase is easier to read down a phone than a complicated word."
+          />
+          {state.message && !state.ok && (
+            <p role="alert" className="text-small text-state-danger">{state.message}</p>
+          )}
+          <div className="flex justify-end gap-2.5">
+            <Button type="button" variant="ghost" onClick={onDone}>Cancel</Button>
+            <SavePhrase open={partner.portalOpen} />
+          </div>
+        </form>
+      )}
+    </Modal>
+  )
+}
+
+function SavePhrase({ open }: { open: boolean }) {
+  const { pending } = useFormStatus()
+  return (
+    <Button type="submit" loading={pending}>
+      {open ? 'Change it' : 'Open the portal'}
+    </Button>
+  )
 }
