@@ -460,11 +460,11 @@ export async function getShopWindow(key: string, rates: RateTable): Promise<Shop
       // query names the one kind that is meant to be seen.
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
       imageId: sql<string | null>`(
         SELECT i.id FROM watch_images i
-        WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
         ORDER BY i.sort_order, i.created_at
         LIMIT 1
       )`,
@@ -861,7 +861,7 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
        */
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
       /*
        * And the trade shots, carried separately rather than mixed in. A
@@ -871,7 +871,7 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
        */
       tradeImageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'TRADE'
       ), ARRAY[]::text[])`,
     })
     .from(watches)
@@ -891,7 +891,7 @@ export async function getTradeRoom(token: string): Promise<TradeRoom | null> {
        */
       sql`EXISTS (
         SELECT 1 FROM watch_images i
-        WHERE i.watch_id = ${watches.id} AND i.kind IN ('WATCH', 'TRADE')
+        WHERE i.watch_id = watches.id AND i.kind IN ('WATCH', 'TRADE')
       )`,
     ))
     .orderBy(asc(brands.name), asc(watches.model))

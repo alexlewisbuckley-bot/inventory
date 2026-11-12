@@ -168,7 +168,7 @@ const listSelection = {
    */
   primaryImageId: sql<string | null>`(
     SELECT wi.id FROM ${watchImages} wi
-    WHERE wi.watch_id = ${watches.id}
+    WHERE wi.watch_id = watches.id
     ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
     LIMIT 1
   )`,
@@ -183,7 +183,7 @@ const listSelection = {
    */
   tradeImageId: sql<string | null>`(
     SELECT wi.id FROM ${watchImages} wi
-    WHERE wi.watch_id = ${watches.id} AND wi.kind = 'TRADE'
+    WHERE wi.watch_id = watches.id AND wi.kind = 'TRADE'
     ORDER BY wi.sort_order, wi.created_at
     LIMIT 1
   )`,

@@ -283,7 +283,7 @@ export async function attentionCounts(): Promise<AttentionCounts> {
     db
       .select({ value: count() })
       .from(watches)
-      .where(and(liveWatch, sql`not exists (select 1 from ${watchImages} where ${watchImages.watchId} = ${watches.id})`)),
+      .where(and(liveWatch, sql`not exists (select 1 from ${watchImages} where watch_images.watch_id = watches.id)`)),
     db
       .select({
         stale: sql<number>`coalesce(sum(case when ${fxRates.updatedAt} < ${ratesStaleBefore}::timestamptz then 1 else 0 end), 0)`,

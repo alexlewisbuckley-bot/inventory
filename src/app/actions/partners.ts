@@ -6,9 +6,13 @@ import { partnerSchema, fieldErrors } from '@/lib/validation'
 import { createPartner, deletePartner, updatePartner } from '@/server/services/partner-service'
 import { closePortal, setPortalAccess } from '@/server/services/partner-portal-service'
 import { completeOrder, releaseHold } from '@/server/services/partner-order-service'
+import {
+  addRecipients, closeCampaign, createCampaign, deleteCampaign, openCampaign,
+  removeRecipient, setShortlist, updateCampaign,
+} from '@/server/services/partner-campaign-service'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
-import type { CurrencyCode } from '@/lib/enums'
+import type { CampaignKind, CurrencyCode } from '@/lib/enums'
 import type { ActionState } from './auth'
 
 /**
@@ -161,5 +165,142 @@ export async function completeOrderAction(orderId: string): Promise<ActionState>
     return { ok: true, message: 'Order closed.' }
   } catch (error) {
     return toState(error, 'That order could not be closed.')
+  }
+}
+
+/*
+ * Campaigns, from our side of the counter.
+ *
+ * The same service the portal uses, behind partner:manage instead of a
+ * passphrase. Campaigns were reachable only through a partner's own link to
+ * begin with, which meant the people who sell these arrangements could not
+ * see one, let alone set one up for a company that would rather we did it.
+ * Most will: an estate agency agreeing to reward fifteen staff does not want
+ * a login, it wants somebody here to put the list in.
+ */
+export async function saveCampaignForPartnerAction(
+  partnerId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const kind = (formData.get('kind')?.toString() ?? 'SHORTLIST') as CampaignKind
+  // Typed in whole currency units, held in minor units, converted here.
+  const typed = formData.get('budget')?.toString().replace(/[^\d.]/g, '') ?? ''
+
+  try {
+    const input = {
+      name: formData.get('name')?.toString() ?? '',
+      intro: formData.get('intro')?.toString() ?? null,
+      kind,
+      budgetBase: typed ? Math.round(Number(typed) * 100) : null,
+    }
+    const id = formData.get('id')?.toString()
+    if (id) await updateCampaign(partnerId, id, input)
+    else await createCampaign(partnerId, input)
+    revalidatePath(`/partners/${partnerId}`)
+    return { ok: true, message: id ? 'Campaign updated.' : 'Campaign created.' }
+  } catch (error) {
+    return toState(error, 'That campaign could not be saved.')
+  }
+}
+
+export async function addRecipientsForPartnerAction(
+  partnerId: string,
+  campaignId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  // One per line, "Name, email" — the list already exists in a spreadsheet or
+  // an email, and the alternative is a two-field form filled in forty times.
+  const people = (formData.get('people')?.toString() ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, email] = line.split(/[,;\t]/)
+      return { name: name ?? '', email: email ?? null }
+    })
+
+  try {
+    const added = await addRecipients(partnerId, campaignId, people)
+    revalidatePath(`/partners/${partnerId}`)
+    return { ok: true, message: `${added} added.` }
+  } catch (error) {
+    return toState(error, 'They could not be added.')
+  }
+}
+
+export async function removeRecipientForPartnerAction(
+  partnerId: string,
+  campaignId: string,
+  recipientId: string,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    await removeRecipient(partnerId, campaignId, recipientId)
+    revalidatePath(`/partners/${partnerId}`)
+    return { ok: true, message: 'Removed.' }
+  } catch (error) {
+    return toState(error, 'They could not be removed.')
+  }
+}
+
+export async function setShortlistForPartnerAction(
+  partnerId: string,
+  campaignId: string,
+  watchIds: string[],
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    await setShortlist(partnerId, campaignId, watchIds)
+    revalidatePath(`/partners/${partnerId}`)
+    return { ok: true, message: 'Shortlist saved.' }
+  } catch (error) {
+    return toState(error, 'That shortlist could not be saved.')
+  }
+}
+
+export async function setCampaignLiveAction(
+  partnerId: string,
+  campaignId: string,
+  live: boolean,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    if (live) await openCampaign(partnerId, campaignId)
+    else await closeCampaign(partnerId, campaignId)
+    revalidatePath(`/partners/${partnerId}`)
+    return {
+      ok: true,
+      message: live
+        ? 'Open. Every link works from now.'
+        : 'Closed. Unclaimed links no longer work.',
+    }
+  } catch (error) {
+    return toState(error, 'That campaign could not be changed.')
+  }
+}
+
+export async function deleteCampaignForPartnerAction(
+  partnerId: string,
+  campaignId: string,
+): Promise<ActionState> {
+  const actor = await requireCapability('partner:manage')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+  try {
+    await deleteCampaign(partnerId, campaignId)
+    revalidatePath(`/partners/${partnerId}`)
+    return { ok: true, message: 'Campaign removed.' }
+  } catch (error) {
+    return toState(error, 'That campaign could not be removed.')
   }
 }

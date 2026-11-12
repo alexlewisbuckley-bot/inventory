@@ -150,7 +150,7 @@ export async function getHouseCatalogue(token: string): Promise<{
       bracelet: watches.bracelet,
       imageIds: sql<string[] | null>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+        FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
       /*
        * The trade shots, only where this link was opened up to them.
@@ -165,7 +165,7 @@ export async function getHouseCatalogue(token: string): Promise<{
       tradeImageIds: door.showTradePhotos
         ? sql<string[] | null>`coalesce((
             SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-            FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'TRADE'
+            FROM watch_images i WHERE i.watch_id = watches.id AND i.kind = 'TRADE'
           ), ARRAY[]::text[])`
         : sql<string[] | null>`ARRAY[]::text[]`,
     })

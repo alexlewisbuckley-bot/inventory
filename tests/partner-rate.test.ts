@@ -165,7 +165,17 @@ describe('a rate as somebody types it', () => {
      * rather than one per caller.
      */
     expect(action).toContain('discountBps: Math.round(input.discountPercent * 100)')
-    expect(action.match(/\* 100/g)).toHaveLength(1)
+    /*
+     * The RATE conversion, named rather than counted.
+     *
+     * This used to count every `* 100` in the file, which held until a reward
+     * campaign's budget arrived — whole currency units to minor units, a
+     * different quantity that happens to share a factor. Counting was a proxy
+     * for "one rule for turning a typed percentage into basis points", and
+     * that is what is asserted now.
+     */
+    expect(action.match(/discountPercent \* 100/g)).toHaveLength(1)
+    expect(action).not.toMatch(/discountPercent \* 100[\s\S]*discountPercent \* 100/)
   })
 })
 

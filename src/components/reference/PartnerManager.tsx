@@ -1,7 +1,10 @@
 'use client'
 import { useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Building2, Check, Copy, KeyRound, Link2, Mail, Pencil, Phone, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import {
+  Building2, Check, Copy, Gift, KeyRound, Link2, Mail, Pencil, Phone, Trash2,
+} from 'lucide-react'
 import {
   Button, Card, Chip, ConfirmDialog, EmptyState, Modal, SelectField, TextField,
   TextareaField, useCreateFlag, useCurrency, useToast,
@@ -31,6 +34,7 @@ export interface PartnerRow {
   portalToken: string | null
   /** Whether a passphrase is set. Never the passphrase itself. */
   portalOpen: boolean
+  campaignCount: number
 }
 
 const INITIAL: ActionState = { ok: false }
@@ -86,7 +90,16 @@ export function PartnerManager({ partners, canManage, sampleAsking }: {
             <Card key={partner.id} className="flex flex-col">
               <div className="flex items-start justify-between gap-3 border-b border-line-subtle px-5 py-4">
                 <div className="min-w-0">
-                  <p className="truncate text-body font-bold text-content-primary">{partner.name}</p>
+                  {/* The name is the way in. Campaigns, their people and the
+                      links we send out all live a level down, and a card with
+                      nothing clickable on it is where somebody looks for them
+                      and gives up. */}
+                  <Link
+                    href={`/partners/${partner.id}`}
+                    className="truncate text-body font-bold text-content-primary hover:underline"
+                  >
+                    {partner.name}
+                  </Link>
                   {partner.displayName && partner.displayName !== partner.name && (
                     <p className="truncate text-small text-content-secondary">
                       Shown to their people as {partner.displayName}
@@ -123,6 +136,16 @@ export function PartnerManager({ partners, canManage, sampleAsking }: {
                 )}
 
                 <PortalRow partner={partner} canManage={canManage} />
+
+                <Link
+                  href={`/partners/${partner.id}`}
+                  className="flex items-center gap-1.5 text-small text-content-secondary hover:text-content-primary"
+                >
+                  <Gift className="h-3.5 w-3.5" aria-hidden />
+                  {partner.campaignCount > 0
+                    ? `${partner.campaignCount} ${partner.campaignCount === 1 ? 'campaign' : 'campaigns'}`
+                    : 'Set up a reward campaign'}
+                </Link>
 
                 {(partner.contactName || partner.contactEmail || partner.contactPhone) && (
                   <div className="space-y-1 text-small text-content-secondary">

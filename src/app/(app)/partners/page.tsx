@@ -50,6 +50,7 @@ export default async function PartnersPage() {
         partners={partners.map((partner) => ({
           ...partner,
           displayCurrency: partner.displayCurrency as CurrencyCode,
+          campaignCount: Number(partner.campaignCount),
         }))}
         sampleAsking={sampleAsking}
         canManage={can(user.role, 'partner:manage')}
