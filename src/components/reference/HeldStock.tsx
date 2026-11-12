@@ -23,6 +23,7 @@ export interface HeldView {
   priceAtOrder: number
   askingAtOrder: number
   discountBpsAtOrder: number
+  campaignName: string | null
 }
 
 const INITIAL: ActionState = { ok: false }
@@ -94,6 +95,14 @@ export function HeldStock({ rows, canManage }: { rows: HeldView[]; canManage: bo
                     {row.placedByName && ` · ${row.placedByName}`}
                     {row.placedByEmail && ` · ${row.placedByEmail}`}
                   </p>
+                  {/* Named, because it changes how the call goes: an award is
+                      not a purchase, and the person who chose it is not the
+                      person paying for it. */}
+                  {row.campaignName && (
+                    <p className="truncate text-caption text-content-secondary">
+                      Reward · {row.campaignName}
+                    </p>
+                  )}
                   {row.note && <p className="truncate text-small text-content-secondary">{row.note}</p>}
                 </div>
 

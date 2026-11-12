@@ -948,6 +948,31 @@ export const TRADE_ENQUIRY_KIND_LABELS: Record<TradeEnquiryKind, string> = {
  * conversation nobody here knew was still running — and the piece would be
  * sold twice before anybody noticed it had come back.
  */
+/**
+ * The two kinds of reward campaign a partner can run.
+ *
+ * Not points. A points scheme is a currency we would have to issue, price,
+ * expire and account for, and none of that is a thing a watch dealer should be
+ * in the middle of. Both of these resolve to the same act — one person, one
+ * watch, one hold — which is why they share everything underneath.
+ */
+export const CAMPAIGN_KINDS = ['SHORTLIST', 'BUDGET'] as const
+export type CampaignKind = (typeof CAMPAIGN_KINDS)[number]
+
+export const CAMPAIGN_KIND_LABELS: Record<CampaignKind, string> = {
+  SHORTLIST: 'A shortlist you choose',
+  BUDGET: 'An amount each person can spend',
+}
+
+export const CAMPAIGN_STATUSES = ['DRAFT', 'OPEN', 'CLOSED'] as const
+export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number]
+
+export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
+  DRAFT: 'Not sent yet',
+  OPEN: 'Open',
+  CLOSED: 'Closed',
+}
+
 export const PARTNER_ORDER_STATUSES = ['PLACED', 'RELEASED', 'COMPLETED'] as const
 export type PartnerOrderStatus = (typeof PARTNER_ORDER_STATUSES)[number]
 

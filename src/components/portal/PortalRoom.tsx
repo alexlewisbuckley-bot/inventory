@@ -155,11 +155,21 @@ export function PortalRoom({ token, partner, items, orders }: {
                 : 'Stock available to you now.'}
             </p>
           </div>
-          <form action={leavePortalAction.bind(null, token)}>
-            <button type="submit" className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70">
-              Sign out
-            </button>
-          </form>
+          <div className="flex items-center gap-5">
+            {/* Campaigns are the reason most partners are here at all, so the
+                way to them is beside the sign-out rather than buried. */}
+            <a
+              href={`/p/${token}/campaigns`}
+              className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
+            >
+              Campaigns
+            </a>
+            <form action={leavePortalAction.bind(null, token)}>
+              <button type="submit" className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 
