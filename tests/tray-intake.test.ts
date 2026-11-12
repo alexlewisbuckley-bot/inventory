@@ -59,7 +59,10 @@ describe('what the photograph is asked for', () => {
   })
 
   it('tells it to read the card lying with the watch, not the nearest one', () => {
-    expect(service).toMatch(/Pair each watch with the card lying WITH it, not the nearest card/)
+    // The rule is unchanged; it is now scoped to the case where both are in
+    // the frame, because a tray of cards alone has no pairing to get wrong.
+    expect(service).toMatch(/pair each watch with the card lying WITH it, not the nearest card/)
+    expect(service).toContain('Where watches and cards are both in the frame')
   })
 
   it('takes the date exactly as written and does not try to parse it', () => {
@@ -290,5 +293,99 @@ describe('the watch itself, cut out of the photograph', () => {
   it('falls back to words where it could not be placed', () => {
     // A missing thumbnail is a worse row, not a broken screen.
     expect(screen).toMatch(/\{row\.position \?\? 'not placed'\}/)
+  })
+})
+
+describe('a photograph of the paperwork alone', () => {
+  const tray = read('src/server/services/tray-ai.ts')
+  const single = read('src/server/services/watch-ai.ts')
+  const ui = read('src/components/inventory/TrayIntake.tsx')
+  const action = read('src/app/actions/reference.ts')
+
+  it('is a reading, not a failure', () => {
+    /*
+     * Alex: "doesn\u2019t read just paperwork it should if needed, better
+     * with watch but should still be able to read just cards if we dont have
+     * the watches to hand it can get enough details from the cards alone."
+     *
+     * The prompt used to say a card with no watch "goes in note rather than
+     * becoming an entry", so a tray of cards came back empty with a polite
+     * remark. The card carries the reference, the serial and the date, which
+     * is most of a stock record.
+     */
+    expect(tray).toContain('the photograph is of the cards alone')
+    expect(tray).toContain('one entry per card that has no watch with it')
+    expect(tray).not.toContain('A card with no watch, or a watch whose card is not in frame, goes in "note"')
+  })
+
+  it('does not treat the missing watch as something unreadable', () => {
+    // It is a normal way for stock to arrive, and flagging it would put a
+    // warning on every row of a perfectly good delivery of paperwork.
+    expect(tray).toContain('that is a complete and correct entry rather than a failed one')
+    expect(single).toContain('a card with no watch is a normal way for stock to arrive')
+  })
+
+  it('still refuses a watch whose card is absent', () => {
+    // That one genuinely cannot give a serial, so there is nothing to
+    // identify the record by afterwards.
+    expect(tray).toContain('A watch whose card is not in frame cannot give a serial')
+  })
+
+  it('crops to the card when there is no watch to crop to', () => {
+    expect(tray).toContain('put the rectangle around the card by itself')
+  })
+
+  it('keeps a card-only row through the coercion', () => {
+    // The filter keeps anything with a reference or a serial, which is
+    // exactly what a card gives.
+    const reading = coerceTray({
+      watches: [{ model: '126610LN', serial: 'K8H42N19', position: 'top left' }],
+      note: null,
+    })
+    expect(reading?.watches).toHaveLength(1)
+    expect(reading?.watches[0].serial).toBe('K8H42N19')
+    expect(reading?.watches[0].dial).toBeNull()
+  })
+})
+
+describe('booking in a delivery from somebody new', () => {
+  const ui = read('src/components/inventory/TrayIntake.tsx')
+  const action = read('src/app/actions/reference.ts')
+
+  it('can add the supplier without abandoning the tray', () => {
+    /*
+     * Alex: "Doesn\u2019t let you add new?"
+     *
+     * It was a plain select. A delivery from a supplier not yet on the
+     * register meant leaving the screen, adding one, and starting the upload
+     * again — on the one screen where a new supplier is the ordinary case.
+     */
+    expect(ui).toContain('<ComboSelect')
+    expect(ui).toContain('createSupplierInlineAction(label)')
+    expect(ui).toContain('createLabel="Add supplier"')
+  })
+
+  it('keys the supplier by name, as the import does', () => {
+    // Swapping to an id here would mean two different answers to what this
+    // field is, on the two sides of the same form.
+    expect(ui).toContain('options={suppliers.map((s) => ({ value: s.name, label: s.name }))}')
+    expect(ui).toContain('return { value: name, label: name }')
+  })
+
+  it('does not let a half-typed search become a supplier', () => {
+    /*
+     * The register had "e" and "ed" in it beside "Edward Jackson". A picker
+     * that creates whatever was typed turns an abandoned search into a
+     * permanent row on a register used by every stock record.
+     */
+    expect(action).toContain('if (trimmed.length < 4)')
+    expect(action).toContain('.startsWith(trimmed.toLowerCase())')
+    expect(action).toContain('Did you mean ${prefix.name}?')
+  })
+
+  it('still allows a short name somebody means', () => {
+    // Blocking every prefix would dead-end a genuine two-letter trading
+    // name, so the message points at the page where it can still be added.
+    expect(action).toContain('add it on the Suppliers page')
   })
 })

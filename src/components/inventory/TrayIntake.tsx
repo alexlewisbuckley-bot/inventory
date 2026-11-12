@@ -3,10 +3,13 @@ import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import { AlertCircle, Camera, Loader2, Trash2, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { Button, Card, CardBody, CardHeader, SelectField, TextField, useCurrency, useToast } from '@/components/ui'
+import {
+  Button, Card, CardBody, CardHeader, ComboSelect, SelectField, TextField, useCurrency, useToast,
+} from '@/components/ui'
 import { downscaleImage, isUploadableImage } from '@/lib/downscale'
 import { toDateInput } from '@/lib/dates'
 import { yearFromCard } from '@/lib/card-date'
+import { createSupplierInlineAction } from '@/app/actions/reference'
 import { cropToDataUrl } from '@/lib/crop'
 import { BASE_CURRENCY, CURRENCIES, type CurrencyCode } from '@/lib/enums'
 import { symbolFor, toBase } from '@/lib/currency'
@@ -338,11 +341,34 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
 
             {/* Said once for the delivery, because that is how one arrives. */}
             <div className="grid gap-4 border-t border-line-subtle pt-4 sm:grid-cols-2 lg:grid-cols-5">
-              <SelectField
-                name="supplier" label="Bought from" required value={supplier}
-                onChange={(event) => setSupplier(event.target.value)}
-                options={[{ value: '', label: 'Choose a supplier…' },
-                  ...suppliers.map((s) => ({ value: s.name, label: s.name }))]}
+              {/*
+                * Creatable, because this is the screen where a delivery is
+                * being booked in — and a delivery from somebody new is the
+                * ordinary case, not the exception. A plain select meant
+                * abandoning the whole tray, going to Suppliers, adding one,
+                * and starting the upload again.
+                *
+                * Keyed by name rather than id: the import resolves suppliers
+                * by name, and swapping that here would mean two different
+                * answers to what this field is.
+                */}
+              <ComboSelect
+                name="supplier" label="Bought from" required
+                value={supplier}
+                onChange={setSupplier}
+                placeholder="Choose a supplier…"
+                options={suppliers.map((s) => ({ value: s.name, label: s.name }))}
+                onCreate={async (label) => {
+                  const result = await createSupplierInlineAction(label)
+                  if (!result.ok) {
+                    toast.error('Could not add that supplier', result.message)
+                    return null
+                  }
+                  const name = result.name ?? label.trim()
+                  if (result.message) toast.success(result.message)
+                  return { value: name, label: name }
+                }}
+                createLabel="Add supplier"
               />
               <SelectField
                 name="location" label="Where they are" required value={location}
