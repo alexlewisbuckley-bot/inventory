@@ -182,7 +182,40 @@ export async function createSupplierInlineAction(name: string): Promise<ActionSt
   if (trimmed.length > 120) return { ok: false, message: 'That supplier name is too long.' }
 
   try {
-    const { createOrFindSupplier } = await import('@/server/services/reference-service')
+    const { createOrFindSupplier, listSuppliers } = await import('@/server/services/reference-service')
+
+    /*
+     * Somebody typing the start of a supplier they already have.
+     *
+     * The register had "e" and "ed" in it beside "Edward Jackson": a picker
+     * that creates whatever is typed turns a half-finished search into a new
+     * supplier, and nobody notices until the list is full of initials. If
+     * what was typed is the beginning of a name already on the register,
+     * that is the one they were reaching for — say so rather than quietly
+     * making a second.
+     */
+    /*
+     * Only for the short ones, and with a way out.
+     *
+     * "Khunji" as a prefix of "Khunji Watches" is plausibly a second real
+     * company; "ed" as a prefix of "Edward Jackson" is somebody who stopped
+     * typing. Blocking every prefix would also dead-end a genuine two-letter
+     * trading name, so this stops at four characters and points at the page
+     * where such a name can still be added deliberately.
+     */
+    if (trimmed.length < 4) {
+      const existing = await listSuppliers()
+      const prefix = existing.find((supplier) =>
+        supplier.name.toLowerCase() !== trimmed.toLowerCase()
+        && supplier.name.toLowerCase().startsWith(trimmed.toLowerCase()))
+      if (prefix) {
+        return {
+          ok: false,
+          message: `Did you mean ${prefix.name}? If "${trimmed}" really is a separate supplier, add it on the Suppliers page.`,
+        }
+      }
+    }
+
     const supplier = await createOrFindSupplier(trimmed, actor)
     revalidatePath('/inventory/new')
     revalidatePath('/suppliers')

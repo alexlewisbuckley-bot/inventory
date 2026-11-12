@@ -150,17 +150,17 @@ export const TRAY_TOOL: Anthropic.Beta.BetaTool = {
   },
 }
 
-const SYSTEM = `You are reading a photograph taken while a delivery of second-hand luxury watches is being booked into a dealer's stock book. The watches are laid out — often bagged — each with its own guarantee card beside or beneath it.
+const SYSTEM = `You are reading a photograph taken while a delivery of second-hand luxury watches is being booked into a dealer's stock book. Usually the watches are laid out — often bagged — each with its own guarantee card beside or beneath it. Sometimes the watches are not to hand and the photograph is of the cards alone, which is still worth reading: the reference, the serial and the date are all on the card.
 
-Record one entry per watch.
+Record one entry per watch, and one entry per card that has no watch with it.
 
-- Pair each watch with the card lying WITH it, not the nearest card on the page. This is the thing that matters most here. A serial recorded against the wrong watch produces two records that each look right and are both wrong, and nobody finds out until the watch is sold. Work watch by watch: find the card touching or overlapping it, and read that card.
-- Give each watch's position in the frame in plain words, accurately, so a person can check your pairing against the picture.
-- Give the rectangle around each watch and its card as percentages of the whole image, so that watch can be cut out and shown beside what you read from it. Include the card: the pairing is what somebody is checking. All four numbers zero if you cannot place it.
+- Where watches and cards are both in the frame, pair each watch with the card lying WITH it, not the nearest card on the page. This is the thing that matters most here. A serial recorded against the wrong watch produces two records that each look right and are both wrong, and nobody finds out until the watch is sold. Work watch by watch: find the card touching or overlapping it, and read that card.
+- Give each entry's position in the frame in plain words, accurately, so a person can check your pairing against the picture.
+- Give the rectangle around each watch and its card as percentages of the whole image, so that entry can be cut out and shown beside what you read from it. Include the card: the pairing is what somebody is checking. Where there is no watch, put the rectangle around the card by itself. All four numbers zero if you cannot place it.
 - The reference and the serial come from the card, transcribed character by character with case preserved. Do not correct, reformat or complete them. If a character is obscured, reflected or cut off, leave that whole field empty and say so in that watch's "unreadable".
-- The dial, metal and bracelet come from looking at the watch. The model name may come from the dial. Leave anything you cannot see empty — do not infer it from what the reference usually is.
+- The dial, metal and bracelet come from looking at the watch. The model name may come from the dial. Leave anything you cannot see empty — do not infer it from what the reference usually is. For a card with no watch, every one of these is empty, and that is a complete and correct entry rather than a failed one: the reference and serial are what make the record, and the rest is filled in later when the watch is in hand.
 - Copy the date of purchase exactly as written on the card. Do not decide which number is the month.
-- Count carefully. A card with no watch, or a watch whose card is not in frame, goes in "note" rather than becoming an entry with half its fields empty.`
+- Count carefully. A watch whose card is not in frame cannot give a serial, so it goes in "note" rather than becoming an entry nobody can identify.`
 
 /** One watch as the photograph gave it up. */
 export interface TrayBox {
