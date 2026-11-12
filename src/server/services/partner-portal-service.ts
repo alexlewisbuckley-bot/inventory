@@ -170,9 +170,19 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
       dial: watches.dial,
       bracelet: watches.bracelet,
       askingGbp: watches.estSaleGbp,
+      /*
+       * The website photographs, and only those.
+       *
+       * Alex: "do not use any trade images what so ever." A trade shot is a
+       * record picture — taken to prove a piece is in hand, marks and all, on
+       * whatever surface was nearest. A dealer wants exactly that. A partner
+       * is buying the watch for somebody's wrist, often for a member of their
+       * own staff, and a page selling at a negotiated price with a record
+       * picture on it undercuts the price it is asking.
+       */
       imageIds: sql<string[]>`coalesce((
         SELECT array_agg(i.id ORDER BY i.sort_order, i.created_at)
-        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind IN ('WATCH', 'TRADE')
+        FROM watch_images i WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
       ), ARRAY[]::text[])`,
     })
     .from(watches)
@@ -181,6 +191,19 @@ export async function getPortalRoom(token: string): Promise<PortalRoom | null> {
     .where(and(
       ...onOffer(),
       sql`${watches.estSaleGbp} IS NOT NULL`,
+      /*
+       * And a website photograph of it.
+       *
+       * Asked for as part of the query rather than filtered afterwards, so
+       * the count on the page and the rows on the page agree. A card reading
+       * "no photograph" is a line of text claiming we have something, which
+       * is what a spreadsheet is for and what this page exists to replace —
+       * and a partner cannot judge a watch from it anyway.
+       */
+      sql`EXISTS (
+        SELECT 1 FROM watch_images i
+        WHERE i.watch_id = ${watches.id} AND i.kind = 'WATCH'
+      )`,
     ))
     .orderBy(asc(brands.name), asc(watches.model))
 
@@ -247,7 +270,10 @@ export async function getPortalImage(token: string, imageId: string) {
     ))
     .where(and(
       eq(watchImages.id, imageId),
-      sql`${watchImages.kind} IN ('WATCH', 'TRADE')`,
+      // One kind, and it is the access control as much as the choice: a
+      // warranty card — a serial, a date and a dealer's stamp — cannot be
+      // fetched here by guessing at the route with an id from somewhere else.
+      sql`${watchImages.kind} = 'WATCH'`,
       ...onOffer(),
     ))
     .limit(1)
