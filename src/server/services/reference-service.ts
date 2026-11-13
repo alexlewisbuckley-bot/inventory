@@ -153,6 +153,7 @@ export async function listLocations() {
       isActive: locations.isActive,
       publishToStorefront: locations.publishToStorefront,
       showInTradeCatalogue: locations.showInTradeCatalogue,
+      isOnHand: locations.isOnHand,
       sortOrder: locations.sortOrder,
       watchCount: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then 1 else 0 end), 0)`,
       valueGbp: sql<number>`coalesce(sum(case when ${watches.status} in ('IN_STOCK','RESERVED','SALE_AGREED') then ${watches.purchasePriceGbp} else 0 end), 0)`,
@@ -200,7 +201,7 @@ export async function updateLocation(id: string, input: Partial<LocationInput>, 
       // change absent from the audit is a change nobody can account for.
       changes: diff(existing, input, [
         'name', 'type', 'addressLine', 'city', 'country', 'notes', 'isActive',
-        'publishToStorefront', 'showInTradeCatalogue',
+        'publishToStorefront', 'showInTradeCatalogue', 'isOnHand',
       ]),
     })
   })

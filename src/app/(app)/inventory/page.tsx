@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { inventoryViews, locationQuery, AVAILABLE_QUERY } from '@/components/inventory/views'
+import { inventoryViews, toHandQuery } from '@/components/inventory/views'
 import { FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
@@ -75,18 +75,15 @@ function parseQuery(searchParams: SearchParams) {
  * workshop — and then nothing is narrowed and the list opens as it always
  * did.
  */
-async function houseLocation(): Promise<{ id: string; name: string } | null> {
-  const [row] = await db
+async function awayLocations(): Promise<Array<{ id: string; name: string }>> {
+  return db
     .select({ id: locations.id, name: locations.name })
     .from(locations)
     .where(and(
       isNull(locations.deletedAt),
-      eq(locations.isActive, true),
-      eq(locations.type, 'STORE'),
+      eq(locations.isOnHand, false),
     ))
     .orderBy(asc(locations.sortOrder), asc(locations.name))
-    .limit(1)
-  return row ?? null
 }
 
 export default async function InventoryPage({ searchParams }: { searchParams: SearchParams }) {
@@ -104,9 +101,9 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
    * Only a completely bare URL redirects. /inventory?supplierId=… is somebody
    * asking a specific question, and answering a different one would be wrong.
    */
-  const house = await houseLocation()
+  const away = await awayLocations()
   if (Object.keys(searchParams).length === 0) {
-    redirect(`/inventory?${house ? locationQuery(house.id) : AVAILABLE_QUERY}`)
+    redirect(`/inventory?${toHandQuery(away.map((location) => location.id))}`)
   }
 
   /**
@@ -346,7 +343,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         )}
       </section>
 
-      <ViewBar object="watch" builtIn={inventoryViews(house, { queues: showQueues })} saved={savedViews} />
+      <ViewBar object="watch" builtIn={inventoryViews(away, { queues: showQueues })} saved={savedViews} />
 
       <FilterBar
         fields={WATCH_FIELDS}

@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PARTNER_ORDER_STATUSES, PARTNER_ORDER_STATUS_LABELS } from '@/lib/enums'
 import { partnerPrice } from '@/lib/partner-rate'
+import { priceBands } from '@/components/portal/PortalRoom'
 import { can } from '@/lib/permissions'
-import { distribution, nextRange } from '@/components/portal/RangeSlider'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 const migration = read('src/server/db/migrations/0061_partner_portal_and_orders.sql')
@@ -507,72 +507,57 @@ describe('finding something in two hundred watches', () => {
 
   it('counts the hidden filters on its own button', () => {
     // So a collapsed panel with two filters in it does not look empty.
-    expect(room).toContain('const narrowed = [size, boxPapers, priceRange].filter(Boolean).length')
+    expect(room).toContain("const narrowed = [size, boxPapers, band !== null ? 'band' : ''].filter(Boolean).length")
   })
 
-  it('asks for a price range with a range, not two dropdowns', () => {
+  it('asks for a price as bands, not as a slider over a huge spread', () => {
     /*
-     * Alex: "no filtering sliders." Two selects of invented round numbers is
-     * the wrong control for a range — it makes somebody read a list to answer
-     * a question they would rather answer by dragging.
+     * Alex: "CHANGE TO MORE EASY CLICKS LIKE 0-25 25-50 50-100 100-200 250+
+     * ... THIS SPREAD IS HUGE SLIDER DOESN'T WORK WELL."
+     *
+     * Right, and it is the spread that does it. Stock running from eight
+     * thousand to half a million on one linear track puts nine watches in ten
+     * inside the first tenth of the travel, so the handle somebody wants is a
+     * pixel or two wide and dragging it is a guess. A band is one tap, says
+     * what it is, and is the same size on a phone.
      */
-    expect(room).toContain('<RangeSlider')
-    expect(room).toContain('histogram={priceShape}')
+    expect(room).toContain('const bands = useMemo(() => priceBands(items), [items])')
+    expect(room).not.toContain('<RangeSlider')
     expect(room).not.toContain('label="Price from"')
-    expect(room).not.toContain('label="Price to"')
   })
 
-  it('will not let the handles cross', () => {
-    /*
-     * Crossed handles invert the range and empty the list for a reason nobody
-     * can see: both numbers look sensible, and the page simply says nothing
-     * matches.
-     */
-    expect(nextRange([1000, 5000], 'low', 7000)).toEqual([5000, 5000])
-    expect(nextRange([1000, 5000], 'high', 400)).toEqual([1000, 1000])
-    expect(nextRange([1000, 5000], 'low', 2000)).toEqual([2000, 5000])
-    expect(nextRange([1000, 5000], 'high', 9000)).toEqual([1000, 9000])
+  it('counts each band, and offers none that is empty', () => {
+    // A band reading "200k–500k  0" is a tap that leads nowhere, and five of
+    // those is a filter bar that lies about what is in the case.
+    const bands = priceBands([
+      { priceGbp: 1_000_000 },   // 10k
+      { priceGbp: 3_000_000 },   // 30k
+      { priceGbp: 3_500_000 },   // 35k
+      { priceGbp: 60_000_000 },  // 600k
+    ])
+    expect(bands.map((band) => band.label)).toEqual(['0k–25k', '25k–50k', '500k+'])
+    expect(bands.map((band) => band.count)).toEqual([1, 2, 1])
   })
 
-  it('buckets a distribution against the fullest bar, not an absolute count', () => {
-    // The shape is what matters — one bar twice its neighbour — not how many
-    // watches tall the page can draw.
-    const shape = distribution([1, 1, 1, 9], 0, 10, 10)
-    expect(shape[1]).toBe(1)
-    expect(shape[9]).toBeCloseTo(1 / 3)
-    expect(distribution([], 0, 10)).toEqual([])
+  it('puts a watch on a boundary in one band and not two', () => {
+    // Counts that do not add up to the total are the fastest way to lose
+    // somebody's trust in a filter.
+    const bands = priceBands([{ priceGbp: 2_500_000 }])
+    expect(bands).toHaveLength(1)
+    expect(bands[0].label).toBe('25k–50k')
   })
 
-  it('styles the handles itself rather than leaving the browser to', () => {
-    /*
-     * Tailwind reads class names as text at build time, so a variant built
-     * from a template string is a class that exists at runtime and in no
-     * stylesheet — the handles come out as the browser's own and the slider
-     * looks like a form control from 1998.
-     */
-    const slider = read('src/components/portal/RangeSlider.tsx')
-    expect(slider).toContain('[&::-webkit-slider-thumb]:appearance-none')
-    expect(slider).toContain('[&::-moz-range-thumb]:appearance-none')
-    expect(slider).not.toMatch(/\[&::-webkit-slider-thumb\]:\$\{/)
-    /*
-     * And focus shown on the handle rather than as a box round the whole
-     * track — which is what the browser does when the outline is left alone,
-     * and it looks like an error state.
-     */
-    expect(slider).toContain('focus-visible:outline-none')
-    expect(slider).toContain('[&:focus-visible::-webkit-slider-thumb]:ring-2')
+  it('leaves the top band open', () => {
+    // The dearest watch in the case moves every week, and a ceiling would
+    // exclude the piece people most want to look at.
+    const bands = priceBands([{ priceGbp: 900_000_00 }])
+    expect(bands[0].to).toBeNull()
+    expect(bands[0].label).toBe('500k+')
   })
 
-  it('draws nothing where there is no stock', () => {
-    /*
-     * A floor on every bar drew a grey line the width of the control through
-     * price bands with nothing in them — the one thing the histogram exists
-     * to show, reported backwards.
-     */
-    const slider = read('src/components/portal/RangeSlider.tsx')
-    expect(slider).toContain("bar.height === 0\n                  ? 'bg-transparent'")
-    expect(slider).toContain("bar.height === 0 ? '2px'")
-  })
+
+
+
 
   it('offers box and papers as toggles rather than hiding three behind a click', () => {
     expect(room).toContain('boxes.map((value) => (')

@@ -24,6 +24,7 @@ export interface LocationRow {
   isActive: boolean
   publishToStorefront: boolean
   showInTradeCatalogue: boolean
+  isOnHand: boolean
   watchCount: number
   valueGbp: number
 }
@@ -208,12 +209,14 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
   const [type, setType] = useState<LocationType>(location?.type ?? 'STORE')
   const [publishes, setPublishes] = useState(location?.publishToStorefront ?? true)
   const [onTradeList, setOnTradeList] = useState(location?.showInTradeCatalogue ?? true)
+  const [onHand, setOnHand] = useState(location?.isOnHand ?? true)
   const [shownFor, setShownFor] = useState<string | null>(location?.id ?? null)
   if ((location?.id ?? null) !== shownFor) {
     setShownFor(location?.id ?? null)
     setType(location?.type ?? 'STORE')
     setPublishes(location?.publishToStorefront ?? true)
     setOnTradeList(location?.showInTradeCatalogue ?? true)
+    setOnHand(location?.isOnHand ?? true)
   }
 
   const chooseType = (next: LocationType) => {
@@ -224,6 +227,9 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
     if (!location) {
       setPublishes(next !== 'TRANSIT')
       setOnTradeList(next !== 'TRANSIT')
+      // And a watch in a van is not to hand either, which is the third
+      // question the same answer settles.
+      setOnHand(next !== 'TRANSIT')
     }
   }
 
@@ -278,6 +284,10 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
             checked={onTradeList}
             onChange={(event) => setOnTradeList(event.target.checked)} />
+          <Checkbox name="isOnHand" label="Stock here is to hand"
+            hint="The stock list opens on everything that is. Off for another country or a courier's bag — the stock is still yours and still searchable, the list just does not open on it."
+            checked={onHand}
+            onChange={(event) => setOnHand(event.target.checked)} />
         </div>
       </form>
     </Modal>

@@ -89,16 +89,24 @@ describe('what Sales is shown', () => {
  * cards being taken away.
  */
 describe('the stock list a salesperson opens', () => {
-  const house = { id: 'loc-1', name: 'One Street Watches' }
+  /*
+   * The away list, not the house.
+   *
+   * Alex: "DEFAULT SHOULD BE ALL EXCEPT IN TRANSIT AND OVERSEAS." A
+   * salesperson now gets everything within reach rather than one shop — which
+   * is still the stock they can sell today, and includes the piece sitting in
+   * the vault that they could previously not see.
+   */
+  const away = [{ id: 'loc-hk', name: 'Hong Kong' }]
 
-  it('offers Sales the shop floor and nothing else', () => {
-    const labels = inventoryViews(house, { queues: false }).map((v) => v.label)
-    expect(labels).toEqual(['One Street Watches'])
+  it('offers Sales the stock it can sell and nothing else', () => {
+    const labels = inventoryViews(away, { queues: false }).map((v) => v.label)
+    expect(labels).toEqual(['Stock to hand'])
   })
 
   it('still offers the queues to the people whose job they are', () => {
-    const labels = inventoryViews(house, { queues: true }).map((v) => v.label)
-    expect(labels).toContain('One Street Watches')
+    const labels = inventoryViews(away, { queues: true }).map((v) => v.label)
+    expect(labels).toContain('Stock to hand')
     for (const queue of ['All locations', 'Sold', 'Needs a price', 'Register check due', 'Ageing']) {
       expect(labels).toContain(queue)
     }

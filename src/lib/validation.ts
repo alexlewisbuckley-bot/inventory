@@ -667,6 +667,7 @@ export const locationSchema = z.object({
    */
   publishToStorefront: z.coerce.boolean().default(true),
   showInTradeCatalogue: z.coerce.boolean().default(true),
+  isOnHand: z.coerce.boolean().default(true),
 })
 
 // --- Users & settings ------------------------------------------------------
