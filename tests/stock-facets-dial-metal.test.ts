@@ -119,4 +119,21 @@ describe('where the stock list opens', () => {
     expect(page).not.toMatch(/'One Street Watches'/)
     expect(page).not.toMatch(/locations\.country/)
   })
+
+  it('has already said Hong Kong is not within reach', () => {
+    /*
+     * The switch was right and leaving it unticked was not. Alex had already
+     * made the call, in the sentence that started the whole change — "ALL
+     * EXCEPT IN TRANSIT AND OVERSEAS FOR EXAMPLE HONG KONG" — and then had
+     * to go and find a checkbox to say it a second time. He didn't, and the
+     * stock list spent a day offering him watches in another country.
+     */
+    const migration = read('src/server/db/migrations/0066_hong_kong_is_not_to_hand.sql')
+    expect(migration).toMatch(/UPDATE locations/)
+    expect(migration).toMatch(/is_on_hand = false/)
+    expect(migration).toMatch(/lower\(name\) LIKE '%hong kong%'/)
+    // The switch stays: a location that starts being somewhere people fly to
+    // and back from in a day is a tick away from counting as to hand again.
+    expect(migration).not.toMatch(/DROP COLUMN/)
+  })
 })

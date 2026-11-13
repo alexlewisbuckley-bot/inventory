@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CAMPAIGN_KINDS, CAMPAIGN_STATUSES } from '@/lib/enums'
+import { greeting } from '@/components/portal/RecipientChoice'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 const migration = read('src/server/db/migrations/0062_partner_campaigns.sql')
@@ -538,5 +539,69 @@ describe('on our side of it', () => {
   it('leaves the order nullable for a partner buying for itself', () => {
     expect(migration).toContain('ADD COLUMN IF NOT EXISTS campaign_id text')
     expect(migration).toContain('ON DELETE SET NULL')
+  })
+})
+
+describe('what a winner can do with two hundred watches', () => {
+  it('gives them the same filtering the buyers get', () => {
+    /*
+     * Alex: "Filtering and layout dissapears for winners."
+     *
+     * A person choosing their ten-year award out of the whole case needs the
+     * same help as a trade buyer, and arguably more: they have never done
+     * this before. It was the same stock, the same cards and no way through
+     * it but scrolling.
+     */
+    expect(choice).toContain('<FilterBar')
+    expect(choice).toContain('<FilterRail')
+    expect(choice).toContain('<WatchGrid>')
+  })
+
+  it('does not put a rail over a shortlist of four', () => {
+    // Below a certain number a filter rail is furniture, not help: an
+    // employer who picked five watches has already done the filtering.
+    expect(choice).toContain('const WORTH_FILTERING = 8')
+    expect(choice).toContain('view.choices.length >= WORTH_FILTERING')
+  })
+
+  it('filters both halves of the split at once', () => {
+    /*
+     * Alex: "I like the split between what they can get and what they'd need
+     * to put money towards."
+     *
+     * Somebody who wants a 36mm Datejust wants to see both the ones the award
+     * covers and the ones they could put it toward — so the split happens
+     * after the filtering and not before, or the top half would answer a
+     * different question from the bottom one.
+     */
+    expect(choice).toContain('const covered = shown.filter((item) => item.topUpGbp === 0)')
+    expect(choice).toContain('const topUp = shown.filter((item) => item.topUpGbp > 0)')
+  })
+
+  it('states the award as a figure rather than burying it in a sentence', () => {
+    // It is the one number the whole page turns on, and it was three lines
+    // into a paragraph of prose.
+    expect(choice).toContain('Yours to put toward a watch')
+    expect(choice).toContain('{money(campaign.budgetBase)}')
+  })
+})
+
+describe('greeting somebody by a name we may not have', () => {
+  it('uses their name when it is a name', () => {
+    expect(greeting('Priya', false, true)).toBe('Priya, choose your watch')
+    expect(greeting('Priya', true, true)).toBe('Thank you, Priya')
+    expect(greeting('Priya', false, false)).toBe('Hello, Priya')
+  })
+
+  it('says nothing rather than greeting an email address', () => {
+    /*
+     * Campaigns get loaded from a spreadsheet and the name column is often
+     * the address. "alexlewis.buckley@gmail.com, choose your watch" in 32px
+     * serif was the first thing a winner saw, which is a worse greeting than
+     * no greeting: it reads as a mailshot that failed to merge.
+     */
+    expect(greeting('alexlewis.buckley@gmail.com', false, true)).toBe('Choose your watch')
+    expect(greeting('alexlewis.buckley@gmail.com', true, true)).toBe('Thank you')
+    expect(greeting('  ', false, true)).toBe('Choose your watch')
   })
 })

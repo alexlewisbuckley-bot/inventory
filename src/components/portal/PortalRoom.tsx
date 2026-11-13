@@ -1,7 +1,7 @@
 'use client'
-import { useId, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import {
   placeOrderAction, placeOrdersAction, leavePortalAction,
   type OrderState, type BulkState,
@@ -10,24 +10,27 @@ import { percentFromBps } from '@/lib/partner-rate'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition,
 } from '@/lib/enums'
+import { FilterBar, FilterRail, SortSelect } from './FilterRail'
+import { WatchCard, WatchGrid } from './WatchCard'
+import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
 
 const INITIAL: OrderState = { ok: false, message: '' }
 
-/** Base minor units to something a person reads, in the house currency. */
-function money(base: number): string {
-  return `AED ${Math.round(base / 100).toLocaleString('en-GB')}`
-}
-
 const describe = (item: PortalItem): string =>
   [item.brandName, item.model, item.modelName].filter(Boolean).join(' ')
 
-/** Everything a row can be searched by, including the words under the picture. */
-const searchable = (item: PortalItem): string =>
+/** The line under the name, in the plainest words a dealer would use. */
+const details = (item: PortalItem): string =>
   [
-    item.brandName, item.model, item.modelName, item.dial,
-    item.caseMaterial, item.bracelet, item.year,
-  ].filter(Boolean).join(' ').toLowerCase()
+    item.year,
+    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
+    item.dial,
+    item.condition ? CONDITION_LABELS[item.condition as Condition] : null,
+    item.boxPapers && item.boxPapers !== 'UNKNOWN'
+      ? BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
+      : null,
+  ].filter(Boolean).join(' · ')
 
 type Sort = 'brand' | 'priceUp' | 'priceDown' | 'newest'
 
@@ -38,66 +41,15 @@ const SORTS: Array<{ value: Sort; label: string }> = [
   { value: 'newest', label: 'Newest first' },
 ]
 
-export interface PriceBand {
-  label: string
-  from: number
-  to: number | null
-  count: number
-}
-
-/**
- * Price bands, in the round numbers somebody says out loud.
- *
- * Alex: "0-25 25-50 50-100 100-200 250+ OR ALIKE." These are his, in base
- * minor units, with a top band that has no ceiling because the dearest watch
- * in the case moves every week and a band that excluded it would be a band
- * that excluded the piece people most want to look at.
- *
- * Only bands with stock in them are returned. A band reading "AED 200k–500k
- * 0" is a tap that leads nowhere, and five of those is a filter bar that lies
- * about what is in the case.
- */
-export function priceBands(items: Array<{ priceGbp: number }>): PriceBand[] {
-  // Whole currency units, because that is how the bands are read out loud.
-  // The bounds are converted to minor units; the labels are not.
-  const edges = [0, 25_000, 50_000, 100_000, 200_000, 500_000]
-  const thousands = (whole: number) => `${Math.round(whole / 1000)}k`
-
-  const ranges: Array<{ label: string; from: number; to: number | null }> = []
-  for (let i = 0; i < edges.length - 1; i += 1) {
-    ranges.push({
-      label: `${thousands(edges[i])}–${thousands(edges[i + 1])}`,
-      from: edges[i] * 100,
-      // Exclusive at the top so a watch at exactly 50k lands in one band and
-      // not in two — counts that do not add up to the total are the fastest
-      // way to lose somebody's trust in a filter.
-      to: edges[i + 1] * 100 - 1,
-    })
-  }
-  ranges.push({
-    label: `${thousands(edges[edges.length - 1])}+`,
-    from: edges[edges.length - 1] * 100,
-    to: null,
-  })
-
-  return ranges
-    .map((range) => ({
-      ...range,
-      count: items.filter(
-        (item) => item.priceGbp >= range.from && (range.to === null || item.priceGbp <= range.to),
-      ).length,
-    }))
-    .filter((range) => range.count > 0)
-}
-
 /**
  * What a partner sees.
  *
- * A shop, laid out like one: five to a row, every card the same height, and
- * filters across the top. Two hundred watches is past the point where a list
- * is browsable — Alex, looking at it: "add filtering like it is any other
- * website to find watch easily" — so the page has to answer "do you have a
- * steel Daytona around a hundred and fifty thousand" without scrolling.
+ * A shop, laid out like one: filters down the left, stock beside them, five
+ * to a row where the screen has room for five and every card the same height.
+ * Two hundred watches is past the point where a list is browsable — Alex:
+ * "add filtering like it is any other website to find watch easily" — so the
+ * page has to answer "do you have a steel Daytona around a hundred and fifty
+ * thousand" without scrolling.
  *
  * The rate is stated once at the top rather than badged on every row. A page
  * that says "2% off" two hundred times reads as a clearance sale, and this is
@@ -120,128 +72,30 @@ export function PortalRoom({ token, partner, items, orders }: {
   items: PortalItem[]
   orders: PortalOrder[]
 }) {
-  const [query, setQuery] = useState('')
-  const [brand, setBrand] = useState('')
-  const [boxPapers, setBoxPapers] = useState('')
-  const [size, setSize] = useState('')
   /*
-   * A band, by index, and null for no opinion.
+   * Every filter in one object.
    *
-   * Alex: "CHANGE TO MORE EASY CLICKS LIKE 0-25 25-50 50-100 100-200 250+ ...
-   * FILTERING NEEDS TO BE QUICK AND EASY THIS SPREAD IS HUGE SLIDER DOESN'T
-   * WORK WELL."
-   *
-   * He is right, and it is the spread that does it. Stock running from eight
-   * thousand to half a million on one linear track puts nine watches in ten
-   * inside the first tenth of the travel — so the handle somebody actually
-   * wants is a pixel or two wide, and dragging it is a guess. A band is one
-   * tap, says what it is, and is the same size on a phone.
+   * It was five useState calls and a hand-written predicate, which is how the
+   * two pages ended up filtering differently — and how the campaign page
+   * ended up not filtering at all. One shape, one set of rules, both pages.
    */
-  const [band, setBand] = useState<number | null>(null)
+  const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
   const [sort, setSort] = useState<Sort>('brand')
-  const [more, setMore] = useState(false)
   const [taking, setTaking] = useState<PortalItem | null>(null)
   /* A basket, by watch id. Order does not matter and membership is the only
      question asked of it, so a Set rather than a list. */
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [basketOpen, setBasketOpen] = useState(false)
 
-  /*
-   * The choices come from the stock, not from a fixed list.
-   *
-   * A brand filter offering Patek when there is no Patek in the building is a
-   * filter that returns nothing, which reads as the page being broken rather
-   * than as us not having one.
-   */
-  /*
-   * Brands with their counts, biggest first.
-   *
-   * The count is what makes a chip worth tapping — "Rolex 142" says how much
-   * of the case it is before anybody filters by it — and ordering by size
-   * puts the one most people want under their thumb rather than wherever the
-   * alphabet left it.
-   */
-  const brands = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const item of items) counts.set(item.brandName, (counts.get(item.brandName) ?? 0) + 1)
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-  }, [items])
-  const sizes = useMemo(
-    () => [...new Set(items.map((item) => item.caseSizeMm).filter((n): n is number => n !== null))]
-      .sort((a, b) => a - b),
-    [items],
-  )
-  const boxes = useMemo(
-    () => [...new Set(items.map((item) => item.boxPapers).filter(
-      (value): value is string => Boolean(value) && value !== 'UNKNOWN',
-    ))].sort(),
-    [items],
-  )
-  /*
-   * The ends of the slider, rounded outward to numbers somebody would say.
-   *
-   * Snapping to the exact cheapest and dearest would put 8,431 and 178,360 on
-   * the handles, which reads as arithmetic rather than as a choice.
-   */
-  /*
-   * The bands, built from the stock and counted.
-   *
-   * Only the ones with something in them: a band reading "AED 200k–500k  0"
-   * is a tap that leads nowhere, and five of those is a filter bar that lies
-   * about what is in the case.
-   */
-  const bands = useMemo(() => priceBands(items), [items])
-
   const shown = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const chosen = band !== null ? bands[band] : null
-    const floor = chosen ? chosen.from : null
-    const ceiling = chosen ? chosen.to : null
-
-    const kept = items.filter((item) => {
-      if (needle && !searchable(item).includes(needle)) return false
-      if (brand && item.brandName !== brand) return false
-      if (boxPapers && item.boxPapers !== boxPapers) return false
-      if (size && item.caseSizeMm !== Number(size)) return false
-      if (floor !== null && item.priceGbp < floor) return false
-      if (ceiling !== null && item.priceGbp > ceiling) return false
-      return true
-    })
-
+    const bands = { price: priceBands(items), size: sizeBands(items) }
+    const kept = applyFilters(items, filters, bands)
     const sorted = [...kept]
     if (sort === 'priceUp') sorted.sort((a, b) => a.priceGbp - b.priceGbp)
     else if (sort === 'priceDown') sorted.sort((a, b) => b.priceGbp - a.priceGbp)
     else if (sort === 'newest') sorted.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
     return sorted
-  }, [items, query, brand, boxPapers, size, band, bands, sort])
-
-  const clear = () => {
-    setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setBand(null)
-  }
-
-  /** How many of the filters behind the disclosure are on, for its badge. */
-  const narrowed = [size, boxPapers, band !== null ? 'band' : ''].filter(Boolean).length
-
-  /*
-   * What is applied, as things that can be taken off one at a time.
-   *
-   * The worst state in a filtered list is an empty one whose cause is
-   * off-screen — somebody sets a price ceiling, collapses the panel, searches
-   * for a Daytona and concludes we have none.
-   */
-  const pills: Array<{ label: string; clear: () => void }> = [
-    ...(query ? [{ label: `“${query}”`, clear: () => setQuery('') }] : []),
-    ...(brand ? [{ label: brand, clear: () => setBrand('') }] : []),
-    ...(size ? [{ label: `${size}mm`, clear: () => setSize('') }] : []),
-    ...(boxPapers
-      ? [{ label: BOX_PAPERS_LABELS[boxPapers as BoxPapers] ?? boxPapers, clear: () => setBoxPapers('') }]
-      : []),
-    ...(band !== null && bands[band]
-      ? [{ label: bands[band].label, clear: () => setBand(null) }]
-      : []),
-  ]
+  }, [items, filters, sort])
 
   const basket = items.filter((item) => picked.has(item.id))
   const basketTotal = basket.reduce((sum, item) => sum + item.priceGbp, 0)
@@ -272,7 +126,7 @@ export function PortalRoom({ token, partner, items, orders }: {
         ['--accent' as string]: partner.accentColor,
       }}
     >
-      <header className="border-b border-black/10 px-5 py-7 sm:px-8">
+      <header className="border-b border-black/10 px-5 py-6 sm:px-8">
         <div className="mx-auto flex max-w-[1480px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <div>
             {partner.hasLogo ? (
@@ -350,283 +204,70 @@ export function PortalRoom({ token, partner, items, orders }: {
         </section>
       )}
 
-      <div className="mx-auto max-w-[1480px] px-5 py-7 sm:px-8">
-        {/*
-          * One search, the brands as chips, everything else behind a
-          * disclosure.
-          *
-          * Alex: "Filtering is terrible and not stremalined." It was six
-          * selects in a row, each the same weight as the next, so finding a
-          * Rolex under twenty thousand meant reading a toolbar before
-          * touching it — and on a phone it was a wall before the stock.
-          *
-          * Brand is what almost every search starts with, so it is one tap
-          * and carries its own count; the rest is opened by somebody who
-          * actually wants it. What is applied shows as pills that can be
-          * taken off one at a time, because the worst state in a filtered
-          * list is an empty one whose cause is off-screen.
-          */}
-        <div className="space-y-3">
-          {/*
-            * One row, one baseline.
-            *
-            * The sort carried a floating label above it, so its control sat
-            * lower than the search box beside it and the whole bar read as
-            * misaligned — which it was. Every control here is the same height
-            * and sits on the same line; the sort says what it is in its own
-            * options rather than needing a caption.
-            */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <label className="relative min-w-[260px] flex-1">
-              <span className="sr-only">Search stock</span>
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search model, reference, dial or metal"
-                className="h-12 w-full rounded-full border border-black/12 bg-black/[0.02] pl-11 pr-4 text-[14px] text-black outline-none transition-colors placeholder:text-black/35 focus:border-black/40 focus:bg-white"
-              />
-            </label>
+      <FilterBar
+        items={items}
+        state={filters}
+        onChange={setFilters}
+        resultCount={shown.length}
+        total={items.length}
+      >
+        <SortSelect value={sort} options={SORTS} onChange={setSort} />
+      </FilterBar>
 
-            <div className="relative">
-              <select
-                value={sort}
-                onChange={(event) => setSort(event.target.value as Sort)}
-                aria-label="Sort by"
-                className="h-12 appearance-none rounded-full border border-black/12 bg-white pl-4 pr-10 text-[13.5px] text-black outline-none transition-colors hover:border-black/30 focus:border-black/40"
-              >
-                {SORTS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" aria-hidden />
-            </div>
+      {/*
+        * Rail left, stock right.
+        *
+        * Alex, on the panel this replaces: "do you really think this is world
+        * class e-commercing filtering for a watch company?" It is not what a
+        * watch shop does — a shop puts the filters down the side where they
+        * stay put, so changing your mind is one tap from wherever you have
+        * scrolled to rather than a hunt back up the page for a button.
+        */}
+      <div className="mx-auto flex max-w-[1480px] gap-8 px-5 py-6 sm:px-8">
+        <FilterRail items={items} state={filters} onChange={setFilters} />
 
-            <button
-              type="button"
-              onClick={() => setMore((open) => !open)}
-              aria-expanded={more}
-              className={`flex h-12 shrink-0 items-center gap-2 rounded-full border px-5 text-[13.5px] transition-colors ${
-                more || narrowed > 0
-                  ? 'border-black/40 text-black'
-                  : 'border-black/12 text-black/60 hover:border-black/30 hover:text-black'
-              }`}
-            >
-              <SlidersHorizontal className="h-4 w-4" aria-hidden />
-              Filters
-              {narrowed > 0 && (
-                <span
-                  className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: 'var(--brand)' }}
+        <div className="min-w-0 flex-1">
+          {shown.length === 0 ? (
+            <p className="py-20 text-center text-[14px] text-black/45">
+              {items.length === 0
+                ? 'Nothing is available just now. This list changes daily.'
+                : 'Nothing matches that. Try a wider price band, or clear a filter.'}
+            </p>
+          ) : (
+            <WatchGrid>
+              {shown.map((item) => (
+                <WatchCard
+                  key={item.id}
+                  title={describe(item)}
+                  details={details(item)}
+                  imageSrc={item.imageIds[0] ? `/p/${token}/image/${item.imageIds[0]}` : null}
+                  selected={picked.has(item.id)}
+                  onSelect={() => toggle(item.id)}
                 >
-                  {narrowed}
-                </span>
-              )}
-            </button>
-          </div>
+                  <p className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-[15px] font-semibold tabular-nums text-black">
+                      {money(item.priceGbp)}
+                    </span>
+                    {item.priceGbp !== item.askingGbp && (
+                      <span className="text-[12.5px] tabular-nums text-black/40 line-through">
+                        {money(item.askingGbp)}
+                      </span>
+                    )}
+                  </p>
 
-          {brands.length > 1 && (
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-              <Chip on={brand === ''} onClick={() => setBrand('')}>
-                All <span className="tabular-nums opacity-55">{items.length}</span>
-              </Chip>
-              {brands.map(({ name, count }) => (
-                <Chip key={name} on={brand === name} onClick={() => setBrand(brand === name ? '' : name)}>
-                  {name} <span className="tabular-nums opacity-55">{count}</span>
-                </Chip>
+                  <button
+                    type="button"
+                    onClick={() => setTaking(item)}
+                    className="mt-3 h-10 w-full text-[12px] font-semibold uppercase tracking-[0.08em] text-white"
+                    style={{ backgroundColor: 'var(--brand)' }}
+                  >
+                    Reserve
+                  </button>
+                </WatchCard>
               ))}
-            </div>
-          )}
-
-          {more && (
-            /*
-             * A panel, not a box bolted underneath.
-             *
-             * Three columns on a desktop so the controls share a grid rather
-             * than queueing, and the price gets the width it needs for a
-             * histogram to be readable. Separated by space and one hairline
-             * instead of a border around everything, which is what made the
-             * last one look like a dialog that had escaped.
-             */
-            <div className="mt-1 grid gap-x-10 gap-y-7 border-t border-black/10 pt-6 md:grid-cols-2 xl:grid-cols-3">
-              <div className="xl:col-span-2">
-                <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Price</span>
-                {/* The count on each, so a band nobody should tap is obvious
-                    before it is tapped. */}
-                <div className="mt-2.5 flex flex-wrap gap-2">
-                  <Chip on={band === null} onClick={() => setBand(null)}>Any</Chip>
-                  {bands.map((range: PriceBand, index: number) => (
-                    <Chip key={range.label} on={band === index} onClick={() => setBand(band === index ? null : index)}>
-                      {range.label} <span className="tabular-nums opacity-55">{range.count}</span>
-                    </Chip>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                {sizes.length > 1 && (
-                  <div>
-                    <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Case size</span>
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      <Chip on={size === ''} onClick={() => setSize('')}>Any</Chip>
-                      {sizes.map((mm) => (
-                        <Chip key={mm} on={size === String(mm)} onClick={() => setSize(size === String(mm) ? '' : String(mm))}>
-                          {mm}mm
-                        </Chip>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {boxes.length > 0 && (
-                  <div>
-                    <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Box &amp; papers</span>
-                    {/* Toggles rather than a dropdown: four options, and a
-                        dropdown hides three of them behind a click. */}
-                    <div className="mt-2.5 flex flex-wrap gap-2">
-                      <Chip on={boxPapers === ''} onClick={() => setBoxPapers('')}>Any</Chip>
-                      {boxes.map((value) => (
-                        <Chip
-                          key={value}
-                          on={boxPapers === value}
-                          onClick={() => setBoxPapers(boxPapers === value ? '' : value)}
-                        >
-                          {BOX_PAPERS_LABELS[value as BoxPapers] ?? value}
-                        </Chip>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {pills.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              {pills.map((pill) => (
-                <button
-                  key={pill.label}
-                  type="button"
-                  onClick={pill.clear}
-                  className="flex items-center gap-1.5 border border-black/15 py-1 pl-3 pr-2 text-[12.5px] text-black/70 hover:border-black/40"
-                >
-                  {pill.label}
-                  <X className="h-3 w-3" aria-hidden />
-                </button>
-              ))}
-              <button type="button" onClick={clear} className="px-2 text-[12.5px] text-black/45 hover:text-black">
-                Clear all
-              </button>
-            </div>
+            </WatchGrid>
           )}
         </div>
-
-        <p className="mt-4 text-[13px] text-black/55">
-          {shown.length === items.length
-            ? `${items.length} ${items.length === 1 ? 'watch' : 'watches'} available`
-            : `${shown.length} of ${items.length} watches`}
-        </p>
-
-        {shown.length === 0 ? (
-          <p className="py-16 text-center text-[14px] text-black/45">
-            {items.length === 0
-              ? 'Nothing is available just now. This list changes daily.'
-              : 'Nothing matches that. Try widening the price or clearing a filter.'}
-          </p>
-        ) : (
-          /*
-           * Five to a row on a desktop, stepping down to two on a phone.
-           *
-           * Every card is the same height whatever its name runs to: the
-           * picture is a fixed square, the name is held to two lines, the
-           * details to one, and the button is pushed to the bottom. Without
-           * that, one watch called "Royal Oak Offshore Chronograph" drops the
-           * button on its card below the four beside it and the row reads as
-           * broken.
-           */
-          <ul className="mt-6 grid grid-cols-2 gap-x-5 gap-y-9 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {shown.map((item) => (
-              <li key={item.id} className="group relative flex h-full flex-col">
-                {/*
-                  * The tick, top-left of the picture.
-                  *
-                  * Always there once something is selected, and on hover
-                  * otherwise: a checkbox on every card all the time turns a
-                  * shop into a spreadsheet, and one that only appears on
-                  * hover is invisible on a phone.
-                  */}
-                <button
-                  type="button"
-                  aria-pressed={picked.has(item.id)}
-                  aria-label={`Select ${describe(item)}`}
-                  onClick={() => toggle(item.id)}
-                  className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center border transition-opacity ${
-                    picked.has(item.id)
-                      ? 'border-transparent opacity-100'
-                      : 'border-black/20 bg-white/90 opacity-0 group-hover:opacity-100 focus:opacity-100'
-                  } ${picked.size > 0 ? 'opacity-100' : ''}`}
-                  style={picked.has(item.id)
-                    ? { backgroundColor: 'var(--brand)', color: '#fff' }
-                    : undefined}
-                >
-                  {picked.has(item.id) && <Check className="h-4 w-4" aria-hidden />}
-                </button>
-
-                <div className={`aspect-square w-full overflow-hidden bg-black/[0.02] ${
-                  picked.has(item.id) ? 'ring-2 ring-offset-1' : ''
-                }`} style={picked.has(item.id) ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}>
-                  {item.imageIds[0] && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={`/p/${token}/image/${item.imageIds[0]}`}
-                      alt={describe(item)}
-                      loading="lazy"
-                      // Contained, not cropped: these are packshots of
-                      // different shapes, and cropping them to a square takes
-                      // the lugs off a dress watch to make it fill a box.
-                      className="h-full w-full object-contain p-3 mix-blend-multiply"
-                    />
-                  )}
-                </div>
-
-                <p className="mt-3 line-clamp-2 min-h-[2.6em] font-serif text-[16px] leading-snug text-black">
-                  {describe(item)}
-                </p>
-                <p className="mt-0.5 line-clamp-1 min-h-[1.3em] text-[12px] text-black/50">
-                  {[
-                    item.year,
-                    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
-                    item.dial,
-                    item.condition ? CONDITION_LABELS[item.condition as Condition] : null,
-                    item.boxPapers && item.boxPapers !== 'UNKNOWN'
-                      ? BOX_PAPERS_LABELS[item.boxPapers as BoxPapers]
-                      : null,
-                  ].filter(Boolean).join(' · ')}
-                </p>
-
-                <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-[15px] font-semibold tabular-nums text-black">
-                    {money(item.priceGbp)}
-                  </span>
-                  {item.priceGbp !== item.askingGbp && (
-                    <span className="text-[12.5px] tabular-nums text-black/40 line-through">
-                      {money(item.askingGbp)}
-                    </span>
-                  )}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => setTaking(item)}
-                  className="mt-3 h-10 w-full text-[12px] font-semibold uppercase tracking-[0.08em] text-white"
-                  style={{ backgroundColor: 'var(--brand)' }}
-                >
-                  Reserve
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
       {/*
@@ -676,28 +317,6 @@ export function PortalRoom({ token, partner, items, orders }: {
 
       {taking && <ReserveDialog token={token} item={taking} onClose={() => setTaking(null)} />}
     </main>
-  )
-}
-
-/** A brand, as one tap. The count is what makes it worth tapping. */
-function Chip({ on, onClick, children }: {
-  on: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={on}
-      onClick={onClick}
-      className={`shrink-0 whitespace-nowrap border px-3.5 py-2 text-[13px] transition-colors ${
-        on
-          ? 'border-black bg-black text-white'
-          : 'border-black/15 text-black/70 hover:border-black/45 hover:text-black'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 
