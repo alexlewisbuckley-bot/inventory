@@ -176,6 +176,23 @@ export const locations = pgTable(
      * opinion about stays on the list.
      */
     showInTradeCatalogue: boolean('show_in_trade_catalogue').notNull().default(true),
+    /**
+     * Whether stock standing here is stock you can put your hands on.
+     *
+     * The stock list opens on everything that is, which is everything except
+     * the two kinds that are not: in a courier's bag, or in another country.
+     *
+     * A switch rather than a guess. Transit can be read off the type above,
+     * but overseas cannot — Hong Kong is a store like any other, and whether
+     * its stock counts as to hand is a decision about how this business
+     * works, not a fact to infer from a country column that is blank on most
+     * rows.
+     *
+     * True by default, so a place nobody has an opinion about is counted. The
+     * migration turns it off for transit, because nobody should have to say
+     * that a watch in a van is not to hand.
+     */
+    isOnHand: boolean('is_on_hand').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

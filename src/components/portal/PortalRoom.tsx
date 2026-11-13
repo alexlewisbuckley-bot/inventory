@@ -10,7 +10,6 @@ import { percentFromBps } from '@/lib/partner-rate'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition,
 } from '@/lib/enums'
-import { RangeSlider, distribution } from './RangeSlider'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
 
 const INITIAL: OrderState = { ok: false, message: '' }
@@ -38,6 +37,58 @@ const SORTS: Array<{ value: Sort; label: string }> = [
   { value: 'priceDown', label: 'Price, highest first' },
   { value: 'newest', label: 'Newest first' },
 ]
+
+export interface PriceBand {
+  label: string
+  from: number
+  to: number | null
+  count: number
+}
+
+/**
+ * Price bands, in the round numbers somebody says out loud.
+ *
+ * Alex: "0-25 25-50 50-100 100-200 250+ OR ALIKE." These are his, in base
+ * minor units, with a top band that has no ceiling because the dearest watch
+ * in the case moves every week and a band that excluded it would be a band
+ * that excluded the piece people most want to look at.
+ *
+ * Only bands with stock in them are returned. A band reading "AED 200k–500k
+ * 0" is a tap that leads nowhere, and five of those is a filter bar that lies
+ * about what is in the case.
+ */
+export function priceBands(items: Array<{ priceGbp: number }>): PriceBand[] {
+  // Whole currency units, because that is how the bands are read out loud.
+  // The bounds are converted to minor units; the labels are not.
+  const edges = [0, 25_000, 50_000, 100_000, 200_000, 500_000]
+  const thousands = (whole: number) => `${Math.round(whole / 1000)}k`
+
+  const ranges: Array<{ label: string; from: number; to: number | null }> = []
+  for (let i = 0; i < edges.length - 1; i += 1) {
+    ranges.push({
+      label: `${thousands(edges[i])}–${thousands(edges[i + 1])}`,
+      from: edges[i] * 100,
+      // Exclusive at the top so a watch at exactly 50k lands in one band and
+      // not in two — counts that do not add up to the total are the fastest
+      // way to lose somebody's trust in a filter.
+      to: edges[i + 1] * 100 - 1,
+    })
+  }
+  ranges.push({
+    label: `${thousands(edges[edges.length - 1])}+`,
+    from: edges[edges.length - 1] * 100,
+    to: null,
+  })
+
+  return ranges
+    .map((range) => ({
+      ...range,
+      count: items.filter(
+        (item) => item.priceGbp >= range.from && (range.to === null || item.priceGbp <= range.to),
+      ).length,
+    }))
+    .filter((range) => range.count > 0)
+}
 
 /**
  * What a partner sees.
@@ -74,14 +125,19 @@ export function PortalRoom({ token, partner, items, orders }: {
   const [boxPapers, setBoxPapers] = useState('')
   const [size, setSize] = useState('')
   /*
-   * A range held as a pair, and null while untouched.
+   * A band, by index, and null for no opinion.
    *
-   * Null is "no opinion", which is not the same as "the whole range": a
-   * partner who has not touched the slider should see stock with no price
-   * recorded differently from one who deliberately dragged to the ends, and a
-   * pill should not appear for a filter nobody set.
+   * Alex: "CHANGE TO MORE EASY CLICKS LIKE 0-25 25-50 50-100 100-200 250+ ...
+   * FILTERING NEEDS TO BE QUICK AND EASY THIS SPREAD IS HUGE SLIDER DOESN'T
+   * WORK WELL."
+   *
+   * He is right, and it is the spread that does it. Stock running from eight
+   * thousand to half a million on one linear track puts nine watches in ten
+   * inside the first tenth of the travel — so the handle somebody actually
+   * wants is a pixel or two wide, and dragging it is a guess. A band is one
+   * tap, says what it is, and is the same size on a phone.
    */
-  const [priceRange, setPriceRange] = useState<[number, number] | null>(null)
+  const [band, setBand] = useState<number | null>(null)
   const [sort, setSort] = useState<Sort>('brand')
   const [more, setMore] = useState(false)
   const [taking, setTaking] = useState<PortalItem | null>(null)
@@ -129,29 +185,20 @@ export function PortalRoom({ token, partner, items, orders }: {
    * Snapping to the exact cheapest and dearest would put 8,431 and 178,360 on
    * the handles, which reads as arithmetic rather than as a choice.
    */
-  const priceBounds = useMemo((): [number, number] => {
-    if (items.length === 0) return [0, 1]
-    const prices = items.map((item) => item.priceGbp)
-    const lowest = Math.min(...prices)
-    const highest = Math.max(...prices)
-    const grain = 10 ** Math.max(2, Math.floor(Math.log10(Math.max(highest, 1))) - 1)
-    return [Math.floor(lowest / grain) * grain, Math.ceil(highest / grain) * grain]
-  }, [items])
-
-  const priceStep = useMemo(
-    () => Math.max(100, 10 ** (Math.floor(Math.log10(priceBounds[1] - priceBounds[0] || 1)) - 2)),
-    [priceBounds],
-  )
-
-  const priceShape = useMemo(
-    () => distribution(items.map((item) => item.priceGbp), priceBounds[0], priceBounds[1]),
-    [items, priceBounds],
-  )
+  /*
+   * The bands, built from the stock and counted.
+   *
+   * Only the ones with something in them: a band reading "AED 200k–500k  0"
+   * is a tap that leads nowhere, and five of those is a filter bar that lies
+   * about what is in the case.
+   */
+  const bands = useMemo(() => priceBands(items), [items])
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const floor = priceRange ? priceRange[0] : null
-    const ceiling = priceRange ? priceRange[1] : null
+    const chosen = band !== null ? bands[band] : null
+    const floor = chosen ? chosen.from : null
+    const ceiling = chosen ? chosen.to : null
 
     const kept = items.filter((item) => {
       if (needle && !searchable(item).includes(needle)) return false
@@ -168,14 +215,14 @@ export function PortalRoom({ token, partner, items, orders }: {
     else if (sort === 'priceDown') sorted.sort((a, b) => b.priceGbp - a.priceGbp)
     else if (sort === 'newest') sorted.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
     return sorted
-  }, [items, query, brand, boxPapers, size, priceRange, sort])
+  }, [items, query, brand, boxPapers, size, band, bands, sort])
 
   const clear = () => {
-    setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setPriceRange(null)
+    setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setBand(null)
   }
 
   /** How many of the filters behind the disclosure are on, for its badge. */
-  const narrowed = [size, boxPapers, priceRange].filter(Boolean).length
+  const narrowed = [size, boxPapers, band !== null ? 'band' : ''].filter(Boolean).length
 
   /*
    * What is applied, as things that can be taken off one at a time.
@@ -191,11 +238,8 @@ export function PortalRoom({ token, partner, items, orders }: {
     ...(boxPapers
       ? [{ label: BOX_PAPERS_LABELS[boxPapers as BoxPapers] ?? boxPapers, clear: () => setBoxPapers('') }]
       : []),
-    ...(priceRange
-      ? [{
-        label: `${money(priceRange[0])} – ${money(priceRange[1])}`,
-        clear: () => setPriceRange(null),
-      }]
+    ...(band !== null && bands[band]
+      ? [{ label: bands[band].label, clear: () => setBand(null) }]
       : []),
   ]
 
@@ -406,16 +450,17 @@ export function PortalRoom({ token, partner, items, orders }: {
              */
             <div className="mt-1 grid gap-x-10 gap-y-7 border-t border-black/10 pt-6 md:grid-cols-2 xl:grid-cols-3">
               <div className="xl:col-span-2">
-                <RangeSlider
-                  label="Price"
-                  min={priceBounds[0]}
-                  max={priceBounds[1]}
-                  step={priceStep}
-                  value={priceRange ?? priceBounds}
-                  onChange={setPriceRange}
-                  format={money}
-                  histogram={priceShape}
-                />
+                <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Price</span>
+                {/* The count on each, so a band nobody should tap is obvious
+                    before it is tapped. */}
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  <Chip on={band === null} onClick={() => setBand(null)}>Any</Chip>
+                  {bands.map((range: PriceBand, index: number) => (
+                    <Chip key={range.label} on={band === index} onClick={() => setBand(band === index ? null : index)}>
+                      {range.label} <span className="tabular-nums opacity-55">{range.count}</span>
+                    </Chip>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-6">

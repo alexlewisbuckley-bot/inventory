@@ -31,12 +31,30 @@ export function locationQuery(locationId: string): string {
 }
 
 /**
- * The views, with the house on the front when there is one.
+ * Available stock you could go and fetch today.
  *
- * The list opens on the stock that is actually in the shop, because that is
- * the question being asked nearly every time somebody opens it: what can I
- * put in front of the person standing here. Everything else — in transit, out
- * on loan, at a workshop — is real stock and a different question.
+ * Written as what it excludes rather than what it includes. A location added
+ * next year is to hand until somebody says otherwise, so naming the ones that
+ * are not keeps a new shop in the default list instead of silently out of it —
+ * and the chip reads "Location is not Hong Kong, In transit", which is the
+ * question somebody is actually asking.
+ */
+export function toHandQuery(awayIds: readonly string[]): string {
+  if (awayIds.length === 0) return AVAILABLE_QUERY
+  return `${AVAILABLE_QUERY}&f=${encodeURIComponent(`locationId:isNot:${awayIds.join('|')}`)}`
+}
+
+/**
+ * The views, with the stock you can reach on the front.
+ *
+ * Alex: "DEFAULT IS ONE STREET WATCHES BUT DEFAULT SHOULD BE ALL EXCEPT IN
+ * TRANSIT AND OVERSEAS FOR EXAMPLE HONG KONG."
+ *
+ * It used to open on the first store, which answers "what is on the shelf in
+ * front of me" — a fair question, and the wrong one by default for somebody
+ * running a shop, a vault and a workshop at once. The list now opens on
+ * everything within reach, which is everything except the two kinds of stock
+ * that is not: in a courier's bag, or in another country.
  *
  * A view and not a hidden default, for the same reason the sold filter is a
  * view: the clause shows as a chip you can take off, the URL still describes
@@ -44,9 +62,9 @@ export function locationQuery(locationId: string): string {
  * that narrows the list without saying so is how somebody concludes a watch
  * has gone missing.
  *
- * Which location counts as the house is the first active store in the
- * Locations list, so it follows the order set there rather than a name
- * written into the code.
+ * Which locations are away is a switch on each one rather than a guess from
+ * its type or its country: transit can be read off the type, but whether Hong
+ * Kong counts as to hand is a decision about how this business works.
  *
  * `queues` is what separates selling from running the shop. Every view but
  * the house one widens the list past the stock standing in the shop: other
@@ -61,17 +79,22 @@ export function locationQuery(locationId: string): string {
  * and nobody has said which location that is.
  */
 export function inventoryViews(
-  house: { id: string; name: string } | null,
+  away: ReadonlyArray<{ id: string; name: string }>,
   { queues = true }: { queues?: boolean } = {},
 ): readonly BuiltInView[] {
-  if (!house) return queues ? INVENTORY_VIEWS : []
-  const shelf: BuiltInView = {
-    id: 'house',
-    label: house.name,
-    query: locationQuery(house.id),
-    description: `Stock you hold at ${house.name}`,
+  /*
+   * With nothing away, "to hand" and "all locations" are the same list, and
+   * two chips for one query is a choice that is not one.
+   */
+  if (away.length === 0) return queues ? INVENTORY_VIEWS : []
+
+  const toHand: BuiltInView = {
+    id: 'to-hand',
+    label: 'Stock to hand',
+    query: toHandQuery(away.map((location) => location.id)),
+    description: `Everything except ${away.map((location) => location.name).join(', ')}`,
   }
-  return queues ? [shelf, ...INVENTORY_VIEWS] : [shelf]
+  return queues ? [toHand, ...INVENTORY_VIEWS] : [toHand]
 }
 
 export const INVENTORY_VIEWS: readonly BuiltInView[] = [
