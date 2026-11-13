@@ -261,7 +261,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                           </p>
                           <ul className="flex flex-wrap justify-center gap-2">
                             {library.images.slice(0, 4).map((image) => (
-                              <li key={image.id}>
+                              <li key={image.id} className="group/shelf relative">
                                 <button
                                   type="button"
                                   onClick={() => take(image.id)}
@@ -282,6 +282,27 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                                     </span>
                                   )}
                                 </button>
+                                {/*
+                                  * And a way off the shelf, here.
+                                  *
+                                  * Alex: "You should be able to remove an image
+                                  * that has been associated with the wrong
+                                  * reference number in the past."
+                                  *
+                                  * It could be, but only from the library
+                                  * dialog — and the only door to that dialog on
+                                  * this screen is the "+N more" button, which
+                                  * does not exist until there are five. So a
+                                  * watch with two photographs banked against
+                                  * the wrong reference offered both, forever,
+                                  * with no way to reach either. The control
+                                  * belongs on the picture somebody is looking
+                                  * at when they notice.
+                                  */}
+                                <ShelfRemove
+                                  label={image.label}
+                                  onClick={() => setShelving(image)}
+                                />
                               </li>
                             ))}
                             {library.images.length > 4 && (
@@ -373,7 +394,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
         ) : (
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {library.images.map((image) => (
-              <li key={image.id} className="group relative">
+              <li key={image.id} className="group/shelf relative">
                 <button
                   type="button"
                   onClick={() => take(image.id)}
@@ -396,14 +417,7 @@ export function ImageGallery({ watchId, initial, canEdit }: {
                 {/* The shelf is shared, so it has to be tidyable from here —
                     otherwise a batch shot on the wrong background goes on
                     being offered to every watch of the reference forever. */}
-                <button
-                  type="button"
-                  onClick={() => setShelving(image)}
-                  aria-label={`Take this ${image.label} photograph off the shelf`}
-                  className="absolute right-1 top-1 rounded-sm bg-navy-900/70 p-1.5 text-white opacity-0 transition-opacity hover:bg-state-danger focus-visible:opacity-100 group-hover:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                </button>
+                <ShelfRemove label={image.label} onClick={() => setShelving(image)} />
               </li>
             ))}
           </ul>
@@ -441,6 +455,32 @@ export function ImageGallery({ watchId, initial, canEdit }: {
         />
       )}
     </>
+  )
+}
+
+/**
+ * Take one photograph off the shared shelf.
+ *
+ * The same control in both places it is needed — the strip under an empty
+ * gallery and the library dialog — because a watch's own picture and a
+ * reference's banked picture are deleted by different things and the one the
+ * person reaches for should look the same wherever they find it.
+ *
+ * Visible on a touch screen and revealed on hover on a desktop. Hover-only
+ * would be the tidier of the two and also the one where somebody on an iPad
+ * can never remove anything at all.
+ */
+function ShelfRemove({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Take this ${label} photograph off the shelf`}
+      title={`Take this off the ${label} shelf`}
+      className="absolute right-1 top-1 rounded-sm bg-navy-900/70 p-1.5 text-white transition-opacity hover:bg-state-danger focus-visible:opacity-100 sm:opacity-0 sm:group-hover/shelf:opacity-100"
+    >
+      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+    </button>
   )
 }
 
