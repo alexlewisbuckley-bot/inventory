@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PARTNER_ORDER_STATUSES, PARTNER_ORDER_STATUS_LABELS } from '@/lib/enums'
 import { partnerPrice } from '@/lib/partner-rate'
 import { can } from '@/lib/permissions'
+import { distribution, nextRange } from '@/components/portal/RangeSlider'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 const migration = read('src/server/db/migrations/0061_partner_portal_and_orders.sql')
@@ -478,8 +479,19 @@ describe('finding something in two hundred watches', () => {
      * touching it — and on a phone it was a wall before the stock.
      */
     expect(room).toContain('placeholder="Search model, reference, dial or metal"')
-    expect(room).toContain('More filters')
     expect(room).toContain('brands.map(({ name, count })')
+    /*
+     * One row, one baseline. The sort carried a floating caption above it, so
+     * its control sat lower than the search box beside it and the bar read as
+     * misaligned — which it was. Every control is now the same height, and
+     * the sort says what it is in its own options.
+     */
+    expect(room).toContain("aria-label=\"Sort by\"")
+    expect(room).not.toContain('<Choice label="Sort by"')
+    // The search, the sort and the Filters button, all the same height — one
+    // of them builds its class list in a template, so count the utility
+    // rather than the attribute.
+    expect(room.match(/\bh-12\b/g)?.length).toBeGreaterThanOrEqual(3)
   })
 
   it('says what is applied, in things that come off one at a time', () => {
@@ -495,7 +507,77 @@ describe('finding something in two hundred watches', () => {
 
   it('counts the hidden filters on its own button', () => {
     // So a collapsed panel with two filters in it does not look empty.
-    expect(room).toContain('const narrowed = [size, boxPapers, min, max].filter(Boolean).length')
+    expect(room).toContain('const narrowed = [size, boxPapers, priceRange].filter(Boolean).length')
+  })
+
+  it('asks for a price range with a range, not two dropdowns', () => {
+    /*
+     * Alex: "no filtering sliders." Two selects of invented round numbers is
+     * the wrong control for a range — it makes somebody read a list to answer
+     * a question they would rather answer by dragging.
+     */
+    expect(room).toContain('<RangeSlider')
+    expect(room).toContain('histogram={priceShape}')
+    expect(room).not.toContain('label="Price from"')
+    expect(room).not.toContain('label="Price to"')
+  })
+
+  it('will not let the handles cross', () => {
+    /*
+     * Crossed handles invert the range and empty the list for a reason nobody
+     * can see: both numbers look sensible, and the page simply says nothing
+     * matches.
+     */
+    expect(nextRange([1000, 5000], 'low', 7000)).toEqual([5000, 5000])
+    expect(nextRange([1000, 5000], 'high', 400)).toEqual([1000, 1000])
+    expect(nextRange([1000, 5000], 'low', 2000)).toEqual([2000, 5000])
+    expect(nextRange([1000, 5000], 'high', 9000)).toEqual([1000, 9000])
+  })
+
+  it('buckets a distribution against the fullest bar, not an absolute count', () => {
+    // The shape is what matters — one bar twice its neighbour — not how many
+    // watches tall the page can draw.
+    const shape = distribution([1, 1, 1, 9], 0, 10, 10)
+    expect(shape[1]).toBe(1)
+    expect(shape[9]).toBeCloseTo(1 / 3)
+    expect(distribution([], 0, 10)).toEqual([])
+  })
+
+  it('styles the handles itself rather than leaving the browser to', () => {
+    /*
+     * Tailwind reads class names as text at build time, so a variant built
+     * from a template string is a class that exists at runtime and in no
+     * stylesheet — the handles come out as the browser's own and the slider
+     * looks like a form control from 1998.
+     */
+    const slider = read('src/components/portal/RangeSlider.tsx')
+    expect(slider).toContain('[&::-webkit-slider-thumb]:appearance-none')
+    expect(slider).toContain('[&::-moz-range-thumb]:appearance-none')
+    expect(slider).not.toMatch(/\[&::-webkit-slider-thumb\]:\$\{/)
+    /*
+     * And focus shown on the handle rather than as a box round the whole
+     * track — which is what the browser does when the outline is left alone,
+     * and it looks like an error state.
+     */
+    expect(slider).toContain('focus-visible:outline-none')
+    expect(slider).toContain('[&:focus-visible::-webkit-slider-thumb]:ring-2')
+  })
+
+  it('draws nothing where there is no stock', () => {
+    /*
+     * A floor on every bar drew a grey line the width of the control through
+     * price bands with nothing in them — the one thing the histogram exists
+     * to show, reported backwards.
+     */
+    const slider = read('src/components/portal/RangeSlider.tsx')
+    expect(slider).toContain("bar.height === 0\n                  ? 'bg-transparent'")
+    expect(slider).toContain("bar.height === 0 ? '2px'")
+  })
+
+  it('offers box and papers as toggles rather than hiding three behind a click', () => {
+    expect(room).toContain('boxes.map((value) => (')
+    expect(room).toContain('<Chip')
+    expect(room).not.toContain('any="Any size"')
   })
 })
 
