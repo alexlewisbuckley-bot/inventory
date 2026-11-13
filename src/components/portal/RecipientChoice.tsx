@@ -1,18 +1,17 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Check, X } from 'lucide-react'
 import { claimAction, type CampaignState } from '@/app/actions/partner-campaigns'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition,
 } from '@/lib/enums'
+import { FilterBar, FilterRail, SortSelect } from './FilterRail'
+import { WatchCard, WatchGrid } from './WatchCard'
+import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { RecipientView } from '@/server/services/partner-campaign-service'
 
 const INITIAL: CampaignState = { ok: false, message: '' }
-
-function money(base: number): string {
-  return `AED ${Math.round(base / 100).toLocaleString('en-GB')}`
-}
 
 type Choice = RecipientView['choices'][number]
 
@@ -32,13 +31,43 @@ const details = (item: Choice): string =>
   ].filter(Boolean).join(' · ')
 
 /**
+ * A name to greet somebody by — or nothing, when all we were given is where
+ * to email them.
+ *
+ * Campaigns get loaded from a spreadsheet, and the name column is often the
+ * address. "alexlewis.buckley@gmail.com, choose your watch" in 34px serif was
+ * the first thing a winner saw, which is a worse greeting than no greeting:
+ * it reads as a mailshot that failed to merge. So when the name is an
+ * address, the page simply does not use a name.
+ */
+export function greeting(name: string, claimed: boolean, live: boolean): string {
+  const person = name.trim()
+  const usable = person && !person.includes('@') ? person : null
+  if (claimed) return usable ? `Thank you, ${usable}` : 'Thank you'
+  if (!live) return usable ? `Hello, ${usable}` : 'Hello'
+  return usable ? `${usable}, choose your watch` : 'Choose your watch'
+}
+
+type Sort = 'suggested' | 'priceUp' | 'priceDown' | 'newest'
+
+/** Below this many watches a filter rail is furniture, not help. */
+const WORTH_FILTERING = 8
+
+/**
  * What one person sees when they open their link.
  *
- * Not a shop. The person reading this did not come to buy a watch — their
- * employer told them to pick one, and most of them will never have chosen a
- * watch before. So: their name at the top, their company's words under it,
- * and a small number of things to choose between. No search, no sort, no
- * filters, nothing to sign in to and nothing to pay.
+ * Not a shop, but not a different product either. The person reading this did
+ * not come to buy a watch — their employer told them to pick one, and most of
+ * them will never have chosen a watch before. So: their company's mark at the
+ * top, what they have been given stated plainly, and the choice split in two
+ * — what the award covers outright, and what it could go toward.
+ *
+ * It used to stop there, with no way through two hundred watches but
+ * scrolling. Alex: "Filtering and layout dissapears for winners." The same
+ * rail the portal has is here too once there is enough to warrant it, and it
+ * filters both halves of the split at once, because somebody who wants a
+ * 36mm Datejust wants to see both the ones they can have for nothing and the
+ * ones they could put the award toward.
  *
  * Prices appear on a budget campaign and not on a shortlist. On a budget they
  * are the whole mechanic — you cannot spend an amount without seeing what
@@ -48,19 +77,50 @@ const details = (item: Choice): string =>
  */
 export function RecipientChoice({ token, view }: { token: string; view: RecipientView }) {
   const [taking, setTaking] = useState<Choice | null>(null)
+  const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
+  const [sort, setSort] = useState<Sort>('suggested')
   const { campaign, recipient } = view
   const showPrices = campaign.kind === 'BUDGET'
   const live = campaign.status === 'OPEN'
 
+  const shown = useMemo(() => {
+    const bands = { price: priceBands(view.choices), size: sizeBands(view.choices) }
+    const kept = applyFilters(view.choices, filters, bands)
+    const sorted = [...kept]
+    /*
+     * "Suggested" is the order the service already put them in: covered
+     * first, then by the smallest amount left to pay. It is the only sort
+     * here that knows about the award, so it is the default.
+     */
+    if (sort === 'priceUp') sorted.sort((a, b) => a.priceGbp - b.priceGbp)
+    else if (sort === 'priceDown') sorted.sort((a, b) => b.priceGbp - a.priceGbp)
+    else if (sort === 'newest') sorted.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
+    return sorted
+  }, [view.choices, filters, sort])
+
   /*
    * Split once, here, rather than filtered twice in the markup.
    *
-   * The service has already worked out what each watch leaves to pay and
-   * sorted the covered ones first, so this is only where one list becomes
-   * two headings.
+   * The service has already worked out what each watch leaves to pay, so this
+   * is only where one list becomes two headings — and it happens after the
+   * filtering, so both halves answer the same question.
    */
-  const covered = view.choices.filter((item) => item.topUpGbp === 0)
-  const topUp = view.choices.filter((item) => item.topUpGbp > 0)
+  const covered = shown.filter((item) => item.topUpGbp === 0)
+  const topUp = shown.filter((item) => item.topUpGbp > 0)
+  const allCovered = view.choices.filter((item) => item.topUpGbp === 0).length
+
+  const sorts: Array<{ value: Sort; label: string }> = [
+    { value: 'suggested', label: 'Suggested' },
+    ...(showPrices
+      ? [
+        { value: 'priceUp' as Sort, label: 'Price, lowest first' },
+        { value: 'priceDown' as Sort, label: 'Price, highest first' },
+      ]
+      : []),
+    { value: 'newest', label: 'Newest first' },
+  ]
+
+  const filtering = live && !recipient.claimedAt && view.choices.length >= WORTH_FILTERING
 
   return (
     <main
@@ -70,47 +130,59 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
         ['--accent' as string]: campaign.accentColor,
       }}
     >
-      <header className="border-b border-black/10 px-5 py-9 sm:px-8">
-        <div className="mx-auto max-w-[1180px]">
-          {campaign.hasLogo ? (
-            /* Their employer's mark, not ours. Somebody opening this has been
-               told by their own office to expect it, and a page carrying a
-               watch dealer's branding instead reads as a mailshot. */
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={`/r/${token}/logo`} alt={campaign.partnerName} className="h-8 w-auto object-contain" />
-          ) : (
-            <p className="text-[12px] uppercase tracking-[0.1em] text-black/40">
-              {campaign.partnerName}
-            </p>
-          )}
-          <h1 className="mt-2 font-serif text-[30px] leading-tight text-black sm:text-[34px]">
-            {recipient.claimedAt
-              ? `Thank you, ${recipient.name}`
-              : live
-                ? `${recipient.name}, choose your watch`
-                : `Hello, ${recipient.name}`}
-          </h1>
-          {campaign.intro && (
-            <p className="mt-3 max-w-[620px] text-[14.5px] leading-relaxed text-black/60">
-              {campaign.intro}
-            </p>
-          )}
-          {!recipient.claimedAt && live && showPrices && campaign.budgetBase !== null && (
-            /*
-             * The award, and what it means for the two groups below.
-             *
-             * It used to read "everything below is within that", which was
-             * true and also the whole problem: the list stopped at the award.
-             * Said this way the award is a starting point, and the second
-             * group is an invitation rather than a tease.
-             */
-            <p className="mt-3 max-w-[620px] text-[13.5px] leading-relaxed text-black/60">
-              You have{' '}
-              <span className="font-semibold text-black">{money(campaign.budgetBase)}</span>{' '}
-              to put toward a watch. The first ones below are yours for that
-              alone — for any of the others, you add the difference shown.
-            </p>
-          )}
+      <header className="border-b border-black/10 px-5 py-7 sm:px-8">
+        <div className="mx-auto max-w-[1480px]">
+          <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-5">
+            <div className="max-w-[620px]">
+              {campaign.hasLogo ? (
+                /* Their employer's mark, not ours. Somebody opening this has
+                   been told by their own office to expect it, and a page
+                   carrying a watch dealer's branding instead reads as a
+                   mailshot. */
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={`/r/${token}/logo`} alt={campaign.partnerName} className="h-8 w-auto object-contain" />
+              ) : (
+                <p className="text-[12px] uppercase tracking-[0.1em] text-black/40">
+                  {campaign.partnerName}
+                </p>
+              )}
+              <h1 className="mt-2.5 font-serif text-[28px] leading-tight text-black sm:text-[32px]">
+                {greeting(recipient.name, Boolean(recipient.claimedAt), live)}
+              </h1>
+              {campaign.intro && (
+                <p className="mt-2.5 text-[14.5px] leading-relaxed text-black/60">
+                  {campaign.intro}
+                </p>
+              )}
+            </div>
+
+            {!recipient.claimedAt && live && showPrices && campaign.budgetBase !== null && (
+              /*
+               * The award as a figure, not a sentence.
+               *
+               * It was three lines of prose in the middle of a paragraph, so
+               * the one number this whole page turns on was the hardest thing
+               * on it to find. Here it is set apart, with what it means for
+               * the two groups below said underneath in one line.
+               */
+              <div className="border-l-2 pl-5" style={{ borderColor: 'var(--accent)' }}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-black/45">
+                  Yours to put toward a watch
+                </p>
+                <p className="mt-1 font-serif text-[30px] leading-none tabular-nums text-black">
+                  {money(campaign.budgetBase)}
+                </p>
+                <p className="mt-2 text-[12.5px] text-black/55">
+                  {allCovered > 0
+                    ? `${allCovered} ${allCovered === 1 ? 'watch is' : 'watches are'} yours for that alone`
+                    : 'Add the difference on any watch below'}
+                  {allCovered > 0 && view.choices.length > allCovered
+                    ? ` · ${view.choices.length - allCovered} more if you add the difference`
+                    : ''}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -162,120 +234,131 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
           </p>
         </div>
       ) : (
-        <div className="mx-auto max-w-[1180px] px-5 py-9 sm:px-8">
-          {showPrices && covered.length > 0 && (
-            <h2 className="mb-5 font-serif text-[21px] text-black">
-              Yours for the award alone
-            </h2>
+        <>
+          {filtering && (
+            <FilterBar
+              items={view.choices}
+              state={filters}
+              onChange={setFilters}
+              resultCount={shown.length}
+              total={view.choices.length}
+            >
+              <SortSelect value={sort} options={sorts} onChange={setSort} />
+            </FilterBar>
           )}
-          <ul className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-            {(showPrices ? covered : view.choices).map((item) => (
-              <li key={item.id} className="flex h-full flex-col">
-                <div className="aspect-square w-full overflow-hidden bg-black/[0.02]">
-                  {item.imageIds[0] && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={`/r/${token}/image/${item.imageIds[0]}`}
-                      alt={describe(item)}
-                      loading="lazy"
-                      className="h-full w-full object-contain p-4 mix-blend-multiply"
-                    />
-                  )}
-                </div>
 
-                <p className="mt-4 line-clamp-2 min-h-[2.6em] font-serif text-[18px] leading-snug text-black">
-                  {describe(item)}
+          <div className="mx-auto flex max-w-[1480px] gap-8 px-5 py-7 sm:px-8">
+            {filtering && <FilterRail items={view.choices} state={filters} onChange={setFilters} />}
+
+            <div className="min-w-0 flex-1">
+              {shown.length === 0 ? (
+                <p className="py-20 text-center text-[14px] text-black/45">
+                  Nothing matches that. Try a wider price band, or clear a filter.
                 </p>
-                <p className="mt-1 line-clamp-1 min-h-[1.3em] text-[12.5px] text-black/50">
-                  {details(item)}
-                </p>
-
-                {showPrices && (
-                  /*
-                   * The value, said to be covered.
-                   *
-                   * A bare price under "yours for the award alone" reads as
-                   * something to pay — which is the opposite of what it is.
-                   * Keeping the figure is worth it: somebody should see what
-                   * they are being given is worth.
-                   */
-                  <p className="mt-2 text-[15px] tabular-nums text-black">
-                    <span className="font-semibold">{money(item.priceGbp)}</span>
-                    <span className="ml-2 text-[12.5px] font-normal text-black/45">
-                      covered by your award
-                    </span>
-                  </p>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setTaking(item)}
-                  className="mt-4 h-11 w-full text-[12px] font-semibold uppercase tracking-[0.08em] text-white"
-                  style={{ backgroundColor: 'var(--brand)' }}
-                >
-                  Choose this one
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {showPrices && topUp.length > 0 && (
-            <>
-              <h2 className="mb-2 mt-14 font-serif text-[21px] text-black">
-                Or put your award toward one of these
-              </h2>
-              <p className="mb-5 max-w-[620px] text-[13.5px] leading-relaxed text-black/55">
-                Your {campaign.budgetBase !== null ? money(campaign.budgetBase) : 'award'} comes
-                off each of these. The figure shown is what would be left for you to pay.
-              </p>
-              <ul className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-                {topUp.map((item) => (
-                  <li key={item.id} className="flex h-full flex-col">
-                    <div className="aspect-square w-full overflow-hidden bg-black/[0.02]">
-                      {item.imageIds[0] && (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={`/r/${token}/image/${item.imageIds[0]}`}
-                          alt={describe(item)}
-                          loading="lazy"
-                          className="h-full w-full object-contain p-4 mix-blend-multiply"
+              ) : (
+                <>
+                  {/*
+                    * What the award covers outright.
+                    *
+                    * Alex: "I like the split between what they can get and
+                    * what they'd need to put money towards." It is the one
+                    * thing on this page somebody has to understand, so each
+                    * half says in a line what it is rather than relying on
+                    * the prices underneath to explain themselves.
+                    */}
+                  {covered.length > 0 && (
+                    <section>
+                      {showPrices && (
+                        <SectionHead
+                          title="Yours for the award alone"
+                          note="Nothing to pay. Choose one and it is set aside for you."
+                          count={covered.length}
                         />
                       )}
-                    </div>
+                      <WatchGrid>
+                        {covered.map((item) => (
+                          <WatchCard
+                            key={item.id}
+                            title={describe(item)}
+                            details={details(item)}
+                            imageSrc={item.imageIds[0] ? `/r/${token}/image/${item.imageIds[0]}` : null}
+                          >
+                            {showPrices && (
+                              /*
+                               * The value, said to be covered.
+                               *
+                               * A bare price under "yours for the award alone"
+                               * reads as something to pay, which is the
+                               * opposite of what it is. Keeping the figure is
+                               * worth it: somebody should see what they are
+                               * being given is worth.
+                               */
+                              <>
+                                <p className="text-[15px] font-semibold tabular-nums text-black">
+                                  {money(item.priceGbp)}
+                                </p>
+                                <p className="text-[11.5px] text-black/45">covered by your award</p>
+                              </>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setTaking(item)}
+                              className="mt-2.5 h-10 w-full text-[12px] font-semibold uppercase tracking-[0.08em] text-white"
+                              style={{ backgroundColor: 'var(--brand)' }}
+                            >
+                              Choose this one
+                            </button>
+                          </WatchCard>
+                        ))}
+                      </WatchGrid>
+                    </section>
+                  )}
 
-                    <p className="mt-4 line-clamp-2 min-h-[2.6em] font-serif text-[18px] leading-snug text-black">
-                      {describe(item)}
-                    </p>
-                    <p className="mt-1 line-clamp-1 min-h-[1.3em] text-[12.5px] text-black/50">
-                      {details(item)}
-                    </p>
-
-                    {/*
-                      * The number that decides this, which is what is left to
-                      * pay — not the price. The price is there underneath so
-                      * nobody feels a figure has been kept from them.
-                      */}
-                    <p className="mt-2 text-[15px] font-semibold tabular-nums text-black">
-                      {money(item.topUpGbp)} to pay
-                    </p>
-                    <p className="text-[12px] tabular-nums text-black/45">
-                      {money(item.priceGbp)} less your award
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => setTaking(item)}
-                      className="mt-4 h-11 w-full border text-[12px] font-semibold uppercase tracking-[0.08em]"
-                      style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
-                    >
-                      Choose this one
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
+                  {showPrices && topUp.length > 0 && (
+                    <section className={covered.length > 0 ? 'mt-14 border-t border-black/10 pt-10' : ''}>
+                      <SectionHead
+                        title="Or put your award toward one of these"
+                        note={`Your ${campaign.budgetBase !== null ? money(campaign.budgetBase) : 'award'} comes off each of these. The figure shown is what would be left for you to pay.`}
+                        count={topUp.length}
+                      />
+                      <WatchGrid>
+                        {topUp.map((item) => (
+                          <WatchCard
+                            key={item.id}
+                            title={describe(item)}
+                            details={details(item)}
+                            imageSrc={item.imageIds[0] ? `/r/${token}/image/${item.imageIds[0]}` : null}
+                          >
+                            {/*
+                              * The number that decides this, which is what is
+                              * left to pay — not the price. The price is there
+                              * underneath so nobody feels a figure has been
+                              * kept from them.
+                              */}
+                            <p className="text-[15px] font-semibold tabular-nums text-black">
+                              {money(item.topUpGbp)} to pay
+                            </p>
+                            <p className="text-[11.5px] tabular-nums text-black/45">
+                              {money(item.priceGbp)} less your award
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setTaking(item)}
+                              className="mt-2.5 h-10 w-full border text-[12px] font-semibold uppercase tracking-[0.08em]"
+                              style={{ borderColor: 'var(--brand)', color: 'var(--brand)' }}
+                            >
+                              Choose this one
+                            </button>
+                          </WatchCard>
+                        ))}
+                      </WatchGrid>
+                    </section>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {taking && (
@@ -287,6 +370,21 @@ export function RecipientChoice({ token, view }: { token: string; view: Recipien
         />
       )}
     </main>
+  )
+}
+
+/** A heading for half the split, with what it means said under it. */
+function SectionHead({ title, note, count }: { title: string; note: string; count: number }) {
+  return (
+    <div className="mb-5">
+      <h2 className="font-serif text-[20px] leading-snug text-black">
+        {title}
+        <span className="ml-2.5 align-middle text-[12px] font-sans tabular-nums text-black/35">
+          {count}
+        </span>
+      </h2>
+      <p className="mt-1 max-w-[640px] text-[13px] leading-relaxed text-black/55">{note}</p>
+    </div>
   )
 }
 

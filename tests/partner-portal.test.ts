@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PARTNER_ORDER_STATUSES, PARTNER_ORDER_STATUS_LABELS } from '@/lib/enums'
 import { partnerPrice } from '@/lib/partner-rate'
-import { priceBands } from '@/components/portal/PortalRoom'
+import {
+  activeCount, applyFilters, buildGroups, priceBands, sizeBands, NO_FILTERS,
+} from '@/components/portal/filters'
 import { can } from '@/lib/permissions'
 
 const read = (path: string) => readFileSync(path, 'utf8')
@@ -14,6 +16,8 @@ const staffAction = read('src/app/actions/partners.ts')
 const page = read('src/app/p/[token]/page.tsx')
 const imageRoute = read('src/app/p/[token]/image/[id]/route.ts')
 const room = read('src/components/portal/PortalRoom.tsx')
+const rail = read('src/components/portal/FilterRail.tsx')
+const card = read('src/components/portal/WatchCard.tsx')
 const gate = read('src/components/portal/PortalGate.tsx')
 const held = read('src/components/reference/HeldStock.tsx')
 const partnersPage = read('src/app/(app)/partners/page.tsx')
@@ -187,22 +191,24 @@ describe('what a partner is shown', () => {
      * Two hundred watches is past the point where a list is browsable. Alex:
      * "add filtering like it is any other website to find watch easily."
      *
-     * The choices come from the stock rather than from a fixed list: a brand
-     * filter offering Patek when there is none in the building returns
-     * nothing, which reads as the page being broken rather than as us not
-     * having one.
+     * The options come from the stock rather than from a fixed list: a brand
+     * row offering Patek when there is none in the building returns nothing,
+     * which reads as the page being broken rather than as us not having one.
      */
-    expect(room).toContain('const brands = useMemo')
-    /*
-     * With their counts now, biggest first: a chip saying "Rolex 142" tells
-     * somebody how much of the case it is before they tap it, and the one
-     * most people want should be under their thumb rather than wherever the
-     * alphabet left it.
-     */
-    expect(room).toContain('counts.set(item.brandName, (counts.get(item.brandName) ?? 0) + 1)')
-    expect(room).toContain('.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))')
-    expect(room).toContain('item.priceGbp < floor')
-    expect(room).toContain('item.priceGbp > ceiling')
+    const groups = buildGroups(
+      [
+        { ...BARE, brandName: 'Rolex', priceGbp: 1_000_000 },
+        { ...BARE, brandName: 'Rolex', priceGbp: 3_000_000 },
+        { ...BARE, brandName: 'Omega', priceGbp: 3_000_000 },
+      ],
+      NO_FILTERS,
+    )
+    const brands = groups.find((group) => group.key === 'brand')
+    expect(brands?.options.map((option) => option.label)).toEqual(['Rolex', 'Omega'])
+    // Biggest first: "Rolex 2" says how much of the case it is before anybody
+    // taps it, and the one most people want belongs at the top of the rail
+    // rather than wherever the alphabet left it.
+    expect(brands?.options.map((option) => option.count)).toEqual([2, 1])
     expect(room).toContain("if (sort === 'priceUp')")
   })
 
@@ -212,10 +218,13 @@ describe('what a partner is shown', () => {
      * the button on its card below the four beside it, and the row reads as
      * broken.
      */
-    expect(room).toContain('xl:grid-cols-5')
-    expect(room).toContain('flex h-full flex-col')
-    expect(room).toContain('line-clamp-2 min-h-[2.6em]')
-    expect(room).toContain('line-clamp-1 min-h-[1.3em]')
+    expect(card).toContain('2xl:grid-cols-5')
+    expect(card).toContain('flex h-full flex-col')
+    expect(card).toContain('line-clamp-2 min-h-[2.6em]')
+    expect(card).toContain('line-clamp-1 min-h-[1.3em]')
+    // And the button is pushed to the bottom rather than landing wherever the
+    // name above it finished.
+    expect(card).toContain('mt-auto')
   })
 
   it('states the rate once rather than badging every row', () => {
@@ -470,44 +479,110 @@ describe('buying several at once', () => {
     expect(service).toContain('watchIds.slice(0, MAX_BULK_ORDER)')
   })
 })
+/**
+ * A bare watch to vary one field of at a time.
+ *
+ * The filter rules care about five columns; writing the other twenty out on
+ * every fixture would bury the one the test is actually about.
+ */
+const BARE = {
+  brandName: 'Rolex',
+  model: null,
+  modelName: null,
+  dial: null,
+  year: null,
+  caseSizeMm: null,
+  boxPapers: null,
+  priceGbp: 1_000_000,
+}
 
 describe('finding something in two hundred watches', () => {
-  it('leads with one search and the brands, not six equal selects', () => {
+  it('puts the filters down the side rather than behind a button', () => {
     /*
-     * Alex: "Filtering is terrible and not stremalined." Six selects in a
-     * row, each the same weight as the next, meant reading a toolbar before
-     * touching it — and on a phone it was a wall before the stock.
+     * Alex, on the panel this replaces: "This does not look neat and
+     * streamlined at all ... do you really think this is world class
+     * e-commercing filtering for a watch company?"
+     *
+     * It was a disclosure holding a three-column grid, so the price sat in a
+     * two-column cell with nothing beside it while thirteen millimetre chips
+     * wrapped into three ragged rows on the other side. A shop puts the
+     * filters down the side where they stay put, so changing your mind is one
+     * tap from wherever you have scrolled to.
      */
-    expect(room).toContain('placeholder="Search model, reference, dial or metal"')
-    expect(room).toContain('brands.map(({ name, count })')
+    expect(room).toContain('<FilterRail')
+    expect(rail).toContain('<aside')
+    expect(rail).toContain('sticky')
+    // And nothing is hidden behind a disclosure on a desktop any more.
+    expect(room).not.toContain('setMore((open) => !open)')
+  })
+
+  it('counts every option against the filters already on', () => {
     /*
-     * One row, one baseline. The sort carried a floating caption above it, so
-     * its control sat lower than the search box beside it and the bar read as
-     * misaligned — which it was. Every control is now the same height, and
-     * the sort says what it is in its own options.
+     * The count has to be what you would GET if you tapped it. A rail that
+     * still says "40–42mm 88" after you have chosen a brand with four watches
+     * in it is lying to somebody about to waste a tap.
      */
-    expect(room).toContain("aria-label=\"Sort by\"")
-    expect(room).not.toContain('<Choice label="Sort by"')
-    // The search, the sort and the Filters button, all the same height — one
-    // of them builds its class list in a template, so count the utility
-    // rather than the attribute.
-    expect(room.match(/\bh-12\b/g)?.length).toBeGreaterThanOrEqual(3)
+    const items = [
+      { ...BARE, brandName: 'Rolex', caseSizeMm: 41 },
+      { ...BARE, brandName: 'Rolex', caseSizeMm: 36 },
+      { ...BARE, brandName: 'Omega', caseSizeMm: 41 },
+    ]
+    const open = buildGroups(items, NO_FILTERS)
+    expect(open.find((group) => group.key === 'size')?.options.map((option) => option.count))
+      .toEqual([1, 2])
+
+    const rolexOnly = buildGroups(items, { ...NO_FILTERS, brand: 'Rolex' })
+    expect(rolexOnly.find((group) => group.key === 'size')?.options.map((option) => option.count))
+      .toEqual([1, 1])
+  })
+
+  it('shows a row that would empty the page rather than hiding it', () => {
+    // Hiding it makes the rail jump about under somebody's thumb as they
+    // filter, and a greyed "Patek Philippe 0" is a straight answer to "have
+    // you any".
+    const groups = buildGroups(
+      [
+        { ...BARE, brandName: 'Rolex', caseSizeMm: 41 },
+        { ...BARE, brandName: 'Patek Philippe', caseSizeMm: 36 },
+      ],
+      { ...NO_FILTERS, size: 0 },
+    )
+    const rolex = groups.find((group) => group.key === 'brand')?.options
+      .find((option) => option.label === 'Rolex')
+    expect(rolex?.count).toBe(0)
+    expect(rail).toContain('const dead = option.count === 0 && !option.on')
+    expect(rail).toContain('disabled={dead}')
+  })
+
+  it('offers no group that can only do nothing', () => {
+    // If every watch in the campaign is a Rolex, a Brand heading with one row
+    // under it is a control that can never change anything, and four of those
+    // is the difference between a rail that helps and a rail that is
+    // furniture.
+    const groups = buildGroups(
+      [{ ...BARE, brandName: 'Rolex' }, { ...BARE, brandName: 'Rolex' }],
+      NO_FILTERS,
+    )
+    expect(groups.map((group) => group.key)).not.toContain('brand')
   })
 
   it('says what is applied, in things that come off one at a time', () => {
     /*
      * The worst state in a filtered list is an empty one whose cause is
-     * off-screen: somebody sets a price ceiling, collapses the panel,
-     * searches for a Daytona and concludes we have none.
+     * off-screen: somebody sets a price band, scrolls, searches for a Daytona
+     * and concludes we have none. On a desktop the rail itself says it; on a
+     * phone, where the rail is a sheet, it is said in pills.
      */
-    expect(room).toContain('pills.map((pill)')
-    expect(room).toContain('onClick={pill.clear}')
-    expect(room).toContain('Clear all')
+    expect(rail).toContain('pills.map((pill)')
+    expect(rail).toContain('Clear all')
+    expect(rail).toContain('Show {resultCount}')
   })
 
-  it('counts the hidden filters on its own button', () => {
-    // So a collapsed panel with two filters in it does not look empty.
-    expect(room).toContain("const narrowed = [size, boxPapers, band !== null ? 'band' : ''].filter(Boolean).length")
+  it('counts what is on for the button that opens the sheet', () => {
+    // So a closed sheet with two filters in it does not look empty.
+    expect(rail).toContain('const applied = activeCount(state)')
+    expect(activeCount({ ...NO_FILTERS, brand: 'Rolex', size: 1 })).toBe(2)
+    expect(activeCount(NO_FILTERS)).toBe(0)
   })
 
   it('asks for a price as bands, not as a slider over a huge spread', () => {
@@ -521,22 +596,27 @@ describe('finding something in two hundred watches', () => {
      * pixel or two wide and dragging it is a guess. A band is one tap, says
      * what it is, and is the same size on a phone.
      */
-    expect(room).toContain('const bands = useMemo(() => priceBands(items), [items])')
     expect(room).not.toContain('<RangeSlider')
     expect(room).not.toContain('label="Price from"')
   })
 
   it('counts each band, and offers none that is empty', () => {
     // A band reading "200k–500k  0" is a tap that leads nowhere, and five of
-    // those is a filter bar that lies about what is in the case.
+    // those is a filter that lies about what is in the case.
     const bands = priceBands([
       { priceGbp: 1_000_000 },   // 10k
       { priceGbp: 3_000_000 },   // 30k
       { priceGbp: 3_500_000 },   // 35k
       { priceGbp: 60_000_000 },  // 600k
     ])
-    expect(bands.map((band) => band.label)).toEqual(['0k–25k', '25k–50k', '500k+'])
+    expect(bands.map((band) => band.label)).toEqual(['Under 25k', '25k–50k', '500k+'])
     expect(bands.map((band) => band.count)).toEqual([1, 2, 1])
+  })
+
+  it('does not put a zero on the cheapest band', () => {
+    // Nothing in this building costs nothing, so "0k–25k" was a number put
+    // there by the loop rather than by anybody who would say it.
+    expect(priceBands([{ priceGbp: 1_000_000 }])[0].label).toBe('Under 25k')
   })
 
   it('puts a watch on a boundary in one band and not two', () => {
@@ -555,14 +635,54 @@ describe('finding something in two hundred watches', () => {
     expect(bands[0].label).toBe('500k+')
   })
 
+  it('groups case sizes the way somebody shops for one', () => {
+    /*
+     * Thirteen separate millimetre chips was what the stock happened to
+     * contain, not a question anybody asks: nobody wants a 41 and refuses a
+     * 42. Four bands covers the real decision and keeps the rail four rows
+     * instead of thirteen.
+     */
+    const bands = sizeBands([
+      { caseSizeMm: 26 }, { caseSizeMm: 36 }, { caseSizeMm: 41 }, { caseSizeMm: 44 },
+    ])
+    expect(bands.map((band) => band.label))
+      .toEqual(['Under 36mm', '36–39mm', '40–42mm', '43mm and over'])
+    expect(bands.map((band) => band.count)).toEqual([1, 1, 1, 1])
+  })
 
+  it('does not file an unmeasured watch under a size', () => {
+    // A watch with no measurement recorded is not "under 36mm", it is
+    // unknown, and putting it in a band would be us making the number up.
+    const items = [{ ...BARE, caseSizeMm: null }, { ...BARE, caseSizeMm: 26 }]
+    const bands = { price: priceBands(items), size: sizeBands(items) }
+    expect(applyFilters(items, { ...NO_FILTERS, size: 0 }, bands)).toHaveLength(1)
+    expect(applyFilters(items, NO_FILTERS, bands)).toHaveLength(2)
+  })
 
+  it('offers box and papers as its own group rather than a dropdown', () => {
+    const groups = buildGroups(
+      [
+        { ...BARE, boxPapers: 'FULL_SET' },
+        { ...BARE, boxPapers: 'WATCH_ONLY' },
+        // Unknown is not an answer somebody filters by, so it is not offered.
+        { ...BARE, boxPapers: 'UNKNOWN' },
+      ],
+      NO_FILTERS,
+    )
+    const box = groups.find((group) => group.key === 'boxPapers')
+    expect(box?.options).toHaveLength(2)
+    expect(box?.options.map((option) => option.label)).not.toContain('Unknown')
+  })
 
-
-  it('offers box and papers as toggles rather than hiding three behind a click', () => {
-    expect(room).toContain('boxes.map((value) => (')
-    expect(room).toContain('<Chip')
-    expect(room).not.toContain('any="Any size"')
+  it('searches the words under the picture as well as the name', () => {
+    // Somebody looking for a salmon dial is not looking for a model number.
+    const items = [
+      { ...BARE, model: '126610', dial: 'Salmon' },
+      { ...BARE, model: '116500', dial: 'Panda' },
+    ]
+    const bands = { price: priceBands(items), size: sizeBands(items) }
+    expect(applyFilters(items, { ...NO_FILTERS, q: 'salmon' }, bands)).toHaveLength(1)
+    expect(applyFilters(items, { ...NO_FILTERS, q: '116500' }, bands)).toHaveLength(1)
   })
 })
 
