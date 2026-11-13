@@ -1,7 +1,7 @@
 'use client'
 import { useId, useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import {
   placeOrderAction, placeOrdersAction, leavePortalAction,
   type OrderState, type BulkState,
@@ -10,6 +10,7 @@ import { percentFromBps } from '@/lib/partner-rate'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition,
 } from '@/lib/enums'
+import { RangeSlider, distribution } from './RangeSlider'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
 
 const INITIAL: OrderState = { ok: false, message: '' }
@@ -37,20 +38,6 @@ const SORTS: Array<{ value: Sort; label: string }> = [
   { value: 'priceDown', label: 'Price, highest first' },
   { value: 'newest', label: 'Newest first' },
 ]
-
-/** The round numbers a price filter is worth offering, from the stock itself. */
-function priceSteps(items: PortalItem[]): number[] {
-  if (items.length === 0) return []
-  const top = Math.max(...items.map((item) => item.priceGbp))
-  // Six or so stops, rounded to something a person would say out loud rather
-  // than to the actual maximum, which is always a number like 178,360.
-  const rough = top / 6
-  const magnitude = 10 ** Math.floor(Math.log10(Math.max(rough, 1)))
-  const step = Math.ceil(rough / magnitude) * magnitude
-  const steps: number[] = []
-  for (let value = step; value < top; value += step) steps.push(value)
-  return steps
-}
 
 /**
  * What a partner sees.
@@ -86,8 +73,15 @@ export function PortalRoom({ token, partner, items, orders }: {
   const [brand, setBrand] = useState('')
   const [boxPapers, setBoxPapers] = useState('')
   const [size, setSize] = useState('')
-  const [min, setMin] = useState('')
-  const [max, setMax] = useState('')
+  /*
+   * A range held as a pair, and null while untouched.
+   *
+   * Null is "no opinion", which is not the same as "the whole range": a
+   * partner who has not touched the slider should see stock with no price
+   * recorded differently from one who deliberately dragged to the ends, and a
+   * pill should not appear for a filter nobody set.
+   */
+  const [priceRange, setPriceRange] = useState<[number, number] | null>(null)
   const [sort, setSort] = useState<Sort>('brand')
   const [more, setMore] = useState(false)
   const [taking, setTaking] = useState<PortalItem | null>(null)
@@ -129,12 +123,35 @@ export function PortalRoom({ token, partner, items, orders }: {
     ))].sort(),
     [items],
   )
-  const steps = useMemo(() => priceSteps(items), [items])
+  /*
+   * The ends of the slider, rounded outward to numbers somebody would say.
+   *
+   * Snapping to the exact cheapest and dearest would put 8,431 and 178,360 on
+   * the handles, which reads as arithmetic rather than as a choice.
+   */
+  const priceBounds = useMemo((): [number, number] => {
+    if (items.length === 0) return [0, 1]
+    const prices = items.map((item) => item.priceGbp)
+    const lowest = Math.min(...prices)
+    const highest = Math.max(...prices)
+    const grain = 10 ** Math.max(2, Math.floor(Math.log10(Math.max(highest, 1))) - 1)
+    return [Math.floor(lowest / grain) * grain, Math.ceil(highest / grain) * grain]
+  }, [items])
+
+  const priceStep = useMemo(
+    () => Math.max(100, 10 ** (Math.floor(Math.log10(priceBounds[1] - priceBounds[0] || 1)) - 2)),
+    [priceBounds],
+  )
+
+  const priceShape = useMemo(
+    () => distribution(items.map((item) => item.priceGbp), priceBounds[0], priceBounds[1]),
+    [items, priceBounds],
+  )
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const floor = min ? Number(min) : null
-    const ceiling = max ? Number(max) : null
+    const floor = priceRange ? priceRange[0] : null
+    const ceiling = priceRange ? priceRange[1] : null
 
     const kept = items.filter((item) => {
       if (needle && !searchable(item).includes(needle)) return false
@@ -151,14 +168,14 @@ export function PortalRoom({ token, partner, items, orders }: {
     else if (sort === 'priceDown') sorted.sort((a, b) => b.priceGbp - a.priceGbp)
     else if (sort === 'newest') sorted.sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
     return sorted
-  }, [items, query, brand, boxPapers, size, min, max, sort])
+  }, [items, query, brand, boxPapers, size, priceRange, sort])
 
   const clear = () => {
-    setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setMin(''); setMax('')
+    setQuery(''); setBrand(''); setBoxPapers(''); setSize(''); setPriceRange(null)
   }
 
   /** How many of the filters behind the disclosure are on, for its badge. */
-  const narrowed = [size, boxPapers, min, max].filter(Boolean).length
+  const narrowed = [size, boxPapers, priceRange].filter(Boolean).length
 
   /*
    * What is applied, as things that can be taken off one at a time.
@@ -174,8 +191,12 @@ export function PortalRoom({ token, partner, items, orders }: {
     ...(boxPapers
       ? [{ label: BOX_PAPERS_LABELS[boxPapers as BoxPapers] ?? boxPapers, clear: () => setBoxPapers('') }]
       : []),
-    ...(min ? [{ label: `From ${money(Number(min))}`, clear: () => setMin('') }] : []),
-    ...(max ? [{ label: `To ${money(Number(max))}`, clear: () => setMax('') }] : []),
+    ...(priceRange
+      ? [{
+        label: `${money(priceRange[0])} – ${money(priceRange[1])}`,
+        clear: () => setPriceRange(null),
+      }]
+      : []),
   ]
 
   const basket = items.filter((item) => picked.has(item.id))
@@ -302,33 +323,58 @@ export function PortalRoom({ token, partner, items, orders }: {
           * list is an empty one whose cause is off-screen.
           */}
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="relative min-w-[240px] flex-1">
+          {/*
+            * One row, one baseline.
+            *
+            * The sort carried a floating label above it, so its control sat
+            * lower than the search box beside it and the whole bar read as
+            * misaligned — which it was. Every control here is the same height
+            * and sits on the same line; the sort says what it is in its own
+            * options rather than needing a caption.
+            */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <label className="relative min-w-[260px] flex-1">
               <span className="sr-only">Search stock</span>
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" aria-hidden />
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search model, reference, dial or metal"
-                className="h-11 w-full border border-black/15 pl-10 pr-3 text-[14px] text-black outline-none placeholder:text-black/35 focus:border-black/50"
+                className="h-12 w-full rounded-full border border-black/12 bg-black/[0.02] pl-11 pr-4 text-[14px] text-black outline-none transition-colors placeholder:text-black/35 focus:border-black/40 focus:bg-white"
               />
             </label>
 
-            <Choice label="Sort by" value={sort} onChange={(value) => setSort(value as Sort)}
-              options={SORTS} />
+            <div className="relative">
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as Sort)}
+                aria-label="Sort by"
+                className="h-12 appearance-none rounded-full border border-black/12 bg-white pl-4 pr-10 text-[13.5px] text-black outline-none transition-colors hover:border-black/30 focus:border-black/40"
+              >
+                {SORTS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" aria-hidden />
+            </div>
 
             <button
               type="button"
               onClick={() => setMore((open) => !open)}
               aria-expanded={more}
-              className={`flex h-11 items-center gap-2 border px-4 text-[13px] ${
-                narrowed ? 'border-black/50 text-black' : 'border-black/15 text-black/60 hover:border-black/40'
+              className={`flex h-12 shrink-0 items-center gap-2 rounded-full border px-5 text-[13.5px] transition-colors ${
+                more || narrowed > 0
+                  ? 'border-black/40 text-black'
+                  : 'border-black/12 text-black/60 hover:border-black/30 hover:text-black'
               }`}
             >
               <SlidersHorizontal className="h-4 w-4" aria-hidden />
-              More filters
+              Filters
               {narrowed > 0 && (
-                <span className="flex h-5 min-w-[20px] items-center justify-center bg-black px-1 text-[11px] text-white">
+                <span
+                  className="flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-semibold text-white"
+                  style={{ backgroundColor: 'var(--brand)' }}
+                >
                   {narrowed}
                 </span>
               )}
@@ -338,28 +384,75 @@ export function PortalRoom({ token, partner, items, orders }: {
           {brands.length > 1 && (
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               <Chip on={brand === ''} onClick={() => setBrand('')}>
-                All <span className="tabular-nums opacity-60">{items.length}</span>
+                All <span className="tabular-nums opacity-55">{items.length}</span>
               </Chip>
               {brands.map(({ name, count }) => (
                 <Chip key={name} on={brand === name} onClick={() => setBrand(brand === name ? '' : name)}>
-                  {name} <span className="tabular-nums opacity-60">{count}</span>
+                  {name} <span className="tabular-nums opacity-55">{count}</span>
                 </Chip>
               ))}
             </div>
           )}
 
           {more && (
-            <div className="flex flex-wrap items-end gap-3 border border-black/10 p-4">
-              <Choice label="Size" value={size} onChange={setSize} any="Any size"
-                options={sizes.map((mm) => ({ value: String(mm), label: `${mm}mm` }))} />
-              <Choice label="Box & papers" value={boxPapers} onChange={setBoxPapers} any="Any"
-                options={boxes.map((value) => ({
-                  value, label: BOX_PAPERS_LABELS[value as BoxPapers] ?? value,
-                }))} />
-              <Choice label="Price from" value={min} onChange={setMin} any="No minimum"
-                options={steps.map((value) => ({ value: String(value), label: money(value) }))} />
-              <Choice label="Price to" value={max} onChange={setMax} any="No maximum"
-                options={steps.map((value) => ({ value: String(value), label: money(value) }))} />
+            /*
+             * A panel, not a box bolted underneath.
+             *
+             * Three columns on a desktop so the controls share a grid rather
+             * than queueing, and the price gets the width it needs for a
+             * histogram to be readable. Separated by space and one hairline
+             * instead of a border around everything, which is what made the
+             * last one look like a dialog that had escaped.
+             */
+            <div className="mt-1 grid gap-x-10 gap-y-7 border-t border-black/10 pt-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className="xl:col-span-2">
+                <RangeSlider
+                  label="Price"
+                  min={priceBounds[0]}
+                  max={priceBounds[1]}
+                  step={priceStep}
+                  value={priceRange ?? priceBounds}
+                  onChange={setPriceRange}
+                  format={money}
+                  histogram={priceShape}
+                />
+              </div>
+
+              <div className="space-y-6">
+                {sizes.length > 1 && (
+                  <div>
+                    <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Case size</span>
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      <Chip on={size === ''} onClick={() => setSize('')}>Any</Chip>
+                      {sizes.map((mm) => (
+                        <Chip key={mm} on={size === String(mm)} onClick={() => setSize(size === String(mm) ? '' : String(mm))}>
+                          {mm}mm
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {boxes.length > 0 && (
+                  <div>
+                    <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Box &amp; papers</span>
+                    {/* Toggles rather than a dropdown: four options, and a
+                        dropdown hides three of them behind a click. */}
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      <Chip on={boxPapers === ''} onClick={() => setBoxPapers('')}>Any</Chip>
+                      {boxes.map((value) => (
+                        <Chip
+                          key={value}
+                          on={boxPapers === value}
+                          onClick={() => setBoxPapers(boxPapers === value ? '' : value)}
+                        >
+                          {BOX_PAPERS_LABELS[value as BoxPapers] ?? value}
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -560,48 +653,6 @@ function Chip({ on, onClick, children }: {
     >
       {children}
     </button>
-  )
-}
-
-/** One filter. A label above a select, so the row reads without guessing. */
-function Choice({ label, value, onChange, options, any }: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  options: Array<{ value: string; label: string }>
-  /** The "no filter" wording. Omitted where the control always has an answer. */
-  any?: string
-}) {
-  const id = useId()
-  if (options.length === 0) return null
-  return (
-    /*
-     * Associated by id rather than by wrapping the select in the label.
-     *
-     * A wrapped select takes its accessible name from everything inside the
-     * label — which, for a select, includes its own options. "Sort by" was
-     * being announced as "Sort by Brand A-Z Price lowest first Price highest
-     * first", which is the entire menu read out before the control is reached.
-     */
-    <div className="block">
-      <label
-        htmlFor={id}
-        className="mb-1 block text-[11px] uppercase tracking-[0.06em] text-black/40"
-      >
-        {label}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-10 min-w-[128px] border border-black/15 bg-white px-2.5 text-[13.5px] text-black outline-none focus:border-black/50"
-      >
-        {any && <option value="">{any}</option>}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </div>
   )
 }
 
