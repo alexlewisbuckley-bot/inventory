@@ -136,4 +136,21 @@ describe('where the stock list opens', () => {
     // and back from in a day is a tick away from counting as to hand again.
     expect(migration).not.toMatch(/DROP COLUMN/)
   })
+
+  it('has said H&M is not within reach either', () => {
+    // "Set default to not show H&M as well" — set once from what Alex said,
+    // matched on the name he gave it, with the switch left in place.
+    const migration = read('src/server/db/migrations/0067_h_and_m_is_not_to_hand.sql')
+    expect(migration).toMatch(/UPDATE locations/)
+    expect(migration).toMatch(/is_on_hand = false/)
+    expect(migration).toMatch(/'h&m'/)
+    expect(migration).not.toMatch(/DROP COLUMN/)
+  })
+
+  it('names the switch for the list it changes, on the form and on the card', () => {
+    const form = read('src/components/reference/LocationManager.tsx')
+    expect(form).toMatch(/name="isOnHand" label="Show this location's stock in the default stock list"/)
+    expect(form).toMatch(/!location\.isOnHand && \(/)
+    expect(form).toMatch(/Hidden from default list/)
+  })
 })
