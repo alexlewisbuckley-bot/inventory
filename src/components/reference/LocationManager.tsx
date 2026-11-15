@@ -300,6 +300,46 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Inactive locations cannot receive new stock but keep their history."
             defaultChecked={location?.isActive ?? true} />
           {/*
+            The governing switch, first.
+
+            "Stock here is to hand" was accurate and nobody found it: Alex
+            asked for this checkbox while it was already on the form, because
+            the label talked about the stock and not about the screen he was
+            looking at. It became "show in the default stock list", which was
+            right at the time and is an understatement now — unticking it
+            takes the stock off that list entirely, off the website, off the
+            trade catalogue and out of the partner portal. A switch whose
+            label describes a third of what it does is how somebody ticks it
+            expecting a filter.
+
+            It sits above the other two because it overrules them, and a
+            switch that overrules the one above it reads as doing nothing.
+          */}
+          <Checkbox name="isOnHand" label="Keep this location's stock on the books here"
+            hint="Untick for stock that is not within reach — another country, another dealer, a courier's bag. It comes off the stock list, the website, the trade catalogue and the partner portal, and is tracked from this location's own page instead. The capital is still counted in your reports."
+            checked={onHand}
+            onChange={(event) => setOnHand(event.target.checked)} />
+
+          {!onHand && (
+            /*
+             * Said where somebody is looking at the two ticks it overrules.
+             *
+             * The Hong Kong form showed "Sell this location's stock on the
+             * website" ticked while that stock was off the website, which is
+             * a form lying about the thing it exists to control. The ticks
+             * are left alone rather than cleared, so turning this back on
+             * restores what the location was actually set to instead of
+             * leaving somebody to remember.
+             */
+            <p className="rounded-sm bg-surface-subtle px-3 py-2 text-caption text-content-secondary">
+              <span className="font-semibold text-content-primary">Held away. </span>
+              The two settings below have no effect while this is off — stock here is off
+              the website and off the trade catalogue whatever they say. They are kept as
+              they are, for when it comes back on the books.
+            </p>
+          )}
+
+          {/*
             Off for transit by default when adding a new one, because that is
             the case this exists for and nobody should have to know to untick
             it. Editing an existing location shows what it is actually set to,
@@ -320,23 +360,6 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
             checked={onTradeList}
             onChange={(event) => setOnTradeList(event.target.checked)} />
-          {/*
-            Named for what it does, twice over.
-
-            "Stock here is to hand" was accurate and nobody found it: Alex
-            asked for this checkbox while it was already on the form, because
-            the label talked about the stock and not about the screen he was
-            looking at. It became "show in the default stock list", which was
-            right at the time and is an understatement now — unticking it
-            takes the stock off that list entirely, off the website, off the
-            trade catalogue and out of the partner portal. A switch whose
-            label describes a third of what it does is how somebody ticks it
-            expecting a filter.
-          */}
-          <Checkbox name="isOnHand" label="Keep this location's stock on the books here"
-            hint="Untick for stock that is not within reach — another country, another dealer, a courier's bag. It comes off the stock list, the website, the trade catalogue and the partner portal, and is tracked from this location's own page instead. The capital is still counted in your reports."
-            checked={onHand}
-            onChange={(event) => setOnHand(event.target.checked)} />
         </div>
       </form>
     </Modal>

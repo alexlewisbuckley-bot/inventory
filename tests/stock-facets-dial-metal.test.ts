@@ -278,3 +278,35 @@ describe('the location is the one way in', () => {
     expect(manager).toContain('canManage')
   })
 })
+
+describe('the form does not lie about the switches it overrules', () => {
+  const form = readFileSync(join(process.cwd(), 'src/components/reference/LocationManager.tsx'), 'utf8')
+
+  it('puts the governing switch above the two it governs', () => {
+    // A switch that overrules the one above it reads as doing nothing.
+    expect(form.indexOf('name="isOnHand"')).toBeLessThan(form.indexOf('name="publishToStorefront"'))
+    expect(form.indexOf('name="isOnHand"')).toBeLessThan(form.indexOf('name="showInTradeCatalogue"'))
+  })
+
+  it('says the two below have no effect once the stock is held away', () => {
+    /*
+     * The Hong Kong form showed "Sell this location's stock on the website"
+     * ticked while that stock was off the website — a form lying about the
+     * thing it exists to control.
+     */
+    expect(form).toContain('{!onHand && (')
+    expect(form).toContain('have no effect while this is off')
+  })
+
+  it('keeps those ticks rather than clearing them', () => {
+    /*
+     * Turning it back on should restore what the location was actually set
+     * to. Clearing them would also lose the values for good, because a
+     * disabled checkbox posts nothing and the action reads a missing field
+     * as false.
+     */
+    expect(form).toContain('They are kept as\n              they are, for when it comes back on the books.')
+    expect(form).not.toMatch(/name="publishToStorefront"[^>]*disabled/)
+    expect(form).not.toMatch(/name="showInTradeCatalogue"[^>]*disabled/)
+  })
+})
