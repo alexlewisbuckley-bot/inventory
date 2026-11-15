@@ -140,10 +140,35 @@ describe('where the stock list opens', () => {
     expect(migration).not.toMatch(/DROP COLUMN/)
   })
 
+  it('has said H&M is not within reach either', () => {
+    // "Set default to not show H&M as well" — set once from what Alex said,
+    // matched on the name he gave it, with the switch left in place.
+    const migration = read('src/server/db/migrations/0067_h_and_m_is_not_to_hand.sql')
+    expect(migration).toMatch(/UPDATE locations/)
+    expect(migration).toMatch(/is_on_hand = false/)
+    expect(migration).toMatch(/'h&m'/)
+    expect(migration).not.toMatch(/DROP COLUMN/)
+  })
+
+  it('names the switch for everything it changes, on the form and on the card', () => {
+    /*
+     * "Show this location's stock in the default stock list" was right when
+     * it was written and is an understatement now: unticking it takes the
+     * stock off the list entirely, off the website, off the trade catalogue
+     * and out of the partner portal. A switch whose label describes a third
+     * of what it does is how somebody turns it on expecting a filter.
+     */
+    const form = read('src/components/reference/LocationManager.tsx')
+    expect(form).toMatch(/name="isOnHand" label="Keep this location's stock on the books here"/)
+    expect(form).toMatch(/!location\.isOnHand && \(/)
+    expect(form).toMatch(/Held away/)
+    expect(form).toContain('tracked from this location')
+  })
+
   it('has said the same about America', () => {
     // Alex, the day after: "Also make USA not shown in default." Overseas
     // from a Dubai shop by any reading of it.
-    const migration = read('src/server/db/migrations/0067_america_is_not_to_hand.sql')
+    const migration = read('src/server/db/migrations/0068_america_is_not_to_hand.sql')
     expect(migration).toMatch(/is_on_hand = false/)
     expect(migration).toMatch(/united states/)
     /*
@@ -163,7 +188,7 @@ describe('where the stock list opens', () => {
      */
     const manager = read('src/components/reference/LocationManager.tsx')
     expect(manager).toContain('{!location.isOnHand && (')
-    expect(manager).toContain('Not to hand')
+    expect(manager).toContain('Held away')
   })
 })
 

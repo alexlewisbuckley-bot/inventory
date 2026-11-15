@@ -111,17 +111,22 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                       <Chip tone="neutral">Not on the trade list</Chip>
                     )}
                     {/*
-                      * And whether the stock list counts this as within reach.
+                      * And whether this location's stock is on the books here.
                       *
                       * It was the one of the three settings with nothing on
                       * the card, so the only way to see it was to open the
                       * row and look — which is why it kept being asked for
-                      * rather than ticked. A location left off the default
-                      * stock list is a thing somebody should be able to see
-                      * from the same glance that tells them it is active.
+                      * rather than ticked.
+                      *
+                      * "Hidden from default list" came from the session that
+                      * added this chip and was right at the time. It is an
+                      * understatement now: stock standing here is off the
+                      * stock list entirely, off the website, off the trade
+                      * catalogue and not offered to partners, which is more
+                      * than a default.
                       */}
                     {!location.isOnHand && (
-                      <Chip tone="neutral">Not to hand</Chip>
+                      <Chip tone="neutral">Held away</Chip>
                     )}
                   </div>
                 </div>
@@ -315,8 +320,21 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
             checked={onTradeList}
             onChange={(event) => setOnTradeList(event.target.checked)} />
-          <Checkbox name="isOnHand" label="Stock here is to hand"
-            hint="The stock list opens on everything that is. Off for another country or a courier's bag — the stock is still yours and still searchable, the list just does not open on it."
+          {/*
+            Named for what it does, twice over.
+
+            "Stock here is to hand" was accurate and nobody found it: Alex
+            asked for this checkbox while it was already on the form, because
+            the label talked about the stock and not about the screen he was
+            looking at. It became "show in the default stock list", which was
+            right at the time and is an understatement now — unticking it
+            takes the stock off that list entirely, off the website, off the
+            trade catalogue and out of the partner portal. A switch whose
+            label describes a third of what it does is how somebody ticks it
+            expecting a filter.
+          */}
+          <Checkbox name="isOnHand" label="Keep this location's stock on the books here"
+            hint="Untick for stock that is not within reach — another country, another dealer, a courier's bag. It comes off the stock list, the website, the trade catalogue and the partner portal, and is tracked from this location's own page instead. The capital is still counted in your reports."
             checked={onHand}
             onChange={(event) => setOnHand(event.target.checked)} />
         </div>

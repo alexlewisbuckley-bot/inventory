@@ -1,5 +1,9 @@
 -- Nor is America.
 --
+-- Numbered 0068 rather than 0067: another session took that number for
+-- H&M while this was being written, and two migrations sharing one number is
+-- a ledger nobody can read back.
+--
 -- Alex, a day after the same request about Hong Kong: "Also make USA not
 -- shown in default."
 --
