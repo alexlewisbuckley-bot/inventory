@@ -110,6 +110,9 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                     {!location.showInTradeCatalogue && (
                       <Chip tone="neutral">Not on the trade list</Chip>
                     )}
+                    {!location.isOnHand && (
+                      <Chip tone="neutral">Hidden from default list</Chip>
+                    )}
                   </div>
                 </div>
 
@@ -284,8 +287,14 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
             hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
             checked={onTradeList}
             onChange={(event) => setOnTradeList(event.target.checked)} />
-          <Checkbox name="isOnHand" label="Stock here is to hand"
-            hint="The stock list opens on everything that is. Off for another country or a courier's bag — the stock is still yours and still searchable, the list just does not open on it."
+          {/*
+            Named for what it does to the screen. "Stock here is to hand" was
+            accurate and nobody found it: Alex asked for this checkbox while it
+            was already on the form, because the label talked about the stock
+            and not about the list he was looking at.
+          */}
+          <Checkbox name="isOnHand" label="Show this location's stock in the default stock list"
+            hint="Untick for stock that is not within reach — another country, another dealer, a courier's bag. It stays yours and searchable under All locations; the stock list just does not open on it."
             checked={onHand}
             onChange={(event) => setOnHand(event.target.checked)} />
         </div>
