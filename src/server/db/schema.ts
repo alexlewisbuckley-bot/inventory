@@ -495,6 +495,29 @@ export const partnerLeaderboards = pgTable(
   }),
 )
 
+/**
+ * A partner's own team: its agents, kept once with their photos and drawn
+ * on by every leaderboard. See migration 0072.
+ */
+export const partnerAgents = pgTable(
+  'partner_agents',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    subtitle: text('subtitle'),
+    photoMime: text('photo_mime'),
+    photoData: bytea('photo_data'),
+    photoByteSize: integer('photo_byte_size'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    partnerIdx: index('partner_agents_partner_idx').on(t.partnerId, t.sortOrder),
+  }),
+)
+
 export const partnerLeaderboardAgents = pgTable(
   'partner_leaderboard_agents',
   {
@@ -506,6 +529,8 @@ export const partnerLeaderboardAgents = pgTable(
     photoMime: text('photo_mime'),
     photoData: bytea('photo_data'),
     photoByteSize: integer('photo_byte_size'),
+    /** The team member this was taken from, where it was. */
+    partnerAgentId: text('partner_agent_id').references(() => partnerAgents.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
   },

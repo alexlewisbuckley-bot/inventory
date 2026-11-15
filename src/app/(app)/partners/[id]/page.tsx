@@ -10,7 +10,8 @@ import { stockForPartner } from '@/server/services/partner-portal-service'
 import { listOrdersForPartner } from '@/server/services/partner-order-service'
 import { OrderHistory } from '@/components/portal/OrderHistory'
 import { LeaderboardList } from '@/components/leaderboard/LeaderboardList'
-import { listLeaderboards } from '@/server/services/leaderboard-service'
+import { listLeaderboards, listTeam } from '@/server/services/leaderboard-service'
+import { TeamManager } from '@/components/leaderboard/TeamManager'
 import { brandVars } from '@/components/portal/ui'
 import { dubaiToday } from '@/lib/delivery'
 import { Card, CardHeader } from '@/components/ui'
@@ -47,7 +48,7 @@ export default async function PartnerPage({ params }: { params: { id: string } }
    * wait. The shortlist picker needs the stock as well, and only where there
    * is a shortlist campaign to pick for.
    */
-  const [recipientPairs, shortlistPairs, stock, orders, leaderboards] = await Promise.all([
+  const [recipientPairs, shortlistPairs, stock, orders, leaderboards, team] = await Promise.all([
     Promise.all(campaigns.map(async (campaign) => [
       campaign.id, await listRecipients(partner.id, campaign.id),
     ] as const)),
@@ -62,6 +63,7 @@ export default async function PartnerPage({ params }: { params: { id: string } }
       : Promise.resolve([]),
     listOrdersForPartner(partner.id),
     listLeaderboards(partner.id),
+    listTeam(partner.id),
   ])
 
   return (
@@ -118,6 +120,19 @@ export default async function PartnerPage({ params }: { params: { id: string } }
           />
         </div>
       </Card>
+
+      {can(user.role, 'partner:manage') && (
+        <Card as="section" className="mb-6">
+          <div id="team" />
+          <CardHeader
+            title="Their agents"
+            description="The partner's team, kept once with photos. Leaderboards take agents from here. They manage the same list under Settings in their portal."
+          />
+          <div className="rounded-b-sm bg-white px-5 py-6 text-black sm:px-6" style={brandVars(partner.brandColor, partner.accentColor)}>
+            <TeamManager scope={{ kind: 'staff', partnerId: partner.id }} team={team} photoBase={`/api/partners/${partner.id}/team-photo`} />
+          </div>
+        </Card>
+      )}
 
       {can(user.role, 'partner:manage') && (
         <Card as="section" className="mb-6">

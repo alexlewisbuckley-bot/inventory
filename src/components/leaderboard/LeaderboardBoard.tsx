@@ -11,7 +11,7 @@ export interface BoardView {
   metricLabel: string
   startsOn: string
   endsOn: string
-  agents: Array<{ id: string; name: string; subtitle: string | null; hasPhoto: boolean; photoVersion?: number | null }>
+  agents: Array<{ id: string; name: string; subtitle: string | null; hasPhoto: boolean; photoVersion?: number | null; partnerAgentId?: string | null }>
   prizes: Array<{
     id: string; name: string; kind: PrizeKind; valueBase: number | null
     rule: PrizeRule; rank: number | null; targetBase: number | null
