@@ -362,6 +362,51 @@ describe('a sale that should have been a commission', () => {
     expect(fn.slice(0, 400)).toMatch(/requireCapability\('sale:delete'\)/)
   })
 
+  it('is offered where somebody works out that it was one', () => {
+    /*
+     * Alex, looking at the correction dialog: "correction of sale cannot be
+     * updated to commision of sale this is a feature we need to include."
+     *
+     * It could, from the row menu — which is not where he was standing. The
+     * correction dialog is where you read the cost and the price and realise
+     * neither was ever the firm's money, and it already lists what it cannot
+     * do ("void it and record it again — that is a different sale, not a
+     * typo") without mentioning this one. So a door out of it, to the same
+     * dialog the row menu opens.
+     */
+    const edit = read('src/components/sales/EditSaleModal.tsx')
+    expect(edit).toContain('Was this a commission rather than a sale of our own watch?')
+    expect(edit).toContain('Record it as a commission…')
+    expect(edit).toContain('onConvertToCommission')
+  })
+
+  it('offers that door only to somebody who may void', () => {
+    // Converting is half a void, and the row menu has always put it behind
+    // the same capability. A second route at a lower bar is the same power
+    // through a side door.
+    expect(table).toContain('onConvertToCommission={canVoid && editTarget ?')
+    // And it hands over the sale that is actually open, not the last one
+    // somebody looked at.
+    expect(table).toMatch(/id: editTarget\.id/)
+    expect(table).toMatch(/invoiceNo: editTarget\.invoiceNo/)
+  })
+
+  it('closes the correction as it opens the commission', () => {
+    // Two dialogs about one sale, stacked, with the one underneath still
+    // offering to save a correction that is about to be voided.
+    const table2 = read('src/components/sales/SalesTable.tsx')
+    /*
+     * The callback body alone. Sliced wider, this passes on the `onClose`
+     * handler sitting two lines below it — which is a different thing
+     * closing a different way, and was exactly what the first version of
+     * this test matched.
+     */
+    const from = table2.indexOf('onConvertToCommission={')
+    const callback = table2.slice(from, table2.indexOf('onClose=', from))
+    expect(callback).toContain('setCommissionTarget({')
+    expect(callback).toContain('setEditTarget(null)')
+  })
+
   it('is offered on a sale row but not on a commission row', () => {
     // A commission row returns its own two verbs before reaching the sale
     // menu at all, which is stronger than filtering an item out of it.
