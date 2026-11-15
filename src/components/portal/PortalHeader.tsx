@@ -41,12 +41,22 @@ export function PortalHeader({ brand, eyebrow, title, subtitle, actions, wide = 
   )
 }
 
-/** The partner's mark, or their name where there is no logo. */
+/**
+ * The partner's mark, or their name where there is no logo.
+ *
+ * A link home to the stock list, as a logo is on every shop — the first
+ * place somebody taps when they want to start again.
+ */
 export function PartnerMark({ token, name, hasLogo }: { token: string; name: string; hasLogo: boolean }) {
-  return hasLogo ? (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img src={`/p/${token}/logo`} alt={name} className="h-11 w-auto shrink-0 object-contain" />
-  ) : (
-    <p className="shrink-0 font-serif text-[28px] leading-none" style={{ color: 'var(--brand)' }}>{name}</p>
+  return (
+    <a href={`/p/${token}`} aria-label={`${name} — back to stock`}
+      className="shrink-0 rounded-[6px] transition-opacity hover:opacity-75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4">
+      {hasLogo ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={`/p/${token}/logo`} alt={name} className="h-11 w-auto object-contain" />
+      ) : (
+        <span className="block font-serif text-[28px] leading-none" style={{ color: 'var(--brand)' }}>{name}</span>
+      )}
+    </a>
   )
 }

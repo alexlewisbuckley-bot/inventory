@@ -1,4 +1,6 @@
-import { BOX_PAPERS_LABELS, type BoxPapers } from '@/lib/enums'
+import {
+  BOX_PAPERS_LABELS, MENS_MIN_MM, WEARS, WEARS_LABELS, WOMENS_MAX_MM, type BoxPapers, type Wears,
+} from '@/lib/enums'
 
 /**
  * One filtering system, shared by the two pages that show watches to
@@ -33,17 +35,48 @@ export interface Filterable {
   bracelet?: string | null
 }
 
+/**
+ * Everything that is ticked.
+ *
+ * Every group is a list, so somebody can ask for Rolex OR Patek, or two price
+ * bands either side of their budget. Within a group the ticks widen the list;
+ * across groups they narrow it — the way every shop filter works.
+ */
 export interface FilterState {
   q: string
-  brand: string
-  /** An index into the price bands this stock produced, or null for any. */
-  band: number | null
-  /** An index into the case-size bands, or null for any. */
-  size: number | null
-  boxPapers: string
+  brands: string[]
+  /** Indexes into the price bands this stock produced. */
+  bands: number[]
+  /** Indexes into the case-size bands. */
+  sizes: number[]
+  boxPapers: string[]
+  /** Men's, women's, or both — read off the case size. */
+  wears: Wears[]
 }
 
-export const NO_FILTERS: FilterState = { q: '', brand: '', band: null, size: null, boxPapers: '' }
+export const NO_FILTERS: FilterState = { q: '', brands: [], bands: [], sizes: [], boxPapers: [], wears: [] }
+
+/** Every tick off, leaving whatever was typed in the search. */
+export function clearTicks(state: FilterState): FilterState {
+  return { ...NO_FILTERS, q: state.q }
+}
+
+/**
+ * Who a watch is for, by the same rule as the catalogue and the website.
+ *
+ * The bands overlap on purpose, so a 36mm piece is both; one with no case
+ * size recorded is neither rather than a guess.
+ */
+export function wearsOf(caseSizeMm: number | null): Wears[] {
+  if (caseSizeMm === null) return []
+  const out: Wears[] = []
+  if (caseSizeMm <= WOMENS_MAX_MM) out.push('WOMENS')
+  if (caseSizeMm >= MENS_MIN_MM) out.push('MENS')
+  return out
+}
+
+const toggle = <T,>(list: T[], value: T): T[] =>
+  list.includes(value) ? list.filter((v) => v !== value) : [...list, value]
 
 export interface Band {
   label: string
@@ -172,18 +205,19 @@ export function matches(
   bands: { price: Counted[]; size: Counted[] },
 ): boolean {
   if (state.q.trim() && !matchesSearch(searchable(item), state.q)) return false
-  if (state.brand && item.brandName !== state.brand) return false
-  if (state.boxPapers && item.boxPapers !== state.boxPapers) return false
+  if (state.brands.length && !state.brands.includes(item.brandName)) return false
+  if (state.boxPapers.length && !state.boxPapers.includes(item.boxPapers ?? '')) return false
+  if (state.wears.length && !wearsOf(item.caseSizeMm).some((w) => state.wears.includes(w))) return false
 
-  const price = state.band !== null ? bands.price[state.band] : null
-  if (price && !inBand(item.priceGbp, price)) return false
+  const prices = state.bands.map((i) => bands.price[i]).filter(Boolean) as Counted[]
+  if (prices.length && !prices.some((band) => inBand(item.priceGbp, band))) return false
 
-  const size = state.size !== null ? bands.size[state.size] : null
-  if (size) {
+  const sizes = state.sizes.map((i) => bands.size[i]).filter(Boolean) as Counted[]
+  if (sizes.length) {
     // A watch with no measurement recorded is not "under 36mm", it is
     // unknown — and putting it in a band would be us making the number up.
     if (item.caseSizeMm === null) return false
-    if (!inBand(item.caseSizeMm, size)) return false
+    if (!sizes.some((band) => inBand(item.caseSizeMm!, band))) return false
   }
 
   return true
@@ -207,7 +241,7 @@ export interface Option {
 }
 
 export interface Group {
-  key: 'brand' | 'price' | 'size' | 'boxPapers'
+  key: 'wears' | 'brand' | 'price' | 'size' | 'boxPapers'
   title: string
   options: Option[]
   /** Whether anything in this group is on, for its own clear link. */
@@ -252,53 +286,73 @@ export function buildGroups(items: Filterable[], state: FilterState): Group[] {
     .map((item) => item.boxPapers)
     .filter((value): value is string => Boolean(value) && value !== 'UNKNOWN'))].sort()
 
+  /*
+   * Each count is what that one option would show alongside everything
+   * ticked in the OTHER groups — so a ticked row keeps its own number and an
+   * unticked one says what adding it would bring, not zero.
+   */
   const groups: Group[] = [
+    {
+      key: 'wears',
+      title: "Men's & women's",
+      active: state.wears.length > 0,
+      clear: { wears: [] },
+      options: WEARS
+        .filter((w) => items.some((item) => wearsOf(item.caseSizeMm).includes(w)))
+        .sort((a, b) => (a === 'MENS' ? -1 : b === 'MENS' ? 1 : 0))
+        .map((w) => ({
+          label: WEARS_LABELS[w],
+          count: countWith({ wears: [w] }),
+          on: state.wears.includes(w),
+          patch: { wears: toggle(state.wears, w) },
+        })),
+    },
     {
       key: 'brand',
       title: 'Brand',
-      active: state.brand !== '',
-      clear: { brand: '' },
+      active: state.brands.length > 0,
+      clear: { brands: [] },
       options: brands.map((name) => ({
         label: name,
-        count: countWith({ brand: name }),
-        on: state.brand === name,
-        patch: { brand: state.brand === name ? '' : name },
+        count: countWith({ brands: [name] }),
+        on: state.brands.includes(name),
+        patch: { brands: toggle(state.brands, name) },
       })),
     },
     {
       key: 'price',
       title: 'Price',
-      active: state.band !== null,
-      clear: { band: null },
+      active: state.bands.length > 0,
+      clear: { bands: [] },
       options: bands.price.map((band, index) => ({
         label: band.label,
-        count: countWith({ band: index }),
-        on: state.band === index,
-        patch: { band: state.band === index ? null : index },
+        count: countWith({ bands: [index] }),
+        on: state.bands.includes(index),
+        patch: { bands: toggle(state.bands, index) },
       })),
     },
     {
       key: 'size',
       title: 'Case size',
-      active: state.size !== null,
-      clear: { size: null },
+      active: state.sizes.length > 0,
+      clear: { sizes: [] },
       options: bands.size.map((band, index) => ({
         label: band.label,
-        count: countWith({ size: index }),
-        on: state.size === index,
-        patch: { size: state.size === index ? null : index },
+        count: countWith({ sizes: [index] }),
+        on: state.sizes.includes(index),
+        patch: { sizes: toggle(state.sizes, index) },
       })),
     },
     {
       key: 'boxPapers',
       title: 'Box & papers',
-      active: state.boxPapers !== '',
-      clear: { boxPapers: '' },
+      active: state.boxPapers.length > 0,
+      clear: { boxPapers: [] },
       options: boxes.map((value) => ({
         label: BOX_PAPERS_LABELS[value as BoxPapers] ?? value,
-        count: countWith({ boxPapers: value }),
-        on: state.boxPapers === value,
-        patch: { boxPapers: state.boxPapers === value ? '' : value },
+        count: countWith({ boxPapers: [value] }),
+        on: state.boxPapers.includes(value),
+        patch: { boxPapers: toggle(state.boxPapers, value) },
       })),
     },
   ]
@@ -315,12 +369,8 @@ export function buildGroups(items: Filterable[], state: FilterState): Group[] {
 
 /** How many filters are on, for the badge on the button that opens them. */
 export function activeCount(state: FilterState): number {
-  return [
-    state.brand !== '',
-    state.band !== null,
-    state.size !== null,
-    state.boxPapers !== '',
-  ].filter(Boolean).length
+  return state.brands.length + state.bands.length + state.sizes.length
+    + state.boxPapers.length + state.wears.length
 }
 
 export interface Pill {
@@ -339,18 +389,17 @@ export function pillsFor(items: Filterable[], state: FilterState): Pill[] {
   const bands = { price: priceBands(items), size: sizeBands(items) }
   return [
     ...(state.q ? [{ label: `“${state.q}”`, patch: { q: '' } }] : []),
-    ...(state.brand ? [{ label: state.brand, patch: { brand: '' } }] : []),
-    ...(state.band !== null && bands.price[state.band]
-      ? [{ label: bands.price[state.band].label, patch: { band: null } }]
-      : []),
-    ...(state.size !== null && bands.size[state.size]
-      ? [{ label: bands.size[state.size].label, patch: { size: null } }]
-      : []),
-    ...(state.boxPapers
-      ? [{
-        label: BOX_PAPERS_LABELS[state.boxPapers as BoxPapers] ?? state.boxPapers,
-        patch: { boxPapers: '' },
-      }]
-      : []),
+    ...state.wears.map((w) => ({ label: WEARS_LABELS[w], patch: { wears: toggle(state.wears, w) } })),
+    ...state.brands.map((name) => ({ label: name, patch: { brands: toggle(state.brands, name) } })),
+    ...state.bands.filter((i) => bands.price[i]).map((i) => ({
+      label: bands.price[i]!.label, patch: { bands: toggle(state.bands, i) },
+    })),
+    ...state.sizes.filter((i) => bands.size[i]).map((i) => ({
+      label: bands.size[i]!.label, patch: { sizes: toggle(state.sizes, i) },
+    })),
+    ...state.boxPapers.map((value) => ({
+      label: BOX_PAPERS_LABELS[value as BoxPapers] ?? value,
+      patch: { boxPapers: toggle(state.boxPapers, value) },
+    })),
   ]
 }

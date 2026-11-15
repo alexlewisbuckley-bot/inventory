@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { PARTNER_ORDER_STATUSES, PARTNER_ORDER_STATUS_LABELS } from '@/lib/enums'
 import { partnerPrice } from '@/lib/partner-rate'
 import {
-  activeCount, applyFilters, buildGroups, priceBands, sizeBands, NO_FILTERS,
+  activeCount, applyFilters, buildGroups, priceBands, sizeBands, wearsOf, NO_FILTERS,
 } from '@/components/portal/filters'
 import { can } from '@/lib/permissions'
 
@@ -531,7 +531,7 @@ describe('finding something in two hundred watches', () => {
     expect(open.find((group) => group.key === 'size')?.options.map((option) => option.count))
       .toEqual([1, 2])
 
-    const rolexOnly = buildGroups(items, { ...NO_FILTERS, brand: 'Rolex' })
+    const rolexOnly = buildGroups(items, { ...NO_FILTERS, brands: ['Rolex'] })
     expect(rolexOnly.find((group) => group.key === 'size')?.options.map((option) => option.count))
       .toEqual([1, 1])
   })
@@ -545,7 +545,7 @@ describe('finding something in two hundred watches', () => {
         { ...BARE, brandName: 'Rolex', caseSizeMm: 41 },
         { ...BARE, brandName: 'Patek Philippe', caseSizeMm: 36 },
       ],
-      { ...NO_FILTERS, size: 0 },
+      { ...NO_FILTERS, sizes: [0] },
     )
     const rolex = groups.find((group) => group.key === 'brand')?.options
       .find((option) => option.label === 'Rolex')
@@ -581,7 +581,7 @@ describe('finding something in two hundred watches', () => {
   it('counts what is on for the button that opens the sheet', () => {
     // So a closed sheet with two filters in it does not look empty.
     expect(rail).toContain('const applied = activeCount(state)')
-    expect(activeCount({ ...NO_FILTERS, brand: 'Rolex', size: 1 })).toBe(2)
+    expect(activeCount({ ...NO_FILTERS, brands: ['Rolex'], sizes: [1] })).toBe(2)
     expect(activeCount(NO_FILTERS)).toBe(0)
   })
 
@@ -655,7 +655,7 @@ describe('finding something in two hundred watches', () => {
     // unknown, and putting it in a band would be us making the number up.
     const items = [{ ...BARE, caseSizeMm: null }, { ...BARE, caseSizeMm: 26 }]
     const bands = { price: priceBands(items), size: sizeBands(items) }
-    expect(applyFilters(items, { ...NO_FILTERS, size: 0 }, bands)).toHaveLength(1)
+    expect(applyFilters(items, { ...NO_FILTERS, sizes: [0] }, bands)).toHaveLength(1)
     expect(applyFilters(items, NO_FILTERS, bands)).toHaveLength(2)
   })
 
@@ -781,5 +781,44 @@ describe('who may do any of this', () => {
     // door with it.
     expect(gate).toContain('enterPortalAction.bind(null, token)')
     expect(gate).not.toMatch(/type="hidden"[^>]*token/)
+  })
+})
+
+describe('multi-select and who it is for', () => {
+  const base = { model: null, modelName: null, dial: null, year: null, boxPapers: null, priceGbp: 1 }
+  const items = [
+    { ...base, brandName: 'Rolex', caseSizeMm: 41 },
+    { ...base, brandName: 'Patek Philippe', caseSizeMm: 36 },
+    { ...base, brandName: 'Cartier', caseSizeMm: 31 },
+    { ...base, brandName: 'Omega', caseSizeMm: null },
+  ]
+  const bands = { price: priceBands(items), size: sizeBands(items) }
+
+  it('widens within a group', () => {
+    expect(applyFilters(items, { ...NO_FILTERS, brands: ['Rolex', 'Cartier'] }, bands)).toHaveLength(2)
+  })
+
+  it("splits men's and women's by case size, with an overlap", () => {
+    expect(wearsOf(41)).toEqual(['MENS'])
+    expect(wearsOf(36)).toEqual(['WOMENS', 'MENS'])
+    expect(wearsOf(31)).toEqual(['WOMENS'])
+    expect(wearsOf(null)).toEqual([])
+    expect(applyFilters(items, { ...NO_FILTERS, wears: ['WOMENS'] }, bands).map((i) => i.brandName))
+      .toEqual(['Patek Philippe', 'Cartier'])
+  })
+
+  it('narrows across groups', () => {
+    expect(applyFilters(items, { ...NO_FILTERS, wears: ['MENS'], brands: ['Cartier'] }, bands)).toHaveLength(0)
+  })
+
+  it("keeps a ticked option's own count rather than zeroing it", () => {
+    const groups = buildGroups(items, { ...NO_FILTERS, brands: ['Rolex'] })
+    const brand = groups.find((g) => g.key === 'brand')!
+    expect(brand.options.find((o) => o.label === 'Cartier')!.count).toBe(1)
+    expect(brand.options.find((o) => o.label === 'Rolex')!.on).toBe(true)
+  })
+
+  it('counts every tick on the badge', () => {
+    expect(activeCount({ ...NO_FILTERS, brands: ['Rolex', 'Cartier'], wears: ['MENS'] })).toBe(3)
   })
 })

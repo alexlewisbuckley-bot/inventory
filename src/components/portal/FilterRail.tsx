@@ -2,14 +2,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Search, SlidersHorizontal, X } from 'lucide-react'
 import {
-  activeCount, buildGroups, pillsFor,
+  activeCount, buildGroups, clearTicks, pillsFor,
   type FilterState, type Filterable, type Group, type Option,
 } from './filters'
 import { brandFill, ui } from './ui'
 
 /** Every filter off, leaving whatever was typed in the search. */
-const clearAll = (state: FilterState): FilterState =>
-  ({ ...state, brand: '', band: null, size: null, boxPapers: '' })
+const clearAll = (state: FilterState): FilterState => clearTicks(state)
 
 /**
  * The filter rail.
@@ -177,7 +176,7 @@ function FilterRow({ option, onPick }: { option: Option; onPick: () => void }) {
       aria-pressed={option.on}
       disabled={dead}
       onClick={onPick}
-      className={`group -mx-1.5 flex w-[calc(100%+12px)] items-center gap-2.5 rounded-[8px] px-1.5 py-[5px] text-left transition-colors hover:bg-black/[0.03] ${
+      className={`group -mx-1.5 flex w-[calc(100%+12px)] items-center gap-2.5 rounded-[8px] px-1.5 py-[5px] text-left outline-none transition-colors hover:bg-black/[0.03] focus-visible:ring-2 focus-visible:ring-black/20 ${
         dead ? 'cursor-default opacity-35' : ''
       }`}
     >
