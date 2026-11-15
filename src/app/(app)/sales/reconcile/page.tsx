@@ -82,6 +82,21 @@ export default async function ReconcilePage({ searchParams }: {
       amountBase: sale.amountBase,
       nearest: sale.nearest,
     })),
+    // Every unlinked row, whatever its date: the exceptions list above is
+    // scoped to the file's dates, and using it as the picker's options was
+    // what kept the second sale of a two-watch invoice out of reach.
+    linkable: review.linkable.map((sale) => ({
+      saleId: sale.saleId,
+      kind: sale.kind,
+      label: sale.label,
+      stockNo: sale.stockNo,
+      customerName: sale.customerName,
+      saleDate: formatDate(sale.saleDate),
+      amount: sale.amount,
+      currency: sale.currency,
+      amountBase: sale.amountBase,
+      inWindow: sale.inWindow,
+    })),
     exceptions: review.exceptions.map((issue) => ({
       kind: issue.kind, invoiceNo: issue.invoiceNo, stockNo: issue.stockNo, detail: issue.detail,
     })),

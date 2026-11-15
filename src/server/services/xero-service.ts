@@ -570,9 +570,89 @@ export interface Review {
     /** The closest invoice in the file, and what kept it out. */
     nearest: NearMiss | null
   }>
+  /**
+   * Everything in the book that is not yet on an invoice in this file.
+   *
+   * Not the same list as `unmatchedSales`, and the difference is the whole
+   * of this fix. That one is scoped to the dates the file covers, which is
+   * right for an exceptions report: a month of Xero invoices measured
+   * against the whole book would report every sale the firm has ever made
+   * as missing.
+   *
+   * It is wrong for the picker. Alex: "There is still no way to link two
+   * individual sales to 1 invoice when reconciling with zero." Two watches
+   * invoiced together are routinely sold weeks apart — the invoice goes out
+   * when the second one goes — so the first sale falls outside the window
+   * and was not in the list you choose from. The control was there, the
+   * link layer has split an invoice across several sales since it was
+   * built, and the one sale somebody actually wanted to add was the one the
+   * dropdown did not offer.
+   *
+   * So: every unlinked row, in date order, each saying whether it is inside
+   * the file's dates, and the screen groups them on that.
+   */
+  linkable: Array<{
+    saleId: string; kind: CandidateKind; label: string; stockNo: number | null
+    customerName: string | null; saleDate: Date
+    amount: number | null; currency: CurrencyCode; amountBase: number
+    /** Whether it falls inside the span of invoice dates in this file. */
+    inWindow: boolean
+  }>
   exceptions: ReconcileException[]
   /** How many field changes are waiting to be approved. */
   changeCount: number
+}
+
+/**
+ * Whether a sale falls inside the span of invoice dates in the file.
+ *
+ * Widened by the same three days the matcher allows between an invoice and
+ * the sale behind it. With no dated invoices at all, everything is inside:
+ * a window nothing can satisfy would be a filter that hides the whole book.
+ */
+export function inWindowFor(from: Date | null, to: Date | null) {
+  return (sale: { saleDate: Date }): boolean =>
+    !from || !to || (sale.saleDate >= from && sale.saleDate <= to)
+}
+
+/**
+ * What the picker may offer: every unlinked row, whatever its date.
+ *
+ * Pure, exported and tested directly, because the thing that went wrong
+ * here is invisible from the outside — the control was on the screen and
+ * the one sale somebody wanted was quietly not in it. Alex: "There is still
+ * no way to link two individual sales to 1 invoice when reconciling with
+ * zero."
+ *
+ * A row is excluded only because it is already on an invoice in this file,
+ * which is the one reason that is really a reason. The window decides how
+ * the screen GROUPS them, never whether they are there at all: two watches
+ * invoiced together are routinely sold weeks apart, because the invoice
+ * goes out when the second one goes.
+ */
+export function linkableFrom(
+  candidates: LiveSale[],
+  linkedSaleIds: Set<string>,
+  window: { from: Date | null; to: Date | null },
+): Review['linkable'] {
+  const inside = inWindowFor(window.from, window.to)
+  return candidates
+    .filter((sale) => !linkedSaleIds.has(sale.id))
+    .map((sale) => ({
+      saleId: sale.id,
+      kind: sale.kind,
+      label: sale.label,
+      stockNo: sale.stockNo,
+      customerName: sale.customerName,
+      saleDate: sale.saleDate,
+      amount: sale.saleAmount,
+      currency: sale.saleCurrency,
+      amountBase: sale.amountBase,
+      inWindow: inside(sale),
+    }))
+    // Newest first, so the likely answer is at the top rather than hidden
+    // among a year of older sales.
+    .sort((a, b) => b.saleDate.getTime() - a.saleDate.getTime())
 }
 
 export async function buildReview(importId: string): Promise<Review> {
@@ -711,10 +791,13 @@ export async function buildReview(importId: string): Promise<Review> {
     ? new Date(Math.max(...dates.map((d) => d.getTime())) + 3 * 86_400_000)
     : null
 
+  const inWindow = inWindowFor(from, to)
+
+  const linkable = linkableFrom(candidates, linkedSaleIds, { from, to })
+
   const unmatchedSales = candidates
     .filter((sale) => !linkedSaleIds.has(sale.id))
-    .filter((sale) => !from || !to
-      || (sale.saleDate >= from && sale.saleDate <= to))
+    .filter(inWindow)
     .map((sale) => ({
       saleId: sale.id,
       kind: sale.kind,
@@ -751,6 +834,7 @@ export async function buildReview(importId: string): Promise<Review> {
     skippedRows: header.skippedRows,
     invoices,
     unmatchedSales,
+    linkable,
     exceptions,
     changeCount: invoices.reduce(
       (n, invoice) => n + invoice.sales.reduce((m, sale) => m + sale.changes.length, 0), 0),
