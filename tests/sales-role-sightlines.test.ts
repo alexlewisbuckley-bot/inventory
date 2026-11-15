@@ -92,22 +92,20 @@ describe('the stock list a salesperson opens', () => {
   /*
    * The away list, not the house.
    *
-   * Alex: "DEFAULT SHOULD BE ALL EXCEPT IN TRANSIT AND OVERSEAS." A
-   * salesperson now gets everything within reach rather than one shop — which
-   * is still the stock they can sell today, and includes the piece sitting in
-   * the vault that they could previously not see.
+   * Alex: "DEFAULT SHOULD BE ALL EXCEPT IN TRANSIT AND OVERSEAS", and then,
+   * the day after, that held-away stock should not be on this list at all
+   * rather than filtered off it. So the bar no longer has a view about where
+   * the stock is: a salesperson gets the stock on the books here, because
+   * that is the only stock the list carries.
    */
-  const away = [{ id: 'loc-hk', name: 'Hong Kong' }]
 
   it('offers Sales the stock it can sell and nothing else', () => {
-    const labels = inventoryViews(away, { queues: false }).map((v) => v.label)
-    expect(labels).toEqual(['Stock to hand'])
+    expect(inventoryViews({ queues: false })).toEqual([])
   })
 
   it('still offers the queues to the people whose job they are', () => {
-    const labels = inventoryViews(away, { queues: true }).map((v) => v.label)
-    expect(labels).toContain('Stock to hand')
-    for (const queue of ['All locations', 'Sold', 'Needs a price', 'Register check due', 'Ageing']) {
+    const labels = inventoryViews({ queues: true }).map((v) => v.label)
+    for (const queue of ['Stock you hold', 'Sold', 'Needs a price', 'Register check due', 'Ageing']) {
       expect(labels).toContain(queue)
     }
   })

@@ -495,6 +495,14 @@ async function choicesFor(campaign: {
     eq(watches.status, 'IN_STOCK'),
     isNull(watches.deletedAt),
     sql`${watches.estSaleGbp} IS NOT NULL`,
+    /*
+     * And standing somewhere this company sells from.
+     *
+     * The same hole the portal had, and worse here: a campaign is a watch
+     * promised to a named person, so offering one that is in another country
+     * is a promise made against stock nobody here can put their hands on.
+     */
+    sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
     sql`EXISTS (
       SELECT 1 FROM watch_images i
       WHERE i.watch_id = watches.id AND i.kind = 'WATCH'

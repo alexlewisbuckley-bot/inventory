@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client'
 import { brands, locations, watchImages, watches } from '../db/schema'
 import { getRateTable } from './fx-service'
@@ -192,7 +192,16 @@ export async function syncableWatches(): Promise<SyncWatch[]> {
       // somehow cannot be read should behave the way every location behaved
       // before this switch existed — on the shop. A null here taking stock
       // off the website would be a database join quietly closing the shop.
-      locationPublishes: sql<boolean>`coalesce(${locations.publishToStorefront}, true)`,
+      /*
+       * Both switches, as one answer.
+       *
+       * A location that is not on the books here never publishes, whatever
+       * its own website switch says — otherwise the Hong Kong vault, which
+       * is off our stock list and off the trade catalogue, goes on being
+       * mirrored to the shop because nobody thought to untick a third box.
+       */
+      locationPublishes: sql<boolean>`coalesce(${locations.publishToStorefront}, true)
+        AND coalesce(${locations.isOnHand}, true)`,
       estSaleGbp: watches.estSaleGbp,
       caseSizeMm: watches.caseSizeMm,
       caseMaterial: watches.caseMaterial,
@@ -1460,7 +1469,9 @@ async function withheldLocations(): Promise<Array<{ name: string; count: number 
     .innerJoin(locations, eq(locations.id, watches.locationId))
     .where(and(
       isNull(watches.deletedAt),
-      eq(locations.publishToStorefront, false),
+      // Either switch keeps it off the shop, so either belongs in the count
+      // of what is being withheld and where to go and look at it.
+      or(eq(locations.publishToStorefront, false), eq(locations.isOnHand, false)),
       inArray(watches.status, [...HELD_STATUSES]),
     ))
     .groupBy(locations.name)

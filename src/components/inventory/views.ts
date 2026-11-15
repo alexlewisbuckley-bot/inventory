@@ -31,78 +31,46 @@ export function locationQuery(locationId: string): string {
 }
 
 /**
- * Available stock you could go and fetch today.
+ * The views, which no longer include one about where the stock is.
  *
- * Written as what it excludes rather than what it includes. A location added
- * next year is to hand until somebody says otherwise, so naming the ones that
- * are not keeps a new shop in the default list instead of silently out of it —
- * and the chip reads "Location is not Hong Kong, In transit", which is the
- * question somebody is actually asking.
- */
-export function toHandQuery(awayIds: readonly string[]): string {
-  if (awayIds.length === 0) return AVAILABLE_QUERY
-  return `${AVAILABLE_QUERY}&f=${encodeURIComponent(`locationId:isNot:${awayIds.join('|')}`)}`
-}
-
-/**
- * The views, with the stock you can reach on the front.
+ * There was a "Stock to hand" chip here, carrying a clause that excluded the
+ * locations marked away. Alex, a day later: "if you make a way to hide from
+ * inventory (main dashboard) but trackable only from locations that will be
+ * better so it doesn't show the filter toggle at all and the only way to view
+ * them is through the location itself."
  *
- * Alex: "DEFAULT IS ONE STREET WATCHES BUT DEFAULT SHOULD BE ALL EXCEPT IN
- * TRANSIT AND OVERSEAS FOR EXAMPLE HONG KONG."
+ * He is right, and it is a different promise rather than a tidier version of
+ * the same one. A filter is the list doing something for you that it will
+ * stop doing if you ask — so "All locations" sat one click away, offering
+ * exactly the stock he had just said should not be there. Hiding it in the
+ * repository means there is nothing to switch off, nothing to forget is
+ * switched on, and no chip to explain.
  *
- * It used to open on the first store, which answers "what is on the shelf in
- * front of me" — a fair question, and the wrong one by default for somebody
- * running a shop, a vault and a workshop at once. The list now opens on
- * everything within reach, which is everything except the two kinds of stock
- * that is not: in a courier's bag, or in another country.
- *
- * A view and not a hidden default, for the same reason the sold filter is a
- * view: the clause shows as a chip you can take off, the URL still describes
- * what is on the screen, and "All locations" is one click away. A default
- * that narrows the list without saying so is how somebody concludes a watch
- * has gone missing.
- *
- * Which locations are away is a switch on each one rather than a guess from
- * its type or its country: transit can be read off the type, but whether Hong
- * Kong counts as to hand is a decision about how this business works.
- *
- * `queues` is what separates selling from running the shop. Every view but
- * the house one widens the list past the stock standing in the shop: other
- * locations, sold stock, and the four administrative queues — unpriced,
- * register checks, thin records, ageing. None of those is a salesperson's
- * job, and the bar was offering all seven of them to a role whose work is
- * the shelf in front of them. Turned off, the bar is the shelf and nothing
- * else.
- *
- * With no house configured and no queues there is no bar at all, which is
- * the honest answer: the one view this role has is defined by a location,
- * and nobody has said which location that is.
+ * `queues` is what separates selling from running the shop. Every view here
+ * widens the list past the stock standing in the shop: sold stock, and the
+ * four administrative queues — unpriced, register checks, thin records,
+ * ageing. None of those is a salesperson's job, and the bar was offering all
+ * of them to a role whose work is the shelf in front of them. Turned off,
+ * there is no bar at all.
  */
 export function inventoryViews(
-  away: ReadonlyArray<{ id: string; name: string }>,
   { queues = true }: { queues?: boolean } = {},
 ): readonly BuiltInView[] {
-  /*
-   * With nothing away, "to hand" and "all locations" are the same list, and
-   * two chips for one query is a choice that is not one.
-   */
-  if (away.length === 0) return queues ? INVENTORY_VIEWS : []
-
-  const toHand: BuiltInView = {
-    id: 'to-hand',
-    label: 'Stock to hand',
-    query: toHandQuery(away.map((location) => location.id)),
-    description: `Everything except ${away.map((location) => location.name).join(', ')}`,
-  }
-  return queues ? [toHand, ...INVENTORY_VIEWS] : [toHand]
+  return queues ? INVENTORY_VIEWS : []
 }
 
 export const INVENTORY_VIEWS: readonly BuiltInView[] = [
   {
     id: 'all',
-    label: 'All locations',
+    label: 'Stock you hold',
+    /*
+     * Not "All locations" any more, because it is not all of them: stock
+     * standing somewhere marked away is off this list entirely and is looked
+     * at through that location. A chip promising everything, over a list that
+     * is missing five watches, is the one thing worse than not offering it.
+     */
     query: AVAILABLE_QUERY,
-    description: 'Everything you hold, wherever it is — sold stock has its own view',
+    description: 'Everything on the books here — stock held away is on its location',
   },
   {
     id: 'sold',

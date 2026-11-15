@@ -16,6 +16,7 @@ import { symbolFor, toBase } from '@/lib/currency'
 import { parseMoneyInput } from '@/lib/money'
 import { bookInTrayAction, type TrayLine } from '@/app/actions/tray'
 import type { TrayReadResponse, TrayRow } from '@/app/api/intake/tray/route'
+import type { TraySource } from '@/server/services/tray-ai'
 
 /** Read larger than the gallery files, because a serial is small in frame. */
 const READ_EDGE = 2400
@@ -78,6 +79,9 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
   const [note, setNote] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  /* Which of the three kinds of picture it turned out to be, so the screen
+     can stop telling somebody to check a spreadsheet against its picture. */
+  const [source, setSource] = useState<TraySource>('unclear')
   const [saving, setSaving] = useState(false)
 
   const [supplier, setSupplier] = useState('')
@@ -89,7 +93,8 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
   const read = async (files: File[]) => {
     const images = files.filter(isUploadableImage)
     if (images.length === 0) {
-      setProblem('That was not a photograph. Drop a picture of the watches laid out.')
+      setProblem('That was not an image. Drop a photograph of the watches, their cards, '
+        + 'or a screenshot of the list.')
       return
     }
     setReading(true)
@@ -113,9 +118,18 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
         return
       }
       if (payload.watches.length === 0) {
+        /*
+         * Say what was looked for, not just that it failed.
+         *
+         * "No watches could be made out in that photograph" was the whole
+         * answer to a screenshot of a stock sheet — which read as the
+         * picture being bad, when the reader had simply never been told a
+         * list was a thing it might be shown.
+         */
         setProblem(payload.error
-          ? `They could not be read — ${payload.error}.`
-          : 'No watches could be made out in that photograph.')
+          ? `It could not be read — ${payload.error}.`
+          : 'Nothing could be made out in that picture — no watches, no cards, and no rows '
+            + 'of a list. If it is a screenshot, try one where the headings are legible.')
         return
       }
 
@@ -126,10 +140,22 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
       )
 
       setPreview(URL.createObjectURL(images[0]!))
+      setSource(payload.source)
       setNote(payload.note)
-      setRows(payload.watches.map((watch, index) => toRow(watch, thumbs[index] ?? null, currency)))
+      const read = payload.watches.map((watch, index) => toRow(watch, thumbs[index] ?? null, currency))
+      setRows(read)
+      /*
+       * Move the batch control to whatever the sheet was priced in.
+       *
+       * Otherwise the select at the top says AED over a column of rows the
+       * reader correctly marked USD, and the first nudge of that control —
+       * which moves every row with it — would quietly turn a sheet of
+       * dollars into a sheet of dirhams.
+       */
+      const found = majorityCurrency(read)
+      if (found) setCurrency(found)
     } catch {
-      setProblem('Something went wrong sending that photograph.')
+      setProblem('Something went wrong sending that picture.')
     } finally {
       setReading(false)
     }
@@ -141,7 +167,7 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
   const drop = (key: string) =>
     setRows((current) => current?.filter((row) => row.key !== key) ?? null)
 
-  /** Changing the batch currency moves every row that has not been set apart. */
+  /** Changing the batch currency moves every row with it, set apart or not. */
   const setBatchCurrency = (next: CurrencyCode) => {
     setCurrency(next)
     setRows((current) => current?.map((row) => ({ ...row, currency: next })) ?? null)
@@ -177,8 +203,9 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
   return (
     <Card>
       <CardHeader
-        title="Book in a tray from one photograph"
-        description="A delivery laid out with its cards. Every reference and serial is already in the picture."
+        title="Book in a delivery from one picture"
+        description={'Watches laid out with their cards, the cards on their own, or a screenshot of '
+          + "the seller's list. Whichever it is, the references and serials are already in it."}
       />
       <CardBody className="space-y-5">
         <input
@@ -210,22 +237,29 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
             {reading ? (
               <p className="flex items-center justify-center gap-2 text-small text-content-secondary">
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                Reading the tray…
+                Reading it…
               </p>
             ) : (
-              <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                <Camera className="h-4 w-4 text-content-muted" aria-hidden />
-                <button
-                  type="button"
-                  onClick={() => input.current?.click()}
-                  className="text-small font-bold text-content-accent hover:underline"
-                >
-                  Photograph the tray
-                </button>
-                <span className="text-small text-content-secondary">
-                  or drop the picture here. Each watch needs its own card in shot.
-                </span>
-              </p>
+              <>
+                <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                  <Camera className="h-4 w-4 text-content-muted" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={() => input.current?.click()}
+                    className="text-small font-bold text-content-accent hover:underline"
+                  >
+                    Choose a picture
+                  </button>
+                  <span className="text-small text-content-secondary">or drop one here.</span>
+                </p>
+                {/* The three things it reads, said plainly. Somebody holding a
+                    screenshot of a dealer's sheet has no way of knowing this
+                    screen wants it unless it says so. */}
+                <p className="mx-auto mt-1.5 max-w-sm text-caption text-content-secondary">
+                  The watches laid out with their cards, the cards on their own, or a photograph
+                  or screenshot of the seller&rsquo;s list — a spreadsheet, stock sheet or invoice.
+                </p>
+              </>
             )}
           </div>
         ) : (
@@ -240,10 +274,32 @@ export function TrayIntake({ suppliers, locations, owners, enabled }: {
               <div className="min-w-[16rem] flex-1 space-y-1">
                 <p className="text-small text-content-primary">
                   <span className="font-semibold">
-                    {rows.length} {rows.length === 1 ? 'watch' : 'watches'} read.
+                    {rows.length} {rows.length === 1 ? 'watch' : 'watches'} read
+                    {source === 'list' ? ' from the list' : ''}.
                   </span>{' '}
-                  Check each one against its picture, then book them in.
+                  {/* A tray can be checked against the picture beside each row.
+                      A spreadsheet is checked against its own cells, and
+                      telling somebody to look at a thumbnail of a table row
+                      is advice that reads as a system not knowing what it
+                      just did. */}
+                  {source === 'list'
+                    ? 'Check them against the sheet — anything it did not state is blank — then book them in.'
+                    : 'Check each one against its picture, then book them in.'}
                 </p>
+                {source === 'list' && priced > 0 && (
+                  /*
+                   * Where the money came from, said once.
+                   *
+                   * A sheet's price column is whatever the seller called it,
+                   * and this screen books it as what the shop paid. Those are
+                   * usually the same number and occasionally are not, and the
+                   * difference is only catchable by the person reading it.
+                   */
+                  <p className="text-small text-content-secondary">
+                    {priced} {priced === 1 ? 'price was' : 'prices were'} taken from the sheet as the
+                    cost — check them against what was actually agreed.
+                  </p>
+                )}
                 {dressed > 0 && (
                   <p className="text-small text-content-secondary">
                     {dressed} of them {dressed === 1 ? 'has' : 'have'} a photograph in the library already,
@@ -518,6 +574,23 @@ function Cost({ amount, currency, onAmount, onCurrency, rates, money }: {
   )
 }
 
+/**
+ * The currency most of the rows came back in, where the reader found one.
+ *
+ * Null when nothing was read with a currency of its own, which is every tray
+ * photograph and any sheet that only prints bare numbers — there the batch
+ * control keeps whatever it had, because a default is better than a guess.
+ */
+function majorityCurrency(rows: Row[]): CurrencyCode | null {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    if (parseMoneyInput(row.cost) === null) continue
+    counts.set(row.currency, (counts.get(row.currency) ?? 0) + 1)
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+  return best ? (best[0] as CurrencyCode) : null
+}
+
 function toRow(watch: TrayRow, thumb: string | null, currency: CurrencyCode): Row {
   return {
     libraryImageId: watch.libraryImageId,
@@ -530,13 +603,34 @@ function toRow(watch: TrayRow, thumb: string | null, currency: CurrencyCode): Ro
     serial: watch.serial ?? '',
     brand: watch.brand ?? '',
     modelName: watch.modelName ?? '',
-    // The card's date becomes the watch's year and nothing else: what is
-    // printed after DATE OF PURCHASE is when the first owner bought it.
-    year: yearFromCard(watch.cardDate),
+    /*
+     * A list's own year column first, then the card's date.
+     *
+     * The card's date becomes the watch's year and nothing else: what is
+     * printed after DATE OF PURCHASE is when the first owner bought it. A
+     * stock sheet with a Year column is saying something more direct than
+     * that, so it wins where both are there.
+     */
+    year: watch.year ?? yearFromCard(watch.cardDate),
     dial: watch.dial ?? '',
     caseMaterial: watch.caseMaterial ?? '',
     bracelet: watch.bracelet ?? '',
-    cost: '',
-    currency,
+    /*
+     * What the sheet said, where it said anything.
+     *
+     * This is most of the point of photographing a sheet: without the price
+     * every row still has to be typed by hand, and the picture saved nothing
+     * worth having. It is seeded, not trusted — the column is editable and
+     * the screen totals it in front of somebody before anything is booked.
+     */
+    cost: watch.price ?? '',
+    /*
+     * And the currency it was quoted in, where the sheet made that plain.
+     *
+     * A sheet in dollars read into a batch defaulting to dirhams is the
+     * original complaint about this screen all over again, one step further
+     * back: the number would be right and worth a quarter of what it says.
+     */
+    currency: watch.currency ?? currency,
   }
 }

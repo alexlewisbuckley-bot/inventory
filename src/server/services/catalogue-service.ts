@@ -144,6 +144,17 @@ function offerable() {
     isNull(watches.deletedAt),
     eq(watches.status, 'IN_STOCK'),
     eq(locations.publishToStorefront, true),
+    /*
+     * And on the books here at all.
+     *
+     * Held-away stock is off every outward channel whatever its location's
+     * own switches say, so three settings cannot drift into disagreeing —
+     * which is exactly how Hong Kong ended up off the trade list and still
+     * on the website. Alex: "These should not be shown on the website, in
+     * trade acounts or to the sales staff only watches in the UAE active
+     * should be within that."
+     */
+    eq(locations.isOnHand, true),
   ]
 }
 

@@ -106,6 +106,21 @@ function onOffer() {
   return [
     eq(watches.status, 'IN_STOCK'),
     isNull(watches.deletedAt),
+    /*
+     * And standing somewhere this company sells from.
+     *
+     * There was no condition on the location at all, so a partner was being
+     * offered the Hong Kong vault and whatever was in a courier's bag —
+     * stock that is not on our own stock list, not on the website and not on
+     * the trade catalogue. Alex: "These should not be shown on the website,
+     * in trade acounts or to the sales staff only watches in the UAE active
+     * should be within that."
+     *
+     * A sub-select rather than a condition on the joined row, because the
+     * image door below joins its own way round and the rule has to be the
+     * same in both places.
+     */
+    sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
   ]
 }
 

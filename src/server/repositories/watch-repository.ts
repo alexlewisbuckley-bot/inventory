@@ -189,10 +189,50 @@ const listSelection = {
   )`,
 } as const
 
-function buildFilters(query: WatchQuery): SQL | undefined {
+/**
+ * How far the stock list is allowed to see.
+ *
+ * Not part of the query schema, and deliberately so: the query is parsed from
+ * the URL, and a field there is a field a salesperson can type. This is
+ * settled on the server by what the caller is allowed to do, and there is no
+ * spelling of a link that turns it on.
+ */
+export interface StockScope {
+  /**
+   * Include stock standing somewhere that is not on the books here.
+   *
+   * The location's own page, and nothing else.
+   */
+  heldAway?: boolean
+}
+
+function buildFilters(query: WatchQuery, scope: StockScope = {}): SQL | undefined {
   const clauses: (SQL | undefined)[] = []
 
   if (!query.includeDeleted) clauses.push(isNull(watches.deletedAt))
+
+  /*
+   * Stock held somewhere that is not on the books here.
+   *
+   * Alex: "if you make a way to hide from inventory (main dashboard) but
+   * trackable only from locations that will be better so it doesn't show the
+   * filter toggle at all and the only way to view them is through the
+   * location itself."
+   *
+   * It was a filter with a chip on it, which is a different promise: a filter
+   * is something the list is doing for you and will stop doing if you ask.
+   * What he wants is for this stock not to be on that list, so there is
+   * nothing to switch off and nothing to forget is switched on. The capital
+   * is still his and still counted on the Locations page and in the reports —
+   * it simply is not on the shop floor, so it is not on the shop floor's list.
+   *
+   * Written as a sub-select on the location ids rather than a condition on a
+   * joined `locations` row, because the count query beside this one joins
+   * brands alone, and a WHERE naming a table it has not joined is a 500.
+   */
+  if (!scope.heldAway) {
+    clauses.push(sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`)
+  }
 
   if (query.q) {
     // Free-text across the identifiers staff actually quote to each other:
@@ -415,13 +455,13 @@ function spread(values: number[]): RangeFacet | null {
   return { min, max, buckets }
 }
 
-export async function stockFacets(query: WatchQuery): Promise<StockFacetData> {
+export async function stockFacets(query: WatchQuery, scope: StockScope = {}): Promise<StockFacetData> {
   // The same query with one field's clauses lifted out, which is what makes
   // a count faceted rather than merely filtered.
   const without = (...fields: string[]): SQL | undefined => buildFilters({
     ...query,
     f: (query.f ?? []).filter((clause) => !fields.includes(clause.field)),
-  })
+  }, scope)
 
   const [brandRows, familyRows, dialRows, materialRows, priceRows, sizeRows, wearsRow]
     = await Promise.all([
@@ -525,8 +565,8 @@ function buildOrder(query: WatchQuery): SQL {
 }
 
 /** Paginated, filtered, sorted inventory list. */
-export async function findWatches(query: WatchQuery): Promise<WatchListResult> {
-  const where = buildFilters(query)
+export async function findWatches(query: WatchQuery, scope: StockScope = {}): Promise<WatchListResult> {
+  const where = buildFilters(query, scope)
   const offset = (query.page - 1) * query.perPage
 
   const [rows, totals] = await Promise.all([
@@ -608,8 +648,8 @@ export interface InventorySummary {
   tradeCostGbp: number
 }
 
-export async function summariseInventory(query: WatchQuery): Promise<InventorySummary> {
-  const where = buildFilters(query)
+export async function summariseInventory(query: WatchQuery, scope: StockScope = {}): Promise<InventorySummary> {
+  const where = buildFilters(query, scope)
   const rows = await db
     .select({
       total: count(),
