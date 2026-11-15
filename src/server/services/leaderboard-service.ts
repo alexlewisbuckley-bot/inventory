@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
-  brands, partnerLeaderboardAgents, partnerLeaderboardEntries, partnerLeaderboardPrizes,
+  brands, partnerAgents, partnerLeaderboardAgents, partnerLeaderboardEntries, partnerLeaderboardPrizes,
   partnerLeaderboards, partnerOrders, partners, watches,
 } from '../db/schema'
 import { recordAudit } from './audit'
@@ -108,7 +108,7 @@ export interface LeaderboardFull {
   hasLogo: boolean
   brandColor: string
   accentColor: string
-  agents: Array<{ id: string; name: string; subtitle: string | null; hasPhoto: boolean; photoVersion: number | null }>
+  agents: Array<{ id: string; name: string; subtitle: string | null; hasPhoto: boolean; photoVersion: number | null; partnerAgentId: string | null }>
   prizes: Array<{
     id: string; name: string; kind: PrizeKind; valueBase: number | null
     rule: PrizeRule; rank: number | null; targetBase: number | null
@@ -151,6 +151,7 @@ async function loadFull(where: ReturnType<typeof eq>): Promise<LeaderboardFull |
       hasPhoto: sql<boolean>`${partnerLeaderboardAgents.photoData} is not null`,
       // Changes whenever the photo does, so it can sit in a URL and bust a cache.
       photoVersion: partnerLeaderboardAgents.photoByteSize,
+      partnerAgentId: partnerLeaderboardAgents.partnerAgentId,
     }).from(partnerLeaderboardAgents)
       .where(eq(partnerLeaderboardAgents.leaderboardId, board.id))
       .orderBy(asc(partnerLeaderboardAgents.sortOrder), asc(partnerLeaderboardAgents.createdAt)),
@@ -297,19 +298,74 @@ async function releasePrizeHold(orderId: string, reason: string) {
 export async function addAgent(
   partnerId: string,
   leaderboardId: string,
-  input: { name: string; subtitle: string | null; photo: { data: Buffer; mimeType: string } | null },
+  input: { name: string; subtitle: string | null; photo: { data: Buffer; mimeType: string } | null; saveToTeam?: boolean },
 ) {
   await owned(partnerId, leaderboardId)
   const name = input.name.trim()
   if (!name) throw new ValidationError('Give the agent a name.')
   if (input.photo) assertPhotoAcceptable(input.photo.mimeType, input.photo.data.byteLength)
+  await withTransaction(async () => {
+    const memberId = input.saveToTeam ? await addTeamMember(partnerId, input) : null
+    await db.insert(partnerLeaderboardAgents).values({
+      id: newId(),
+      leaderboardId,
+      name: name.slice(0, 120),
+      subtitle: input.subtitle?.trim().slice(0, 120) || null,
+      photoMime: input.photo?.mimeType ?? null,
+      photoData: input.photo?.data ?? null,
+      photoByteSize: input.photo?.data.byteLength ?? null,
+      partnerAgentId: memberId,
+      sortOrder: await nextAgentOrder(leaderboardId),
+    })
+    await touch(leaderboardId)
+  })
+}
+
+async function nextAgentOrder(leaderboardId: string): Promise<number> {
   const [{ next }] = await db
     .select({ next: sql<number>`coalesce(max(${partnerLeaderboardAgents.sortOrder}), 0) + 1` })
     .from(partnerLeaderboardAgents)
     .where(eq(partnerLeaderboardAgents.leaderboardId, leaderboardId))
-  await db.insert(partnerLeaderboardAgents).values({
-    id: newId(),
-    leaderboardId,
+  return next
+}
+
+/* ------------------------------------------------------------------ team */
+
+export interface TeamMember {
+  id: string
+  name: string
+  subtitle: string | null
+  hasPhoto: boolean
+  photoVersion: number | null
+}
+
+/** A partner's team, in the order they were added. */
+export async function listTeam(partnerId: string): Promise<TeamMember[]> {
+  return db.select({
+    id: partnerAgents.id,
+    name: partnerAgents.name,
+    subtitle: partnerAgents.subtitle,
+    hasPhoto: sql<boolean>`${partnerAgents.photoData} is not null`,
+    photoVersion: partnerAgents.photoByteSize,
+  }).from(partnerAgents)
+    .where(eq(partnerAgents.partnerId, partnerId))
+    .orderBy(asc(partnerAgents.sortOrder), asc(partnerAgents.createdAt))
+}
+
+export async function addTeamMember(
+  partnerId: string,
+  input: { name: string; subtitle: string | null; photo: { data: Buffer; mimeType: string } | null },
+): Promise<string> {
+  const name = input.name.trim()
+  if (!name) throw new ValidationError('Give the agent a name.')
+  if (input.photo) assertPhotoAcceptable(input.photo.mimeType, input.photo.data.byteLength)
+  const [{ next }] = await db
+    .select({ next: sql<number>`coalesce(max(${partnerAgents.sortOrder}), 0) + 1` })
+    .from(partnerAgents).where(eq(partnerAgents.partnerId, partnerId))
+  const id = newId()
+  await db.insert(partnerAgents).values({
+    id,
+    partnerId,
     name: name.slice(0, 120),
     subtitle: input.subtitle?.trim().slice(0, 120) || null,
     photoMime: input.photo?.mimeType ?? null,
@@ -317,7 +373,81 @@ export async function addAgent(
     photoByteSize: input.photo?.data.byteLength ?? null,
     sortOrder: next,
   })
-  await touch(leaderboardId)
+  return id
+}
+
+/** Change a team member. Boards that already took them keep their copy. */
+export async function updateTeamMember(
+  partnerId: string,
+  memberId: string,
+  input: { name: string; subtitle: string | null; photo: { data: Buffer; mimeType: string } | null },
+) {
+  const name = input.name.trim()
+  if (!name) throw new ValidationError('Give the agent a name.')
+  if (input.photo) assertPhotoAcceptable(input.photo.mimeType, input.photo.data.byteLength)
+  const updated = await db.update(partnerAgents).set({
+    name: name.slice(0, 120),
+    subtitle: input.subtitle?.trim().slice(0, 120) || null,
+    ...(input.photo ? {
+      photoMime: input.photo.mimeType, photoData: input.photo.data, photoByteSize: input.photo.data.byteLength,
+    } : {}),
+    updatedAt: new Date(),
+  }).where(and(eq(partnerAgents.id, memberId), eq(partnerAgents.partnerId, partnerId)))
+    .returning({ id: partnerAgents.id })
+  if (updated.length === 0) throw new NotFoundError('That agent')
+}
+
+export async function removeTeamMember(partnerId: string, memberId: string) {
+  await db.delete(partnerAgents).where(and(eq(partnerAgents.id, memberId), eq(partnerAgents.partnerId, partnerId)))
+}
+
+export async function getTeamPhoto(partnerId: string, memberId: string) {
+  const [row] = await db
+    .select({ data: partnerAgents.photoData, mime: partnerAgents.photoMime })
+    .from(partnerAgents)
+    .where(and(eq(partnerAgents.id, memberId), eq(partnerAgents.partnerId, partnerId)))
+    .limit(1)
+  if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
+}
+
+/**
+ * Put team members on a board, as many as were ticked.
+ *
+ * Each becomes the board's own copy — name, title and photo as they stand
+ * today — linked back so the picker knows who is already in. Anybody already
+ * on the board is skipped rather than added twice.
+ */
+export async function addAgentsFromTeam(partnerId: string, leaderboardId: string, memberIds: string[]): Promise<number> {
+  await owned(partnerId, leaderboardId)
+  if (memberIds.length === 0) throw new ValidationError('Choose at least one agent.')
+  return withTransaction(async () => {
+    const members = await db.select().from(partnerAgents)
+      .where(and(eq(partnerAgents.partnerId, partnerId), inArray(partnerAgents.id, memberIds)))
+      .orderBy(asc(partnerAgents.sortOrder))
+    const already = new Set((await db.select({ id: partnerLeaderboardAgents.partnerAgentId })
+      .from(partnerLeaderboardAgents)
+      .where(eq(partnerLeaderboardAgents.leaderboardId, leaderboardId))).map((r) => r.id))
+    let order = await nextAgentOrder(leaderboardId)
+    let added = 0
+    for (const m of members) {
+      if (already.has(m.id)) continue
+      await db.insert(partnerLeaderboardAgents).values({
+        id: newId(),
+        leaderboardId,
+        name: m.name,
+        subtitle: m.subtitle,
+        photoMime: m.photoMime,
+        photoData: m.photoData,
+        photoByteSize: m.photoByteSize,
+        partnerAgentId: m.id,
+        sortOrder: order++,
+      })
+      added++
+    }
+    await touch(leaderboardId)
+    return added
+  })
 }
 
 export async function setAgentPhoto(

@@ -7,7 +7,7 @@ import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import {
   addAgent, addPrize, createLeaderboard, deleteLeaderboard, removeAgent, removePrize, saveWeek,
-  launchLeaderboard, reservePrizeWatch, setAgentPhoto, setLeaderboardPublished, updateAgent,
+  addAgentsFromTeam, addTeamMember, launchLeaderboard, removeTeamMember, reservePrizeWatch, updateTeamMember, setAgentPhoto, setLeaderboardPublished, updateAgent,
   updateLeaderboard, updatePrize,
 } from '@/server/services/leaderboard-service'
 import { isAppError } from '@/lib/errors'
@@ -140,9 +140,11 @@ export async function addAgentAction(
       name: formData.get('name')?.toString() ?? '',
       subtitle: formData.get('subtitle')?.toString() ?? null,
       photo: await fileFrom(formData.get('photo')),
+      saveToTeam: formData.get('saveToTeam') === 'on',
     })
     refresh(scope, partnerId, leaderboardId)
-    return { ok: true, message: 'Agent added.' }
+    refreshTeam(scope, partnerId)
+    return { ok: true, message: formData.get('saveToTeam') === 'on' ? 'Agent added, and saved to your team.' : 'Agent added.' }
   } catch (error) {
     return fail(error, 'That agent could not be added.')
   }
@@ -316,5 +318,100 @@ export async function launchLeaderboardAction(scope: LeaderboardScope, leaderboa
     return { ok: true, message: 'Launched. Figures can go in each week, and you can share the board.' }
   } catch (error) {
     return fail(error, 'That challenge could not be launched.')
+  }
+}
+
+function refreshTeam(scope: LeaderboardScope, partnerId: string) {
+  if (scope.kind === 'portal') revalidatePath(`/p/${scope.token}/settings`)
+  else revalidatePath(`/partners/${partnerId}`)
+}
+
+export async function addAgentsFromTeamAction(
+  scope: LeaderboardScope, leaderboardId: string, memberIds: string[],
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    const added = await addAgentsFromTeam(partnerId, leaderboardId, memberIds)
+    refresh(scope, partnerId, leaderboardId)
+    return {
+      ok: true,
+      message: added === 0 ? 'They are all on this leaderboard already.' : `${added} ${added === 1 ? 'agent' : 'agents'} added.`,
+    }
+  } catch (error) {
+    return fail(error, 'Those agents could not be added.')
+  }
+}
+
+export async function saveTeamMemberAction(
+  scope: LeaderboardScope, memberId: string | null, formData: FormData,
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  const input = {
+    name: formData.get('name')?.toString() ?? '',
+    subtitle: formData.get('subtitle')?.toString() ?? null,
+    photo: await fileFrom(formData.get('photo')),
+  }
+  try {
+    if (memberId) await updateTeamMember(partnerId, memberId, input)
+    else await addTeamMember(partnerId, input)
+    refreshTeam(scope, partnerId)
+    return { ok: true, message: memberId ? 'Saved.' : `${input.name.trim()} added to your team.` }
+  } catch (error) {
+    return fail(error, 'That agent could not be saved.')
+  }
+}
+
+export async function removeTeamMemberAction(scope: LeaderboardScope, memberId: string): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await removeTeamMember(partnerId, memberId)
+    refreshTeam(scope, partnerId)
+    return { ok: true, message: 'Removed from your team. Leaderboards they are on keep them.' }
+  } catch (error) {
+    return fail(error, 'That agent could not be removed.')
+  }
+}
+
+/**
+ * Reserve a whole prize lineup at once.
+ *
+ * One at a time underneath, so a watch that sold in the seconds between the
+ * list rendering and the button is reported by name while the rest are still
+ * held — rather than one gone piece losing the whole lineup.
+ */
+export async function reservePrizeWatchesAction(
+  scope: LeaderboardScope,
+  leaderboardId: string,
+  items: Array<{ watchId: string; label: string; rule: PrizeRule; rank: number | null; target: string }>,
+): Promise<LeaderboardState & { missed?: string[] }> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  if (items.length === 0) return { ok: false, message: 'Choose at least one watch.' }
+  let held = 0
+  const missed: string[] = []
+  for (const item of items) {
+    try {
+      await reservePrizeWatch(partnerId, leaderboardId, {
+        watchId: item.watchId,
+        rule: PRIZE_RULES.includes(item.rule) ? item.rule : 'RANK',
+        rank: item.rule === 'RANK' ? item.rank : null,
+        targetBase: item.rule === 'TARGET' ? money(item.target) : null,
+      })
+      held++
+    } catch (error) {
+      missed.push(`${item.label}: ${isAppError(error) ? error.message : 'could not be reserved'}`)
+      if (!isAppError(error)) logger.error('prize reserve failed', { error: (error as Error).message })
+    }
+  }
+  refresh(scope, partnerId, leaderboardId)
+  if (scope.kind === 'portal') revalidatePath(`/p/${scope.token}`)
+  if (held === 0) return { ok: false, message: missed[0] ?? 'Nothing could be reserved.', missed }
+  return {
+    ok: true,
+    message: `${held} ${held === 1 ? 'watch' : 'watches'} reserved for you as prizes.${missed.length ? ` ${missed.length} could not be: ${missed.join('; ')}` : ''}`,
+    missed,
   }
 }

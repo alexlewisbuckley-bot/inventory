@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireCapability } from '@/server/auth/session'
-import { getLeaderboard } from '@/server/services/leaderboard-service'
+import { getLeaderboard, listTeam } from '@/server/services/leaderboard-service'
 import { stockForPartner } from '@/server/services/partner-portal-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LeaderboardManager } from '@/components/leaderboard/LeaderboardManager'
@@ -24,7 +24,7 @@ export default async function StaffLeaderboardPage({ params }: { params: { id: s
   const board = await getLeaderboard(params.id, params.lbId).catch(() => null)
   if (!board) notFound()
   // What can be reserved as a prize, at this partner's price.
-  const stock = await stockForPartner(board.partnerId)
+  const [stock, team] = await Promise.all([stockForPartner(board.partnerId), listTeam(board.partnerId)])
 
   return (
     <>
@@ -46,8 +46,12 @@ export default async function StaffLeaderboardPage({ params }: { params: { id: s
           today={dubaiToday()}
           stock={stock.map((w) => ({
             id: w.id, brandName: w.brandName, model: w.model, modelName: w.modelName,
-            dial: w.dial, year: w.year, priceGbp: w.priceGbp, imageIds: w.imageIds,
+            dial: w.dial, year: w.year, caseSizeMm: w.caseSizeMm, boxPapers: w.boxPapers,
+            caseMaterial: w.caseMaterial, bracelet: w.bracelet, priceGbp: w.priceGbp, imageIds: w.imageIds,
           }))}
+          team={team}
+          teamPhotoBase={`/api/partners/${params.id}/team-photo`}
+          teamHref={`/partners/${params.id}#team`}
           backHref={`/partners/${params.id}`}
         />
       </div>

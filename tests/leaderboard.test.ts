@@ -84,7 +84,7 @@ describe('who may touch a board', () => {
   const actions = readFileSync('src/app/actions/leaderboards.ts', 'utf8')
 
   it('checks the partner owns the board on every write', () => {
-    for (const fn of ['updateLeaderboard', 'setLeaderboardPublished', 'deleteLeaderboard', 'addAgent', 'setAgentPhoto', 'updateAgent', 'removeAgent', 'addPrize', 'updatePrize', 'removePrize', 'reservePrizeWatch', 'saveWeek']) {
+    for (const fn of ['updateLeaderboard', 'setLeaderboardPublished', 'deleteLeaderboard', 'addAgent', 'setAgentPhoto', 'updateAgent', 'removeAgent', 'addPrize', 'updatePrize', 'removePrize', 'reservePrizeWatch', 'addAgentsFromTeam', 'saveWeek']) {
       const body = service.slice(service.indexOf(`export async function ${fn}(`))
       expect(body.slice(0, body.indexOf('\n}\n')), fn).toMatch(/await owned\(partnerId, leaderboardId\)/)
     }
@@ -133,5 +133,27 @@ describe('launching', () => {
   it('keeps figures and sharing shut until launch', () => {
     expect(service).toContain("throw new ConflictError('Launch the challenge before entering figures")
     expect(service).toContain("throw new ValidationError('Launch the challenge before sharing it")
+  })
+})
+
+describe('the saved team', () => {
+  const service = readFileSync('src/server/services/leaderboard-service.ts', 'utf8')
+  const body = (fn: string) => { const b = service.slice(service.indexOf(`export async function ${fn}(`)); return b.slice(0, b.indexOf('\n}\n')) }
+
+  it('only ever touches the asking partner\'s own people', () => {
+    for (const fn of ['updateTeamMember', 'removeTeamMember', 'getTeamPhoto']) {
+      expect(body(fn), fn).toContain('eq(partnerAgents.partnerId, partnerId)')
+    }
+    expect(body('addAgentsFromTeam')).toContain('eq(partnerAgents.partnerId, partnerId)')
+  })
+
+  it('copies a member onto a board rather than pointing at them, and never twice', () => {
+    expect(body('addAgentsFromTeam')).toContain('photoData: m.photoData')
+    expect(body('addAgentsFromTeam')).toContain('if (already.has(m.id)) continue')
+  })
+
+  it('keeps team photos behind the portal pass and the staff login', () => {
+    expect(readFileSync('src/app/p/[token]/team-photo/[memberId]/route.ts', 'utf8')).toContain('hasPortalPass(')
+    expect(readFileSync('src/app/api/partners/[id]/team-photo/[memberId]/route.ts', 'utf8')).toContain("can(user.role, 'partner:read')")
   })
 })

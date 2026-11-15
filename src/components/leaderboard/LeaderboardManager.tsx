@@ -4,18 +4,23 @@ import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
   BarChart3, Camera, Check, Copy, ExternalLink, Gift, Link2, Lock, Pencil, Plus, Rocket, Search, Settings,
-  Target, Trash2, Trophy, Users, Wallet, Watch as WatchIcon, X,
+  Target, Trash2, Trophy, UserCheck, Users, Wallet, Watch as WatchIcon, X,
 } from 'lucide-react'
 import {
   addAgentAction, addPrizeAction, agentPhotoAction, deleteLeaderboardAction, publishLeaderboardAction,
   removeAgentAction, removePrizeAction, saveLeaderboardAction, saveWeekAction, updateAgentAction,
-  updatePrizeAction, reservePrizeWatchAction, launchLeaderboardAction,
+  updatePrizeAction, reservePrizeWatchesAction, launchLeaderboardAction, addAgentsFromTeamAction,
   type LeaderboardScope, type LeaderboardState,
 } from '@/app/actions/leaderboards'
 import { PRIZE_KINDS, PRIZE_KIND_LABELS } from '@/lib/enums'
 import { launchProblems, weekStartOf, weeksOf } from '@/lib/leaderboard'
 import { ui, brandFill } from '@/components/portal/ui'
+import { SortSelect } from '@/components/portal/FilterRail'
+import {
+  activeCount, applyFilters, buildGroups, priceBands, sizeBands, NO_FILTERS, type FilterState,
+} from '@/components/portal/filters'
 import { LeaderboardBoard, ordinal, type BoardView } from './LeaderboardBoard'
+import type { TeamMemberView } from './TeamManager'
 
 const START: LeaderboardState = { ok: false, message: '' }
 
@@ -25,7 +30,9 @@ export type ManagerBoard = BoardView & { launchedAt: string | null }
 /** A watch that can be chosen as a prize, at the partner's price. */
 export interface PrizeStock {
   id: string; brandName: string; model: string | null; modelName: string | null
-  dial?: string | null; year?: number | null; priceGbp: number; imageIds: string[]
+  dial?: string | null; year?: number | null; caseSizeMm?: number | null; boxPapers?: string | null
+  caseMaterial?: string | null; bracelet?: string | null
+  priceGbp: number; imageIds: string[]
 }
 type Tab = 'board' | 'figures' | 'agents' | 'prizes' | 'settings'
 
@@ -53,8 +60,15 @@ const weekLabel = (iso: string) => {
  * The board sits on the first tab, so whoever enters a week's figures sees
  * what that did straight away.
  */
-export function LeaderboardManager({ scope, board, id, shareToken, isPublished, photoBase, today, backHref, stock }: {
+export function LeaderboardManager({
+  scope, board, id, shareToken, isPublished, photoBase, today, backHref, stock, team, teamPhotoBase, teamHref,
+}: {
   scope: LeaderboardScope
+  /** The partner's saved team, to pick from. */
+  team: TeamMemberView[]
+  teamPhotoBase: string
+  /** Where the team is managed. */
+  teamHref: string
   board: ManagerBoard
   stock: PrizeStock[]
   id: string
@@ -161,7 +175,12 @@ export function LeaderboardManager({ scope, board, id, shareToken, isPublished, 
       {tab === 'figures' && (launched
         ? <Figures scope={scope} id={id} board={board} today={today} onDone={done} />
         : <Empty>Weekly figures open once the challenge is launched — choose the prizes first, then launch it above.</Empty>)}
-      {tab === 'agents' && <Agents scope={scope} id={id} board={board} photoBase={photoBase} onDone={done} />}
+      {tab === 'agents' && (
+        <div className="space-y-6">
+          <TeamPicker scope={scope} id={id} board={board} team={team} teamPhotoBase={teamPhotoBase} teamHref={teamHref} onDone={done} />
+          <Agents scope={scope} id={id} board={board} photoBase={photoBase} onDone={done} />
+        </div>
+      )}
       {tab === 'prizes' && <Prizes scope={scope} id={id} board={board} stock={stock} stockBase={stockBase} onDone={done} />}
       {tab === 'settings' && (
         <SettingsTab scope={scope} id={id} board={board} shareToken={shareToken} isPublished={isPublished}
@@ -336,7 +355,7 @@ function Agents({ scope, id, board, photoBase, onDone }: {
       </div>
 
       <form ref={form} action={action} className={`${ui.card} space-y-3 p-5 lg:sticky lg:top-24 lg:self-start`}>
-        <p className="text-[15px] font-semibold text-black">Add an agent</p>
+        <p className="text-[15px] font-semibold text-black">Someone new</p>
         <label className="block"><span className={ui.label}>Name</span>
           <input name="name" required className={ui.field} placeholder="e.g. Sara Haddad" /></label>
         <label className="block"><span className={ui.label}>Team or title <span className="normal-case tracking-normal text-black/35">· optional</span></span>
@@ -344,6 +363,10 @@ function Agents({ scope, id, board, photoBase, onDone }: {
         <label className="block"><span className={ui.label}>Photo <span className="normal-case tracking-normal text-black/35">· optional</span></span>
           <input name="photo" type="file" accept="image/png,image/jpeg,image/webp"
             className="mt-1.5 block w-full text-[13px] text-black/60 file:mr-3 file:rounded-full file:border-0 file:bg-black/[0.06] file:px-4 file:py-2 file:text-[12.5px] file:font-medium file:text-black hover:file:bg-black/[0.1]" />
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-black/65">
+          <input type="checkbox" name="saveToTeam" defaultChecked className="h-4 w-4 rounded border-black/25 accent-black" />
+          Also save to my team, for future leaderboards
         </label>
         <Submit label="Add agent" />
       </form>
@@ -456,8 +479,8 @@ function Prizes({ scope, id, board, stock, stockBase, onDone }: {
           metricLabel={board.metricLabel}
           busy={pending}
           onCancel={() => setAdding(null)}
-          onReserve={(input) => start(async () => {
-            const result = await reservePrizeWatchAction(scope, id, input)
+          onReserve={(items) => start(async () => {
+            const result = await reservePrizeWatchesAction(scope, id, items)
             onDone(result)
             if (result.ok) setAdding(null)
           })}
@@ -482,9 +505,11 @@ function Prizes({ scope, id, board, stock, stockBase, onDone }: {
 function AddChoice({ icon: Icon, title, sub, onClick }: { icon: typeof Gift; title: string; sub: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick}
-      className="group flex items-center gap-4 rounded-[16px] border border-dashed border-black/20 bg-white p-5 text-left transition hover:border-solid hover:border-black/40 hover:shadow-[0_8px_30px_-18px_rgba(0,0,0,0.35)]">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-black/60 transition group-hover:text-white" style={undefined}>
-        <Icon className="h-5 w-5" aria-hidden />
+      className="group flex items-center gap-4 rounded-[16px] border border-dashed border-black/20 bg-white p-5 text-left transition hover:border-solid hover:border-black/30 hover:bg-black/[0.015] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-black/[0.06]">
+      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.04] text-black/60 transition-colors group-hover:text-white">
+        {/* The partner's colour fades in behind the icon on hover. */}
+        <span className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundColor: 'var(--brand)' }} aria-hidden />
+        <Icon className="relative h-5 w-5" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-[14.5px] font-semibold text-black"><Plus className="h-4 w-4" aria-hidden />{title}</span>
@@ -537,87 +562,236 @@ function HowWon({ rule, setRule, rank, setRank, target, setTarget, metricLabel }
   )
 }
 
-/** Choose a watch from what is available, then reserve it as a prize. */
+type LineupItem = { rule: 'RANK' | 'TARGET'; rank: number; target: string }
+
+/**
+ * Choose the prize watches: a shop-style picker, not a gallery.
+ *
+ * Alex, on the first version: the images were huge and there was no
+ * filtering, so a client hunting for one watch out of two hundred scrolled
+ * through four at a time. This is the stock page's own search and filters —
+ * same words, same counts — over a dense list with small pictures, so a
+ * screen shows ten watches, not four.
+ *
+ * Several can be ticked at once. They line up on the right in the order they
+ * were chosen and take 1st, 2nd, 3rd… automatically, each adjustable or
+ * switched to a target, and are all reserved with one button.
+ */
 function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve, onCancel }: {
   stock: PrizeStock[]; stockBase: string; nextRank: number; metricLabel: string; busy: boolean
-  onReserve: (input: { watchId: string; rule: 'RANK' | 'TARGET'; rank: number | null; target: string }) => void
+  onReserve: (items: Array<{ watchId: string; label: string; rule: 'RANK' | 'TARGET'; rank: number | null; target: string }>) => void
   onCancel: () => void
 }) {
-  const [q, setQ] = useState('')
-  const [picked, setPicked] = useState<string | null>(null)
-  const [rule, setRule] = useState<'RANK' | 'TARGET'>('RANK')
-  const [rank, setRank] = useState(Math.min(nextRank, 10))
-  const [target, setTarget] = useState('')
+  const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
+  const [sort, setSort] = useState<'priceUp' | 'priceDown' | 'brand'>('priceDown')
+  const [order, setOrder] = useState<string[]>([])
+  const [lineup, setLineup] = useState<Record<string, LineupItem>>({})
+
+  const items = useMemo(() => stock.map((w) => ({
+    ...w, dial: w.dial ?? null, year: w.year ?? null, caseSizeMm: w.caseSizeMm ?? null, boxPapers: w.boxPapers ?? null,
+  })), [stock])
   const shown = useMemo(() => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean)
-    return stock.filter((w) => {
-      const hay = [w.brandName, w.model, w.modelName, w.dial, w.year].filter(Boolean).join(' ').toLowerCase()
-      return words.every((word) => hay.includes(word))
-    })
-  }, [stock, q])
-  const chosen = stock.find((w) => w.id === picked) ?? null
+    const bands = { price: priceBands(items), size: sizeBands(items) }
+    const kept = applyFilters(items, filters, bands)
+    return [...kept].sort((a, b) =>
+      sort === 'priceUp' ? a.priceGbp - b.priceGbp
+        : sort === 'priceDown' ? b.priceGbp - a.priceGbp
+          : a.brandName.localeCompare(b.brandName) || (a.model ?? '').localeCompare(b.model ?? ''))
+  }, [items, filters, sort])
+  const groups = useMemo(
+    () => buildGroups(items, filters).filter((g) => g.key === 'wears' || g.key === 'brand' || g.key === 'price'),
+    [items, filters],
+  )
+  const byId = useMemo(() => new Map(stock.map((w) => [w.id, w])), [stock])
+  const total = order.reduce((sum, id) => sum + (byId.get(id)?.priceGbp ?? 0), 0)
+
+  const toggle = (watchId: string) => {
+    if (order.includes(watchId)) {
+      setOrder((o) => o.filter((x) => x !== watchId))
+      setLineup((l) => { const { [watchId]: _gone, ...rest } = l; return rest })
+      return
+    }
+    // The next free position after those already taken, on the board or here.
+    const taken = new Set(Object.values(lineup).filter((i) => i.rule === 'RANK').map((i) => i.rank))
+    let rank = nextRank
+    while (taken.has(rank)) rank++
+    setOrder((o) => [...o, watchId])
+    setLineup((l) => ({ ...l, [watchId]: { rule: 'RANK', rank: Math.min(rank, 20), target: '' } }))
+  }
+  const update = (watchId: string, patch: Partial<LineupItem>) =>
+    setLineup((l) => ({ ...l, [watchId]: { ...l[watchId]!, ...patch } }))
+  const name = (w: PrizeStock) => [w.brandName, w.model, w.modelName].filter(Boolean).join(' ')
+  const missingTarget = order.some((id) => lineup[id]?.rule === 'TARGET' && !lineup[id]?.target.trim())
 
   return (
     <div className={`${ui.card} overflow-hidden`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.06] p-5">
+      <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] px-5 py-3.5">
         <div>
-          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><WatchIcon className="h-4 w-4" aria-hidden />Choose a watch from stock</p>
-          <p className="mt-0.5 text-[12.5px] text-black/50">{stock.length} available at your price. It is reserved for you the moment you add it.</p>
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><WatchIcon className="h-4 w-4" aria-hidden />Choose prize watches</p>
+          <p className="text-[12.5px] text-black/50">Tick one or several. They are reserved for you when you press Reserve.</p>
         </div>
-        <button type="button" onClick={onCancel} className={ui.iconButton} aria-label="Cancel"><X className="h-4 w-4" aria-hidden /></button>
+        <button type="button" onClick={onCancel} className={ui.iconButton} aria-label="Close"><X className="h-4 w-4" aria-hidden /></button>
       </div>
 
-      <div className="p-5">
-        <label className="relative block">
-          <span className="sr-only">Search stock</span>
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search brand, model, reference or dial" autoFocus
-            className="h-11 w-full rounded-full border border-black/12 bg-black/[0.03] pl-11 pr-4 text-[14px] text-black outline-none transition placeholder:text-black/35 focus:border-black/40 focus:bg-white focus:ring-4 focus:ring-black/[0.05]" />
-        </label>
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* The stock: search, filters, a dense list. */}
+        <div className="min-w-0 border-black/[0.06] lg:border-r">
+          <div className="space-y-2.5 border-b border-black/[0.06] p-4">
+            <div className="flex gap-2">
+              <label className="relative min-w-0 flex-1">
+                <span className="sr-only">Search stock</span>
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
+                <input type="search" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} autoFocus
+                  placeholder="Search brand, model, reference or dial"
+                  className="h-10 w-full rounded-full border border-black/12 bg-black/[0.03] pl-10 pr-4 text-[13.5px] text-black outline-none transition placeholder:text-black/35 focus:border-black/40 focus:bg-white focus:ring-4 focus:ring-black/[0.05] [&::-webkit-search-cancel-button]:hidden" />
+              </label>
+              <SortSelect value={sort} onChange={setSort} options={[
+                { value: 'priceDown', label: 'Price, highest first' },
+                { value: 'priceUp', label: 'Price, lowest first' },
+                { value: 'brand', label: 'Brand A–Z' },
+              ]} />
+            </div>
+            {groups.map((group) => (
+              <div key={group.key} className="flex items-center gap-2">
+                <span className="w-[52px] shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-black/35">
+                  {group.key === 'wears' ? 'For' : group.title}
+                </span>
+                <div className="-my-1 flex min-w-0 gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {group.options.map((option) => (
+                    <button key={option.label} type="button" aria-pressed={option.on}
+                      disabled={option.count === 0 && !option.on}
+                      onClick={() => setFilters({ ...filters, ...option.patch })}
+                      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition disabled:opacity-35 ${
+                        option.on ? 'border-transparent font-medium text-white' : 'border-black/10 bg-white text-black/70 hover:border-black/30'
+                      }`}
+                      style={option.on ? brandFill : undefined}>
+                      {option.label}
+                      <span className={`tabular-nums ${option.on ? 'text-white/65' : 'text-black/35'}`}>{option.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between text-[12px] text-black/45">
+              <span>{shown.length === stock.length ? `${stock.length} watches` : `${shown.length} of ${stock.length}`}</span>
+              {(activeCount(filters) > 0 || filters.q) && (
+                <button type="button" onClick={() => setFilters(NO_FILTERS)} className="underline underline-offset-2 hover:text-black">Clear filters</button>
+              )}
+            </div>
+          </div>
 
-        <ul className="mt-4 grid max-h-[460px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4" role="listbox" aria-label="Available watches">
-          {shown.length === 0 && <li className="col-span-full py-10 text-center text-[13.5px] text-black/45">Nothing matches that.</li>}
-          {shown.map((w) => {
-            const on = w.id === picked
-            return (
-              <li key={w.id} role="option" aria-selected={on}>
-                <button type="button" onClick={() => setPicked(on ? null : w.id)}
-                  className={`relative flex w-full flex-col rounded-[14px] border bg-white p-2.5 text-left transition ${on ? 'border-transparent ring-2' : 'border-black/10 hover:border-black/30'}`}
-                  style={on ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}>
-                  <span className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-[10px] bg-black/[0.025]">
-                    {w.imageIds[0]
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" loading="lazy" className="h-full w-full object-contain p-2 mix-blend-multiply" />
-                      : <WatchIcon className="h-6 w-6 text-black/20" aria-hidden />}
-                  </span>
-                  <span className="mt-2 line-clamp-2 min-h-[2.5em] text-[12.5px] font-semibold leading-snug text-black">
-                    {[w.brandName, w.model, w.modelName].filter(Boolean).join(' ')}
-                  </span>
-                  <span className="mt-0.5 text-[12.5px] tabular-nums text-black/55">{aed(w.priceGbp)}</span>
-                  {on && (
-                    <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-white shadow" style={brandFill}>
-                      <Check className="h-3.5 w-3.5" aria-hidden />
+          <ul className="max-h-[min(56vh,520px)] divide-y divide-black/[0.05] overflow-y-auto" role="listbox" aria-multiselectable="true" aria-label="Available watches">
+            {shown.length === 0 && <li className="px-5 py-12 text-center text-[13.5px] text-black/45">Nothing matches. Try clearing a filter.</li>}
+            {shown.map((w) => {
+              const on = order.includes(w.id)
+              return (
+                <li key={w.id} role="option" aria-selected={on}>
+                  <button type="button" onClick={() => toggle(w.id)}
+                    className={`flex w-full items-center gap-3 px-4 py-2 text-left transition ${on ? 'bg-black/[0.035]' : 'hover:bg-black/[0.02]'}`}>
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition ${on ? 'border-transparent text-white' : 'border-black/20 bg-white'}`}
+                      style={on ? brandFill : undefined}>
+                      {on && <Check className="h-3 w-3" aria-hidden />}
                     </span>
-                  )}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-black/[0.03]">
+                      {w.imageIds[0]
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" loading="lazy" className="h-full w-full object-contain p-0.5 mix-blend-multiply" />
+                        : <WatchIcon className="h-4 w-4 text-black/20" aria-hidden />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13.5px] font-semibold text-black">{[w.brandName, w.model].filter(Boolean).join(' ')}</span>
+                      <span className="block truncate text-[12px] text-black/45">
+                        {[w.modelName, w.year, w.caseSizeMm ? `${w.caseSizeMm}mm` : null, w.dial].filter(Boolean).join(' · ') || '\u00a0'}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-right text-[13.5px] font-semibold tabular-nums text-black">{aed(w.priceGbp)}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
 
-      <div className={`border-t border-black/[0.06] bg-black/[0.015] p-5 transition-opacity ${chosen ? '' : 'pointer-events-none opacity-40'}`} aria-disabled={!chosen}>
-        <HowWon rule={rule} setRule={setRule} rank={rank} setRank={setRank} target={target} setTarget={setTarget} metricLabel={metricLabel} />
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] text-black/60">
-            {chosen
-              ? <><span className="font-semibold text-black">{[chosen.brandName, chosen.model].filter(Boolean).join(' ')}</span> · {aed(chosen.priceGbp)}</>
-              : 'Choose a watch above.'}
-          </p>
-          <button type="button" disabled={!chosen || busy} className={ui.primary} style={brandFill}
-            onClick={() => chosen && onReserve({ watchId: chosen.id, rule, rank: rule === 'RANK' ? rank : null, target })}>
-            <Lock className="h-4 w-4" aria-hidden />{busy ? 'Reserving…' : 'Reserve as prize'}
-          </button>
+        {/* The lineup: what is chosen, and how each is won. */}
+        <div className="flex flex-col bg-black/[0.015]">
+          <div className="flex items-baseline justify-between px-5 pb-2 pt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/45">Prize lineup</p>
+            {order.length > 0 && <p className="text-[12.5px] tabular-nums text-black/55">{aed(total)}</p>}
+          </div>
+          {order.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/[0.05] text-black/35"><Trophy className="h-5 w-5" aria-hidden /></span>
+              <p className="mt-3 text-[13.5px] font-medium text-black/70">Nothing chosen yet</p>
+              <p className="mt-1 text-[12.5px] text-black/45">Tick watches on the left. They will be numbered 1st, 2nd, 3rd in the order you choose them.</p>
+            </div>
+          ) : (
+            <ol className="max-h-[min(52vh,480px)] flex-1 space-y-2 overflow-y-auto px-4 pb-3">
+              {order.map((watchId) => {
+                const w = byId.get(watchId)!
+                const item = lineup[watchId]!
+                return (
+                  <li key={watchId} className="rounded-[12px] border border-black/10 bg-white p-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-black/[0.03]">
+                        {w.imageIds[0]
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                          : <WatchIcon className="h-4 w-4 text-black/20" aria-hidden />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-semibold text-black">{name(w)}</span>
+                        <span className="block text-[12px] tabular-nums text-black/50">{aed(w.priceGbp)}</span>
+                      </span>
+                      <button type="button" onClick={() => toggle(watchId)} className={`${ui.iconButton} !h-7 !w-7`} aria-label={`Remove ${name(w)}`}>
+                        <X className="h-3.5 w-3.5" aria-hidden />
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="inline-flex shrink-0 rounded-full bg-black/[0.05] p-0.5 text-[11.5px]">
+                        {(['RANK', 'TARGET'] as const).map((r) => (
+                          <button key={r} type="button" onClick={() => update(watchId, { rule: r })} aria-pressed={item.rule === r}
+                            className={`rounded-full px-2.5 py-1 font-medium transition ${item.rule === r ? 'bg-white text-black shadow-sm' : 'text-black/50 hover:text-black'}`}>
+                            {r === 'RANK' ? 'Position' : 'Target'}
+                          </button>
+                        ))}
+                      </div>
+                      {item.rule === 'RANK' ? (
+                        <div className="ml-auto flex items-center rounded-full border border-black/12 bg-white">
+                          <button type="button" aria-label="Higher position" disabled={item.rank <= 1}
+                            onClick={() => update(watchId, { rank: item.rank - 1 })}
+                            className="flex h-7 w-7 items-center justify-center text-black/50 hover:text-black disabled:opacity-25">−</button>
+                          <span className="min-w-[44px] text-center text-[12.5px] font-semibold tabular-nums text-black">{ordinal(item.rank)}</span>
+                          <button type="button" aria-label="Lower position" disabled={item.rank >= 20}
+                            onClick={() => update(watchId, { rank: item.rank + 1 })}
+                            className="flex h-7 w-7 items-center justify-center text-black/50 hover:text-black disabled:opacity-25">+</button>
+                        </div>
+                      ) : (
+                        <label className="relative ml-auto min-w-0 flex-1">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] text-black/40">AED</span>
+                          <input inputMode="decimal" value={item.target} placeholder="500,000" aria-label={`Target ${metricLabel.toLowerCase()} for ${name(w)}`}
+                            onChange={(e) => update(watchId, { target: e.target.value })}
+                            className="h-7 w-full rounded-full border border-black/12 bg-white pl-10 pr-3 text-[12.5px] tabular-nums text-black outline-none focus:border-black/40" />
+                        </label>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+          <div className="mt-auto border-t border-black/[0.06] p-4">
+            <button type="button" disabled={order.length === 0 || missingTarget || busy} className={`w-full ${ui.primary}`} style={brandFill}
+              onClick={() => onReserve(order.map((watchId) => {
+                const item = lineup[watchId]!
+                return { watchId, label: name(byId.get(watchId)!), rule: item.rule, rank: item.rule === 'RANK' ? item.rank : null, target: item.target }
+              }))}>
+              <Lock className="h-4 w-4" aria-hidden />
+              {busy ? 'Reserving…' : order.length > 1 ? `Reserve all ${order.length}` : 'Reserve as prize'}
+            </button>
+            <p className="mt-2 text-center text-[11.5px] text-black/40">
+              {missingTarget ? 'Set an amount for each target prize.' : 'Held for you until the challenge ends. Nothing is charged now.'}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -883,5 +1057,106 @@ function PrizeFields({ prize, metricLabel, busy, onSave, onCancel }: {
         </button>
       </div>
     </form>
+  )
+}
+
+/**
+ * Take agents from the saved team: tick some, or all, and add.
+ *
+ * Who is already on this board is shown as such and cannot be ticked, so
+ * "Select all" always means everybody who is not here yet — the button can
+ * be pressed on a half-built board without adding anybody twice.
+ */
+function TeamPicker({ scope, id, board, team, teamPhotoBase, teamHref, onDone }: {
+  scope: LeaderboardScope; id: string; board: BoardView; team: TeamMemberView[]
+  teamPhotoBase: string; teamHref: string; onDone: (r: LeaderboardState) => void
+}) {
+  const onBoard = new Set(board.agents.map((a) => a.partnerAgentId).filter(Boolean) as string[])
+  const available = team.filter((m) => !onBoard.has(m.id))
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [pending, start] = useTransition()
+  const allPicked = available.length > 0 && available.every((m) => picked.has(m.id))
+  const toggle = (memberId: string) => setPicked((cur) => {
+    const next = new Set(cur)
+    if (next.has(memberId)) next.delete(memberId)
+    else next.add(memberId)
+    return next
+  })
+
+  if (team.length === 0) {
+    return (
+      <div className={`${ui.card} flex flex-wrap items-center justify-between gap-3 p-5`}>
+        <div>
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><Users className="h-4 w-4" aria-hidden />Add from your team</p>
+          <p className="mt-0.5 text-[13px] text-black/55">
+            Save your agents and their photos once in Settings, and every leaderboard can take them with a tick.
+          </p>
+        </div>
+        <a href={teamHref} className={ui.outline}>Set up your team</a>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${ui.card} overflow-hidden`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.06] px-5 py-4">
+        <div>
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><Users className="h-4 w-4" aria-hidden />Add from your team</p>
+          <p className="mt-0.5 text-[12.5px] text-black/50">
+            {onBoard.size > 0 ? `${onBoard.size} of ${team.length} already on this leaderboard.` : `${team.length} saved.`}{' '}
+            <a href={teamHref} className="underline underline-offset-2 hover:text-black">Manage your team</a>
+          </p>
+        </div>
+        {available.length > 0 && (
+          <div className="flex items-center gap-2">
+            <button type="button" className={ui.ghost}
+              onClick={() => setPicked(allPicked ? new Set() : new Set(available.map((m) => m.id)))}>
+              {allPicked ? 'Clear' : `Select all ${available.length}`}
+            </button>
+            <button type="button" disabled={picked.size === 0 || pending} className={ui.primary} style={brandFill}
+              onClick={() => start(async () => {
+                const result = await addAgentsFromTeamAction(scope, id, [...picked])
+                onDone(result)
+                if (result.ok) setPicked(new Set())
+              })}>
+              <Plus className="h-4 w-4" aria-hidden />
+              {pending ? 'Adding…' : picked.size ? `Add ${picked.size} ${picked.size === 1 ? 'agent' : 'agents'}` : 'Add'}
+            </button>
+          </div>
+        )}
+      </div>
+      <ul className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" role="group" aria-label="Your team">
+        {team.map((member) => {
+          const here = onBoard.has(member.id)
+          const on = picked.has(member.id)
+          return (
+            <li key={member.id}>
+              <button type="button" disabled={here} aria-pressed={on} onClick={() => toggle(member.id)}
+                className={`flex w-full items-center gap-3 rounded-[12px] border p-2.5 text-left transition ${
+                  here ? 'cursor-default border-transparent bg-black/[0.03] opacity-60'
+                    : on ? 'border-transparent bg-white ring-2' : 'border-black/10 bg-white hover:border-black/30'
+                }`}
+                style={on ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/[0.06] text-[13px] font-semibold text-black/45">
+                  {member.hasPhoto
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    ? <img src={`${teamPhotoBase}/${member.id}?v=${member.photoVersion ?? 0}`} alt="" className="h-full w-full object-cover" />
+                    : member.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-semibold text-black">{member.name}</span>
+                  <span className="block truncate text-[12px] text-black/45">{here ? 'On this leaderboard' : member.subtitle || '\u00a0'}</span>
+                </span>
+                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                  here ? 'border-transparent text-black/40' : on ? 'border-transparent text-white' : 'border-black/20'
+                }`} style={on ? brandFill : undefined}>
+                  {here ? <UserCheck className="h-4 w-4" aria-hidden /> : on && <Check className="h-3 w-3" aria-hidden />}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
