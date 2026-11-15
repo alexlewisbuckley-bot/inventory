@@ -95,39 +95,20 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                       ].filter(Boolean).join(' · ') || 'No address recorded'}
                     </p>
                   </div>
-                  {/* Two different facts, and only the unusual halves are
-                      worth a chip. Active is the state of the place; off the
-                      website is the state of what is in it, and a card that
-                      said "On the website" on all four of them would be
-                      saying nothing while taking up the room that matters. */}
+                  {/*
+                    One chip, for the one switch.
+
+                    There were three — Active, off the website, off the trade
+                    list — for settings that now move together, so the card
+                    was spending its header on three ways of saying the same
+                    thing. "Active" is read off the switch that actually
+                    decides it rather than the decorative column of the same
+                    name, which nothing in the application has ever read.
+                  */}
                   <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <Chip tone={location.isActive ? 'accent' : 'neutral'} dot={location.isActive}>
-                      {location.isActive ? 'Active' : 'Inactive'}
+                    <Chip tone={location.isOnHand ? 'accent' : 'neutral'} dot={location.isOnHand}>
+                      {location.isOnHand ? 'Active' : 'Inactive'}
                     </Chip>
-                    {!location.publishToStorefront && (
-                      <Chip tone="neutral">Not on the website</Chip>
-                    )}
-                    {!location.showInTradeCatalogue && (
-                      <Chip tone="neutral">Not on the trade list</Chip>
-                    )}
-                    {/*
-                      * And whether this location's stock is on the books here.
-                      *
-                      * It was the one of the three settings with nothing on
-                      * the card, so the only way to see it was to open the
-                      * row and look — which is why it kept being asked for
-                      * rather than ticked.
-                      *
-                      * "Hidden from default list" came from the session that
-                      * added this chip and was right at the time. It is an
-                      * understatement now: stock standing here is off the
-                      * stock list entirely, off the website, off the trade
-                      * catalogue and not offered to partners, which is more
-                      * than a default.
-                      */}
-                    {!location.isOnHand && (
-                      <Chip tone="neutral">Held away</Chip>
-                    )}
                   </div>
                 </div>
 
@@ -231,42 +212,30 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
   const [state, action] = useFormState(saveLocationAction, INITIAL)
   const [wasOpen, setWasOpen] = useState(false)
   /*
-    Both controlled, so that choosing "In transit" from the dropdown can
-    untick the website switch as you do it. The alternative — a defaultChecked
-    read once on mount — means somebody adding a transit location has to know
-    to untick a box they were never shown a reason to look at, which is the
-    whole thing this setting exists to stop.
+    One switch, controlled, so choosing "In transit" from the dropdown can
+    turn it off as you do it. The alternative — a defaultChecked read once on
+    mount — means somebody adding a transit location has to know to untick a
+    box they were never shown a reason to look at.
 
     Changing the type only re-suggests; it never overrules an existing
-    location, whose stored setting is the authority once it exists. Both reset
+    location, whose stored setting is the authority once it exists. It resets
     when the modal is opened for a different row, or this would show the last
     location somebody looked at.
   */
   const [type, setType] = useState<LocationType>(location?.type ?? 'STORE')
-  const [publishes, setPublishes] = useState(location?.publishToStorefront ?? true)
-  const [onTradeList, setOnTradeList] = useState(location?.showInTradeCatalogue ?? true)
-  const [onHand, setOnHand] = useState(location?.isOnHand ?? true)
+  const [active, setActive] = useState(location?.isOnHand ?? true)
   const [shownFor, setShownFor] = useState<string | null>(location?.id ?? null)
   if ((location?.id ?? null) !== shownFor) {
     setShownFor(location?.id ?? null)
     setType(location?.type ?? 'STORE')
-    setPublishes(location?.publishToStorefront ?? true)
-    setOnTradeList(location?.showInTradeCatalogue ?? true)
-    setOnHand(location?.isOnHand ?? true)
+    setActive(location?.isOnHand ?? true)
   }
 
+  // A watch in a van is not for sale from anywhere, so a new transit location
+  // starts inactive and nobody has to know to say so.
   const chooseType = (next: LocationType) => {
     setType(next)
-    // Transit is off both lists, which is the one case where the two
-    // questions have the same answer: a watch being carried somewhere
-    // cannot be shown to a customer or offered to a dealer today.
-    if (!location) {
-      setPublishes(next !== 'TRANSIT')
-      setOnTradeList(next !== 'TRANSIT')
-      // And a watch in a van is not to hand either, which is the third
-      // question the same answer settles.
-      setOnHand(next !== 'TRANSIT')
-    }
+    if (!location) setActive(next !== 'TRANSIT')
   }
 
   if (state.ok && open && !wasOpen) {
@@ -296,70 +265,39 @@ function LocationFormModal({ open, location, onClose, onSaved }: {
         <TextareaField name="notes" label="Notes" className="sm:col-span-2" defaultValue={location?.notes ?? ''}
           placeholder="e.g. Retail showroom — display stock only" />
         <div className="sm:col-span-2 flex flex-col gap-3">
-          <Checkbox name="isActive" label="Active"
-            hint="Inactive locations cannot receive new stock but keep their history."
-            defaultChecked={location?.isActive ?? true} />
           {/*
-            The governing switch, first.
+            One switch, because there is one question.
 
-            "Stock here is to hand" was accurate and nobody found it: Alex
-            asked for this checkbox while it was already on the form, because
-            the label talked about the stock and not about the screen he was
-            looking at. It became "show in the default stock list", which was
-            right at the time and is an understatement now — unticking it
-            takes the stock off that list entirely, off the website, off the
-            trade catalogue and out of the partner portal. A switch whose
-            label describes a third of what it does is how somebody ticks it
-            expecting a filter.
+            There were four tick boxes here. Alex: "there is so many ticks for
+            no reason what so ever. Either they are in Dubai and on our
+            website, trade portals, inventory main view or they aren't."
 
-            It sits above the other two because it overrules them, and a
-            switch that overrules the one above it reads as doing nothing.
+            He is right, and one of the four was literally for no reason:
+            "Active" was read nowhere in the application — its hint promised
+            that inactive locations could not receive new stock and nothing
+            enforced it. The other three asked the same question three times
+            and had to be kept in step by hand, which is how Hong Kong ended
+            up off the trade list and still on the website.
+
+            So: one switch, in his words. The two channel columns are still
+            in the database and are written from this one, so every query
+            that reads them keeps working and the finer grain is a code
+            change away rather than a data migration — but nobody is asked
+            the question three times.
           */}
-          <Checkbox name="isOnHand" label="Keep this location's stock on the books here"
-            hint="Untick for stock that is not within reach — another country, another dealer, a courier's bag. It comes off the stock list, the website, the trade catalogue and the partner portal, and is tracked from this location's own page instead. The capital is still counted in your reports."
-            checked={onHand}
-            onChange={(event) => setOnHand(event.target.checked)} />
+          <Checkbox name="isOnHand" label="Active"
+            hint="On: this location's stock is on the inventory, the website, the trade catalogue and the partner portal. Off: it is on none of them, and is tracked from this location's own page instead. The capital is counted in your reports either way."
+            checked={active}
+            onChange={(event) => setActive(event.target.checked)} />
 
-          {!onHand && (
-            /*
-             * Said where somebody is looking at the two ticks it overrules.
-             *
-             * The Hong Kong form showed "Sell this location's stock on the
-             * website" ticked while that stock was off the website, which is
-             * a form lying about the thing it exists to control. The ticks
-             * are left alone rather than cleared, so turning this back on
-             * restores what the location was actually set to instead of
-             * leaving somebody to remember.
-             */
+          {!active && (
             <p className="rounded-sm bg-surface-subtle px-3 py-2 text-caption text-content-secondary">
-              <span className="font-semibold text-content-primary">Held away. </span>
-              The two settings below have no effect while this is off — stock here is off
-              the website and off the trade catalogue whatever they say. They are kept as
-              they are, for when it comes back on the books.
+              <span className="font-semibold text-content-primary">Held here, sold nowhere. </span>
+              Stock at an inactive location stays yours and stays counted. It is off the
+              stock list, the website, the trade catalogue and the partner portal, and the
+              only way to see it is this location&rsquo;s own page.
             </p>
           )}
-
-          {/*
-            Off for transit by default when adding a new one, because that is
-            the case this exists for and nobody should have to know to untick
-            it. Editing an existing location shows what it is actually set to,
-            type or no type — the setting is the authority once it exists.
-          */}
-          <Checkbox name="publishToStorefront" label="Sell this location's stock on the website"
-            hint="Off for stock nobody can come and see — in transit, away at service, on loan. Those pieces stay as drafts on Shopify and publish themselves when they move somewhere that does sell."
-            checked={publishes}
-            onChange={(event) => setPublishes(event.target.checked)} />
-          {/*
-            A separate question from the one above, and Hong Kong is why.
-            That stock is real stock the website may well sell; what it is
-            not is stock we want on a list handed round the trade. One
-            switch for both would have meant taking it off the website as
-            the price of taking it off the dealer list.
-          */}
-          <Checkbox name="showInTradeCatalogue" label="Show this location's stock on trade catalogue links"
-            hint="Off for stock we hold but would rather not offer the trade — another market, somebody else's book, a piece in transit. It stays on the website and in the inventory either way."
-            checked={onTradeList}
-            onChange={(event) => setOnTradeList(event.target.checked)} />
         </div>
       </form>
     </Modal>

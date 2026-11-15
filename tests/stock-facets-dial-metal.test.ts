@@ -150,18 +150,18 @@ describe('where the stock list opens', () => {
     expect(migration).not.toMatch(/DROP COLUMN/)
   })
 
-  it('names the switch for everything it changes, on the form and on the card', () => {
+  it('asks the question once, in the words it was asked in', () => {
     /*
-     * "Show this location's stock in the default stock list" was right when
-     * it was written and is an understatement now: unticking it takes the
-     * stock off the list entirely, off the website, off the trade catalogue
-     * and out of the partner portal. A switch whose label describes a third
-     * of what it does is how somebody turns it on expecting a filter.
+     * Alex: "there is so many ticks for no reason what so ever. Either they
+     * are in Dubai and on our website, trade portals, inventory main view or
+     * they aren't."
+     *
+     * Four boxes asked that one question, and the fourth was read nowhere in
+     * the application at all. One box now, labelled the way he says it.
      */
     const form = read('src/components/reference/LocationManager.tsx')
-    expect(form).toMatch(/name="isOnHand" label="Keep this location's stock on the books here"/)
-    expect(form).toMatch(/!location\.isOnHand && \(/)
-    expect(form).toMatch(/Held away/)
+    expect(form).toMatch(/name="isOnHand" label="Active"/)
+    expect(form).toContain('the inventory, the website, the trade catalogue and the partner portal')
     expect(form).toContain('tracked from this location')
   })
 
@@ -180,29 +180,19 @@ describe('where the stock list opens', () => {
     expect(migration).not.toMatch(/LIKE '%usa%'/)
   })
 
-  it('shows on the location itself whether its stock is within reach', () => {
+  it('shows on the location card which it is', () => {
     /*
-     * It was the one of the three settings with nothing on the card, so the
-     * only way to see it was to open the row and look — which is why it kept
-     * being asked for rather than ticked.
+     * It was the one of the settings with nothing on the card, so the only
+     * way to see it was to open the row and look — which is why it kept
+     * being asked for rather than ticked. And it is read off the switch that
+     * decides it, not the decorative `isActive` column of the same name.
      */
     const manager = read('src/components/reference/LocationManager.tsx')
-    expect(manager).toContain('{!location.isOnHand && (')
-    expect(manager).toContain('Held away')
+    expect(manager).toContain('location.isOnHand ? \'Active\' : \'Inactive\'')
+    expect(manager).not.toContain("location.isActive ? 'Active' : 'Inactive'")
   })
 })
 
-/**
- * One rule, in every direction.
- *
- * Alex: "These should not be shown on the website, in trade acounts or to the
- * sales staff only watches in the UAE active should be within that."
- *
- * Three switches had grown up independently — the website, the trade list,
- * and whether the stock counts as to hand — and nothing kept them in step. It
- * is exactly how Hong Kong ended up off the trade catalogue and still being
- * mirrored to the shop. Held away now settles all of them.
- */
 describe('stock held away is off every outward channel', () => {
   const read2 = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
@@ -279,34 +269,25 @@ describe('the location is the one way in', () => {
   })
 })
 
-describe('the form does not lie about the switches it overrules', () => {
+describe('the form does not promise what it cannot deliver', () => {
   const form = readFileSync(join(process.cwd(), 'src/components/reference/LocationManager.tsx'), 'utf8')
 
-  it('puts the governing switch above the two it governs', () => {
-    // A switch that overrules the one above it reads as doing nothing.
-    expect(form.indexOf('name="isOnHand"')).toBeLessThan(form.indexOf('name="publishToStorefront"'))
-    expect(form.indexOf('name="isOnHand"')).toBeLessThan(form.indexOf('name="showInTradeCatalogue"'))
+  it('says what being off actually costs, where the switch is', () => {
+    /*
+     * The previous version of this screen showed "Sell this location's stock
+     * on the website" ticked over stock that was off the website, because
+     * three switches were being kept in step by hand and were not. There is
+     * one now, so instead of a notice explaining which ticks are overruled,
+     * it says plainly what turning it off does.
+     */
+    expect(form).toContain('{!active && (')
+    expect(form).toContain('Held here, sold nowhere')
+    expect(form).toContain('only way to see it is this location')
   })
 
-  it('says the two below have no effect once the stock is held away', () => {
-    /*
-     * The Hong Kong form showed "Sell this location's stock on the website"
-     * ticked while that stock was off the website — a form lying about the
-     * thing it exists to control.
-     */
-    expect(form).toContain('{!onHand && (')
-    expect(form).toContain('have no effect while this is off')
-  })
-
-  it('keeps those ticks rather than clearing them', () => {
-    /*
-     * Turning it back on should restore what the location was actually set
-     * to. Clearing them would also lose the values for good, because a
-     * disabled checkbox posts nothing and the action reads a missing field
-     * as false.
-     */
-    expect(form).toContain('They are kept as\n              they are, for when it comes back on the books.')
-    expect(form).not.toMatch(/name="publishToStorefront"[^>]*disabled/)
-    expect(form).not.toMatch(/name="showInTradeCatalogue"[^>]*disabled/)
+  it('no longer carries the switches it used to have to reconcile', () => {
+    expect(form).not.toContain('have no effect while this is off')
+    expect(form).not.toContain('setPublishes')
+    expect(form).not.toContain('setOnTradeList')
   })
 })

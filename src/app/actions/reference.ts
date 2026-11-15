@@ -64,6 +64,7 @@ export async function deleteSupplierAction(id: string): Promise<ActionState> {
 export async function saveLocationAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const actor = await requireCapability('location:manage')
   const id = formData.get('id')?.toString() || null
+  const active = formData.get('isOnHand') === 'on'
   const parsed = locationSchema.safeParse({
     name: formData.get('name'),
     type: formData.get('type'),
@@ -71,36 +72,40 @@ export async function saveLocationAction(_prev: ActionState, formData: FormData)
     city: formData.get('city'),
     country: formData.get('country'),
     notes: formData.get('notes'),
-    isActive: formData.get('isActive') === 'on' || formData.get('isActive') === 'true',
     /*
+     * One switch, read once, and written to all of them.
+     *
+     * Alex: "can we make it simple and just have an active - inactive
+     * toggle ... there is so many ticks for no reason what so ever. Either
+     * they are in Dubai and on our website, trade portals, inventory main
+     * view or they aren't."
+     *
+     * The form now asks once. The three columns stay, written together from
+     * that one answer, so every query that reads them keeps working and the
+     * finer grain is a code change away rather than a data migration — but
+     * they can no longer drift apart, which is what put Hong Kong on the
+     * website while it was off the trade list.
+     *
      * An unticked checkbox is not in the payload at all, so `=== 'on'` is
-     * the whole of the read and the absence is the false. Spelled out
-     * rather than left to the schema's coercion, which would see undefined
-     * and apply the default of true -- turning every untick into a no-op.
-     * Which is exactly what used to happen here: the storefront checkbox
-     * was on the form and in neither this action nor the schema, so the
-     * column was writable only by the migration that created it.
+     * the whole of the read and the absence is the false. Spelled out rather
+     * than left to the schema's coercion, which would see undefined and
+     * apply the default of true — turning every untick into a no-op. That is
+     * not hypothetical: it is what this action did to `isOnHand` until an
+     * hour ago, and to `publishToStorefront` for months before that.
      */
-    publishToStorefront: formData.get('publishToStorefront') === 'on',
-    showInTradeCatalogue: formData.get('showInTradeCatalogue') === 'on',
+    isOnHand: active,
+    publishToStorefront: active,
+    showInTradeCatalogue: active,
     /*
-     * And the third one, which was missing for the same reason as the first.
+     * And the fourth box, which is gone from the form.
      *
-     * Alex: "I am unticking DGA but it isn't working." It was not merely
-     * being ignored — it was being reversed. The checkbox was on the form,
-     * the column was in the schema with a default of true, and this action
-     * never read it; so the untick left the field absent, the default filled
-     * it back in, and `updateLocation` spread it into the patch and wrote
-     * is_on_hand = true. Saving ANY location for any reason turned it on,
-     * which would have quietly put Hong Kong back on the website the next
-     * time somebody corrected its address.
-     *
-     * The note above says exactly this about the storefront switch. Reading
-     * the warning and then adding a fourth checkbox the same way is how a
-     * comment becomes decoration, so there is a test now that compares the
-     * form's checkboxes against the fields this action reads.
+     * `isActive` was read nowhere in the application: its hint promised that
+     * inactive locations could not receive new stock and nothing enforced
+     * it. Kept in step with the real switch rather than left to rot at
+     * whatever it happened to be, so a reader of the table is not told two
+     * different stories about the same place.
      */
-    isOnHand: formData.get('isOnHand') === 'on',
+    isActive: active,
   })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 
