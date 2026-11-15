@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { prizeHolders, standings, targetsFor, timeline, weekStartOf, weeksOf } from '@/lib/leaderboard'
+import { launchProblems, prizeHolders, standings, targetsFor, timeline, weekStartOf, weeksOf } from '@/lib/leaderboard'
 import { ordinal } from '@/components/leaderboard/LeaderboardBoard'
 
 const agents = [{ id: 'a', name: 'Sara' }, { id: 'b', name: 'Omar' }, { id: 'c', name: 'Lena' }]
@@ -84,9 +84,9 @@ describe('who may touch a board', () => {
   const actions = readFileSync('src/app/actions/leaderboards.ts', 'utf8')
 
   it('checks the partner owns the board on every write', () => {
-    for (const fn of ['updateLeaderboard', 'setLeaderboardPublished', 'deleteLeaderboard', 'addAgent', 'setAgentPhoto', 'removeAgent', 'addPrize', 'removePrize', 'saveWeek']) {
+    for (const fn of ['updateLeaderboard', 'setLeaderboardPublished', 'deleteLeaderboard', 'addAgent', 'setAgentPhoto', 'updateAgent', 'removeAgent', 'addPrize', 'updatePrize', 'removePrize', 'reservePrizeWatch', 'saveWeek']) {
       const body = service.slice(service.indexOf(`export async function ${fn}(`))
-      expect(body.slice(0, body.indexOf('\n}\n')), fn).toContain('await owned(partnerId, leaderboardId)')
+      expect(body.slice(0, body.indexOf('\n}\n')), fn).toMatch(/await owned\(partnerId, leaderboardId\)/)
     }
   })
 
@@ -98,5 +98,40 @@ describe('who may touch a board', () => {
   it('serves the public board only once published, and never takes SVG photos', () => {
     expect(service).toContain('return board?.isPublished ? board : null')
     expect(service).not.toMatch(/PHOTO_TYPES = \[[^\]]*svg/)
+  })
+})
+
+describe('launching', () => {
+  const agent = { id: 'a' }
+  it('needs agents and prizes', () => {
+    expect(launchProblems({ agents: [], prizes: [] })).toHaveLength(2)
+  })
+
+  it('needs every watch prize held from stock', () => {
+    expect(launchProblems({ agents: [agent], prizes: [{ name: 'Rolex', kind: 'WATCH', orderId: null, holdLive: false }] })[0])
+      .toContain('typed in rather than chosen from stock')
+    expect(launchProblems({ agents: [agent], prizes: [{ name: 'Rolex', kind: 'WATCH', orderId: 'o1', holdLive: false }] })[0])
+      .toContain('has been released')
+  })
+
+  it('is ready with a held watch or a voucher', () => {
+    expect(launchProblems({ agents: [agent], prizes: [{ name: 'Rolex', kind: 'WATCH', orderId: 'o1', holdLive: true }] })).toEqual([])
+    expect(launchProblems({ agents: [agent], prizes: [{ name: 'AED 10k', kind: 'VOUCHER', orderId: null, holdLive: false }] })).toEqual([])
+  })
+
+  const service = readFileSync('src/server/services/leaderboard-service.ts', 'utf8')
+  it('holds watch prizes through the same path as a portal reservation', () => {
+    expect(service).toContain('holdForPartner(partner,')
+    expect(service).toContain("throw new ValidationError('Choose a watch prize from the stock list")
+  })
+
+  it('releases the hold when a prize or the whole challenge goes', () => {
+    expect(service).toContain('releasePrizeHold(prize.orderId')
+    expect(service).toContain('releasePrizeHold(orderId, `Leaderboard')
+  })
+
+  it('keeps figures and sharing shut until launch', () => {
+    expect(service).toContain("throw new ConflictError('Launch the challenge before entering figures")
+    expect(service).toContain("throw new ValidationError('Launch the challenge before sharing it")
   })
 })

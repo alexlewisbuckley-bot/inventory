@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireCapability } from '@/server/auth/session'
 import { getLeaderboard } from '@/server/services/leaderboard-service'
+import { stockForPartner } from '@/server/services/partner-portal-service'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { LeaderboardManager } from '@/components/leaderboard/LeaderboardManager'
 import { brandVars } from '@/components/portal/ui'
@@ -22,6 +23,8 @@ export default async function StaffLeaderboardPage({ params }: { params: { id: s
   await requireCapability('partner:manage')
   const board = await getLeaderboard(params.id, params.lbId).catch(() => null)
   if (!board) notFound()
+  // What can be reserved as a prize, at this partner's price.
+  const stock = await stockForPartner(board.partnerId)
 
   return (
     <>
@@ -41,6 +44,10 @@ export default async function StaffLeaderboardPage({ params }: { params: { id: s
           isPublished={board.isPublished}
           photoBase={`/l/${board.shareToken}/photo`}
           today={dubaiToday()}
+          stock={stock.map((w) => ({
+            id: w.id, brandName: w.brandName, model: w.model, modelName: w.modelName,
+            dial: w.dial, year: w.year, priceGbp: w.priceGbp, imageIds: w.imageIds,
+          }))}
           backHref={`/partners/${params.id}`}
         />
       </div>

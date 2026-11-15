@@ -2,11 +2,14 @@ import { randomBytes } from 'node:crypto'
 import { and, asc, eq, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
-  partnerLeaderboardAgents, partnerLeaderboardEntries, partnerLeaderboardPrizes,
-  partnerLeaderboards, partners,
+  brands, partnerLeaderboardAgents, partnerLeaderboardEntries, partnerLeaderboardPrizes,
+  partnerLeaderboards, partnerOrders, partners, watches,
 } from '../db/schema'
+import { recordAudit } from './audit'
+import { holdForPartner } from './partner-portal-service'
+import { launchProblems } from '@/lib/leaderboard'
 import { newId } from '@/lib/ids'
-import { NotFoundError, ValidationError } from '@/lib/errors'
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import { weekStartOf } from '@/lib/leaderboard'
 import type { PrizeKind, PrizeRule } from '@/lib/enums'
 
@@ -61,11 +64,12 @@ export function assertPhotoAcceptable(mimeType: string, byteSize: number): void 
 
 async function owned(partnerId: string, leaderboardId: string) {
   const [row] = await db
-    .select({ id: partnerLeaderboards.id })
+    .select({ id: partnerLeaderboards.id, name: partnerLeaderboards.name, launchedAt: partnerLeaderboards.launchedAt })
     .from(partnerLeaderboards)
     .where(and(eq(partnerLeaderboards.id, leaderboardId), eq(partnerLeaderboards.partnerId, partnerId)))
     .limit(1)
   if (!row) throw new NotFoundError('That challenge')
+  return row
 }
 
 const touch = (leaderboardId: string) =>
@@ -98,6 +102,8 @@ export interface LeaderboardFull {
   endsOn: string
   shareToken: string
   isPublished: boolean
+  /** ISO timestamp once launched. */
+  launchedAt: string | null
   partnerName: string
   hasLogo: boolean
   brandColor: string
@@ -106,6 +112,9 @@ export interface LeaderboardFull {
   prizes: Array<{
     id: string; name: string; kind: PrizeKind; valueBase: number | null
     rule: PrizeRule; rank: number | null; targetBase: number | null
+    /** For a watch chosen from stock: the hold, and whether it still stands. */
+    watchId: string | null; orderId: string | null; holdLive: boolean
+    stockNo: number | null; imageId: string | null
   }>
   entries: Array<{ agentId: string; weekStart: string; commissionBase: number; deals: number }>
 }
@@ -122,6 +131,7 @@ async function loadFull(where: ReturnType<typeof eq>): Promise<LeaderboardFull |
       endsOn: partnerLeaderboards.endsOn,
       shareToken: partnerLeaderboards.shareToken,
       isPublished: partnerLeaderboards.isPublished,
+      launchedAt: partnerLeaderboards.launchedAt,
       partnerName: sql<string>`coalesce(${partners.displayName}, ${partners.name})`,
       hasLogo: sql<boolean>`${partners.logoData} is not null`,
       brandColor: partners.brandColor,
@@ -152,7 +162,15 @@ async function loadFull(where: ReturnType<typeof eq>): Promise<LeaderboardFull |
       rule: partnerLeaderboardPrizes.rule,
       rank: partnerLeaderboardPrizes.rank,
       targetBase: partnerLeaderboardPrizes.targetBase,
+      watchId: partnerLeaderboardPrizes.watchId,
+      orderId: partnerLeaderboardPrizes.orderId,
+      // Held means the order says so AND the watch agrees, as everywhere else.
+      holdLive: sql<boolean>`coalesce(${partnerOrders.status} = 'PLACED' and ${watches.status} = 'RESERVED', false)`,
+      stockNo: watches.stockNo,
+      imageId: sql<string | null>`(SELECT i.id FROM watch_images i WHERE i.watch_id = partner_leaderboard_prizes.watch_id AND i.kind = 'WATCH' ORDER BY i.sort_order, i.created_at LIMIT 1)`,
     }).from(partnerLeaderboardPrizes)
+      .leftJoin(partnerOrders, eq(partnerOrders.id, partnerLeaderboardPrizes.orderId))
+      .leftJoin(watches, eq(watches.id, partnerLeaderboardPrizes.watchId))
       .where(eq(partnerLeaderboardPrizes.leaderboardId, board.id))
       .orderBy(
         // Positions first, 1st to last, then targets from the lowest bar up.
@@ -171,7 +189,13 @@ async function loadFull(where: ReturnType<typeof eq>): Promise<LeaderboardFull |
       .orderBy(asc(partnerLeaderboardEntries.weekStart)),
   ])
 
-  return { ...board, agents, prizes, entries }
+  return {
+    ...board,
+    launchedAt: board.launchedAt ? board.launchedAt.toISOString() : null,
+    agents,
+    prizes: prizes.map((p) => ({ ...p, holdLive: Boolean(p.holdLive) })),
+    entries,
+  }
 }
 
 export async function getLeaderboard(partnerId: string, leaderboardId: string): Promise<LeaderboardFull> {
@@ -217,15 +241,57 @@ export async function updateLeaderboard(partnerId: string, leaderboardId: string
 }
 
 export async function setLeaderboardPublished(partnerId: string, leaderboardId: string, published: boolean) {
-  await owned(partnerId, leaderboardId)
+  const board = await owned(partnerId, leaderboardId)
+  if (published && !board.launchedAt) {
+    throw new ValidationError('Launch the challenge before sharing it — the prizes have to be settled first.')
+  }
   await db.update(partnerLeaderboards)
     .set({ isPublished: published, updatedAt: new Date() })
     .where(eq(partnerLeaderboards.id, leaderboardId))
 }
 
 export async function deleteLeaderboard(partnerId: string, leaderboardId: string) {
-  await owned(partnerId, leaderboardId)
-  await db.delete(partnerLeaderboards).where(eq(partnerLeaderboards.id, leaderboardId))
+  const board = await owned(partnerId, leaderboardId)
+  await withTransaction(async () => {
+    const held = await db.select({ orderId: partnerLeaderboardPrizes.orderId })
+      .from(partnerLeaderboardPrizes)
+      .where(eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId))
+    for (const { orderId } of held) {
+      if (orderId) await releasePrizeHold(orderId, `Leaderboard "${board.name}" was deleted`)
+    }
+    await db.delete(partnerLeaderboards).where(eq(partnerLeaderboards.id, leaderboardId))
+  })
+}
+
+/**
+ * Let a prize watch go back on sale.
+ *
+ * The same two steps as releasing any partner hold: the order is closed, and
+ * the watch returns to stock only if it is still where the hold left it — it
+ * may have been sold through the ordinary flow in the meantime, and that sale
+ * must not be undone by somebody tidying a leaderboard.
+ */
+async function releasePrizeHold(orderId: string, reason: string) {
+  const [row] = await db
+    .select({ status: partnerOrders.status, watchId: watches.id, watchStatus: watches.status, version: watches.version, stockNo: watches.stockNo })
+    .from(partnerOrders)
+    .innerJoin(watches, eq(watches.id, partnerOrders.watchId))
+    .where(eq(partnerOrders.id, orderId))
+    .limit(1)
+  if (!row || row.status !== 'PLACED') return
+  await db.update(partnerOrders)
+    .set({ status: 'RELEASED', releasedAt: new Date(), releaseReason: reason, updatedAt: new Date() })
+    .where(eq(partnerOrders.id, orderId))
+  if (row.watchStatus === 'RESERVED') {
+    await db.update(watches)
+      .set({ status: 'IN_STOCK', updatedAt: new Date(), version: row.version + 1 })
+      .where(eq(watches.id, row.watchId))
+    await recordAudit({
+      entityType: 'Watch', entityId: row.watchId, action: 'UPDATE', actorId: null,
+      summary: `Stock ${row.stockNo} released from a leaderboard prize: ${reason}`,
+      changes: { status: { from: 'RESERVED', to: 'IN_STOCK' } },
+    })
+  }
 }
 
 export async function addAgent(
@@ -323,22 +389,107 @@ function prizeRow(input: PrizeInput) {
 
 export async function addPrize(partnerId: string, leaderboardId: string, input: PrizeInput) {
   await owned(partnerId, leaderboardId)
+  if (input.kind === 'WATCH') {
+    throw new ValidationError('Choose a watch prize from the stock list, so it can be reserved for you.')
+  }
   await db.insert(partnerLeaderboardPrizes).values({ id: newId(), leaderboardId, ...prizeRow(input) })
   await touch(leaderboardId)
 }
 
 export async function updatePrize(partnerId: string, leaderboardId: string, prizeId: string, input: PrizeInput) {
   await owned(partnerId, leaderboardId)
-  await db.update(partnerLeaderboardPrizes).set(prizeRow(input))
+  const [prize] = await db.select({ orderId: partnerLeaderboardPrizes.orderId, name: partnerLeaderboardPrizes.name, kind: partnerLeaderboardPrizes.kind, valueBase: partnerLeaderboardPrizes.valueBase })
+    .from(partnerLeaderboardPrizes)
+    .where(and(eq(partnerLeaderboardPrizes.id, prizeId), eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId)))
+    .limit(1)
+  if (!prize) throw new NotFoundError('That prize')
+  // A reserved watch stays the watch it is: only how it is won can change.
+  // A different watch is a different hold — remove this one and choose again.
+  const row = prize.orderId
+    ? prizeRow({ ...input, name: prize.name, kind: 'WATCH', valueBase: prize.valueBase })
+    : prizeRow(input.kind === 'WATCH' ? { ...input, kind: 'VOUCHER' } : input)
+  await db.update(partnerLeaderboardPrizes).set(row)
     .where(and(eq(partnerLeaderboardPrizes.id, prizeId), eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId)))
   await touch(leaderboardId)
 }
 
+/**
+ * A watch from stock as a prize: reserved for the client there and then.
+ *
+ * Through the same hold as a portal reservation — checked against the row,
+ * priced at the partner's rate, audited, and announced to our team — so it
+ * sits on the held-stock list with everything else and nobody can sell it
+ * while the agents are competing for it.
+ */
+export async function reservePrizeWatch(
+  partnerId: string,
+  leaderboardId: string,
+  input: { watchId: string; rule: PrizeRule; rank: number | null; targetBase: number | null },
+) {
+  const board = await owned(partnerId, leaderboardId)
+  const [partner] = await db
+    .select({ id: partners.id, name: partners.name, discountBps: partners.discountBps })
+    .from(partners).where(eq(partners.id, partnerId)).limit(1)
+  if (!partner) throw new NotFoundError('That partner')
+  // Validate how it is won before anything is held.
+  prizeRow({ name: 'x', kind: 'WATCH', valueBase: null, ...input })
+
+  const how = input.rule === 'RANK' ? `position ${input.rank}` : 'a target'
+  await withTransaction(async () => {
+    const orderId = await holdForPartner(partner, {
+      watchId: input.watchId,
+      placedByName: `Leaderboard: ${board.name}`,
+      placedByEmail: null,
+      note: `Prize for the leaderboard challenge "${board.name}" (won by ${how}). Held until the challenge ends.`,
+    }, {
+      title: `${partner.name} has reserved a leaderboard prize`,
+      body: `Chosen as a prize for "${board.name}". Nothing is paid — it is on hold until the challenge ends or somebody releases it.`,
+    })
+    const [watch] = await db
+      .select({ brandName: brands.name, model: watches.model, modelName: watches.modelName })
+      .from(watches).innerJoin(brands, eq(brands.id, watches.brandId))
+      .where(eq(watches.id, input.watchId)).limit(1)
+    const [order] = await db.select({ price: partnerOrders.priceAtOrder })
+      .from(partnerOrders).where(eq(partnerOrders.id, orderId)).limit(1)
+    await db.insert(partnerLeaderboardPrizes).values({
+      id: newId(),
+      leaderboardId,
+      ...prizeRow({
+        name: [watch?.brandName, watch?.model, watch?.modelName].filter(Boolean).join(' ') || 'Watch',
+        kind: 'WATCH',
+        valueBase: order?.price ?? null,
+        ...input,
+      }),
+      watchId: input.watchId,
+      orderId,
+    })
+    await touch(leaderboardId)
+  })
+}
+
+/** Settle the prizes and start the clock: figures and sharing open after this. */
+export async function launchLeaderboard(partnerId: string, leaderboardId: string) {
+  const board = await getLeaderboard(partnerId, leaderboardId)
+  if (board.launchedAt) return
+  const problems = launchProblems(board)
+  if (problems.length) throw new ValidationError(problems[0]!)
+  await db.update(partnerLeaderboards)
+    .set({ launchedAt: new Date(), updatedAt: new Date() })
+    .where(eq(partnerLeaderboards.id, leaderboardId))
+}
+
 export async function removePrize(partnerId: string, leaderboardId: string, prizeId: string) {
-  await owned(partnerId, leaderboardId)
-  await db.delete(partnerLeaderboardPrizes)
-    .where(and(eq(partnerLeaderboardPrizes.id, prizeId), eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId)))
-  await touch(leaderboardId)
+  const board = await owned(partnerId, leaderboardId)
+  await withTransaction(async () => {
+    const [prize] = await db.select({ orderId: partnerLeaderboardPrizes.orderId })
+      .from(partnerLeaderboardPrizes)
+      .where(and(eq(partnerLeaderboardPrizes.id, prizeId), eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId)))
+      .limit(1)
+    if (!prize) return
+    if (prize.orderId) await releasePrizeHold(prize.orderId, `Removed as a prize from "${board.name}"`)
+    await db.delete(partnerLeaderboardPrizes).where(eq(partnerLeaderboardPrizes.id, prizeId))
+    await touch(leaderboardId)
+  })
 }
 
 /**
@@ -354,7 +505,8 @@ export async function saveWeek(
   week: string,
   rows: Array<{ agentId: string; commissionBase: number | null; deals: number | null }>,
 ) {
-  await owned(partnerId, leaderboardId)
+  const board = await owned(partnerId, leaderboardId)
+  if (!board.launchedAt) throw new ConflictError('Launch the challenge before entering figures — its prizes have to be settled first.')
   if (!ISO_DAY.test(week)) throw new ValidationError('Choose the week these figures are for.')
   const weekStart = weekStartOf(week)
   const agentIds = new Set((await db
@@ -431,5 +583,30 @@ export async function getLeaderboardLogo(shareToken: string) {
     .where(eq(partnerLeaderboards.shareToken, shareToken))
     .limit(1)
   if (!row?.data || !row.mime) return null
+  return { data: row.data, mimeType: row.mime }
+}
+
+/**
+ * A stock photograph for the prize picker and prize cards, by share token.
+ *
+ * Website photographs only, and only of a watch that is on offer or is
+ * held as a prize on this very board — the same closed list as the portal's
+ * own image route, so an id from somewhere else opens nothing.
+ */
+export async function getPrizeImage(shareToken: string, imageId: string) {
+  if (!shareToken || shareToken.length < 16 || !imageId) return null
+  const rows = await db.execute<{ data: Buffer; mime: string }>(sql`
+    SELECT i.data, i.mime_type AS mime
+    FROM watch_images i
+    JOIN partner_leaderboards b ON b.share_token = ${shareToken}
+    JOIN watches w ON w.id = i.watch_id
+    WHERE i.id = ${imageId} AND i.kind = 'WATCH' AND w.deleted_at IS NULL
+      AND (
+        w.status = 'IN_STOCK'
+        OR EXISTS (SELECT 1 FROM partner_leaderboard_prizes p WHERE p.leaderboard_id = b.id AND p.watch_id = w.id)
+      )
+    LIMIT 1`)
+  const row = (rows as unknown as Array<{ data: Buffer; mime: string }>)[0]
+  if (!row) return null
   return { data: row.data, mimeType: row.mime }
 }

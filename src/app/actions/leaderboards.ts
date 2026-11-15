@@ -7,7 +7,8 @@ import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import {
   addAgent, addPrize, createLeaderboard, deleteLeaderboard, removeAgent, removePrize, saveWeek,
-  setAgentPhoto, setLeaderboardPublished, updateAgent, updateLeaderboard, updatePrize,
+  launchLeaderboard, reservePrizeWatch, setAgentPhoto, setLeaderboardPublished, updateAgent,
+  updateLeaderboard, updatePrize,
 } from '@/server/services/leaderboard-service'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
@@ -281,5 +282,39 @@ export async function saveWeekAction(
     return { ok: true, message: 'Week saved. The board is up to date.' }
   } catch (error) {
     return fail(error, 'Those figures could not be saved.')
+  }
+}
+
+export async function reservePrizeWatchAction(
+  scope: LeaderboardScope,
+  leaderboardId: string,
+  input: { watchId: string; rule: PrizeRule; rank: number | null; target: string },
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await reservePrizeWatch(partnerId, leaderboardId, {
+      watchId: input.watchId,
+      rule: PRIZE_RULES.includes(input.rule) ? input.rule : 'RANK',
+      rank: input.rule === 'RANK' ? input.rank : null,
+      targetBase: input.rule === 'TARGET' ? money(input.target) : null,
+    })
+    refresh(scope, partnerId, leaderboardId)
+    if (scope.kind === 'portal') revalidatePath(`/p/${scope.token}`)
+    return { ok: true, message: 'Reserved. The watch is on hold for you as a prize.' }
+  } catch (error) {
+    return fail(error, 'That watch could not be reserved.')
+  }
+}
+
+export async function launchLeaderboardAction(scope: LeaderboardScope, leaderboardId: string): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await launchLeaderboard(partnerId, leaderboardId)
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Launched. Figures can go in each week, and you can share the board.' }
+  } catch (error) {
+    return fail(error, 'That challenge could not be launched.')
   }
 }

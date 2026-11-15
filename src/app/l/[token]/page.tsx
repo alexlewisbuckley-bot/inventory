@@ -41,7 +41,7 @@ export default async function SharedLeaderboardPage({ params }: { params: { toke
         </div>
       </header>
       <div className="mx-auto max-w-[1180px] px-5 py-8 sm:px-8">
-        <LeaderboardBoard board={board} photoBase={`/l/${params.token}/photo`} today={dubaiToday()} />
+        <LeaderboardBoard board={board} photoBase={`/l/${params.token}/photo`} stockBase={`/l/${params.token}/stock`} today={dubaiToday()} />
       </div>
     </main>
   )
