@@ -9,6 +9,8 @@ import {
 } from '@/app/actions/partner-campaigns'
 import { removeRecipientAction } from '@/app/actions/partner-campaigns'
 import { CAMPAIGN_STATUS_LABELS, type CampaignKind, type CampaignStatus } from '@/lib/enums'
+import { brandVars, ui } from './ui'
+import { PortalHeader } from './PortalHeader'
 
 const INITIAL: CampaignState = { ok: false, message: '' }
 
@@ -44,8 +46,10 @@ export interface StockRow {
  * then open it — because the order is not obvious and getting it wrong means
  * sending out a link that opens an empty page.
  */
-export function CampaignDetail({ token, campaign, recipients, stock, shortlist }: {
+export function CampaignDetail({ token, campaign, recipients, stock, shortlist, brandColor, accentColor }: {
   token: string
+  brandColor?: string
+  accentColor?: string
   campaign: {
     id: string
     name: string
@@ -82,38 +86,34 @@ export function CampaignDetail({ token, campaign, recipients, stock, shortlist }
   }
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="border-b border-black/10 px-5 py-7 sm:px-8">
-        <div className="mx-auto max-w-[1180px]">
-          <Link
-            href={`/p/${token}/campaigns`}
-            className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70"
+    <main className="min-h-screen bg-white" style={brandVars(brandColor, accentColor)}>
+      <PortalHeader
+        eyebrow={<Link href={`/p/${token}/campaigns`} className="hover:text-black">← All campaigns</Link>}
+        title={campaign.name}
+        subtitle={<>
+          {campaign.kind === 'BUDGET'
+            ? `${campaign.budgetBase ? money(campaign.budgetBase) : 'No amount set'} each · `
+            : 'A shortlist · '}
+          {chosen} of {recipients.length} chosen ·{' '}
+          <span className={`inline-flex rounded-full px-2 py-[1px] text-[12px] font-medium ring-1 ring-inset ${
+            live ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-black/[0.04] text-black/55 ring-black/10'
+          }`}>
+            {CAMPAIGN_STATUS_LABELS[campaign.status]}
+          </span>
+          {note && <span className="mt-1 block text-[12.5px] text-black/60">{note}</span>}
+        </>}
+        actions={
+          <button
+            type="button"
+            onClick={() => void flip()}
+            disabled={busy}
+            className={ui.primary}
+            style={{ backgroundColor: live ? '#6b7280' : 'var(--brand, #04173A)' }}
           >
-            All campaigns
-          </Link>
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-            <div>
-              <p className="font-serif text-[27px] leading-tight text-black">{campaign.name}</p>
-              <p className="mt-1 text-[13px] text-black/55">
-                {campaign.kind === 'BUDGET'
-                  ? `${campaign.budgetBase ? money(campaign.budgetBase) : 'No amount set'} each · `
-                  : 'A shortlist · '}
-                {chosen} of {recipients.length} chosen · {CAMPAIGN_STATUS_LABELS[campaign.status]}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void flip()}
-              disabled={busy}
-              className="h-11 px-5 text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white disabled:opacity-60"
-              style={{ backgroundColor: live ? '#6b7280' : 'var(--brand, #04173A)' }}
-            >
-              {live ? 'Close it' : 'Open it'}
-            </button>
-          </div>
-          {note && <p className="mt-2 text-[12.5px] text-black/60">{note}</p>}
-        </div>
-      </header>
+            {live ? 'Close it' : 'Open it'}
+          </button>
+        }
+      />
 
       <div className="mx-auto max-w-[1180px] space-y-10 px-5 py-8 sm:px-8">
         <section>
@@ -311,21 +311,21 @@ function AddPeople({ token, campaignId }: { token: string; campaignId: string })
   return (
     <form action={action} className="mt-5">
       <label className="block">
-        <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+        <span className={ui.label}>
           Add people
         </span>
         <textarea
           name="people"
           rows={3}
           placeholder={'Priya Raman, priya@company.com\nTom Clarke, tom@company.com'}
-          className="mt-1 w-full border border-black/15 px-3 py-2 text-[14px] text-black outline-none placeholder:text-black/30 focus:border-black/50"
+          className={ui.textarea}
         />
         <span className="mt-1 block text-[12px] text-black/45">
           One per line. Name first, email after a comma — paste straight from a spreadsheet.
         </span>
       </label>
       {state.message && !state.ok && (
-        <p role="alert" className="mt-2 text-[12.5px] text-[#b42318]">{state.message}</p>
+        <p role="alert" className={`mt-2 ${ui.error}`}>{state.message}</p>
       )}
       <AddButton />
     </form>

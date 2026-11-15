@@ -5,6 +5,8 @@ import { useFormState, useFormStatus } from 'react-dom'
 import { ChevronRight, Plus, X } from 'lucide-react'
 import { saveCampaignAction, type CampaignState } from '@/app/actions/partner-campaigns'
 import { CAMPAIGN_STATUS_LABELS, type CampaignKind, type CampaignStatus } from '@/lib/enums'
+import { brandVars, ui } from './ui'
+import { PortalHeader } from './PortalHeader'
 
 const INITIAL: CampaignState = { ok: false, message: '' }
 
@@ -31,31 +33,26 @@ export interface CampaignRow {
  * line each, at the moment of choosing between them rather than in a help page
  * nobody opens.
  */
-export function CampaignList({ token, partnerName, campaigns }: {
+export function CampaignList({ token, partnerName, campaigns, brandColor, accentColor }: {
   token: string
   partnerName: string
+  brandColor?: string
+  accentColor?: string
   campaigns: CampaignRow[]
 }) {
   const [making, setMaking] = useState(false)
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="border-b border-black/10 px-5 py-7 sm:px-8">
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <div>
-            <p className="font-serif text-[26px] leading-tight text-black">Campaigns</p>
-            <p className="mt-1 text-[13px] text-black/55">
-              Reward schemes {partnerName} runs for its own people.
-            </p>
-          </div>
-          <Link
-            href={`/p/${token}`}
-            className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70"
-          >
-            Back to stock
-          </Link>
-        </div>
-      </header>
+    <main className="min-h-screen bg-white" style={brandVars(brandColor, accentColor)}>
+      <PortalHeader
+        eyebrow={partnerName}
+        title="Campaigns"
+        subtitle={`Reward schemes ${partnerName} runs for its own people.`}
+        actions={<>
+          <Link href={`/p/${token}`} className={ui.outline}>Back to stock</Link>
+          <Link href={`/p/${token}/orders`} className={ui.ghost}>Orders</Link>
+        </>}
+      />
 
       <div className="mx-auto max-w-[1180px] px-5 py-8 sm:px-8">
         <button
@@ -143,17 +140,17 @@ export function CampaignForm({ token, campaign, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-5"
+      className={ui.backdrop}
       role="dialog"
       aria-modal="true"
       aria-label={campaign ? 'Edit campaign' : 'New campaign'}
     >
-      <div className="w-full max-w-[520px] bg-white p-6">
+      <div className={`${ui.dialog} max-w-[520px]`}>
         <div className="flex items-start justify-between gap-4">
           <p className="font-serif text-[21px] text-black">
             {campaign ? 'Edit campaign' : 'New campaign'}
           </p>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black">
+          <button type="button" onClick={onClose} aria-label="Close" className={ui.iconButton}>
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
@@ -162,7 +159,7 @@ export function CampaignForm({ token, campaign, onClose }: {
           {campaign && <input type="hidden" name="id" value={campaign.id} />}
 
           <label className="block">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+            <span className={ui.label}>
               Name
             </span>
             <input
@@ -170,12 +167,12 @@ export function CampaignForm({ token, campaign, onClose }: {
               required
               defaultValue={campaign?.name ?? ''}
               placeholder="Q4 top performers"
-              className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none placeholder:text-black/30 focus:border-black/50"
+              className={ui.field}
             />
           </label>
 
           <fieldset>
-            <legend className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+            <legend className={ui.label}>
               How people choose
             </legend>
             <div className="mt-2 space-y-2">
@@ -199,7 +196,7 @@ export function CampaignForm({ token, campaign, onClose }: {
 
           {kind === 'BUDGET' && (
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+              <span className={ui.label}>
                 Amount each person can spend
               </span>
               <input
@@ -208,7 +205,7 @@ export function CampaignForm({ token, campaign, onClose }: {
                 required
                 defaultValue={campaign?.budgetBase ? String(campaign.budgetBase / 100) : ''}
                 placeholder="20000"
-                className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none placeholder:text-black/30 focus:border-black/50"
+                className={ui.field}
               />
               <span className="mt-1 block text-[12px] text-black/45">
                 In AED, at your rate — so this is what it costs you, not our asking price.
@@ -217,7 +214,7 @@ export function CampaignForm({ token, campaign, onClose }: {
           )}
 
           <label className="block">
-            <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+            <span className={ui.label}>
               What people read at the top of their page
             </span>
             <textarea
@@ -225,16 +222,16 @@ export function CampaignForm({ token, campaign, onClose }: {
               rows={3}
               defaultValue={campaign?.intro ?? ''}
               placeholder="In recognition of an exceptional year…"
-              className="mt-1 w-full border border-black/15 px-3 py-2 text-[14px] text-black outline-none placeholder:text-black/30 focus:border-black/50"
+              className={ui.textarea}
             />
           </label>
 
           {state.message && !state.ok && (
-            <p role="alert" className="text-[12.5px] text-[#b42318]">{state.message}</p>
+            <p role="alert" className={ui.error}>{state.message}</p>
           )}
 
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="h-11 px-4 text-[12.5px] uppercase tracking-[0.07em] text-black/50 hover:text-black">
+            <button type="button" onClick={onClose} className={`h-11 ${ui.ghost}`}>
               Cancel
             </button>
             <Save editing={Boolean(campaign)} />
@@ -277,7 +274,7 @@ function Save({ editing }: { editing: boolean }) {
     <button
       type="submit"
       disabled={pending}
-      className="h-11 px-5 text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white disabled:opacity-60"
+      className={ui.primary}
       style={{ backgroundColor: 'var(--brand, #04173A)' }}
     >
       {pending ? 'Saving…' : editing ? 'Save' : 'Create'}

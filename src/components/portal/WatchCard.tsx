@@ -40,7 +40,7 @@ export function WatchCard({ title, details, imageSrc, selected, onSelect, childr
           aria-pressed={selected}
           aria-label={`Select ${title}`}
           onClick={onSelect}
-          className={`absolute left-2 top-2 z-10 flex h-7 w-7 items-center justify-center border transition-opacity ${
+          className={`absolute left-2.5 top-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border shadow-sm transition-opacity ${
             selected
               ? 'border-transparent opacity-100'
               : 'border-black/20 bg-white/90 opacity-0 group-hover:opacity-100 focus:opacity-100'
@@ -52,7 +52,7 @@ export function WatchCard({ title, details, imageSrc, selected, onSelect, childr
       )}
 
       <div
-        className={`aspect-square w-full overflow-hidden bg-black/[0.02] ${selected ? 'ring-2 ring-offset-1' : ''}`}
+        className={`aspect-square w-full overflow-hidden rounded-[14px] bg-black/[0.025] transition-shadow group-hover:shadow-[0_6px_24px_-12px_rgba(0,0,0,0.25)] ${selected ? 'ring-2 ring-offset-2' : ''}`}
         style={selected ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}
       >
         {imageSrc && (
@@ -64,7 +64,7 @@ export function WatchCard({ title, details, imageSrc, selected, onSelect, childr
             // Contained, not cropped: these are packshots of different shapes,
             // and cropping them to a square takes the lugs off a dress watch
             // to make it fill a box.
-            className="h-full w-full object-contain p-3 mix-blend-multiply"
+            className="h-full w-full object-contain p-4 mix-blend-multiply transition-transform duration-500 ease-out group-hover:scale-[1.04]"
           />
         )}
       </div>

@@ -11,6 +11,8 @@ const action = read('src/app/actions/partners.ts')
 const panel = read('src/components/reference/PartnerBrand.tsx')
 const gate = read('src/components/portal/PortalGate.tsx')
 const room = read('src/components/portal/PortalRoom.tsx')
+// The stock list draws its mark through the shared portal header.
+const portalHeader = read('src/components/portal/PortalHeader.tsx')
 const choice = read('src/components/portal/RecipientChoice.tsx')
 const portalLogo = read('src/app/p/[token]/logo/route.ts')
 const recipientLogo = read('src/app/r/[token]/logo/route.ts')
@@ -294,13 +296,15 @@ describe('where the branding shows', () => {
      * branding instead reads as a mailshot.
      */
     expect(gate).toContain('src={`/p/${token}/logo`}')
-    expect(room).toContain('src={`/p/${token}/logo`}')
+    expect(portalHeader).toContain('src={`/p/${token}/logo`}')
+    expect(room).toContain('<PartnerMark token={token}')
     expect(choice).toContain('src={`/r/${token}/logo`}')
   })
 
   it('falls back to their name rather than to an empty space', () => {
     expect(gate).toContain('hasLogo ? (')
-    expect(room).toContain('partner.hasLogo ? (')
+    expect(portalHeader).toContain('hasLogo ? (')
+    expect(room).toContain('hasLogo={partner.hasLogo}')
     expect(choice).toContain('campaign.hasLogo ? (')
   })
 

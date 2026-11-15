@@ -6,6 +6,8 @@ import { listOrdersForPartner } from '@/server/services/partner-order-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import { PortalGate } from '@/components/portal/PortalGate'
 import { OrderHistory } from '@/components/portal/OrderHistory'
+import { PortalHeader } from '@/components/portal/PortalHeader'
+import { brandVars, ui } from '@/components/portal/ui'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -41,28 +43,19 @@ export default async function PortalOrdersPage({ params }: { params: { token: st
   return (
     <main
       className="min-h-screen bg-white"
-      style={{
-        ['--brand' as string]: door.brandColor,
-        ['--accent' as string]: door.accentColor,
-      }}
+      style={brandVars(door.brandColor, door.accentColor)}
     >
-      <header className="border-b border-black/[0.08] bg-white">
-        <div className="h-[3px] w-full" style={{ background: 'var(--brand)' }} aria-hidden />
-        <div className="mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-x-6 gap-y-3 px-5 py-6 sm:px-8">
-          <div>
-            <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em] text-black/40">{door.name}</p>
-            <h1 className="mt-1 font-serif text-[28px] leading-tight text-black">Purchase history</h1>
-          </div>
-          <Link
-            href={`/p/${params.token}`}
-            className="inline-flex items-center rounded-full border border-black/15 px-4 py-2 text-[12px] font-medium uppercase tracking-[0.1em] text-black/75 transition-colors hover:border-black hover:bg-black hover:text-white"
-          >
-            Back to stock
-          </Link>
-        </div>
-      </header>
+      <PortalHeader
+        eyebrow={door.name}
+        title="Purchase history"
+        subtitle="Everything you have reserved or bought, and what it has come to."
+        actions={<>
+          <Link href={`/p/${params.token}`} className={ui.outline}>Back to stock</Link>
+          <Link href={`/p/${params.token}/campaigns`} className={ui.ghost}>Campaigns</Link>
+        </>}
+      />
 
-      <div className="mx-auto max-w-[1180px] px-5 py-8 sm:px-8">
+      <div className={ui.page}>
         {/* No stock numbers: they are our filing, not something a partner
             needs or should be quoting back at us. */}
         <OrderHistory
