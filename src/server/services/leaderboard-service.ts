@@ -270,6 +270,22 @@ export async function setAgentPhoto(
   await touch(leaderboardId)
 }
 
+export async function updateAgent(
+  partnerId: string,
+  leaderboardId: string,
+  agentId: string,
+  input: { name: string; subtitle: string | null },
+) {
+  await owned(partnerId, leaderboardId)
+  const name = input.name.trim()
+  if (!name) throw new ValidationError('Give the agent a name.')
+  await db.update(partnerLeaderboardAgents).set({
+    name: name.slice(0, 120),
+    subtitle: input.subtitle?.trim().slice(0, 120) || null,
+  }).where(and(eq(partnerLeaderboardAgents.id, agentId), eq(partnerLeaderboardAgents.leaderboardId, leaderboardId)))
+  await touch(leaderboardId)
+}
+
 export async function removeAgent(partnerId: string, leaderboardId: string, agentId: string) {
   await owned(partnerId, leaderboardId)
   await db.delete(partnerLeaderboardAgents)
@@ -286,8 +302,7 @@ export interface PrizeInput {
   targetBase: number | null
 }
 
-export async function addPrize(partnerId: string, leaderboardId: string, input: PrizeInput) {
-  await owned(partnerId, leaderboardId)
+function prizeRow(input: PrizeInput) {
   const name = input.name.trim()
   if (!name) throw new ValidationError('Describe the prize, e.g. "Rolex Submariner" or "AED 10,000 voucher".')
   if (input.rule === 'RANK' && !(input.rank && input.rank >= 1)) {
@@ -296,16 +311,26 @@ export async function addPrize(partnerId: string, leaderboardId: string, input: 
   if (input.rule === 'TARGET' && !(input.targetBase && input.targetBase > 0)) {
     throw new ValidationError('Set the target an agent has to reach to win this prize.')
   }
-  await db.insert(partnerLeaderboardPrizes).values({
-    id: newId(),
-    leaderboardId,
+  return {
     name: name.slice(0, 160),
     kind: input.kind,
     valueBase: input.valueBase && input.valueBase > 0 ? input.valueBase : null,
     rule: input.rule,
     rank: input.rule === 'RANK' ? input.rank : null,
     targetBase: input.rule === 'TARGET' ? input.targetBase : null,
-  })
+  }
+}
+
+export async function addPrize(partnerId: string, leaderboardId: string, input: PrizeInput) {
+  await owned(partnerId, leaderboardId)
+  await db.insert(partnerLeaderboardPrizes).values({ id: newId(), leaderboardId, ...prizeRow(input) })
+  await touch(leaderboardId)
+}
+
+export async function updatePrize(partnerId: string, leaderboardId: string, prizeId: string, input: PrizeInput) {
+  await owned(partnerId, leaderboardId)
+  await db.update(partnerLeaderboardPrizes).set(prizeRow(input))
+    .where(and(eq(partnerLeaderboardPrizes.id, prizeId), eq(partnerLeaderboardPrizes.leaderboardId, leaderboardId)))
   await touch(leaderboardId)
 }
 

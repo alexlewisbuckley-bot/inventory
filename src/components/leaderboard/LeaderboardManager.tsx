@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
-  BarChart3, Camera, Check, Copy, ExternalLink, Gift, Link2, Plus, Settings, Trash2, Trophy, Users,
+  BarChart3, Camera, Check, Copy, ExternalLink, Gift, Link2, Pencil, Plus, Settings, Trash2, Trophy, Users,
 } from 'lucide-react'
 import {
   addAgentAction, addPrizeAction, agentPhotoAction, deleteLeaderboardAction, publishLeaderboardAction,
-  removeAgentAction, removePrizeAction, saveLeaderboardAction, saveWeekAction,
+  removeAgentAction, removePrizeAction, saveLeaderboardAction, saveWeekAction, updateAgentAction,
+  updatePrizeAction,
   type LeaderboardScope, type LeaderboardState,
 } from '@/app/actions/leaderboards'
 import { PRIZE_KINDS, PRIZE_KIND_LABELS } from '@/lib/enums'
@@ -206,6 +207,7 @@ function Agents({ scope, id, board, photoBase, onDone }: {
   const [state, action] = useFormState(addAgentAction.bind(null, scope, id), START)
   const form = useRef<HTMLFormElement>(null)
   const [pending, start] = useTransition()
+  const [editing, setEditing] = useState<string | null>(null)
   useEffect(() => {
     if (!state.message) return
     onDone(state)
@@ -217,7 +219,15 @@ function Agents({ scope, id, board, photoBase, onDone }: {
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <div className={`${ui.card} divide-y divide-black/[0.06]`}>
         {board.agents.length === 0 && <div className="p-6"><Empty>No agents yet. Add the first one alongside.</Empty></div>}
-        {board.agents.map((agent) => (
+        {board.agents.map((agent) => editing === agent.id ? (
+          <AgentEditor key={agent.id} agent={agent} photoBase={photoBase} busy={pending}
+            onCancel={() => setEditing(null)}
+            onSave={(data) => start(async () => {
+              const result = await updateAgentAction(scope, id, agent.id, data)
+              onDone(result)
+              if (result.ok) setEditing(null)
+            })} />
+        ) : (
           <div key={agent.id} className="flex items-center gap-4 p-4">
             <label className="group relative h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-full bg-black/[0.06]" title="Change photo">
               {agent.hasPhoto
@@ -243,6 +253,10 @@ function Agents({ scope, id, board, photoBase, onDone }: {
               <p className="truncate text-[14.5px] font-semibold text-black">{agent.name}</p>
               <p className="truncate text-[12.5px] text-black/45">{agent.subtitle || (agent.hasPhoto ? '' : 'Tap the circle to add a photo')}</p>
             </div>
+            <button type="button" disabled={pending} className={ui.iconButton} aria-label={`Edit ${agent.name}`}
+              onClick={() => setEditing(agent.id)}>
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
             <button type="button" disabled={pending} className={ui.iconButton} aria-label={`Remove ${agent.name}`}
               onClick={() => {
                 if (!confirm(`Remove ${agent.name} and all their figures?`)) return
@@ -276,6 +290,7 @@ function Prizes({ scope, id, board, onDone }: {
   const [state, action] = useFormState(addPrizeAction.bind(null, scope, id), START)
   const [rule, setRule] = useState<'RANK' | 'TARGET'>('RANK')
   const [pending, start] = useTransition()
+  const [editing, setEditing] = useState<string | null>(null)
   const form = useRef<HTMLFormElement>(null)
   useEffect(() => {
     if (!state.message) return
@@ -289,7 +304,21 @@ function Prizes({ scope, id, board, onDone }: {
     <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       <div className={`${ui.card} divide-y divide-black/[0.06]`}>
         {board.prizes.length === 0 && <div className="p-6"><Empty>No prizes yet. Add what the agents are playing for alongside.</Empty></div>}
-        {board.prizes.map((prize) => (
+        {board.prizes.map((prize) => editing === prize.id ? (
+          <div key={prize.id} className="bg-black/[0.015] p-4">
+            <PrizeFields
+              prize={prize}
+              metricLabel={board.metricLabel}
+              busy={pending}
+              onCancel={() => setEditing(null)}
+              onSave={(data) => start(async () => {
+                const result = await updatePrizeAction(scope, id, prize.id, data)
+                onDone(result)
+                if (result.ok) setEditing(null)
+              })}
+            />
+          </div>
+        ) : (
           <div key={prize.id} className="flex items-center gap-4 p-4">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-[13px] font-semibold text-black/60">
               {prize.rule === 'RANK' ? ordinal(prize.rank!) : <Trophy className="h-4 w-4" aria-hidden />}
@@ -303,6 +332,10 @@ function Prizes({ scope, id, board, onDone }: {
                 {prize.rule === 'RANK' ? `for finishing ${ordinal(prize.rank!)}` : `for everyone reaching ${aed(prize.targetBase!)}`}
               </p>
             </div>
+            <button type="button" disabled={pending} className={ui.iconButton} aria-label={`Edit ${prize.name}`}
+              onClick={() => setEditing(prize.id)}>
+              <Pencil className="h-4 w-4" aria-hidden />
+            </button>
             <button type="button" disabled={pending} className={ui.iconButton} aria-label={`Remove ${prize.name}`}
               onClick={() => start(async () => onDone(await removePrizeAction(scope, id, prize.id)))}>
               <Trash2 className="h-4 w-4" aria-hidden />
@@ -449,4 +482,113 @@ function Submit({ label }: { label: string }) {
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="rounded-[14px] border border-dashed border-black/15 px-6 py-10 text-center text-[13.5px] text-black/45">{children}</p>
+}
+
+type Agent = BoardView['agents'][number]
+type Prize = BoardView['prizes'][number]
+
+/**
+ * One agent, opened up for editing where they sit in the list.
+ *
+ * In place rather than in a dialog: the row is the thing being changed, and
+ * opening it where it is keeps the rest of the list in view for comparison.
+ */
+function AgentEditor({ agent, photoBase, busy, onSave, onCancel }: {
+  agent: Agent; photoBase: string; busy: boolean
+  onSave: (data: FormData) => void; onCancel: () => void
+}) {
+  const [preview, setPreview] = useState<string | null>(null)
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
+  const shown = preview ?? (agent.hasPhoto ? `${photoBase}/${agent.id}?v=${agent.photoVersion ?? 0}` : null)
+
+  return (
+    <form
+      onSubmit={(event) => { event.preventDefault(); onSave(new FormData(event.currentTarget)) }}
+      onKeyDown={(event) => { if (event.key === 'Escape') onCancel() }}
+      className="flex flex-col gap-4 bg-black/[0.015] p-4 sm:flex-row sm:items-start"
+    >
+      <label className="group relative h-16 w-16 shrink-0 cursor-pointer overflow-hidden rounded-full bg-black/[0.06] ring-2 ring-white" title="Change photo">
+        {shown
+          /* eslint-disable-next-line @next/next/no-img-element */
+          ? <img src={shown} alt="" className="h-full w-full object-cover" />
+          : <span className="flex h-full w-full items-center justify-center text-[18px] font-semibold text-black/45">
+              {agent.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+            </span>}
+        <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition group-hover:opacity-100">
+          <Camera className="h-4 w-4" aria-hidden />
+        </span>
+        <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only"
+          aria-label={`New photo for ${agent.name}`}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            setPreview(file ? URL.createObjectURL(file) : null)
+          }} />
+      </label>
+      <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
+        <label className="block"><span className={ui.label}>Name</span>
+          <input name="name" required autoFocus defaultValue={agent.name} className={ui.field} /></label>
+        <label className="block"><span className={ui.label}>Team or title</span>
+          <input name="subtitle" defaultValue={agent.subtitle ?? ''} className={ui.field} placeholder="optional" /></label>
+        <div className="flex items-center justify-end gap-2 sm:col-span-2">
+          <button type="button" onClick={onCancel} className={ui.ghost}>Cancel</button>
+          <button type="submit" disabled={busy} className={`${ui.primary} !h-10`} style={brandFill}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+}
+
+/** A prize's fields, for changing one that already exists. */
+function PrizeFields({ prize, metricLabel, busy, onSave, onCancel }: {
+  prize: Prize; metricLabel: string; busy: boolean
+  onSave: (data: FormData) => void; onCancel: () => void
+}) {
+  const [rule, setRule] = useState<'RANK' | 'TARGET'>(prize.rule)
+  const whole = (base: number | null) => (base ? String(base / 100) : '')
+  return (
+    <form
+      onSubmit={(event) => { event.preventDefault(); onSave(new FormData(event.currentTarget)) }}
+      onKeyDown={(event) => { if (event.key === 'Escape') onCancel() }}
+      className="grid gap-3 sm:grid-cols-2"
+    >
+      <label className="block sm:col-span-2"><span className={ui.label}>Prize</span>
+        <input name="name" required autoFocus defaultValue={prize.name} className={ui.field} /></label>
+      <label className="block"><span className={ui.label}>Type</span>
+        <select name="kind" className={ui.field} defaultValue={prize.kind}>
+          {PRIZE_KINDS.map((k) => <option key={k} value={k}>{PRIZE_KIND_LABELS[k]}</option>)}
+        </select></label>
+      <label className="block"><span className={ui.label}>Value (AED)</span>
+        <input name="value" inputMode="decimal" defaultValue={whole(prize.valueBase)} className={ui.field} placeholder="optional" /></label>
+      <div className="sm:col-span-2">
+        <span className={ui.label}>How it is won</span>
+        <input type="hidden" name="rule" value={rule} />
+        <div className="mt-1.5 grid grid-cols-2 gap-2">
+          {([['RANK', 'Finishing position'], ['TARGET', 'Hitting a target']] as const).map(([key, title]) => (
+            <button key={key} type="button" onClick={() => setRule(key)} aria-pressed={rule === key}
+              className={`rounded-[12px] border bg-white p-3 text-left text-[13px] font-semibold text-black transition ${rule === key ? 'border-transparent ring-2' : 'border-black/10 hover:border-black/30'}`}
+              style={rule === key ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}>
+              {title}
+            </button>
+          ))}
+        </div>
+      </div>
+      {rule === 'RANK' ? (
+        <label className="block"><span className={ui.label}>Position</span>
+          <select name="rank" className={ui.field} defaultValue={String(prize.rank ?? 1)}>
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{ordinal(n)} place</option>)}
+          </select></label>
+      ) : (
+        <label className="block"><span className={ui.label}>Target {metricLabel.toLowerCase()} (AED)</span>
+          <input name="target" inputMode="decimal" required defaultValue={whole(prize.targetBase)} className={ui.field} /></label>
+      )}
+      <div className="flex items-end justify-end gap-2">
+        <button type="button" onClick={onCancel} className={ui.ghost}>Cancel</button>
+        <button type="submit" disabled={busy} className={`${ui.primary} !h-10`} style={brandFill}>
+          {busy ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </form>
+  )
 }

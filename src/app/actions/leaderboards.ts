@@ -7,7 +7,7 @@ import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import {
   addAgent, addPrize, createLeaderboard, deleteLeaderboard, removeAgent, removePrize, saveWeek,
-  setAgentPhoto, setLeaderboardPublished, updateLeaderboard,
+  setAgentPhoto, setLeaderboardPublished, updateAgent, updateLeaderboard, updatePrize,
 } from '@/server/services/leaderboard-service'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
@@ -174,6 +174,52 @@ export async function removeAgentAction(
     return { ok: true, message: 'Agent removed.' }
   } catch (error) {
     return fail(error, 'That agent could not be removed.')
+  }
+}
+
+function prizeFrom(formData: FormData) {
+  const kind = formData.get('kind')?.toString() as PrizeKind
+  const rule = formData.get('rule')?.toString() as PrizeRule
+  return {
+    name: formData.get('name')?.toString() ?? '',
+    kind: PRIZE_KINDS.includes(kind) ? kind : 'WATCH' as PrizeKind,
+    valueBase: money(formData.get('value')),
+    rule: PRIZE_RULES.includes(rule) ? rule : 'RANK' as PrizeRule,
+    rank: Number(formData.get('rank')) || null,
+    targetBase: money(formData.get('target')),
+  }
+}
+
+export async function updateAgentAction(
+  scope: LeaderboardScope, leaderboardId: string, agentId: string, formData: FormData,
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await updateAgent(partnerId, leaderboardId, agentId, {
+      name: formData.get('name')?.toString() ?? '',
+      subtitle: formData.get('subtitle')?.toString() ?? null,
+    })
+    const photo = await fileFrom(formData.get('photo'))
+    if (photo) await setAgentPhoto(partnerId, leaderboardId, agentId, photo)
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Agent updated.' }
+  } catch (error) {
+    return fail(error, 'That agent could not be updated.')
+  }
+}
+
+export async function updatePrizeAction(
+  scope: LeaderboardScope, leaderboardId: string, prizeId: string, formData: FormData,
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await updatePrize(partnerId, leaderboardId, prizeId, prizeFrom(formData))
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Prize updated.' }
+  } catch (error) {
+    return fail(error, 'That prize could not be updated.')
   }
 }
 
