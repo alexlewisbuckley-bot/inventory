@@ -38,6 +38,8 @@ export default async function CampaignsPage({ params }: { params: { token: strin
   return (
     <CampaignList
       token={params.token}
+      brandColor={door.brandColor}
+      accentColor={door.accentColor}
       partnerName={door.name}
       campaigns={campaigns.map((row) => ({
         ...row,

@@ -59,10 +59,36 @@ export interface Counted extends Band {
 
 /** Everything a row can be searched by, including the words under the picture. */
 export function searchable(item: Filterable): string {
-  return [
+  return fold([
     item.brandName, item.model, item.modelName, item.dial,
     item.caseMaterial, item.bracelet, item.year,
-  ].filter(Boolean).join(' ').toLowerCase()
+    item.caseSizeMm ? `${item.caseSizeMm}mm` : null,
+  ].filter(Boolean).join(' '))
+}
+
+/** Lower case, accents off: "Hermès" and "hermes" are the same search. */
+function fold(text: string): string {
+  return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+}
+
+/** Letters and digits only, so "126610 LV", "126610-lv" and "126610LV" agree. */
+const squash = (text: string) => text.replace(/[^a-z0-9]/g, '')
+
+/**
+ * Does this search find this watch?
+ *
+ * Every word has to be there, in any order: "steel daytona" finds the
+ * Daytona whose dial line says steel, which a single substring never did.
+ * A reference typed with or without its spaces and hyphens still matches,
+ * because nobody types a reference the way it is filed. Two or more words
+ * squashed together are also tried as one, so "126610 lv" finds 126610LV.
+ */
+export function matchesSearch(haystack: string, query: string): boolean {
+  const words = fold(query).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return true
+  const flat = squash(haystack)
+  if (words.length > 1 && flat.includes(squash(words.join('')))) return true
+  return words.every((word) => haystack.includes(word) || (squash(word) !== '' && flat.includes(squash(word))))
 }
 
 /**
@@ -145,8 +171,7 @@ export function matches(
   state: FilterState,
   bands: { price: Counted[]; size: Counted[] },
 ): boolean {
-  const needle = state.q.trim().toLowerCase()
-  if (needle && !searchable(item).includes(needle)) return false
+  if (state.q.trim() && !matchesSearch(searchable(item), state.q)) return false
   if (state.brand && item.brandName !== state.brand) return false
   if (state.boxPapers && item.boxPapers !== state.boxPapers) return false
 

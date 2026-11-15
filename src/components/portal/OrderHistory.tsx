@@ -58,7 +58,7 @@ export function OrderHistory({ orders, showStockNo = false }: {
 
   if (orders.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-black/15 px-6 py-14 text-center text-[14px] text-black/45">
+      <p className="rounded-[14px] border border-dashed border-black/15 px-6 py-14 text-center text-[14px] text-black/45">
         No orders yet. Anything reserved from the stock list will appear here.
       </p>
     )
@@ -123,7 +123,7 @@ export function OrderHistory({ orders, showStockNo = false }: {
           ))}
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-xl border border-black/10">
+        <div className="mt-4 overflow-x-auto rounded-[14px] border border-black/10">
           <table className="w-full min-w-[640px] text-left text-[13.5px]">
             <thead className="bg-black/[0.02] text-[11px] uppercase tracking-[0.1em] text-black/45">
               <tr>
@@ -197,7 +197,7 @@ export function OrderHistory({ orders, showStockNo = false }: {
 
 function Stat({ label, value, note }: { label: string; value: string; note: string }) {
   return (
-    <div className="rounded-xl border border-black/10 px-4 py-4">
+    <div className="rounded-[14px] border border-black/10 px-4 py-4">
       <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/45">{label}</dt>
       <dd className="mt-1.5 text-[22px] font-semibold leading-tight tabular-nums text-black">{value}</dd>
       <dd className="mt-1 text-[12px] text-black/45">{note}</dd>
