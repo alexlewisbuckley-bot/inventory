@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { listOrdersForPartner } from '@/server/services/partner-order-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import { PortalGate } from '@/components/portal/PortalGate'
 import { OrderHistory } from '@/components/portal/OrderHistory'
-import { PortalHeader } from '@/components/portal/PortalHeader'
+import { PartnerMark, PortalHeader } from '@/components/portal/PortalHeader'
+import { PortalNav } from '@/components/portal/PortalNav'
 import { brandVars, ui } from '@/components/portal/ui'
 
 export const dynamic = 'force-dynamic'
@@ -46,13 +46,11 @@ export default async function PortalOrdersPage({ params }: { params: { token: st
       style={brandVars(door.brandColor, door.accentColor)}
     >
       <PortalHeader
-        eyebrow={door.name}
-        title="Purchase history"
+        wide
+        brand={<PartnerMark token={params.token} name={door.name} hasLogo={door.hasLogo} />}
+        eyebrow="Purchase history"
         subtitle="Everything you have reserved or bought, and what it has come to."
-        actions={<>
-          <Link href={`/p/${params.token}`} className={ui.outline}>Back to stock</Link>
-          <Link href={`/p/${params.token}/campaigns`} className={ui.ghost}>Campaigns</Link>
-        </>}
+        actions={<PortalNav token={params.token} active="orders" />}
       />
 
       <div className={ui.page}>

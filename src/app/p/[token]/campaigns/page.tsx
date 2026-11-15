@@ -38,6 +38,7 @@ export default async function CampaignsPage({ params }: { params: { token: strin
   return (
     <CampaignList
       token={params.token}
+      hasLogo={door.hasLogo}
       brandColor={door.brandColor}
       accentColor={door.accentColor}
       partnerName={door.name}

@@ -85,9 +85,11 @@ describe('where it is shown', () => {
     expect(page).toContain('hasPortalPass')
   })
 
-  it('is reachable from the stock page', () => {
+  it('is reachable from every portal page', () => {
+    const nav = readFileSync('src/components/portal/PortalNav.tsx', 'utf8')
     const room = readFileSync('src/components/portal/PortalRoom.tsx', 'utf8')
-    expect(room).toContain('/orders')
+    expect(nav).toContain("path: '/orders'")
+    expect(room).toContain('<PortalNav token={token}')
   })
 
   it('totals every order, not a recent page of them', () => {

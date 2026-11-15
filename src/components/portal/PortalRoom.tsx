@@ -1,9 +1,9 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, LogOut, Megaphone, Receipt, X } from 'lucide-react'
+import { Check, X } from 'lucide-react'
 import {
-  placeOrderAction, placeOrdersAction, leavePortalAction,
+  placeOrderAction, placeOrdersAction,
   type OrderState, type BulkState,
 } from '@/app/actions/partner-portal'
 import { percentFromBps } from '@/lib/partner-rate'
@@ -13,6 +13,7 @@ import {
 import { FilterBar, FilterRail, SortSelect } from './FilterRail'
 import { WatchCard, WatchGrid } from './WatchCard'
 import { PartnerMark, PortalHeader } from './PortalHeader'
+import { PortalNav } from './PortalNav'
 import { brandFill, ui } from './ui'
 import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
@@ -153,24 +154,7 @@ export function PortalRoom({ token, partner, items, orders }: {
             off our asking price.
           </>
         ) : 'Stock available to you now.'}
-        actions={<>
-          {/* Campaigns are the reason most partners are here at all, so the
-              way to them is a proper button rather than a word in the corner. */}
-          <a href={`/p/${token}/campaigns`} className={ui.outline}>
-            <Megaphone className="h-3.5 w-3.5" aria-hidden />
-            Campaigns
-          </a>
-          <a href={`/p/${token}/orders`} className={ui.outline}>
-            <Receipt className="h-3.5 w-3.5" aria-hidden />
-            Orders
-          </a>
-          <form action={leavePortalAction.bind(null, token)}>
-            <button type="submit" className={ui.ghost}>
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
-              Sign out
-            </button>
-          </form>
-        </>}
+        actions={<PortalNav token={token} active="stock" />}
       />
 
       {held.length > 0 && (
