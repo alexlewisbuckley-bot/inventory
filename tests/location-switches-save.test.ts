@@ -9,24 +9,24 @@ const service = readFileSync('src/server/services/reference-service.ts', 'utf8')
 /**
  * A checkbox that saves nothing is worse than no checkbox.
  *
- * "Sell this location's stock on the website" had been on the locations form
- * since migration 0036, with a label, a hint, and a default that changes with
- * the location type. It was in neither `locationSchema` nor
- * `saveLocationAction`, so unticking it saved nothing and the column was only
- * ever writable by the migration that created it.
+ * It happened three times on this one form. "Sell this location's stock on
+ * the website" was on it from migration 0036 and in neither `locationSchema`
+ * nor `saveLocationAction`, so unticking it saved nothing. Then `isOnHand`
+ * the same way, except worse — the schema default of true filled the absence
+ * back in, so every save of any location turned the switch back ON. Alex: "I
+ * am unticking DGA but it isn't working."
  *
- * Then it happened a third time. Alex: "I am unticking DGA but it isn't
- * working." `isOnHand` was on the form and in the schema with a default of
- * true, and the action never read it — so the untick left the field absent,
- * the default filled it back in, and `updateLocation` spread it into the
- * patch and wrote `is_on_hand = true`. Not ignored: REVERSED. Saving any
- * location for any reason turned it back on, so correcting Hong Kong's
- * address would quietly have put it back on the website.
+ * The answer in the end was not a fourth careful read. Alex: "can we make it
+ * simple and just have an active - inactive toggle ... there is so many ticks
+ * for no reason what so ever. Either they are in Dubai and on our website,
+ * trade portals, inventory main view or they aren't." Four boxes asked one
+ * question, and the fourth — "Active" — was read nowhere in the application
+ * at all, its hint promising something nothing enforced.
  *
- * This file existed and did not catch it, because it named the two fields it
- * knew about. So the test that matters now derives the list from the form:
- * every checkbox on it must be read by the action, whatever it is called and
- * whenever it was added.
+ * So there is one box, and the columns are written from it together. What is
+ * left here is the guard that would have caught all three: every checkbox on
+ * the form must be read by the action, derived from the form rather than
+ * listed by somebody who remembered.
  */
 /** Every checkbox the locations form posts, by the name it posts under. */
 function formCheckboxes(): string[] {
@@ -49,7 +49,7 @@ describe('the switches on a location actually save', () => {
      * next year is covered without anybody thinking to come back here.
      */
     const names = formCheckboxes()
-    expect(names.length).toBeGreaterThanOrEqual(4)
+    expect(names.length).toBeGreaterThan(0)
     expect(names).toContain('isOnHand')
     const save = saveLocation()
     for (const name of names) {
@@ -63,19 +63,32 @@ describe('the switches on a location actually save', () => {
      * An unticked checkbox is absent from the payload, not present and
      * false. Left to the schema, `undefined` takes the default and the
      * untick is not ignored but reversed — the default is `true`, so the
-     * save turns the switch back on.
+     * save turns the switch back on. That is what happened to `isOnHand`.
      */
     const save = saveLocation()
     for (const name of formCheckboxes()) {
       expect(save, `${name} is read without === 'on', so an untick becomes the default`)
-        .toMatch(new RegExp(`${name}: formData\\.get\\('${name}'\\) === 'on'`))
+        .toMatch(new RegExp(`formData\\.get\\('${name}'\\) === 'on'`))
     }
   })
 
-  it('is read off the form', () => {
-    expect(action).toMatch(/publishToStorefront: formData\.get\('publishToStorefront'\) === 'on'/)
-    expect(action).toMatch(/showInTradeCatalogue: formData\.get\('showInTradeCatalogue'\) === 'on'/)
-    expect(action).toMatch(/isOnHand: formData\.get\('isOnHand'\) === 'on'/)
+  it('asks the one question once', () => {
+    // Four boxes for one question is three chances to answer it differently,
+    // which is how Hong Kong came to be off the trade list and on the site.
+    expect(formCheckboxes()).toEqual(['isOnHand'])
+  })
+
+  it('writes every column from that one answer', () => {
+    /*
+     * The columns stay, so every query that reads them keeps working and the
+     * finer grain is a code change away rather than a data migration. What
+     * they cannot do any more is disagree.
+     */
+    const save = saveLocation()
+    expect(save).toContain("const active = formData.get('isOnHand') === 'on'")
+    for (const column of ['isOnHand', 'publishToStorefront', 'showInTradeCatalogue', 'isActive']) {
+      expect(save, `${column} is not written from the one switch`).toContain(`${column}: active,`)
+    }
   })
 
   it('survives the schema instead of being stripped by it', () => {
@@ -98,9 +111,11 @@ describe('the switches on a location actually save', () => {
   })
 
   it('is on the form for somebody to tick', () => {
-    expect(manager).toMatch(/name="publishToStorefront"/)
-    expect(manager).toMatch(/name="showInTradeCatalogue"/)
-    expect(manager).toMatch(/name="isOnHand"/)
+    expect(manager).toMatch(/name="isOnHand" label="Active"/)
+    // And the three that asked the same question again are gone from it.
+    expect(manager).not.toMatch(/<Checkbox\s+name="publishToStorefront"/)
+    expect(manager).not.toMatch(/<Checkbox\s+name="showInTradeCatalogue"/)
+    expect(manager).not.toMatch(/<Checkbox\s+name="isActive"/)
   })
 
   it('is read back out, or the form would open on a stale value', () => {
@@ -113,20 +128,19 @@ describe('the switches on a location actually save', () => {
     // Who may be shown the stock in a place is exactly the sort of change
     // somebody asks about afterwards.
     const update = service.slice(service.indexOf('export async function updateLocation'))
-    expect(update.slice(0, 1200)).toMatch(/'publishToStorefront', 'showInTradeCatalogue'/)
+    expect(update.slice(0, 1200)).toMatch(/'publishToStorefront', 'showInTradeCatalogue', 'isOnHand'/)
   })
 
-  it('suggests both off for a new transit location', () => {
-    // The one case where the two questions have the same answer, and
-    // nobody should have to know to untick anything.
-    expect(manager).toMatch(/setPublishes\(next !== 'TRANSIT'\)/)
-    expect(manager).toMatch(/setOnTradeList\(next !== 'TRANSIT'\)/)
+  it('starts a new transit location off', () => {
+    // A watch in a van is not for sale from anywhere, and nobody should have
+    // to know to untick a box they were never shown a reason to look at.
+    expect(manager).toMatch(/if \(!location\) setActive\(next !== 'TRANSIT'\)/)
   })
 
   it('shows an existing location what it is actually set to', () => {
-    // Suggestion only on create. The stored setting is the authority once
-    // it exists, or editing a transit location would keep re-answering a
+    // Suggestion only on create. The stored setting is the authority once it
+    // exists, or editing a transit location would keep re-answering a
     // question somebody had already answered.
-    expect(manager).toMatch(/if \(!location\) \{\n\s+setPublishes/)
+    expect(manager).toMatch(/if \(!location\) setActive/)
   })
 })
