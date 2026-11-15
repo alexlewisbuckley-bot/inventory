@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { matchInvoices, type SaleCandidate } from '@/lib/xero-match'
 import type { XeroInvoice } from '@/lib/xero-invoice'
+import { inWindowFor, linkableFrom } from '@/server/services/xero-service'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 const review = read('src/components/sales/ReconcileReview.tsx')
@@ -150,8 +151,75 @@ describe('the screen', () => {
      * first watch took the control away and the second could never be
      * added — the one case it was needed for.
      */
-    expect(review).toMatch(/\{!review\.appliedAt && review\.unmatchedSales\.length > 0 && \(/)
+    expect(review).toMatch(/\{!review\.appliedAt && review\.linkable\.length > 0 && \(/)
     expect(review).toMatch(/Add another from the book…/)
+  })
+
+  it('offers the sale even when it was sold outside the file\u2019s dates', () => {
+    /*
+     * Alex, a round later: "There is still no way to link two individual
+     * sales to 1 invoice when reconciling with zero."
+     *
+     * The control was there and the sale was not in it. The dropdown was
+     * showing `unmatchedSales`, which is scoped to the span of invoice
+     * dates in the export — right for an exceptions report, wrong for a
+     * picker. Two watches invoiced together are routinely sold weeks
+     * apart: the invoice goes out when the second one goes, so the first
+     * sale falls outside the window and was the one being filtered out.
+     *
+     * Tested on the rule rather than on the source, because the fault was
+     * invisible from the outside: the screen looked right and the option
+     * simply was not there.
+     */
+    const march = new Date('2026-03-10')
+    const january = new Date('2026-01-14')
+    const candidates = [
+      { id: 's1', kind: 'SALE', label: 'Stock 1500', stockNo: 1500, customerName: 'A',
+        saleDate: march, saleAmount: 5000, saleCurrency: 'AED', amountBase: 5000 },
+      { id: 's2', kind: 'SALE', label: 'Stock 1402', stockNo: 1402, customerName: 'A',
+        saleDate: january, saleAmount: 6500, saleCurrency: 'AED', amountBase: 6500 },
+    ] as never
+
+    const offered = linkableFrom(candidates, new Set<string>(), {
+      from: new Date('2026-03-07'), to: new Date('2026-03-13'),
+    })
+    // Both reachable — the January sale is the one somebody is trying to add.
+    expect(offered.map((row) => row.saleId)).toEqual(['s1', 's2'])
+    expect(offered.find((row) => row.saleId === 's2')?.inWindow).toBe(false)
+    expect(offered.find((row) => row.saleId === 's1')?.inWindow).toBe(true)
+  })
+
+  it('leaves out only what is already on an invoice in this file', () => {
+    // The one reason that is really a reason: a sale cannot be on two.
+    const candidates = [
+      { id: 's1', kind: 'SALE', label: 'a', stockNo: 1, customerName: null,
+        saleDate: new Date('2026-03-10'), saleAmount: 1, saleCurrency: 'AED', amountBase: 1 },
+      { id: 's2', kind: 'SALE', label: 'b', stockNo: 2, customerName: null,
+        saleDate: new Date('2026-03-10'), saleAmount: 1, saleCurrency: 'AED', amountBase: 1 },
+    ] as never
+    const offered = linkableFrom(candidates, new Set(['s1']), { from: null, to: null })
+    expect(offered.map((row) => row.saleId)).toEqual(['s2'])
+  })
+
+  it('treats a file with no dated invoices as no window at all', () => {
+    // A window nothing can satisfy would be a filter that hides the book.
+    const inside = inWindowFor(null, null)
+    expect(inside({ saleDate: new Date('2019-01-01') })).toBe(true)
+  })
+
+  it('groups by the window on the screen rather than filtering by it', () => {
+    expect(review).toContain('review.linkable.filter((sale) => sale.inWindow === near)')
+    expect(review).toMatch(/label=\{near \? 'Around these invoice dates' : 'Sold earlier or later'\}/)
+  })
+
+  it('does not widen the exceptions report by the same change', () => {
+    /*
+     * A month of Xero invoices measured against the whole book would report
+     * every sale the firm has ever made as missing. That window is right
+     * and stays; the two lists are built separately now.
+     */
+    expect(service).toContain('const unmatchedSales = candidates')
+    expect(service).toMatch(/\.filter\(inWindow\)/)
   })
 
   it('says what is still missing, in base', () => {

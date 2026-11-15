@@ -86,6 +86,13 @@ export interface ReviewView {
       blockers: Array<'name' | 'amount' | 'date'>
     } | null
   }>
+  /** Every unlinked row of the book, whatever its date — what the picker offers. */
+  linkable: Array<{
+    saleId: string; kind: 'SALE' | 'COMMISSION' | 'BUYBACK'; label: string
+    stockNo: number | null; customerName: string | null; saleDate: string
+    amount: number | null; currency: string; amountBase: number
+    inWindow: boolean
+  }>
   exceptions: Array<{ kind: string; invoiceNo: string | null; stockNo: number | null; detail: string }>
   changeCount: number
 }
@@ -721,7 +728,7 @@ export function ReconcileReview({ review, canApply }: {
                 The link layer has split an invoice across several sales
                 since it was built; the screen simply never let you ask.
               */}
-              {!review.appliedAt && review.unmatchedSales.length > 0 && (
+              {!review.appliedAt && review.linkable.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-line-subtle px-6 py-3">
                   {missing && invoice.sales.length > 0 && (
                     /*
@@ -759,15 +766,41 @@ export function ReconcileReview({ review, canApply }: {
                       <option value="" disabled>
                         {invoice.sales.length > 0 ? 'Add another from the book…' : 'Link from the book…'}
                       </option>
-                      {review.unmatchedSales.map((sale) => (
-                        <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
-                          {KIND_WORDS[sale.kind] ?? sale.kind}
-                          {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
-                          {' · '}{money(sale.amount ?? sale.amountBase, sale.currency)}
-                          {sale.customerName ? ` · ${sale.customerName}` : ''}
-                          {' · '}{sale.saleDate}
-                        </option>
-                      ))}
+                      {/*
+                        Grouped by whether it falls in the file's dates, not
+                        filtered down to them.
+
+                        Alex: "There is still no way to link two individual
+                        sales to 1 invoice when reconciling with zero." The
+                        control was here and the second sale was not in it:
+                        this list was the exceptions list, which is scoped to
+                        the dates the export covers. Two watches invoiced
+                        together are routinely sold weeks apart — the invoice
+                        goes out when the second one goes — so the sale
+                        somebody wanted to add was the one being filtered
+                        out. The near ones stay at the top, because that is
+                        still where the answer usually is.
+                      */}
+                      {([true, false] as const).map((near) => {
+                        const group = review.linkable.filter((sale) => sale.inWindow === near)
+                        if (group.length === 0) return null
+                        return (
+                          <optgroup
+                            key={String(near)}
+                            label={near ? 'Around these invoice dates' : 'Sold earlier or later'}
+                          >
+                            {group.map((sale) => (
+                              <option key={`${sale.kind}:${sale.saleId}`} value={`${sale.kind}:${sale.saleId}`}>
+                                {KIND_WORDS[sale.kind] ?? sale.kind}
+                                {' · '}{sale.kind === 'SALE' && sale.stockNo ? `Stock ${sale.stockNo}` : sale.label}
+                                {' · '}{money(sale.amount ?? sale.amountBase, sale.currency)}
+                                {sale.customerName ? ` · ${sale.customerName}` : ''}
+                                {' · '}{sale.saleDate}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )
+                      })}
                     </select>
                     <Button type="submit" size="sm" variant="secondary" disabled={pending}>
                       <Link2 className="h-3.5 w-3.5" aria-hidden /> Link
