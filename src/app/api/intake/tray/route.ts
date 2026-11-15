@@ -9,7 +9,7 @@ import { referenceKey } from '@/server/services/image-service'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { watchAiConfigured } from '@/server/services/watch-ai'
-import { MAX_TRAY_IMAGES, readTray, type TrayWatch } from '@/server/services/tray-ai'
+import { MAX_TRAY_IMAGES, readTray, type TraySource, type TrayWatch } from '@/server/services/tray-ai'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -34,14 +34,22 @@ export interface TrayRow extends TrayWatch {
 
 export interface TrayReadResponse {
   watches: TrayRow[]
-  /** Anything about the photograph as a whole: a card with no watch, a cut-off tray. */
+  /*
+   * Which of the three kinds of picture this was.
+   *
+   * The review screen tells somebody to check each row against its picture,
+   * which is advice for a tray and nonsense for a screenshot of a
+   * spreadsheet — and the rows alone do not say which it is looking at.
+   */
+  source: TraySource
+  /** Anything about the picture as a whole: a card with no watch, a cut-off tray. */
   note: string | null
   error: string | null
   configured: boolean
 }
 
 /**
- * Read a tray of watches from one photograph.
+ * Read a delivery from one picture: a tray, a pile of cards, or a stock sheet.
  *
  * Writes nothing. It reads the picture and answers; the stock records are
  * created afterwards, by a person who has looked at what it said, through
@@ -54,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     if (!await watchAiConfigured()) {
       return NextResponse.json<TrayReadResponse>({
-        watches: [], note: null, error: null, configured: false,
+        watches: [], source: 'unclear', note: null, error: null, configured: false,
       })
     }
 
@@ -73,7 +81,9 @@ export async function POST(request: NextRequest) {
 
     const { reading, error } = await readTray(images)
     if (!reading) {
-      return NextResponse.json<TrayReadResponse>({ watches: [], note: null, error, configured: true })
+      return NextResponse.json<TrayReadResponse>({
+        watches: [], source: 'unclear', note: null, error, configured: true,
+      })
     }
 
     // Resolved once per distinct maker rather than once per watch: a tray is
@@ -93,6 +103,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json<TrayReadResponse>({
       watches: rows,
+      source: reading.source,
       note: reading.note,
       error: null,
       configured: true,

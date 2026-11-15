@@ -93,17 +93,36 @@ describe('turning the answer into rows', () => {
     expect(reading.watches.map((w) => w.serial)).toEqual(['Q2226SG6', 'W76H2078'])
   })
 
-  it('drops an entry with neither a reference nor a serial', () => {
+  it('drops an entry that names no watch at all', () => {
     /*
      * A reflection counted as a watch, or a card nobody could read. Carrying
      * it into the review screen as an empty row is worse than not mentioning
      * it — somebody has to work out what it was before they can delete it.
      */
     const reading = coerceTray({
-      watches: [watch(), watch({ model: '', serial: '', position: 'middle' })],
+      watches: [watch(), watch({ model: '', serial: '', modelName: '', position: 'middle' })],
       note: '',
     })!
     expect(reading.watches).toHaveLength(1)
+  })
+
+  it('keeps a row that names a watch without a reference', () => {
+    /*
+     * The rule used to be reference-or-serial, which is right for a tray:
+     * anything else there is a reflection. On a list it threw the reading
+     * away — plenty of stock sheets have a description column and no
+     * reference column, so every row failed the test and the screen said no
+     * watches could be made out. "Rolex Submariner Date" is four keystrokes
+     * from a bookable row, and far better than being told the picture was
+     * unreadable.
+     */
+    const reading = coerceTray({
+      watches: [{ model: '', serial: '', brand: 'Rolex', modelName: 'Submariner Date' }],
+      source: 'list',
+      note: '',
+    })!
+    expect(reading.watches).toHaveLength(1)
+    expect(reading.watches[0].modelName).toBe('Submariner Date')
   })
 
   it('keeps a watch whose card gave only one of the two', () => {
@@ -120,9 +139,18 @@ describe('turning the answer into rows', () => {
     expect(reading.note).toBe('the tray is cut off at the bottom')
   })
 
-  it('refuses a list long enough to be a misread', () => {
-    const many = Array.from({ length: 40 }, (_, i) => watch({ serial: `S${i}` }))
-    expect(coerceTray({ watches: many, note: '' })!.watches.length).toBeLessThanOrEqual(24)
+  it('caps a runaway reading, but not at one tray\u2019s worth', () => {
+    /*
+     * Twenty-four was right for a tray — no real delivery is photographed
+     * thirty at a time. A screenshot of a stock sheet is a different animal:
+     * forty rows on one screen is an ordinary Tuesday, and cutting there
+     * would silently drop the bottom of somebody's spreadsheet, which is
+     * worse than reading nothing at all.
+     */
+    const forty = Array.from({ length: 40 }, (_, i) => watch({ serial: `S${i}` }))
+    expect(coerceTray({ watches: forty, note: '' })!.watches).toHaveLength(40)
+    const hundred = Array.from({ length: 100 }, (_, i) => watch({ serial: `S${i}` }))
+    expect(coerceTray({ watches: hundred, note: '' })!.watches).toHaveLength(50)
   })
 
   it('returns nothing for something that is not an answer', () => {
@@ -313,8 +341,8 @@ describe('a photograph of the paperwork alone', () => {
      * remark. The card carries the reference, the serial and the date, which
      * is most of a stock record.
      */
-    expect(tray).toContain('the photograph is of the cards alone')
-    expect(tray).toContain('one entry per card that has no watch with it')
+    expect(tray).toContain('CARDS ALONE, where the watches are not to hand')
+    expect(tray).toContain('per card with no watch')
     expect(tray).not.toContain('A card with no watch, or a watch whose card is not in frame, goes in "note"')
   })
 
@@ -332,7 +360,7 @@ describe('a photograph of the paperwork alone', () => {
   })
 
   it('crops to the card when there is no watch to crop to', () => {
-    expect(tray).toContain('put the rectangle around the card by itself')
+    expect(tray).toContain('around the card alone, or the single row of the list')
   })
 
   it('keeps a card-only row through the coercion', () => {
@@ -387,5 +415,133 @@ describe('booking in a delivery from somebody new', () => {
     // Blocking every prefix would dead-end a genuine two-letter trading
     // name, so the message points at the page where it can still be added.
     expect(action).toContain('add it on the Suppliers page')
+  })
+})
+
+/**
+ * A picture of the seller's list.
+ *
+ * Alex: "Cant add image of spreadsheet sometimes it should still work even
+ * if no photos of watches and scan the detail and create a list the same."
+ *
+ * He is right that it is the same job. A delivery turns up as a tray on a
+ * desk, as a pile of cards with the watches still in a safe, or as a stock
+ * sheet in a screenshot, and in all three the question is "what are these,
+ * one row each". Reading only the first was the reader deciding how a
+ * delivery is allowed to arrive.
+ */
+describe('a picture of the list rather than the watches', () => {
+  it('is named as one of the three things this reads', () => {
+    expect(service).toContain('A LIST — a spreadsheet, a stock sheet')
+    expect(service).toContain('READING A LIST')
+    // And the prompt no longer opens by asserting the watches are laid out,
+    // which is what made a screenshot of a sheet a failed reading.
+    expect(service).not.toContain('Usually the watches are laid out')
+  })
+
+  it('takes a row as complete even when most of its cells are empty', () => {
+    // A list that gives nothing but "Rolex 126610LV" is one good row, not a
+    // failed reading.
+    expect(service).toContain('A row is a complete and correct entry even when most of its columns are empty')
+  })
+
+  it('leaves the rows it should not book', () => {
+    // Totals and headings are not watches; a struck-through row might still
+    // be one, so it is read and flagged rather than dropped on our side.
+    expect(service).toContain('heading rows, subtotals, totals')
+    expect(service).toContain('struck through, marked sold, or marked reserved')
+  })
+
+  it('reads the price and the currency, which is most of the point', () => {
+    const props = schema.properties.watches.items.properties
+    expect(Object.keys(props)).toEqual(expect.arrayContaining(['price', 'currency', 'year']))
+    expect(schema.properties.watches.items.required).toEqual(
+      expect.arrayContaining(['price', 'currency', 'year']),
+    )
+    // Without the price every row still has to be typed by hand, and the
+    // picture saved nothing worth having.
+    expect(props.price?.description).toMatch(/digits and separators only/)
+  })
+
+  it('takes a currency only if the shop can actually convert it', () => {
+    /*
+     * A code nothing downstream handles would put a number on a row and
+     * price it wrong in silence — the exact fault this screen was rebuilt
+     * to stop, one step further back.
+     */
+    const reading = coerceTray({
+      watches: [
+        { model: '126610LV', price: '9500', currency: 'usd' },
+        { model: '126610LN', price: '9500', currency: 'CHF' },
+      ],
+      source: 'list',
+      note: '',
+    })!
+    expect(reading.watches[0].currency).toBe('USD')
+    expect(reading.watches[1].currency).toBeNull()
+  })
+
+  it('takes a year only where it is a year', () => {
+    const reading = coerceTray({
+      watches: [
+        { model: 'A', year: '2019' },
+        { model: 'B', year: 'circa 2015' },
+        { model: 'C', year: 'unknown' },
+      ],
+      source: 'list',
+      note: '',
+    })!
+    expect(reading.watches.map((w) => w.year)).toEqual(['2019', '2015', null])
+  })
+
+  it('says which of the three it was looking at', () => {
+    // The review screen tells somebody to check each row against its
+    // picture, which is advice for a tray and nonsense for a spreadsheet.
+    expect(coerceTray({ watches: [], source: 'list', note: '' })?.source).toBe('list')
+    expect(coerceTray({ watches: [], source: 'tray', note: '' })?.source).toBe('tray')
+    expect(coerceTray({ watches: [], source: 'nonsense', note: '' })?.source).toBe('unclear')
+    expect(coerceTray({ watches: [], note: '' })?.source).toBe('unclear')
+    expect(route).toContain('source: reading.source')
+  })
+
+  it('seeds the cost and its currency onto the row', () => {
+    expect(screen).toContain("cost: watch.price ?? ''")
+    expect(screen).toContain('currency: watch.currency ?? currency')
+    // And the year column of a sheet beats the date printed on a card.
+    expect(screen).toContain('year: watch.year ?? yearFromCard(watch.cardDate)')
+  })
+
+  it('moves the batch currency to whatever the sheet was priced in', () => {
+    /*
+     * Otherwise the select at the top says AED over a column of rows the
+     * reader correctly marked USD — and the first nudge of that control,
+     * which moves every row with it, turns a sheet of dollars into a sheet
+     * of dirhams worth a quarter as much.
+     */
+    expect(screen).toContain('const found = majorityCurrency(read)')
+    expect(screen).toContain('if (found) setCurrency(found)')
+  })
+
+  it('says what it could not find rather than blaming the photograph', () => {
+    /*
+     * "No watches could be made out in that photograph" was the whole answer
+     * to a screenshot of a stock sheet, which reads as the picture being bad
+     * when the reader had simply never been told a list was a thing it might
+     * be shown.
+     */
+    // As a string the screen can show, not as the sentence in the comment
+    // explaining why it no longer does.
+    expect(screen).not.toContain("'No watches could be made out")
+    expect(screen).toContain('no watches, no cards, and no rows')
+    // And the screen says up front that it takes one, so somebody holding a
+    // dealer's sheet knows it is wanted.
+    expect(screen).toContain('a spreadsheet, stock sheet or invoice')
+  })
+
+  it('tells somebody where a price came from before they book it', () => {
+    // A sheet's price column is whatever the seller called it, and this
+    // screen books it as what the shop paid. Usually the same number, and
+    // occasionally not.
+    expect(screen).toContain('check them against what was actually agreed')
   })
 })
