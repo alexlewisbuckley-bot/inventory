@@ -1,6 +1,6 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Moon, Sun, Sunrise, Sunset, Truck } from 'lucide-react'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Moon, Sun, Sunrise, Sunset, Truck, X } from 'lucide-react'
 import {
   DELIVERY_HORIZON_DAYS, DELIVERY_SLOTS, deliveryDays, dubaiToday, formatDeliveryDay, slotFor,
   type DeliverySlot,
@@ -35,7 +35,7 @@ export function DeliveryPicker() {
   const [day, setDay] = useState<string | null>(null)
   const [slot, setSlot] = useState<DeliverySlot | null>(null)
   const strip = useRef<HTMLDivElement>(null)
-  const other = useRef<HTMLInputElement>(null)
+  const [calendar, setCalendar] = useState(false)
 
   const min = days[0]!
   const max = new Date(Date.parse(`${today}T00:00:00Z`) + DELIVERY_HORIZON_DAYS * 86_400_000).toISOString().slice(0, 10)
@@ -102,10 +102,18 @@ export function DeliveryPicker() {
           )
         })}
 
-        {/* Anything beyond two weeks, by calendar. */}
-        <label
-          className={`relative flex w-[74px] shrink-0 snap-start cursor-pointer flex-col items-center justify-center rounded-[12px] border border-dashed py-2 text-center transition ${
-            offStrip ? 'border-transparent text-white' : 'border-black/20 bg-white text-black/55 hover:border-black/40 hover:text-black'
+        {/* Anything beyond two weeks, on our own calendar below. */}
+        <button
+          type="button"
+          onClick={() => setCalendar((open) => !open)}
+          aria-expanded={calendar}
+          aria-controls="delivery-calendar"
+          className={`flex w-[74px] shrink-0 snap-start flex-col items-center justify-center rounded-[12px] border py-2 text-center transition ${
+            offStrip
+              ? 'border-transparent text-white shadow-md'
+              : calendar
+                ? 'border-black/40 bg-white text-black'
+                : 'border-dashed border-black/20 bg-white text-black/55 hover:border-black/40 hover:text-black'
           }`}
           style={offStrip ? { backgroundColor: 'var(--brand)' } : undefined}
         >
@@ -113,19 +121,19 @@ export function DeliveryPicker() {
           <span className="mt-1 text-[10.5px] font-medium leading-tight">
             {offStrip ? short(day!, { day: 'numeric', month: 'short' }) : 'Another date'}
           </span>
-          <input
-            ref={other}
-            type="date"
-            min={min}
-            max={max}
-            value={offStrip ? day! : ''}
-            onChange={(event) => setDay(event.target.value || null)}
-            onClick={() => other.current?.showPicker?.()}
-            className="absolute inset-0 cursor-pointer opacity-0"
-            aria-label="Choose another delivery date"
-          />
-        </label>
+        </button>
       </div>
+
+      {calendar && (
+        <MonthCalendar
+          min={min}
+          max={max}
+          today={today}
+          value={day}
+          onPick={(picked) => { setDay(picked); setCalendar(false) }}
+          onClose={() => setCalendar(false)}
+        />
+      )}
 
       {/* The window, once there is a day to put it on. */}
       <div
@@ -183,5 +191,99 @@ export function DeliveryPicker() {
         )}
       </p>
     </fieldset>
+  )
+}
+
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const isoOf = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10)
+
+/**
+ * A month at a time, drawn to match the day cards above it.
+ *
+ * In place of the browser's own date picker, which cannot be styled and
+ * looked like a different product in the middle of this dialog. Weeks start
+ * on Monday; days outside the bookable window are shown but cannot be
+ * chosen, so the month still reads as a month.
+ */
+function MonthCalendar({ min, max, today, value, onPick, onClose }: {
+  min: string; max: string; today: string; value: string | null
+  onPick: (day: string) => void; onClose: () => void
+}) {
+  const start = value && value >= min ? value : min
+  const [cursor, setCursor] = useState({ y: Number(start.slice(0, 4)), m: Number(start.slice(5, 7)) - 1 })
+  const first = new Date(Date.UTC(cursor.y, cursor.m, 1))
+  const lead = (first.getUTCDay() + 6) % 7
+  const inMonth = new Date(Date.UTC(cursor.y, cursor.m + 1, 0)).getUTCDate()
+  const cells = Array.from({ length: Math.ceil((lead + inMonth) / 7) * 7 }, (_, i) => {
+    const d = i - lead + 1
+    return d >= 1 && d <= inMonth ? isoOf(cursor.y, cursor.m, d) : null
+  })
+  const monthStart = isoOf(cursor.y, cursor.m, 1)
+  const canBack = monthStart > min.slice(0, 8) + '01'
+  const canForward = isoOf(cursor.y, cursor.m + 1, 1) <= max
+  const move = (by: number) => setCursor(({ y, m }) => {
+    const next = new Date(Date.UTC(y, m + by, 1))
+    return { y: next.getUTCFullYear(), m: next.getUTCMonth() }
+  })
+
+  return (
+    <div id="delivery-calendar" className="mt-3 rounded-[14px] border border-black/10 bg-white p-4 shadow-[0_12px_40px_-20px_rgba(0,0,0,0.35)]">
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={() => move(-1)} disabled={!canBack} aria-label="Previous month"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-black/55 transition hover:bg-black/[0.05] hover:text-black disabled:opacity-25">
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+        </button>
+        <p className="font-serif text-[17px] text-black" aria-live="polite">
+          {first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
+        </p>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => move(1)} disabled={!canForward} aria-label="Next month"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-black/55 transition hover:bg-black/[0.05] hover:text-black disabled:opacity-25">
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close calendar"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-black/35 transition hover:bg-black/[0.05] hover:text-black">
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-7 gap-1 text-center" role="grid">
+        {WEEKDAYS.map((w, i) => (
+          <span key={i} className={`pb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] ${i >= 5 ? 'text-black/30' : 'text-black/45'}`}>{w}</span>
+        ))}
+        {cells.map((cell, i) => {
+          if (!cell) return <span key={i} />
+          const open = cell >= min && cell <= max
+          const on = cell === value
+          const isToday = cell === today
+          return (
+            <button
+              key={cell}
+              type="button"
+              disabled={!open}
+              onClick={() => onPick(cell)}
+              aria-pressed={on}
+              aria-label={formatDeliveryDay(cell)}
+              className={`relative flex h-10 items-center justify-center rounded-[10px] text-[13.5px] tabular-nums transition ${
+                on
+                  ? 'font-semibold text-white shadow-md'
+                  : open
+                    ? 'font-medium text-black hover:bg-black/[0.05]'
+                    : 'cursor-default text-black/20'
+              }`}
+              style={on ? { backgroundColor: 'var(--brand)' } : undefined}
+            >
+              {Number(cell.slice(8))}
+              {isToday && !on && <span className="absolute bottom-1 h-1 w-1 rounded-full bg-black/35" aria-hidden />}
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="mt-3 text-[11.5px] text-black/40">
+        Bookable up to {DELIVERY_HORIZON_DAYS} days ahead. We will confirm the exact time with you.
+      </p>
+    </div>
   )
 }
