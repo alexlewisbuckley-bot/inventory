@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { deliveryLine, dubaiToday, noteWithDelivery } from '@/lib/delivery'
 import { getPortalDoor, placeOrder, placeOrders } from '@/server/services/partner-portal-service'
 import { verifyPassword } from '@/server/auth/password'
 import { clearPortalPass, grantPortalPass, hasPortalPass } from '@/server/auth/portal-pass'
@@ -87,7 +88,7 @@ export async function placeOrderAction(
       watchId,
       placedByName: formData.get('placedByName')?.toString() ?? null,
       placedByEmail: formData.get('placedByEmail')?.toString() ?? null,
-      note: formData.get('note')?.toString() ?? null,
+      note: noteFrom(formData),
     })
     revalidatePath(`/p/${token}`)
     return { ok: true, message: 'Reserved. Somebody will be in touch to settle it.' }
@@ -96,6 +97,22 @@ export async function placeOrderAction(
     logger.error('partner order failed', { error: (error as Error).message })
     return { ok: false, message: 'That could not be reserved. Please try again.' }
   }
+}
+
+/**
+ * What they typed, with the delivery they asked for written above it.
+ *
+ * On the note rather than in columns of its own: the note is already what our
+ * side reads on the held-stock list and in the WhatsApp alert, so a delivery
+ * written there is a delivery somebody sees.
+ */
+function noteFrom(formData: FormData): string | null {
+  const line = deliveryLine(
+    formData.get('deliveryDate')?.toString(),
+    formData.get('deliverySlot')?.toString(),
+    dubaiToday(),
+  )
+  return noteWithDelivery(formData.get('note')?.toString(), line)
 }
 
 export interface BulkState {
@@ -135,7 +152,7 @@ export async function placeOrdersAction(
     const outcome = await placeOrders(token, watchIds, {
       placedByName: formData.get('placedByName')?.toString() ?? null,
       placedByEmail: formData.get('placedByEmail')?.toString() ?? null,
-      note: formData.get('note')?.toString() ?? null,
+      note: noteFrom(formData),
     })
     revalidatePath(`/p/${token}`)
 

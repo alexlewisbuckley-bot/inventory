@@ -104,7 +104,7 @@ export function HeldStock({ rows, canManage }: { rows: HeldView[]; canManage: bo
                       Reward · {row.campaignName}
                     </p>
                   )}
-                  {row.note && <p className="truncate text-small text-content-secondary">{row.note}</p>}
+                  {row.note && <p className="whitespace-pre-line text-small text-content-secondary">{row.note}</p>}
                 </div>
 
                 <div className="text-right">
