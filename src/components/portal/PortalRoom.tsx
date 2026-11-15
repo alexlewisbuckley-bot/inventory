@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, X } from 'lucide-react'
+import { Check, LogOut, Megaphone, X } from 'lucide-react'
 import {
   placeOrderAction, placeOrdersAction, leavePortalAction,
   type OrderState, type BulkState,
@@ -126,47 +126,70 @@ export function PortalRoom({ token, partner, items, orders }: {
         ['--accent' as string]: partner.accentColor,
       }}
     >
-      <header className="border-b border-black/10 px-5 py-6 sm:px-8">
-        <div className="mx-auto flex max-w-[1480px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <div>
+      <header className="border-b border-black/[0.08] bg-white">
+        {/* A hairline of the partner's own colour, so the page is theirs
+            before a single word has been read. */}
+        <div className="h-[3px] w-full" style={{ background: 'var(--brand)' }} aria-hidden />
+        <div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-x-8 gap-y-4 px-5 py-5 sm:px-8">
+          <div className="flex min-w-0 items-center gap-5 sm:gap-6">
             {partner.hasLogo ? (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={`/p/${token}/logo`} alt={partner.name} className="h-9 w-auto object-contain" />
+              <img src={`/p/${token}/logo`} alt={partner.name} className="h-11 w-auto shrink-0 object-contain" />
             ) : (
-              <p className="font-serif text-[26px] leading-tight" style={{ color: 'var(--brand)' }}>
+              <p className="shrink-0 font-serif text-[28px] leading-none" style={{ color: 'var(--brand)' }}>
                 {partner.name}
               </p>
             )}
-            <p className="mt-1 text-[13px] text-black/55">
-              {partner.discountBps > 0
-                /*
-                 * "Up to", not "every".
-                 *
-                 * A handful of pieces sit at a floor the rate would have gone
-                 * through, so they are discounted by less. Stating the rate as
-                 * a flat promise would make the page contradict its own
-                 * numbers on those rows, and a partner checking the
-                 * arithmetic would find us short rather than careful.
-                 */
-                ? `Prices below are up to ${percentFromBps(partner.discountBps)} off our asking price.`
-                : 'Stock available to you now.'}
-            </p>
+            <span className="hidden h-10 w-px shrink-0 bg-black/10 sm:block" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.2em] text-black/40">
+                Partner stock
+              </p>
+              <p className="mt-1 text-[13.5px] leading-snug text-black/65">
+                {partner.discountBps > 0 ? (
+                  /*
+                   * "Up to", not "every".
+                   *
+                   * A handful of pieces sit at a floor the rate would have gone
+                   * through, so they are discounted by less. Stating the rate as
+                   * a flat promise would make the page contradict its own
+                   * numbers on those rows, and a partner checking the
+                   * arithmetic would find us short rather than careful.
+                   */
+                  <>
+                    Prices below are up to{' '}
+                    <span
+                      className="inline-flex items-center rounded-full px-2 py-[1px] text-[12.5px] font-semibold tabular-nums text-white"
+                      style={{ background: 'var(--brand)' }}
+                    >
+                      {percentFromBps(partner.discountBps)} off
+                    </span>{' '}
+                    our asking price.
+                  </>
+                ) : 'Stock available to you now.'}
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-5">
+          <nav className="flex items-center gap-2">
             {/* Campaigns are the reason most partners are here at all, so the
-                way to them is beside the sign-out rather than buried. */}
+                way to them is a proper button rather than a word in the corner. */}
             <a
               href={`/p/${token}/campaigns`}
-              className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
+              className="inline-flex items-center gap-2 rounded-full border border-black/15 px-4 py-2 text-[12px] font-medium uppercase tracking-[0.1em] text-black/75 transition-colors hover:border-black hover:bg-black hover:text-white"
             >
+              <Megaphone className="h-3.5 w-3.5" aria-hidden />
               Campaigns
             </a>
             <form action={leavePortalAction.bind(null, token)}>
-              <button type="submit" className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70">
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[12px] font-medium uppercase tracking-[0.1em] text-black/40 transition-colors hover:bg-black/[0.04] hover:text-black/75"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden />
                 Sign out
               </button>
             </form>
-          </div>
+          </nav>
         </div>
       </header>
 
