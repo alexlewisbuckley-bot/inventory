@@ -17,6 +17,7 @@ import {
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
   STOCK_CHECK_LINE_STATUSES, STOCK_CHECK_STATUSES, TASK_KINDS, TASK_STATUSES, THEMES,
   VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
+  PRIZE_KINDS, PRIZE_RULES,
 } from '@/lib/enums'
 
 /**
@@ -462,6 +463,92 @@ export const partnerCampaignRecipients = pgTable(
   (t) => ({
     tokenIdx: uniqueIndex('partner_campaign_recipients_token_idx').on(t.token),
     campaignIdx: index('partner_campaign_recipients_campaign_idx').on(t.campaignId, t.createdAt),
+  }),
+)
+
+/**
+ * A leaderboard challenge a partner runs for its own people.
+ *
+ * Agents compete over a fixed run of weeks against a set of prizes; figures
+ * are entered weekly. See migration 0070 for why this is not a campaign row.
+ */
+export const partnerLeaderboards = pgTable(
+  'partner_leaderboards',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    intro: text('intro'),
+    metricLabel: text('metric_label').notNull().default('Commission earned'),
+    startsOn: date('starts_on').notNull(),
+    endsOn: date('ends_on').notNull(),
+    shareToken: text('share_token').notNull(),
+    isPublished: boolean('is_published').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    shareIdx: uniqueIndex('partner_leaderboards_share_idx').on(t.shareToken),
+    partnerIdx: index('partner_leaderboards_partner_idx').on(t.partnerId, t.startsOn),
+  }),
+)
+
+export const partnerLeaderboardAgents = pgTable(
+  'partner_leaderboard_agents',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    subtitle: text('subtitle'),
+    photoMime: text('photo_mime'),
+    photoData: bytea('photo_data'),
+    photoByteSize: integer('photo_byte_size'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    boardIdx: index('partner_leaderboard_agents_board_idx').on(t.leaderboardId, t.sortOrder),
+  }),
+)
+
+export const partnerLeaderboardPrizes = pgTable(
+  'partner_leaderboard_prizes',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    kind: text('kind', { enum: PRIZE_KINDS }).notNull().default('WATCH'),
+    valueBase: integer('value_base'),
+    rule: text('rule', { enum: PRIZE_RULES }).notNull().default('RANK'),
+    rank: integer('rank'),
+    targetBase: integer('target_base'),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    boardIdx: index('partner_leaderboard_prizes_board_idx').on(t.leaderboardId, t.sortOrder),
+  }),
+)
+
+export const partnerLeaderboardEntries = pgTable(
+  'partner_leaderboard_entries',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull()
+      .references(() => partnerLeaderboardAgents.id, { onDelete: 'cascade' }),
+    weekStart: date('week_start').notNull(),
+    commissionBase: integer('commission_base').notNull().default(0),
+    deals: integer('deals').notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    weekIdx: uniqueIndex('partner_leaderboard_entries_week_idx').on(t.agentId, t.weekStart),
+    boardIdx: index('partner_leaderboard_entries_board_idx').on(t.leaderboardId, t.weekStart),
   }),
 )
 

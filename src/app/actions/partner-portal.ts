@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { deliveryLine, dubaiToday, noteWithDelivery } from '@/lib/delivery'
 import { getPortalDoor, placeOrder, placeOrders } from '@/server/services/partner-portal-service'
 import { verifyPassword } from '@/server/auth/password'
@@ -47,13 +48,21 @@ export async function enterPortalAction(
   await grantPortalPass(token, door.passwordHash, door.passwordSetAt)
   logger.info('portal entered', { token: token.slice(0, 6) })
   revalidatePath(`/p/${token}`)
-  return { ok: true, message: '' }
+  /*
+   * Always into the stock list.
+   *
+   * The door shows on whichever portal page somebody opened, and used to
+   * re-open that same page — so a partner who followed a campaigns or orders
+   * link arrived there instead of at the shop. The stock is the home page.
+   */
+  redirect(`/p/${token}`)
 }
 
 /** Hand the portal back — the "not me" on a borrowed laptop. */
 export async function leavePortalAction(token: string): Promise<void> {
   clearPortalPass(token)
   revalidatePath(`/p/${token}`)
+  redirect(`/p/${token}`)
 }
 
 export interface OrderState {
