@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
-  brands, notifications, partnerCampaigns, partnerOrders, partners, users, watches,
+  brands, notifications, partnerCampaignRecipients, partnerCampaigns, partnerOrders, partners,
+  users, watches,
 } from '../db/schema'
 import { recordAudit } from './audit'
 import { newId } from '@/lib/ids'
@@ -109,25 +110,64 @@ export async function listHeldStock(): Promise<HeldRow[]> {
     .orderBy(partnerOrders.placedAt)
 }
 
-/** Every order for one partner, newest first — this is history, so it reads back. */
-export async function listOrdersForPartner(partnerId: string, limit = 50) {
+export interface PartnerHistoryRow {
+  id: string
+  status: string
+  watchStatus: string
+  placedAt: Date
+  completedAt: Date | null
+  releasedAt: Date | null
+  priceAtOrder: number
+  askingAtOrder: number
+  discountBpsAtOrder: number
+  budgetApplied: number | null
+  stockNo: number
+  brandName: string
+  model: string | null
+  modelName: string | null
+  placedByName: string | null
+  campaignName: string | null
+  recipientName: string | null
+}
+
+/**
+ * Every order one partner has ever placed, newest first.
+ *
+ * Unlimited on purpose: this feeds the spend totals, and a total worked out
+ * from the latest fifty is a wrong number that looks right. A partner places
+ * tens of orders a year, not thousands.
+ *
+ * Deleted watches stay in: what a company bought is still what it bought,
+ * whatever has happened to our stock record since.
+ */
+export async function listOrdersForPartner(partnerId: string): Promise<PartnerHistoryRow[]> {
   return db
     .select({
       id: partnerOrders.id,
       status: partnerOrders.status,
+      watchStatus: watches.status,
       placedAt: partnerOrders.placedAt,
+      completedAt: partnerOrders.completedAt,
       releasedAt: partnerOrders.releasedAt,
       priceAtOrder: partnerOrders.priceAtOrder,
+      askingAtOrder: partnerOrders.askingAtOrder,
+      discountBpsAtOrder: partnerOrders.discountBpsAtOrder,
+      budgetApplied: partnerOrders.budgetApplied,
       stockNo: watches.stockNo,
       brandName: brands.name,
       model: watches.model,
+      modelName: watches.modelName,
+      placedByName: partnerOrders.placedByName,
+      campaignName: partnerCampaigns.name,
+      recipientName: partnerCampaignRecipients.name,
     })
     .from(partnerOrders)
     .innerJoin(watches, eq(watches.id, partnerOrders.watchId))
     .innerJoin(brands, eq(brands.id, watches.brandId))
+    .leftJoin(partnerCampaigns, eq(partnerCampaigns.id, partnerOrders.campaignId))
+    .leftJoin(partnerCampaignRecipients, eq(partnerCampaignRecipients.id, partnerOrders.recipientId))
     .where(eq(partnerOrders.partnerId, partnerId))
     .orderBy(desc(partnerOrders.placedAt))
-    .limit(limit)
 }
 
 export async function countHeldStock(): Promise<number> {
