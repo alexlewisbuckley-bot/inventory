@@ -7,7 +7,8 @@ import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import {
   addAgent, addPrize, createLeaderboard, deleteLeaderboard, removeAgent, removePrize, saveWeek,
-  setAgentPhoto, setLeaderboardPublished, updateLeaderboard,
+  launchLeaderboard, reservePrizeWatch, setAgentPhoto, setLeaderboardPublished, updateAgent,
+  updateLeaderboard, updatePrize,
 } from '@/server/services/leaderboard-service'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
@@ -177,6 +178,52 @@ export async function removeAgentAction(
   }
 }
 
+function prizeFrom(formData: FormData) {
+  const kind = formData.get('kind')?.toString() as PrizeKind
+  const rule = formData.get('rule')?.toString() as PrizeRule
+  return {
+    name: formData.get('name')?.toString() ?? '',
+    kind: PRIZE_KINDS.includes(kind) ? kind : 'WATCH' as PrizeKind,
+    valueBase: money(formData.get('value')),
+    rule: PRIZE_RULES.includes(rule) ? rule : 'RANK' as PrizeRule,
+    rank: Number(formData.get('rank')) || null,
+    targetBase: money(formData.get('target')),
+  }
+}
+
+export async function updateAgentAction(
+  scope: LeaderboardScope, leaderboardId: string, agentId: string, formData: FormData,
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await updateAgent(partnerId, leaderboardId, agentId, {
+      name: formData.get('name')?.toString() ?? '',
+      subtitle: formData.get('subtitle')?.toString() ?? null,
+    })
+    const photo = await fileFrom(formData.get('photo'))
+    if (photo) await setAgentPhoto(partnerId, leaderboardId, agentId, photo)
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Agent updated.' }
+  } catch (error) {
+    return fail(error, 'That agent could not be updated.')
+  }
+}
+
+export async function updatePrizeAction(
+  scope: LeaderboardScope, leaderboardId: string, prizeId: string, formData: FormData,
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await updatePrize(partnerId, leaderboardId, prizeId, prizeFrom(formData))
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Prize updated.' }
+  } catch (error) {
+    return fail(error, 'That prize could not be updated.')
+  }
+}
+
 export async function addPrizeAction(
   scope: LeaderboardScope,
   leaderboardId: string,
@@ -235,5 +282,39 @@ export async function saveWeekAction(
     return { ok: true, message: 'Week saved. The board is up to date.' }
   } catch (error) {
     return fail(error, 'Those figures could not be saved.')
+  }
+}
+
+export async function reservePrizeWatchAction(
+  scope: LeaderboardScope,
+  leaderboardId: string,
+  input: { watchId: string; rule: PrizeRule; rank: number | null; target: string },
+): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await reservePrizeWatch(partnerId, leaderboardId, {
+      watchId: input.watchId,
+      rule: PRIZE_RULES.includes(input.rule) ? input.rule : 'RANK',
+      rank: input.rule === 'RANK' ? input.rank : null,
+      targetBase: input.rule === 'TARGET' ? money(input.target) : null,
+    })
+    refresh(scope, partnerId, leaderboardId)
+    if (scope.kind === 'portal') revalidatePath(`/p/${scope.token}`)
+    return { ok: true, message: 'Reserved. The watch is on hold for you as a prize.' }
+  } catch (error) {
+    return fail(error, 'That watch could not be reserved.')
+  }
+}
+
+export async function launchLeaderboardAction(scope: LeaderboardScope, leaderboardId: string): Promise<LeaderboardState> {
+  const partnerId = await partnerFor(scope)
+  if (!partnerId) return NO_ENTRY
+  try {
+    await launchLeaderboard(partnerId, leaderboardId)
+    refresh(scope, partnerId, leaderboardId)
+    return { ok: true, message: 'Launched. Figures can go in each week, and you can share the board.' }
+  } catch (error) {
+    return fail(error, 'That challenge could not be launched.')
   }
 }

@@ -172,3 +172,25 @@ export function targetsFor(prizes: BoardPrize[], row: Standing): AgentTarget[] {
     }))
     .sort((a, b) => a.toGo - b.toGo)
 }
+
+export interface LaunchPrize { name: string; kind: string; orderId: string | null; holdLive: boolean }
+
+/**
+ * What still stands between a challenge and its launch, in words.
+ *
+ * Alex: the company MUST choose the watches or vouchers it is buying before
+ * the challenge starts. So: somebody to compete, something to win, and every
+ * watch actually held from stock — not typed in, and not a hold that has
+ * since been released or sold from under it.
+ */
+export function launchProblems(board: { agents: unknown[]; prizes: LaunchPrize[] }): string[] {
+  const problems: string[] = []
+  if (board.agents.length === 0) problems.push('Add at least one agent.')
+  if (board.prizes.length === 0) problems.push('Choose at least one prize — a watch from stock, or a voucher or cash.')
+  for (const prize of board.prizes) {
+    if (prize.kind !== 'WATCH') continue
+    if (!prize.orderId) problems.push(`"${prize.name}" was typed in rather than chosen from stock. Remove it and reserve the watch from stock.`)
+    else if (!prize.holdLive) problems.push(`The hold on "${prize.name}" has been released. Remove it and choose another watch.`)
+  }
+  return problems
+}

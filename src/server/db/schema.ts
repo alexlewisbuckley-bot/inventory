@@ -484,6 +484,8 @@ export const partnerLeaderboards = pgTable(
     endsOn: date('ends_on').notNull(),
     shareToken: text('share_token').notNull(),
     isPublished: boolean('is_published').notNull().default(false),
+    /** Set once its prizes are settled; figures and sharing wait for it. */
+    launchedAt: timestamp('launched_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -525,6 +527,8 @@ export const partnerLeaderboardPrizes = pgTable(
     rank: integer('rank'),
     targetBase: integer('target_base'),
     watchId: text('watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    /** The partner order holding the watch, for a prize chosen from stock. */
+    orderId: text('order_id').references(() => partnerOrders.id, { onDelete: 'set null' }),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
   },

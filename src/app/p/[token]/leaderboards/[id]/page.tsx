@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getPortalDoor } from '@/server/services/partner-portal-service'
+import { getPortalDoor, stockForPartner } from '@/server/services/partner-portal-service'
 import { getLeaderboard } from '@/server/services/leaderboard-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import { PortalGate } from '@/components/portal/PortalGate'
@@ -28,6 +28,8 @@ export default async function PortalLeaderboardPage({ params }: { params: { toke
 
   const board = await getLeaderboard(door.id, params.id).catch(() => null)
   if (!board) notFound()
+  // What can be reserved as a prize, at this partner's price.
+  const stock = await stockForPartner(board.partnerId)
 
   return (
     <main className="min-h-screen bg-white" style={brandVars(door.brandColor, door.accentColor)}>
@@ -47,6 +49,10 @@ export default async function PortalLeaderboardPage({ params }: { params: { toke
           isPublished={board.isPublished}
           photoBase={`/l/${board.shareToken}/photo`}
           today={dubaiToday()}
+          stock={stock.map((w) => ({
+            id: w.id, brandName: w.brandName, model: w.model, modelName: w.modelName,
+            dial: w.dial, year: w.year, priceGbp: w.priceGbp, imageIds: w.imageIds,
+          }))}
           backHref={`/p/${params.token}/leaderboards`}
         />
       </div>
