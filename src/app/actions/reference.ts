@@ -83,6 +83,24 @@ export async function saveLocationAction(_prev: ActionState, formData: FormData)
      */
     publishToStorefront: formData.get('publishToStorefront') === 'on',
     showInTradeCatalogue: formData.get('showInTradeCatalogue') === 'on',
+    /*
+     * And the third one, which was missing for the same reason as the first.
+     *
+     * Alex: "I am unticking DGA but it isn't working." It was not merely
+     * being ignored — it was being reversed. The checkbox was on the form,
+     * the column was in the schema with a default of true, and this action
+     * never read it; so the untick left the field absent, the default filled
+     * it back in, and `updateLocation` spread it into the patch and wrote
+     * is_on_hand = true. Saving ANY location for any reason turned it on,
+     * which would have quietly put Hong Kong back on the website the next
+     * time somebody corrected its address.
+     *
+     * The note above says exactly this about the storefront switch. Reading
+     * the warning and then adding a fourth checkbox the same way is how a
+     * comment becomes decoration, so there is a test now that compares the
+     * form's checkboxes against the fields this action reads.
+     */
+    isOnHand: formData.get('isOnHand') === 'on',
   })
   if (!parsed.success) return { ok: false, errors: fieldErrors(parsed.error) }
 
