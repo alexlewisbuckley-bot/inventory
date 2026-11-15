@@ -6,7 +6,8 @@ import { ChevronRight, Plus, X } from 'lucide-react'
 import { saveCampaignAction, type CampaignState } from '@/app/actions/partner-campaigns'
 import { CAMPAIGN_STATUS_LABELS, type CampaignKind, type CampaignStatus } from '@/lib/enums'
 import { brandVars, ui } from './ui'
-import { PortalHeader } from './PortalHeader'
+import { PartnerMark, PortalHeader } from './PortalHeader'
+import { PortalNav } from './PortalNav'
 
 const INITIAL: CampaignState = { ok: false, message: '' }
 
@@ -33,7 +34,8 @@ export interface CampaignRow {
  * line each, at the moment of choosing between them rather than in a help page
  * nobody opens.
  */
-export function CampaignList({ token, partnerName, campaigns, brandColor, accentColor }: {
+export function CampaignList({ token, partnerName, campaigns, brandColor, accentColor, hasLogo = false }: {
+  hasLogo?: boolean
   token: string
   partnerName: string
   brandColor?: string
@@ -45,16 +47,14 @@ export function CampaignList({ token, partnerName, campaigns, brandColor, accent
   return (
     <main className="min-h-screen bg-white" style={brandVars(brandColor, accentColor)}>
       <PortalHeader
-        eyebrow={partnerName}
-        title="Campaigns"
+        wide
+        brand={<PartnerMark token={token} name={partnerName} hasLogo={hasLogo} />}
+        eyebrow="Campaigns"
         subtitle={`Reward schemes ${partnerName} runs for its own people.`}
-        actions={<>
-          <Link href={`/p/${token}`} className={ui.outline}>Back to stock</Link>
-          <Link href={`/p/${token}/orders`} className={ui.ghost}>Orders</Link>
-        </>}
+        actions={<PortalNav token={token} active="campaigns" />}
       />
 
-      <div className="mx-auto max-w-[1180px] px-5 py-8 sm:px-8">
+      <div className="mx-auto max-w-[1480px] px-5 py-8 sm:px-8">
         <button
           type="button"
           onClick={() => setMaking(true)}

@@ -23,7 +23,7 @@ export const brandFill = { backgroundColor: 'var(--brand)', color: '#fff' } as c
 
 export const ui = {
   /** Page width for list and detail pages. */
-  page: 'mx-auto max-w-[1180px] px-5 py-8 sm:px-8',
+  page: 'mx-auto max-w-[1480px] px-5 py-8 sm:px-8',
   wide: 'mx-auto max-w-[1480px] px-5 sm:px-8',
 
   /** The small capitals over a title or a group. */
