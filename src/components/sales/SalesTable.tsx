@@ -376,6 +376,22 @@ export function SalesTable({
         target={editTarget}
         canAmendCost={canAmendCost}
         salesPeople={salesPeople}
+        /*
+          Handed over only to a reader who may void, because converting is
+          half a void — the same door the row menu puts it behind. Offered
+          here as well because the correction dialog is where somebody works
+          out that the money was a fee: they are looking at a cost and a
+          price that were never the firm's.
+        */
+        onConvertToCommission={canVoid && editTarget ? () => {
+          setCommissionTarget({
+            id: editTarget.id,
+            label: editTarget.label,
+            invoiceNo: editTarget.invoiceNo,
+            amountGbp: editTarget.amountGbp,
+          })
+          setEditTarget(null)
+        } : undefined}
         onClose={() => setEditTarget(null)}
         onSaved={() => router.refresh()}
       />

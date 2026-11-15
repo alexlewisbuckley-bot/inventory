@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Handshake } from 'lucide-react'
 import {
   Modal, Button, TextField, SelectField, TextareaField, MoneyField, useToast,
 } from '@/components/ui'
@@ -59,7 +60,7 @@ const options = <T extends string>(values: readonly T[], labels: Record<T, strin
  * editable copy of a phone number is how two copies come to disagree.
  */
 export function EditSaleModal({
-  open, target, canAmendCost = false, salesPeople = [], onClose, onSaved,
+  open, target, canAmendCost = false, salesPeople = [], onConvertToCommission, onClose, onSaved,
 }: {
   open: boolean
   target: EditSaleTarget | null
@@ -75,6 +76,18 @@ export function EditSaleModal({
    * The field is simply absent without it, and the server refuses it too.
    */
   canAmendCost?: boolean
+  /**
+   * Offered when this reader may also void, because converting is half a void.
+   *
+   * Alex, looking at this dialog: "correction of sale cannot be updated to
+   * commision of sale this is a feature we need to include." It could, and
+   * from the row menu on the ledger — which is not where somebody is
+   * standing when they work it out. They are here, reading the cost and the
+   * price and realising neither was ever the firm's money. Left out, this
+   * dialog quietly says the conversion is not possible, because it already
+   * lists what you cannot do here and did not mention it.
+   */
+  onConvertToCommission?: () => void
   onClose: () => void
   onSaved: () => void
 }) {
@@ -274,6 +287,32 @@ export function EditSaleModal({
         this sale to a different watch or a different buyer, void it and record it again —
         that is a different sale, not a typo.
       </p>
+
+      {onConvertToCommission && (
+        /*
+          The other kind of wrong, and the one this dialog cannot fix by
+          editing a figure: the money was never a margin at all.
+
+          A commission is a different record on a different ledger — there is
+          no cost and no margin, only a fee — so it is a door out of here
+          rather than another field. It does the whole swap: the sale is
+          voided, the fee is recorded against the same watch, and the watch
+          stays sold, because it did sell.
+        */
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line-subtle pt-3">
+          <p className="text-caption text-content-secondary">
+            Was this a commission rather than a sale of our own watch?
+          </p>
+          <button
+            type="button"
+            onClick={onConvertToCommission}
+            className="inline-flex items-center gap-1.5 text-caption font-bold text-content-accent hover:underline"
+          >
+            <Handshake className="h-3.5 w-3.5" aria-hidden />
+            Record it as a commission…
+          </button>
+        </div>
+      )}
     </Modal>
   )
 }
