@@ -9,6 +9,10 @@ import {
 import { stockForPartner } from '@/server/services/partner-portal-service'
 import { listOrdersForPartner } from '@/server/services/partner-order-service'
 import { OrderHistory } from '@/components/portal/OrderHistory'
+import { LeaderboardList } from '@/components/leaderboard/LeaderboardList'
+import { listLeaderboards } from '@/server/services/leaderboard-service'
+import { brandVars } from '@/components/portal/ui'
+import { dubaiToday } from '@/lib/delivery'
 import { Card, CardHeader } from '@/components/ui'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PartnerCampaigns } from '@/components/reference/PartnerCampaigns'
@@ -43,7 +47,7 @@ export default async function PartnerPage({ params }: { params: { id: string } }
    * wait. The shortlist picker needs the stock as well, and only where there
    * is a shortlist campaign to pick for.
    */
-  const [recipientPairs, shortlistPairs, stock, orders] = await Promise.all([
+  const [recipientPairs, shortlistPairs, stock, orders, leaderboards] = await Promise.all([
     Promise.all(campaigns.map(async (campaign) => [
       campaign.id, await listRecipients(partner.id, campaign.id),
     ] as const)),
@@ -57,6 +61,7 @@ export default async function PartnerPage({ params }: { params: { id: string } }
       ? stockForPartner(partner.id)
       : Promise.resolve([]),
     listOrdersForPartner(partner.id),
+    listLeaderboards(partner.id),
   ])
 
   return (
@@ -113,6 +118,23 @@ export default async function PartnerPage({ params }: { params: { id: string } }
           />
         </div>
       </Card>
+
+      {can(user.role, 'partner:manage') && (
+        <Card as="section" className="mb-6">
+          <CardHeader
+            title="Leaderboard challenges"
+            description="Rank this partner's agents week by week against prizes. They manage the same challenges under Leaderboards in their portal."
+          />
+          <div className="rounded-b-sm bg-white px-5 py-6 text-black sm:px-6" style={brandVars(partner.brandColor, partner.accentColor)}>
+            <LeaderboardList
+              scope={{ kind: 'staff', partnerId: partner.id }}
+              rows={leaderboards}
+              today={dubaiToday()}
+              hrefFor={`/partners/${partner.id}/leaderboards`}
+            />
+          </div>
+        </Card>
+      )}
 
       <PartnerCampaigns
         partnerId={partner.id}
