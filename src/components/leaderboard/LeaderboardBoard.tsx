@@ -38,6 +38,22 @@ const day = (iso: string) =>
   new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
 const MEDALS = ['#C9A227', '#A8A9AD', '#B0703C']
+
+/**
+ * A prize's name as people should read it.
+ *
+ * A voucher saved with nothing but its amount for a name ("25000") reads as
+ * a stray number on a board people look at from across an office; it is
+ * shown as what it is instead.
+ */
+export function prizeLabel(prize: { name: string; kind: PrizeKind; valueBase: number | null }): string {
+  const bare = prize.name.replace(/[\s,]/g, '')
+  if (/^(aed)?\d+(\.\d+)?$/i.test(bare)) {
+    const amount = Number(bare.replace(/^aed/i, ''))
+    return `AED ${amount.toLocaleString('en-GB')} ${prize.kind === 'CASH' ? 'cash prize' : 'watch voucher'}`
+  }
+  return prize.name
+}
 const KIND_ICON: Record<PrizeKind, typeof Watch> = { WATCH: Watch, CASH: Wallet, VOUCHER: Gift }
 const STATUS_TEXT: Record<BoardStatus, string> = { UPCOMING: 'Starts soon', LIVE: 'Live', ENDED: 'Finished' }
 
@@ -154,9 +170,9 @@ export function LeaderboardBoard({ board, photoBase, stockBase, today }: {
         </div>
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* Everybody, ranked. */}
-        <section aria-label="Standings" className="overflow-hidden rounded-[18px] border border-black/10 bg-white">
+        <section aria-label="Standings" className="overflow-hidden rounded-[18px] border border-black/10 bg-white lg:self-start">
           <header className="flex items-center justify-between border-b border-black/[0.06] px-5 py-3">
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/45">Standings</h3>
             <p className="hidden text-[11px] uppercase tracking-[0.12em] text-black/35 sm:block">
@@ -176,7 +192,7 @@ export function LeaderboardBoard({ board, photoBase, stockBase, today }: {
                   photo={photo(row.agentId)}
                   won={prizesOf(row.agentId)}
                   next={targetsFor(board.prizes, row)[0] ?? null}
-                  prizeName={(id) => board.prizes.find((p) => p.id === id)?.name ?? ''}
+                  prizeName={(id) => { const p = board.prizes.find((x) => x.id === id); return p ? prizeLabel(p) : '' }}
                   share={row.total / leader}
                   ranked={anyFigures}
                   ended={time.status === 'ENDED'}
@@ -214,7 +230,7 @@ export function LeaderboardBoard({ board, photoBase, stockBase, today }: {
                           ? <><Trophy className="h-3 w-3" aria-hidden />{ordinal(prize.rank!)} place</>
                           : <><Target className="h-3 w-3" aria-hidden />Reach {aedShort(prize.targetBase!)}</>}
                       </p>
-                      <p className="mt-0.5 truncate text-[14px] font-semibold text-black" title={prize.name}>{prize.name}</p>
+                      <p className="mt-0.5 truncate text-[14px] font-semibold text-black" title={prizeLabel(prize)}>{prizeLabel(prize)}</p>
                       <p className="truncate text-[12px] text-black/45">
                         {PRIZE_KIND_LABELS[prize.kind]}{prize.valueBase ? ` · ${aed(prize.valueBase)}` : ''}
                       </p>
@@ -262,7 +278,7 @@ function Row({ row, agent, photo, won, next, prizeName, share, ranked, ended }: 
   const medal = placed && row.rank <= 3 ? MEDALS[row.rank - 1] : null
   return (
     <li
-      className="grid grid-cols-[30px_auto_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-2.5 sm:grid-cols-[34px_auto_minmax(0,1fr)_92px_136px] sm:gap-x-4 sm:px-5"
+      className="grid grid-cols-[30px_auto_minmax(0,1fr)_auto] items-center gap-x-3 px-4 py-3 sm:grid-cols-[34px_auto_minmax(0,1fr)_92px_136px] sm:gap-x-4 sm:px-5"
       style={medal ? { background: `linear-gradient(90deg, ${medal}14, transparent 60%)` } : undefined}
     >
       <div className="flex flex-col items-center">
@@ -284,30 +300,35 @@ function Row({ row, agent, photo, won, next, prizeName, share, ranked, ended }: 
       <Avatar name={agent.name} src={photo} size={medal ? 42 : 38} ring={medal ?? undefined} />
 
       <div className="min-w-0">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <p className="truncate text-[14px] font-semibold text-black">{agent.name}</p>
-          <p className="hidden shrink-0 truncate text-[12px] text-black/40 md:block">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <p className="truncate text-[15px] font-semibold text-black">{agent.name}</p>
+          <p className="truncate text-[12.5px] text-black/45">
             {[agent.subtitle, `${row.deals} ${row.deals === 1 ? 'deal' : 'deals'}`].filter(Boolean).join(' · ')}
           </p>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-2">
-          {/* Against the leader. */}
-          <div className="h-1 w-full max-w-[160px] shrink-0 overflow-hidden rounded-full bg-black/[0.06]">
-            <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%`, backgroundColor: medal ?? 'var(--brand)' }} />
-          </div>
-          <div className="flex min-w-0 gap-1 overflow-hidden">
+        {/* Against the leader, across the full width of the name column. */}
+        <div className="mt-1.5 h-1 w-full max-w-[420px] overflow-hidden rounded-full bg-black/[0.06]">
+          <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(1, share)) * 100}%`, backgroundColor: medal ?? 'var(--brand)' }} />
+        </div>
+        {/*
+          * What they are on course for, on its own line and wrapping — never
+          * cut to "Rolex 126334 D…", which is the one thing an agent reads
+          * the board to find out.
+          */}
+        {(won.length > 0 || next) && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {won.map((p) => (
-              <span key={p.id} title={p.name} className="inline-flex min-w-0 max-w-[180px] shrink items-center gap-1 rounded-full bg-amber-50 px-2 py-px text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">
-                <Trophy className="h-2.5 w-2.5 shrink-0" aria-hidden /><span className="truncate">{ended ? 'Won ' : ''}{p.name}</span>
+              <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">
+                <Trophy className="h-3 w-3 shrink-0" aria-hidden />{ended ? 'Won: ' : ''}{prizeLabel(p)}
               </span>
             ))}
-            {next && won.length === 0 && (
-              <span title={`${aed(next.toGo)} to ${prizeName(next.prizeId)}`} className="inline-flex min-w-0 shrink items-center gap-1 rounded-full bg-black/[0.04] px-2 py-px text-[11px] text-black/55">
-                <Target className="h-2.5 w-2.5 shrink-0" aria-hidden /><span className="truncate">{aedShort(next.toGo)} to {prizeName(next.prizeId)}</span>
+            {next && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/[0.04] px-2 py-0.5 text-[11.5px] text-black/55">
+                <Target className="h-3 w-3 shrink-0" aria-hidden />{aedShort(next.toGo)} to {prizeName(next.prizeId)}
               </span>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <p className="hidden text-right text-[13px] tabular-nums text-black/55 sm:block">

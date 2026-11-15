@@ -19,7 +19,7 @@ import { SortSelect } from '@/components/portal/FilterRail'
 import {
   activeCount, applyFilters, buildGroups, priceBands, sizeBands, NO_FILTERS, type FilterState,
 } from '@/components/portal/filters'
-import { LeaderboardBoard, ordinal, type BoardView } from './LeaderboardBoard'
+import { LeaderboardBoard, ordinal, prizeLabel, type BoardView } from './LeaderboardBoard'
 import type { TeamMemberView } from './TeamManager'
 
 const START: LeaderboardState = { ok: false, message: '' }
@@ -439,7 +439,7 @@ function Prizes({ scope, id, board, stock, stockBase, onDone }: {
                           : <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11.5px] font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20">Hold released</span>
                         : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">Not from stock</span>)}
                     </div>
-                    <p className="mt-1.5 line-clamp-2 font-serif text-[16.5px] leading-snug text-black">{prize.name}</p>
+                    <p className="mt-1.5 line-clamp-2 font-serif text-[16.5px] leading-snug text-black">{prizeLabel(prize)}</p>
                     <p className="mt-0.5 text-[12.5px] text-black/45">
                       {PRIZE_KIND_LABELS[prize.kind]}{prize.valueBase ? ` · ${aed(prize.valueBase)}` : ''}
                       {prize.stockNo !== null && prize.stockNo !== undefined ? ` · Stock ${prize.stockNo}` : ''}
