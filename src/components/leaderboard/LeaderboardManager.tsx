@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useFormState, useFormStatus } from 'react-dom'
 import {
   BarChart3, Camera, Check, Copy, ExternalLink, Gift, Link2, Lock, Pencil, Plus, Rocket, Search, Settings,
-  Target, Trash2, Trophy, UserCheck, Users, Wallet, Watch as WatchIcon, X,
+  Maximize2, Target, Trash2, Trophy, UserCheck, Users, Wallet, Watch as WatchIcon, X,
 } from 'lucide-react'
 import {
   addAgentAction, addPrizeAction, agentPhotoAction, deleteLeaderboardAction, publishLeaderboardAction,
@@ -19,7 +19,7 @@ import { SortSelect } from '@/components/portal/FilterRail'
 import {
   activeCount, applyFilters, buildGroups, priceBands, sizeBands, NO_FILTERS, type FilterState,
 } from '@/components/portal/filters'
-import { LeaderboardBoard, ordinal, type BoardView } from './LeaderboardBoard'
+import { LeaderboardBoard, ordinal, prizeLabel, type BoardView } from './LeaderboardBoard'
 import type { TeamMemberView } from './TeamManager'
 
 const START: LeaderboardState = { ok: false, message: '' }
@@ -439,7 +439,7 @@ function Prizes({ scope, id, board, stock, stockBase, onDone }: {
                           : <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11.5px] font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20">Hold released</span>
                         : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">Not from stock</span>)}
                     </div>
-                    <p className="mt-1.5 line-clamp-2 font-serif text-[16.5px] leading-snug text-black">{prize.name}</p>
+                    <p className="mt-1.5 line-clamp-2 font-serif text-[16.5px] leading-snug text-black">{prizeLabel(prize)}</p>
                     <p className="mt-0.5 text-[12.5px] text-black/45">
                       {PRIZE_KIND_LABELS[prize.kind]}{prize.valueBase ? ` · ${aed(prize.valueBase)}` : ''}
                       {prize.stockNo !== null && prize.stockNo !== undefined ? ` · Stock ${prize.stockNo}` : ''}
@@ -468,33 +468,39 @@ function Prizes({ scope, id, board, stock, stockBase, onDone }: {
       {/* Adding: choose what kind first, then the rest. */}
       {adding === null ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <AddChoice icon={WatchIcon} title="A watch from stock" sub="Choose from what is available and reserve it for you" onClick={() => setAdding('WATCH')} />
+          <AddChoice icon={WatchIcon} title="Watches from stock" sub="Browse what is available and reserve them for you" onClick={() => setAdding('WATCH')} />
           <AddChoice icon={Gift} title="A voucher or cash" sub="An amount towards a watch, or a cash prize" onClick={() => setAdding('OTHER')} />
         </div>
-      ) : adding === 'WATCH' ? (
-        <WatchPicker
+      ) : (
+        <PrizeBuilder
           stock={stock}
           stockBase={stockBase}
           nextRank={nextRank}
           metricLabel={board.metricLabel}
           busy={pending}
+          startWithCash={adding === 'OTHER'}
           onCancel={() => setAdding(null)}
-          onReserve={(items) => start(async () => {
-            const result = await reservePrizeWatchesAction(scope, id, items)
-            onDone(result)
-            if (result.ok) setAdding(null)
-          })}
-        />
-      ) : (
-        <OtherPrize
-          nextRank={nextRank}
-          metricLabel={board.metricLabel}
-          busy={pending}
-          onCancel={() => setAdding(null)}
-          onAdd={(data) => start(async () => {
-            const result = await addPrizeAction(scope, id, START, data)
-            onDone(result)
-            if (result.ok) setAdding(null)
+          onSave={(lineup) => start(async () => {
+            const messages: string[] = []
+            let ok = true
+            if (lineup.watches.length) {
+              const result = await reservePrizeWatchesAction(scope, id, lineup.watches)
+              messages.push(result.message); ok = ok && result.ok
+            }
+            let added = 0
+            for (const other of lineup.others) {
+              const data = new FormData()
+              data.set('name', other.name); data.set('kind', other.kind); data.set('value', other.amount)
+              data.set('rule', other.rule); data.set('rank', String(other.rank)); data.set('target', other.target)
+              const result = await addPrizeAction(scope, id, START, data)
+              if (result.ok) added++
+              else { ok = false; messages.push(result.message) }
+            }
+            if (added) messages.push(`${added} ${added === 1 ? 'voucher/cash prize' : 'voucher/cash prizes'} added.`)
+            // Refresh whenever anything was saved; stay open only if something was not.
+            const anySaved = added > 0 || messages.some((m) => /reserved for you/.test(m))
+            onDone({ ok: anySaved, message: messages.join(' ') })
+            if (ok) setAdding(null)
           })}
         />
       )}
@@ -519,73 +525,39 @@ function AddChoice({ icon: Icon, title, sub, onClick }: { icon: typeof Gift; tit
   )
 }
 
-/** How a prize is won: a position from a row of pills, or a target amount. */
-function HowWon({ rule, setRule, rank, setRank, target, setTarget, metricLabel }: {
-  rule: 'RANK' | 'TARGET'; setRule: (r: 'RANK' | 'TARGET') => void
-  rank: number; setRank: (n: number) => void
-  target: string; setTarget: (t: string) => void
-  metricLabel: string
-}) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <span className={ui.label}>How it is won</span>
-        <div className="mt-1.5 inline-flex w-full rounded-full bg-black/[0.05] p-1 sm:w-auto">
-          {([['RANK', 'Finishing position'], ['TARGET', 'Hitting a target']] as const).map(([key, title]) => (
-            <button key={key} type="button" onClick={() => setRule(key)} aria-pressed={rule === key}
-              className={`flex-1 rounded-full px-4 py-2 text-[13px] font-medium transition sm:flex-none ${rule === key ? 'bg-white text-black shadow-sm' : 'text-black/55 hover:text-black'}`}>
-              {title}
-            </button>
-          ))}
-        </div>
-      </div>
-      {rule === 'RANK' ? (
-        <div>
-          <span className={ui.label}>Position</span>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <button key={n} type="button" onClick={() => setRank(n)} aria-pressed={rank === n}
-                className={`h-10 min-w-[52px] rounded-full border px-3 text-[13px] font-semibold tabular-nums transition ${
-                  rank === n ? 'border-transparent text-white' : 'border-black/10 bg-white text-black/70 hover:border-black/30'
-                }`}
-                style={rank === n ? brandFill : undefined}>
-                {ordinal(n)}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <label className="block max-w-[320px]"><span className={ui.label}>Target {metricLabel.toLowerCase()} (AED)</span>
-          <input inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 500000" className={ui.field} /></label>
-      )}
-    </div>
-  )
+type HowWonState = { rule: 'RANK' | 'TARGET'; rank: number; target: string }
+type CashLine = HowWonState & { kind: 'VOUCHER' | 'CASH'; amount: string; name: string }
+
+export interface LineupResult {
+  watches: Array<{ watchId: string; label: string; rule: 'RANK' | 'TARGET'; rank: number | null; target: string }>
+  others: Array<{ kind: 'VOUCHER' | 'CASH'; name: string; amount: string; rule: 'RANK' | 'TARGET'; rank: number; target: string }>
 }
 
-type LineupItem = { rule: 'RANK' | 'TARGET'; rank: number; target: string }
-
 /**
- * Choose the prize watches: a shop-style picker, not a gallery.
+ * Build the prize lineup: watches from stock, vouchers and cash, in one go.
  *
- * Alex, on the first version: the images were huge and there was no
- * filtering, so a client hunting for one watch out of two hundred scrolled
- * through four at a time. This is the stock page's own search and filters —
- * same words, same counts — over a dense list with small pictures, so a
- * screen shows ten watches, not four.
- *
- * Several can be ticked at once. They line up on the right in the order they
- * were chosen and take 1st, 2nd, 3rd… automatically, each adjustable or
- * switched to a target, and are all reserved with one button.
+ * Alex, on the first versions: the pictures were too big, then too small to
+ * judge a watch by, and there was nowhere to add a voucher once the watch
+ * list was open. So: the stock page's own search and filters over a list
+ * with thumbnails large enough to tell a Daytona from a GMT, any photo opens
+ * full size, and the lineup on the right takes vouchers and cash alongside
+ * the watches. Everything is numbered 1st, 2nd, 3rd in the order it is
+ * added, each adjustable or switched to a target, and saved with one button.
  */
-function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve, onCancel }: {
+function PrizeBuilder({ stock, stockBase, nextRank, metricLabel, busy, startWithCash, onSave, onCancel }: {
   stock: PrizeStock[]; stockBase: string; nextRank: number; metricLabel: string; busy: boolean
-  onReserve: (items: Array<{ watchId: string; label: string; rule: 'RANK' | 'TARGET'; rank: number | null; target: string }>) => void
+  startWithCash: boolean
+  onSave: (lineup: LineupResult) => void
   onCancel: () => void
 }) {
   const [filters, setFilters] = useState<FilterState>(NO_FILTERS)
   const [sort, setSort] = useState<'priceUp' | 'priceDown' | 'brand'>('priceDown')
+  // One ordering for everything in the lineup: watch ids, and "cash:n" keys.
   const [order, setOrder] = useState<string[]>([])
-  const [lineup, setLineup] = useState<Record<string, LineupItem>>({})
+  const [how, setHow] = useState<Record<string, HowWonState>>({})
+  const [cash, setCash] = useState<Record<string, CashLine>>({})
+  const [preview, setPreview] = useState<PrizeStock | null>(null)
+  const cashSeq = useRef(0)
 
   const items = useMemo(() => stock.map((w) => ({
     ...w, dial: w.dial ?? null, year: w.year ?? null, caseSizeMm: w.caseSizeMm ?? null, boxPapers: w.boxPapers ?? null,
@@ -603,45 +575,80 @@ function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve,
     [items, filters],
   )
   const byId = useMemo(() => new Map(stock.map((w) => [w.id, w])), [stock])
-  const total = order.reduce((sum, id) => sum + (byId.get(id)?.priceGbp ?? 0), 0)
+  const total = order.reduce((sum, key) => sum + (key.startsWith('cash:')
+    ? Math.round(Number((cash[key]?.amount ?? '').replace(/[^\d.]/g, '')) * 100) || 0
+    : byId.get(key)?.priceGbp ?? 0), 0)
 
-  const toggle = (watchId: string) => {
-    if (order.includes(watchId)) {
-      setOrder((o) => o.filter((x) => x !== watchId))
-      setLineup((l) => { const { [watchId]: _gone, ...rest } = l; return rest })
-      return
-    }
-    // The next free position after those already taken, on the board or here.
-    const taken = new Set(Object.values(lineup).filter((i) => i.rule === 'RANK').map((i) => i.rank))
+  /** The next position nobody in the lineup has taken yet. */
+  const freeRank = (state: Record<string, HowWonState>) => {
+    const taken = new Set(Object.values(state).filter((i) => i.rule === 'RANK').map((i) => i.rank))
     let rank = nextRank
     while (taken.has(rank)) rank++
-    setOrder((o) => [...o, watchId])
-    setLineup((l) => ({ ...l, [watchId]: { rule: 'RANK', rank: Math.min(rank, 20), target: '' } }))
+    return Math.min(rank, 20)
   }
-  const update = (watchId: string, patch: Partial<LineupItem>) =>
-    setLineup((l) => ({ ...l, [watchId]: { ...l[watchId]!, ...patch } }))
+  const drop = (key: string) => {
+    setOrder((o) => o.filter((x) => x !== key))
+    setHow((h) => { const { [key]: _gone, ...rest } = h; return rest })
+    setCash((c) => { const { [key]: _gone, ...rest } = c; return rest })
+  }
+  const toggleWatch = (watchId: string) => {
+    if (order.includes(watchId)) return drop(watchId)
+    setOrder((o) => [...o, watchId])
+    setHow((h) => ({ ...h, [watchId]: { rule: 'RANK', rank: freeRank(h), target: '' } }))
+  }
+  const addCash = () => {
+    const key = `cash:${++cashSeq.current}`
+    setOrder((o) => [...o, key])
+    setHow((h) => ({ ...h, [key]: { rule: 'RANK', rank: freeRank(h), target: '' } }))
+    setCash((c) => ({ ...c, [key]: { kind: 'VOUCHER', amount: '', name: '', rule: 'RANK', rank: 0, target: '' } }))
+  }
+  useEffect(() => { if (startWithCash) addCash() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateHow = (key: string, patch: Partial<HowWonState>) => setHow((h) => ({ ...h, [key]: { ...h[key]!, ...patch } }))
+  const updateCash = (key: string, patch: Partial<CashLine>) => setCash((c) => ({ ...c, [key]: { ...c[key]!, ...patch } }))
   const name = (w: PrizeStock) => [w.brandName, w.model, w.modelName].filter(Boolean).join(' ')
-  const missingTarget = order.some((id) => lineup[id]?.rule === 'TARGET' && !lineup[id]?.target.trim())
+  const problem =
+    order.some((k) => how[k]?.rule === 'TARGET' && !how[k]?.target.trim()) ? 'Set an amount for each target prize.'
+      : order.some((k) => k.startsWith('cash:') && !cash[k]?.amount.trim()) ? 'Set an amount for each voucher or cash prize.'
+        : null
+  const watchCount = order.filter((k) => !k.startsWith('cash:')).length
+  const cashCount = order.length - watchCount
+
+  const save = () => onSave({
+    watches: order.filter((k) => !k.startsWith('cash:')).map((watchId) => {
+      const h = how[watchId]!
+      return { watchId, label: name(byId.get(watchId)!), rule: h.rule, rank: h.rule === 'RANK' ? h.rank : null, target: h.target }
+    }),
+    others: order.filter((k) => k.startsWith('cash:')).map((key) => {
+      const c = cash[key]!; const h = how[key]!
+      const amount = Number(c.amount.replace(/[^\d.]/g, ''))
+      return {
+        kind: c.kind,
+        name: c.name.trim() || `AED ${amount.toLocaleString('en-GB')} ${c.kind === 'VOUCHER' ? 'watch voucher' : 'cash prize'}`,
+        amount: c.amount, rule: h.rule, rank: h.rank, target: h.target,
+      }
+    }),
+  })
 
   return (
     <div className={`${ui.card} overflow-hidden`}>
       <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] px-5 py-3.5">
         <div>
-          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><WatchIcon className="h-4 w-4" aria-hidden />Choose prize watches</p>
-          <p className="text-[12.5px] text-black/50">Tick one or several. They are reserved for you when you press Reserve.</p>
+          <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><Trophy className="h-4 w-4" aria-hidden />Build your prize lineup</p>
+          <p className="text-[12.5px] text-black/50">Tick watches from stock, add vouchers or cash, then save them together. Watches are reserved for you as you save.</p>
         </div>
         <button type="button" onClick={onCancel} className={ui.iconButton} aria-label="Close"><X className="h-4 w-4" aria-hidden /></button>
       </div>
 
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* The stock: search, filters, a dense list. */}
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
+        {/* The stock. */}
         <div className="min-w-0 border-black/[0.06] lg:border-r">
           <div className="space-y-2.5 border-b border-black/[0.06] p-4">
             <div className="flex gap-2">
               <label className="relative min-w-0 flex-1">
                 <span className="sr-only">Search stock</span>
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
-                <input type="search" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} autoFocus
+                <input type="search" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} autoFocus={!startWithCash}
                   placeholder="Search brand, model, reference or dial"
                   className="h-10 w-full rounded-full border border-black/12 bg-black/[0.03] pl-10 pr-4 text-[13.5px] text-black outline-none transition placeholder:text-black/35 focus:border-black/40 focus:bg-white focus:ring-4 focus:ring-black/[0.05] [&::-webkit-search-cancel-button]:hidden" />
               </label>
@@ -656,12 +663,12 @@ function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve,
                 <span className="w-[52px] shrink-0 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-black/35">
                   {group.key === 'wears' ? 'For' : group.title}
                 </span>
-                <div className="-my-1 flex min-w-0 gap-1.5 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="-my-1 flex min-w-0 gap-1.5 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {group.options.map((option) => (
                     <button key={option.label} type="button" aria-pressed={option.on}
                       disabled={option.count === 0 && !option.on}
                       onClick={() => setFilters({ ...filters, ...option.patch })}
-                      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition disabled:opacity-35 ${
+                      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] outline-none transition focus-visible:ring-2 focus-visible:ring-black/25 disabled:opacity-35 ${
                         option.on ? 'border-transparent font-medium text-white' : 'border-black/10 bg-white text-black/70 hover:border-black/30'
                       }`}
                       style={option.on ? brandFill : undefined}>
@@ -680,31 +687,36 @@ function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve,
             </div>
           </div>
 
-          <ul className="max-h-[min(56vh,520px)] divide-y divide-black/[0.05] overflow-y-auto" role="listbox" aria-multiselectable="true" aria-label="Available watches">
+          <ul className="max-h-[min(60vh,600px)] divide-y divide-black/[0.05] overflow-y-auto" aria-label="Available watches">
             {shown.length === 0 && <li className="px-5 py-12 text-center text-[13.5px] text-black/45">Nothing matches. Try clearing a filter.</li>}
             {shown.map((w) => {
               const on = order.includes(w.id)
               return (
-                <li key={w.id} role="option" aria-selected={on}>
-                  <button type="button" onClick={() => toggle(w.id)}
-                    className={`flex w-full items-center gap-3 px-4 py-2 text-left transition ${on ? 'bg-black/[0.035]' : 'hover:bg-black/[0.02]'}`}>
-                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border transition ${on ? 'border-transparent text-white' : 'border-black/20 bg-white'}`}
-                      style={on ? brandFill : undefined}>
-                      {on && <Check className="h-3 w-3" aria-hidden />}
+                <li key={w.id} className={`flex items-center gap-3 px-4 py-2.5 transition ${on ? 'bg-black/[0.035]' : 'hover:bg-black/[0.02]'}`}>
+                  <button type="button" role="checkbox" aria-checked={on} aria-label={`Choose ${name(w)}`} onClick={() => toggleWatch(w.id)}
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border outline-none transition focus-visible:ring-2 focus-visible:ring-black/25 ${on ? 'border-transparent text-white' : 'border-black/20 bg-white hover:border-black/45'}`}
+                    style={on ? brandFill : undefined}>
+                    {on && <Check className="h-3 w-3" aria-hidden />}
+                  </button>
+                  {/* The picture opens large: judge the watch before choosing it. */}
+                  <button type="button" onClick={() => setPreview(w)} aria-label={`View ${name(w)} larger`}
+                    className="group relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-black/[0.03] outline-none focus-visible:ring-2 focus-visible:ring-black/25">
+                    {w.imageIds[0]
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" loading="lazy" className="h-full w-full object-contain p-1 mix-blend-multiply transition-transform duration-300 group-hover:scale-110" />
+                      : <WatchIcon className="h-5 w-5 text-black/20" aria-hidden />}
+                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-black/60 opacity-0 shadow-sm transition group-hover:opacity-100">
+                      <Maximize2 className="h-3 w-3" aria-hidden />
                     </span>
-                    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-black/[0.03]">
-                      {w.imageIds[0]
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" loading="lazy" className="h-full w-full object-contain p-0.5 mix-blend-multiply" />
-                        : <WatchIcon className="h-4 w-4 text-black/20" aria-hidden />}
-                    </span>
+                  </button>
+                  <button type="button" onClick={() => toggleWatch(w.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-semibold text-black">{[w.brandName, w.model].filter(Boolean).join(' ')}</span>
-                      <span className="block truncate text-[12px] text-black/45">
+                      <span className="block truncate text-[14px] font-semibold text-black">{[w.brandName, w.model].filter(Boolean).join(' ')}</span>
+                      <span className="block truncate text-[12.5px] text-black/50">
                         {[w.modelName, w.year, w.caseSizeMm ? `${w.caseSizeMm}mm` : null, w.dial].filter(Boolean).join(' · ') || '\u00a0'}
                       </span>
                     </span>
-                    <span className="shrink-0 text-right text-[13.5px] font-semibold tabular-nums text-black">{aed(w.priceGbp)}</span>
+                    <span className="shrink-0 text-right text-[14px] font-semibold tabular-nums text-black">{aed(w.priceGbp)}</span>
                   </button>
                 </li>
               )
@@ -712,64 +724,97 @@ function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve,
           </ul>
         </div>
 
-        {/* The lineup: what is chosen, and how each is won. */}
+        {/* The lineup. */}
         <div className="flex flex-col bg-black/[0.015]">
           <div className="flex items-baseline justify-between px-5 pb-2 pt-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/45">Prize lineup</p>
             {order.length > 0 && <p className="text-[12.5px] tabular-nums text-black/55">{aed(total)}</p>}
           </div>
           {order.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/[0.05] text-black/35"><Trophy className="h-5 w-5" aria-hidden /></span>
-              <p className="mt-3 text-[13.5px] font-medium text-black/70">Nothing chosen yet</p>
-              <p className="mt-1 text-[12.5px] text-black/45">Tick watches on the left. They will be numbered 1st, 2nd, 3rd in the order you choose them.</p>
+              <p className="mt-3 text-[13.5px] font-medium text-black/70">Nothing in the lineup yet</p>
+              <p className="mt-1 text-[12.5px] text-black/45">Tick watches on the left, or add a voucher or cash prize below. They are numbered 1st, 2nd, 3rd as you go.</p>
             </div>
           ) : (
-            <ol className="max-h-[min(52vh,480px)] flex-1 space-y-2 overflow-y-auto px-4 pb-3">
-              {order.map((watchId) => {
-                const w = byId.get(watchId)!
-                const item = lineup[watchId]!
+            <ol className="max-h-[min(54vh,520px)] flex-1 space-y-2 overflow-y-auto px-4 pb-2">
+              {order.map((key) => {
+                const h = how[key]!
+                const isCash = key.startsWith('cash:')
+                const w = isCash ? null : byId.get(key)!
+                const c = isCash ? cash[key]! : null
                 return (
-                  <li key={watchId} className="rounded-[12px] border border-black/10 bg-white p-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-black/[0.03]">
-                        {w.imageIds[0]
-                          /* eslint-disable-next-line @next/next/no-img-element */
-                          ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" className="h-full w-full object-contain mix-blend-multiply" />
-                          : <WatchIcon className="h-4 w-4 text-black/20" aria-hidden />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-semibold text-black">{name(w)}</span>
-                        <span className="block text-[12px] tabular-nums text-black/50">{aed(w.priceGbp)}</span>
-                      </span>
-                      <button type="button" onClick={() => toggle(watchId)} className={`${ui.iconButton} !h-7 !w-7`} aria-label={`Remove ${name(w)}`}>
-                        <X className="h-3.5 w-3.5" aria-hidden />
-                      </button>
-                    </div>
+                  <li key={key} className="rounded-[12px] border border-black/10 bg-white p-2.5">
+                    {w ? (
+                      <div className="flex items-center gap-2.5">
+                        <button type="button" onClick={() => setPreview(w)} aria-label={`View ${name(w)} larger`}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-black/[0.03]">
+                          {w.imageIds[0]
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            ? <img src={`${stockBase}/${w.imageIds[0]}`} alt="" className="h-full w-full object-contain mix-blend-multiply" />
+                            : <WatchIcon className="h-4 w-4 text-black/20" aria-hidden />}
+                        </button>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-semibold text-black">{name(w)}</span>
+                          <span className="block text-[12px] tabular-nums text-black/50">Watch · {aed(w.priceGbp)}</span>
+                        </span>
+                        <button type="button" onClick={() => drop(key)} className={`${ui.iconButton} !h-7 !w-7`} aria-label={`Remove ${name(w)}`}>
+                          <X className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] bg-black/[0.04] text-black/45">
+                            {c!.kind === 'CASH' ? <Wallet className="h-4 w-4" aria-hidden /> : <Gift className="h-4 w-4" aria-hidden />}
+                          </span>
+                          <div className="inline-flex shrink-0 rounded-full bg-black/[0.05] p-0.5 text-[11.5px]">
+                            {(['VOUCHER', 'CASH'] as const).map((k) => (
+                              <button key={k} type="button" onClick={() => updateCash(key, { kind: k })} aria-pressed={c!.kind === k}
+                                className={`rounded-full px-2.5 py-1 font-medium transition ${c!.kind === k ? 'bg-white text-black shadow-sm' : 'text-black/50 hover:text-black'}`}>
+                                {k === 'VOUCHER' ? 'Voucher' : 'Cash'}
+                              </button>
+                            ))}
+                          </div>
+                          <label className="relative min-w-0 flex-1">
+                            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] text-black/40">AED</span>
+                            <input inputMode="decimal" value={c!.amount} placeholder="10,000" aria-label="Amount" autoFocus
+                              onChange={(e) => updateCash(key, { amount: e.target.value })}
+                              className="h-8 w-full rounded-full border border-black/12 bg-white pl-10 pr-3 text-[12.5px] tabular-nums text-black outline-none focus:border-black/40" />
+                          </label>
+                          <button type="button" onClick={() => drop(key)} className={`${ui.iconButton} !h-7 !w-7`} aria-label="Remove this prize">
+                            <X className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </div>
+                        <input value={c!.name} onChange={(e) => updateCash(key, { name: e.target.value })} aria-label="Prize name"
+                          placeholder={c!.kind === 'VOUCHER' ? 'Name (optional) — e.g. Watch voucher' : 'Name (optional) — e.g. Cash bonus'}
+                          className="h-8 w-full rounded-[8px] border border-black/10 bg-white px-2.5 text-[12.5px] text-black outline-none placeholder:text-black/35 focus:border-black/40" />
+                      </div>
+                    )}
                     <div className="mt-2 flex items-center gap-2">
                       <div className="inline-flex shrink-0 rounded-full bg-black/[0.05] p-0.5 text-[11.5px]">
                         {(['RANK', 'TARGET'] as const).map((r) => (
-                          <button key={r} type="button" onClick={() => update(watchId, { rule: r })} aria-pressed={item.rule === r}
-                            className={`rounded-full px-2.5 py-1 font-medium transition ${item.rule === r ? 'bg-white text-black shadow-sm' : 'text-black/50 hover:text-black'}`}>
+                          <button key={r} type="button" onClick={() => updateHow(key, { rule: r })} aria-pressed={h.rule === r}
+                            className={`rounded-full px-2.5 py-1 font-medium transition ${h.rule === r ? 'bg-white text-black shadow-sm' : 'text-black/50 hover:text-black'}`}>
                             {r === 'RANK' ? 'Position' : 'Target'}
                           </button>
                         ))}
                       </div>
-                      {item.rule === 'RANK' ? (
+                      {h.rule === 'RANK' ? (
                         <div className="ml-auto flex items-center rounded-full border border-black/12 bg-white">
-                          <button type="button" aria-label="Higher position" disabled={item.rank <= 1}
-                            onClick={() => update(watchId, { rank: item.rank - 1 })}
+                          <button type="button" aria-label="Higher position" disabled={h.rank <= 1}
+                            onClick={() => updateHow(key, { rank: h.rank - 1 })}
                             className="flex h-7 w-7 items-center justify-center text-black/50 hover:text-black disabled:opacity-25">−</button>
-                          <span className="min-w-[44px] text-center text-[12.5px] font-semibold tabular-nums text-black">{ordinal(item.rank)}</span>
-                          <button type="button" aria-label="Lower position" disabled={item.rank >= 20}
-                            onClick={() => update(watchId, { rank: item.rank + 1 })}
+                          <span className="min-w-[44px] text-center text-[12.5px] font-semibold tabular-nums text-black">{ordinal(h.rank)}</span>
+                          <button type="button" aria-label="Lower position" disabled={h.rank >= 20}
+                            onClick={() => updateHow(key, { rank: h.rank + 1 })}
                             className="flex h-7 w-7 items-center justify-center text-black/50 hover:text-black disabled:opacity-25">+</button>
                         </div>
                       ) : (
                         <label className="relative ml-auto min-w-0 flex-1">
                           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] text-black/40">AED</span>
-                          <input inputMode="decimal" value={item.target} placeholder="500,000" aria-label={`Target ${metricLabel.toLowerCase()} for ${name(w)}`}
-                            onChange={(e) => update(watchId, { target: e.target.value })}
+                          <input inputMode="decimal" value={h.target} placeholder="500,000" aria-label={`Target ${metricLabel.toLowerCase()}`}
+                            onChange={(e) => updateHow(key, { target: e.target.value })}
                             className="h-7 w-full rounded-full border border-black/12 bg-white pl-10 pr-3 text-[12.5px] tabular-nums text-black outline-none focus:border-black/40" />
                         </label>
                       )}
@@ -779,67 +824,104 @@ function WatchPicker({ stock, stockBase, nextRank, metricLabel, busy, onReserve,
               })}
             </ol>
           )}
+          <div className="px-4 pb-3">
+            <button type="button" onClick={addCash}
+              className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-dashed border-black/20 bg-white py-2.5 text-[13px] font-medium text-black/65 transition hover:border-black/40 hover:text-black">
+              <Plus className="h-4 w-4" aria-hidden />Voucher or cash prize
+            </button>
+          </div>
           <div className="mt-auto border-t border-black/[0.06] p-4">
-            <button type="button" disabled={order.length === 0 || missingTarget || busy} className={`w-full ${ui.primary}`} style={brandFill}
-              onClick={() => onReserve(order.map((watchId) => {
-                const item = lineup[watchId]!
-                return { watchId, label: name(byId.get(watchId)!), rule: item.rule, rank: item.rule === 'RANK' ? item.rank : null, target: item.target }
-              }))}>
-              <Lock className="h-4 w-4" aria-hidden />
-              {busy ? 'Reserving…' : order.length > 1 ? `Reserve all ${order.length}` : 'Reserve as prize'}
+            <button type="button" disabled={order.length === 0 || Boolean(problem) || busy} className={`w-full ${ui.primary}`} style={brandFill} onClick={save}>
+              {watchCount > 0 && <Lock className="h-4 w-4" aria-hidden />}
+              {busy ? 'Saving…'
+                : order.length === 0 ? 'Save prizes'
+                  : watchCount && cashCount ? `Reserve ${watchCount} & add ${cashCount}`
+                    : watchCount ? (watchCount > 1 ? `Reserve all ${watchCount}` : 'Reserve as prize')
+                      : cashCount > 1 ? `Add ${cashCount} prizes` : 'Add prize'}
             </button>
             <p className="mt-2 text-center text-[11.5px] text-black/40">
-              {missingTarget ? 'Set an amount for each target prize.' : 'Held for you until the challenge ends. Nothing is charged now.'}
+              {problem ?? (watchCount ? 'Watches are held for you until the challenge ends. Nothing is charged now.' : 'Vouchers and cash are put towards a watch when the challenge ends.')}
             </p>
           </div>
         </div>
       </div>
+
+      {preview && (
+        <WatchPreview
+          watch={preview}
+          stockBase={stockBase}
+          chosen={order.includes(preview.id)}
+          onToggle={() => toggleWatch(preview.id)}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   )
 }
 
-/** A voucher towards a watch, or cash. */
-function OtherPrize({ nextRank, metricLabel, busy, onAdd, onCancel }: {
-  nextRank: number; metricLabel: string; busy: boolean
-  onAdd: (data: FormData) => void; onCancel: () => void
+/** One watch, large, with every photograph — to judge it before choosing. */
+function WatchPreview({ watch, stockBase, chosen, onToggle, onClose }: {
+  watch: PrizeStock; stockBase: string; chosen: boolean; onToggle: () => void; onClose: () => void
 }) {
-  const [kind, setKind] = useState<'VOUCHER' | 'CASH'>('VOUCHER')
-  const [rule, setRule] = useState<'RANK' | 'TARGET'>('RANK')
-  const [rank, setRank] = useState(Math.min(nextRank, 10))
-  const [target, setTarget] = useState('')
+  const [shown, setShown] = useState(0)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowRight') setShown((i) => Math.min(i + 1, watch.imageIds.length - 1))
+      if (e.key === 'ArrowLeft') setShown((i) => Math.max(i - 1, 0))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, watch.imageIds.length])
+  const title = [watch.brandName, watch.model, watch.modelName].filter(Boolean).join(' ')
+
   return (
-    <form className={`${ui.card} space-y-4 p-5`}
-      onSubmit={(event) => {
-        event.preventDefault()
-        const data = new FormData(event.currentTarget)
-        data.set('kind', kind); data.set('rule', rule); data.set('rank', String(rank)); data.set('target', target)
-        onAdd(data)
-      }}>
-      <div className="flex items-center justify-between">
-        <p className="flex items-center gap-2 text-[15px] font-semibold text-black"><Gift className="h-4 w-4" aria-hidden />A voucher or cash</p>
-        <button type="button" onClick={onCancel} className={ui.iconButton} aria-label="Cancel"><X className="h-4 w-4" aria-hidden /></button>
+    <div className={`${ui.backdrop} !z-[60]`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className={`${ui.dialog} max-w-[860px] !p-0`}>
+        <div className="grid md:grid-cols-[1fr_300px]">
+          <div className="bg-black/[0.025] p-4">
+            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-[14px] bg-white">
+              {watch.imageIds[shown]
+                /* eslint-disable-next-line @next/next/no-img-element */
+                ? <img src={`${stockBase}/${watch.imageIds[shown]}`} alt={title} className="h-full w-full object-contain p-4" />
+                : <WatchIcon className="h-10 w-10 text-black/20" aria-hidden />}
+            </div>
+            {watch.imageIds.length > 1 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto">
+                {watch.imageIds.map((imageId, i) => (
+                  <button key={imageId} type="button" onClick={() => setShown(i)} aria-label={`Photo ${i + 1}`}
+                    className={`h-14 w-14 shrink-0 overflow-hidden rounded-[10px] bg-white transition ${i === shown ? 'ring-2' : 'opacity-60 hover:opacity-100'}`}
+                    style={i === shown ? { ['--tw-ring-color' as string]: 'var(--brand)' } : undefined}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`${stockBase}/${imageId}`} alt="" className="h-full w-full object-contain p-1" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col p-6">
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-serif text-[22px] leading-snug text-black">{title}</p>
+              <button type="button" onClick={onClose} className={ui.iconButton} aria-label="Close"><X className="h-4 w-4" aria-hidden /></button>
+            </div>
+            <dl className="mt-4 space-y-2 text-[13px]">
+              {([['Year', watch.year], ['Case', watch.caseSizeMm ? `${watch.caseSizeMm}mm${watch.caseMaterial ? ` · ${watch.caseMaterial}` : ''}` : watch.caseMaterial],
+                ['Dial', watch.dial], ['Bracelet', watch.bracelet]] as const).filter(([, v]) => v).map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4 border-b border-black/[0.06] pb-2">
+                  <dt className="text-black/45">{k}</dt><dd className="text-right text-black">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-5 text-[11px] uppercase tracking-[0.14em] text-black/40">Your price</p>
+            <p className="text-[24px] font-semibold tabular-nums text-black">{aed(watch.priceGbp)}</p>
+            <button type="button" onClick={() => { onToggle(); onClose() }} className={`mt-auto w-full ${chosen ? ui.outline : ui.primary} !h-11`}
+              style={chosen ? undefined : brandFill}>
+              {chosen ? 'Remove from lineup' : <><Plus className="h-4 w-4" aria-hidden />Add to lineup</>}
+            </button>
+          </div>
+        </div>
       </div>
-      <div className="inline-flex rounded-full bg-black/[0.05] p-1">
-        {([['VOUCHER', 'Voucher towards a watch'], ['CASH', 'Cash']] as const).map(([key, title]) => (
-          <button key={key} type="button" onClick={() => setKind(key)} aria-pressed={kind === key}
-            className={`rounded-full px-4 py-2 text-[13px] font-medium transition ${kind === key ? 'bg-white text-black shadow-sm' : 'text-black/55 hover:text-black'}`}>
-            {title}
-          </button>
-        ))}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
-        <label className="block"><span className={ui.label}>Name</span>
-          <input name="name" required className={ui.field} placeholder={kind === 'VOUCHER' ? 'e.g. AED 10,000 watch voucher' : 'e.g. AED 5,000 cash bonus'} /></label>
-        <label className="block"><span className={ui.label}>Amount (AED)</span>
-          <input name="value" required inputMode="decimal" className={ui.field} placeholder="10000" /></label>
-      </div>
-      <HowWon rule={rule} setRule={setRule} rank={rank} setRank={setRank} target={target} setTarget={setTarget} metricLabel={metricLabel} />
-      <div className="flex justify-end">
-        <button type="submit" disabled={busy} className={ui.primary} style={brandFill}>
-          <Plus className="h-4 w-4" aria-hidden />{busy ? 'Adding…' : 'Add prize'}
-        </button>
-      </div>
-    </form>
+    </div>
   )
 }
 

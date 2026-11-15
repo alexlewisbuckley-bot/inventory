@@ -426,13 +426,31 @@
  * phone the sizes are already at the edge of comfortable reading.
  *
  * Viewport-height boxes are divided back out: under zoom, 100vh is drawn at
- * 90% of the screen, which would leave the sidebar and full-height pages
+ * 80% of the screen, which would leave the sidebar and full-height pages
  * stopping short of the bottom edge.
  */
 @media (min-width: 1024px) {
-  :root { --ui-zoom: 0.9; }
+  :root { --ui-zoom: 0.8; }
   html { zoom: var(--ui-zoom); }
   .h-screen { height: calc(100vh / var(--ui-zoom)); }
   .min-h-screen { min-height: calc(100vh / var(--ui-zoom)); }
   .max-h-screen { max-height: calc(100vh / var(--ui-zoom)); }
+}
+
+/*
+ * The public leaderboard, read from across a room.
+ *
+ * The scale-down above is for people working at a desk. The shared board is
+ * put on an office screen and read from metres away, so it undoes that zoom
+ * and then grows with the display: full size on a laptop, larger on a big
+ * monitor or a TV. Zoom compounds, so dividing by --ui-zoom cancels it.
+ */
+@media (min-width: 1024px) {
+  .lb-public { zoom: calc(1 / var(--ui-zoom)); }
+}
+@media (min-width: 1680px) {
+  .lb-public { zoom: calc(1.2 / var(--ui-zoom)); }
+}
+@media (min-width: 2400px) {
+  .lb-public { zoom: calc(1.6 / var(--ui-zoom)); }
 }
