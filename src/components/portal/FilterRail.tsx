@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Check, Search, SlidersHorizontal, X } from 'lucide-react'
+import { ArrowUpDown, Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import {
   activeCount, buildGroups, clearTicks, pillsFor,
   type FilterState, type Filterable, type Group, type Option,
@@ -324,7 +324,7 @@ export function FilterBar({ items, state, onChange, resultCount, total, children
               type="button"
               onClick={() => setSheet(true)}
               className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-full border px-4 text-[13px] sm:flex-none lg:hidden ${
-                applied > 0 ? 'border-black text-black' : 'border-black/12 text-black/65'
+                applied > 0 ? 'border-black bg-white text-black' : 'border-black/12 bg-black/[0.03] text-black/65 hover:border-black/30'
               }`}
             >
               <SlidersHorizontal className="h-4 w-4" aria-hidden />
@@ -396,22 +396,110 @@ export function FilterBar({ items, state, onChange, resultCount, total, children
   )
 }
 
-/** The sort, as one control the pages fill with their own options. */
+/**
+ * The sort, drawn to match the search box beside it.
+ *
+ * A native select could not be: its arrow sat hard against the edge, it
+ * rendered in the browser's own type, and it opened the operating system's
+ * menu in the middle of a page that is otherwise entirely ours. This is a
+ * listbox with the same height, pill and fill as the search, and a menu that
+ * keeps the keyboard behaviour a select has — arrows, Enter, Escape.
+ */
 export function SortSelect<T extends string>({ value, options, onChange }: {
   value: T
   options: Array<{ value: T; label: string }>
   onChange: (next: T) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const current = options.find((o) => o.value === value) ?? options[0]
+
+  useEffect(() => {
+    if (!open) return
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)))
+    const away = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [open, options, value])
+
+  const choose = (next: T) => {
+    onChange(next)
+    setOpen(false)
+    button.current?.focus()
+  }
+
+  const onKey = (event: React.KeyboardEvent) => {
+    if (!open && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+      event.preventDefault()
+      setOpen(true)
+      return
+    }
+    if (!open) return
+    if (event.key === 'Escape') { event.preventDefault(); setOpen(false) }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setActive((i) => (i + 1) % options.length) }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setActive((i) => (i - 1 + options.length) % options.length) }
+    else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(options[active]!.value) }
+    else if (event.key === 'Tab') setOpen(false)
+  }
+
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value as T)}
-      aria-label="Sort by"
-      className="h-11 min-w-0 flex-1 cursor-pointer rounded-full sm:flex-none border border-black/12 bg-white pl-4 pr-8 text-[13px] text-black outline-none transition-colors hover:border-black/30 focus:border-black/45"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
+    <div ref={root} className="relative min-w-0 flex-1 sm:flex-none">
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Sort by: ${current?.label}`}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKey}
+        className={`flex h-11 w-full items-center gap-2.5 rounded-full border pl-4 pr-3.5 text-left text-[13.5px] text-black outline-none transition sm:w-auto sm:min-w-[210px] ${
+          open
+            ? 'border-black/40 bg-white ring-4 ring-black/[0.05]'
+            : 'border-black/12 bg-black/[0.03] hover:border-black/30 focus-visible:border-black/40 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-black/[0.05]'
+        }`}
+      >
+        <ArrowUpDown className="h-4 w-4 shrink-0 text-black/35" aria-hidden />
+        <span className="min-w-0 flex-1 truncate">
+          <span className="hidden text-black/45 sm:inline">Sort: </span>
+          <span className="font-medium">{current?.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-black/40 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          aria-label="Sort by"
+          className="absolute right-0 top-[calc(100%+6px)] z-40 w-full min-w-[230px] overflow-hidden rounded-[14px] border border-black/10 bg-white p-1.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.3)]"
+        >
+          {options.map((option, index) => {
+            const on = option.value === value
+            return (
+              <li
+                key={option.value}
+                role="option"
+                aria-selected={on}
+                onMouseEnter={() => setActive(index)}
+                onMouseDown={(event) => { event.preventDefault(); choose(option.value) }}
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2.5 text-[13.5px] transition-colors ${
+                  index === active ? 'bg-black/[0.04]' : ''
+                } ${on ? 'font-semibold text-black' : 'text-black/70'}`}
+              >
+                {option.label}
+                {on && (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-white" style={brandFill}>
+                    <Check className="h-3 w-3" aria-hidden />
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }
