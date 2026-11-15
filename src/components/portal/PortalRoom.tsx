@@ -14,6 +14,7 @@ import { FilterBar, FilterRail, SortSelect } from './FilterRail'
 import { WatchCard, WatchGrid } from './WatchCard'
 import { PartnerMark, PortalHeader } from './PortalHeader'
 import { PortalNav } from './PortalNav'
+import { DeliveryPicker } from './DeliveryPicker'
 import { brandFill, ui } from './ui'
 import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
@@ -338,7 +339,7 @@ function ReserveDialog({ token, item, onClose }: {
       aria-modal="true"
       aria-label={`Reserve ${describe(item)}`}
     >
-      <div className={`${ui.dialog} max-w-[420px]`}>
+      <div className={`${ui.dialog} max-w-[540px]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-serif text-[19px] leading-snug text-black">{describe(item)}</p>
@@ -366,6 +367,7 @@ function ReserveDialog({ token, item, onClose }: {
         ) : (
           <form action={action} className="mt-5 space-y-3">
             <input type="hidden" name="watchId" value={item.id} />
+            <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className={ui.label}>Your name</span>
               <input
@@ -382,6 +384,8 @@ function ReserveDialog({ token, item, onClose }: {
                 className={ui.field}
               />
             </label>
+            </div>
+            <DeliveryPicker />
             <label className="block">
               <span className={ui.label}>
                 Anything we should know
@@ -452,7 +456,7 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
       aria-modal="true"
       aria-label={`Reserve ${items.length} watches`}
     >
-      <div className={`${ui.dialog} max-w-[460px]`}>
+      <div className={`${ui.dialog} max-w-[540px]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             {/*
@@ -518,6 +522,7 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
               ))}
             </ul>
 
+            <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className={ui.label}>Your name</span>
               <input
@@ -534,6 +539,8 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
                 className={ui.field}
               />
             </label>
+            </div>
+            <DeliveryPicker />
             <label className="block">
               <span className={ui.label}>
                 Anything we should know
