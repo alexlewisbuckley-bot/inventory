@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { Check, LogOut, Megaphone, X } from 'lucide-react'
+import { Check, LogOut, Megaphone, Receipt, X } from 'lucide-react'
 import {
   placeOrderAction, placeOrdersAction, leavePortalAction,
   type OrderState, type BulkState,
@@ -162,9 +162,9 @@ export function PortalRoom({ token, partner, items, orders }: {
                       className="inline-flex items-center rounded-full px-2 py-[1px] text-[12.5px] font-semibold tabular-nums text-white"
                       style={{ background: 'var(--brand)' }}
                     >
-                      {percentFromBps(partner.discountBps)} off
+                      {percentFromBps(partner.discountBps)}
                     </span>{' '}
-                    our asking price.
+                    off our asking price.
                   </>
                 ) : 'Stock available to you now.'}
               </p>
@@ -179,6 +179,13 @@ export function PortalRoom({ token, partner, items, orders }: {
             >
               <Megaphone className="h-3.5 w-3.5" aria-hidden />
               Campaigns
+            </a>
+            <a
+              href={`/p/${token}/orders`}
+              className="inline-flex items-center gap-2 rounded-full border border-black/15 px-4 py-2 text-[12px] font-medium uppercase tracking-[0.1em] text-black/75 transition-colors hover:border-black hover:bg-black hover:text-white"
+            >
+              <Receipt className="h-3.5 w-3.5" aria-hidden />
+              Orders
             </a>
             <form action={leavePortalAction.bind(null, token)}>
               <button
