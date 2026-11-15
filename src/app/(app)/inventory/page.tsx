@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
-import { inventoryViews, toHandQuery } from '@/components/inventory/views'
+import { AVAILABLE_QUERY, inventoryViews } from '@/components/inventory/views'
 import { FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
@@ -63,29 +63,6 @@ function parseQuery(searchParams: SearchParams) {
   })
 }
 
-/**
- * Where the stock list opens.
- *
- * The first active store in the Locations list, which on this book is One
- * Street Watches. Read from the order set in Locations rather than from a
- * name written in here, so moving the shop or opening a second one is an
- * afternoon in the admin and not a deployment.
- *
- * Null when there is no store at all — a new book, or every location a
- * workshop — and then nothing is narrowed and the list opens as it always
- * did.
- */
-async function awayLocations(): Promise<Array<{ id: string; name: string }>> {
-  return db
-    .select({ id: locations.id, name: locations.name })
-    .from(locations)
-    .where(and(
-      isNull(locations.deletedAt),
-      eq(locations.isOnHand, false),
-    ))
-    .orderBy(asc(locations.sortOrder), asc(locations.name))
-}
-
 export default async function InventoryPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requireCapability('watch:read')
 
@@ -100,11 +77,14 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
    *
    * Only a completely bare URL redirects. /inventory?supplierId=… is somebody
    * asking a specific question, and answering a different one would be wrong.
+   *
+   * Where the stock is does not appear here at all any more. Stock held away
+   * — in a courier's bag, or in another country — is not filtered off this
+   * list, it is not on it: the repository will not return it whatever the URL
+   * says. Alex: "it doesn't show the filter toggle at all and the only way to
+   * view them is through the location itself."
    */
-  const away = await awayLocations()
-  if (Object.keys(searchParams).length === 0) {
-    redirect(`/inventory?${toHandQuery(away.map((location) => location.id))}`)
-  }
+  if (Object.keys(searchParams).length === 0) redirect(`/inventory?${AVAILABLE_QUERY}`)
 
   /**
    * An old link, answered in the grammar the list actually speaks.
@@ -343,7 +323,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         )}
       </section>
 
-      <ViewBar object="watch" builtIn={inventoryViews(away, { queues: showQueues })} saved={savedViews} />
+      <ViewBar object="watch" builtIn={inventoryViews({ queues: showQueues })} saved={savedViews} />
 
       <FilterBar
         fields={WATCH_FIELDS}

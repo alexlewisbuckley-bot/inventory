@@ -110,6 +110,19 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                     {!location.showInTradeCatalogue && (
                       <Chip tone="neutral">Not on the trade list</Chip>
                     )}
+                    {/*
+                      * And whether the stock list counts this as within reach.
+                      *
+                      * It was the one of the three settings with nothing on
+                      * the card, so the only way to see it was to open the
+                      * row and look — which is why it kept being asked for
+                      * rather than ticked. A location left off the default
+                      * stock list is a thing somebody should be able to see
+                      * from the same glance that tells them it is active.
+                      */}
+                    {!location.isOnHand && (
+                      <Chip tone="neutral">Not to hand</Chip>
+                    )}
                   </div>
                 </div>
 
@@ -140,7 +153,25 @@ export function LocationManager({ locations, canManage }: { locations: LocationR
                 )}
 
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-line-subtle px-6 py-3.5">
-                  <Link href={`/inventory?${heldByQuery('locationId', location.id)}`} className="text-small font-bold text-content-accent hover:underline">
+                  {/*
+                    * Through the location's own page where somebody may open
+                    * it, and through the stock list where they may not.
+                    *
+                    * The stock list no longer carries watches standing in a
+                    * location marked held away, so for Hong Kong this link
+                    * used to lead to an empty table — the location saying it
+                    * holds nine watches and the list it points at showing
+                    * none. The location's page is the one place that shows
+                    * them, which is what Alex asked for; it needs
+                    * `location:manage`, so a salesperson still gets the
+                    * stock list and still sees nothing held abroad in it.
+                    */}
+                  <Link
+                    href={canManage
+                      ? `/locations/${location.id}`
+                      : `/inventory?${heldByQuery('locationId', location.id)}`}
+                    className="text-small font-bold text-content-accent hover:underline"
+                  >
                     View stock →
                   </Link>
                   {canManage && (

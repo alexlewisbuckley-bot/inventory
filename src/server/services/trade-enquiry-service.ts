@@ -91,6 +91,9 @@ export async function raiseEnquiry(input: RaiseEnquiryInput, actor: SessionUser)
         eq(watches.id, input.watchId),
         eq(watches.status, 'IN_STOCK'),
         eq(locations.publishToStorefront, true),
+        // And on the books here: an enquiry cannot start on stock that
+        // is not ours to show.
+        eq(locations.isOnHand, true),
         isNull(watches.deletedAt),
       ))
       .limit(1)
