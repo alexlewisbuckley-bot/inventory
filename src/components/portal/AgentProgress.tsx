@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { Check, Lock } from 'lucide-react'
 import { pickRewardAction } from '@/app/actions/partner-programmes'
+import { AgentPlanForm, AgentPlanSummary } from './AgentPlan'
+import { AskForWatch, AsksSoFar } from './AskForWatch'
 import { money } from './filters'
 import { WatchCard, WatchGrid } from './WatchCard'
 import type { AgentView } from '@/server/services/partner-programme-service'
@@ -24,17 +26,30 @@ const describe = (item: { brandName: string; model: string | null; modelName: st
  * going, and hiding it would leave the page saying only what has already
  * happened.
  */
-export function AgentProgress({ token, view, choices }: {
+export function AgentProgress({ token, view, choices, asks }: {
   token: string
   view: AgentView
   choices: AgentChoice[]
+  /** What they have already asked us to go and find. */
+  asks: Array<{ id: string; wanted: string | null; status: string; createdAt: string }>
 }) {
   const [picking, setPicking] = useState(false)
   const [note, setNote] = useState(view.picked.note ?? '')
   const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [editingPlan, setEditingPlan] = useState(false)
 
   const live = view.status === 'OPEN'
+  /*
+   * Whether they have answered the survey.
+   *
+   * Unanswered and the year running, it is the first thing on the page: the
+   * figure underneath is nought in January and a page that leads with nought
+   * is a page that says nothing. Answered, it moves below what they are
+   * working toward, where in March it reads as "this is what I said I would
+   * do" rather than as a form to fill in again.
+   */
+  const planned = view.plan?.submittedAt != null && !editingPlan
 
   const choose = async (watchId: string | null) => {
     setBusy(true)
@@ -72,6 +87,24 @@ export function AgentProgress({ token, view, choices }: {
           )}
         </div>
       </header>
+
+      {live && !planned && (
+        <section id="plan" className="border-b border-black/10 px-5 py-7 sm:px-8">
+          <div className="mx-auto max-w-[1180px]">
+            <h2 className="font-serif text-[22px] leading-tight text-black">
+              {view.plan?.submittedAt ? 'Your plan for the year' : 'Set your year'}
+            </h2>
+            <div className="mt-3">
+              <AgentPlanForm
+                token={token}
+                plan={view.plan}
+                periodStart={view.periodStart}
+                onSaved={() => window.location.reload()}
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="border-b border-black/10 px-5 py-7 sm:px-8">
         <div className="mx-auto max-w-[1180px]">
@@ -187,6 +220,26 @@ export function AgentProgress({ token, view, choices }: {
           {saved && <p className="mt-2 text-[12.5px] text-black/55">{saved}</p>}
         </section>
 
+        {planned && view.plan && (
+          <section className="border-b border-black/10 py-6">
+            <h2 className="font-serif text-[20px] text-black">Your plan for the year</h2>
+            <div className="mt-3">
+              <AgentPlanSummary
+                plan={view.plan}
+                live={live}
+                /* The form is at the top of the page, so take them to it —
+                   otherwise "Change it" looks like it did nothing. */
+                onEdit={() => {
+                  setEditingPlan(true)
+                  requestAnimationFrame(() => {
+                    document.getElementById('plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  })
+                }}
+              />
+            </div>
+          </section>
+        )}
+
         {live && view.standing.capBase > 0 && (
           <section className="pt-6">
             <h2 className="font-serif text-[20px] text-black">
@@ -202,8 +255,8 @@ export function AgentProgress({ token, view, choices }: {
 
             {choices.length === 0 ? (
               <p className="py-10 text-[14px] text-black/45">
-                Nothing in the case is within that just now. Write down what you want above and
-                they will look for it.
+                Nothing in the case is within that just now. Tell us what you are after and we
+                will go and look for it.
               </p>
             ) : (
               <div className="mt-5">
@@ -248,6 +301,21 @@ export function AgentProgress({ token, view, choices }: {
                 ? `Nothing is unlocked yet. ${money(view.standing.toGo ?? 0)} more and ${view.standing.next.label} opens, which is a watch up to ${money(view.standing.next.rewardCapBase)}.`
                 : `${view.partnerName} has not set the rungs for this one yet.`}
             </p>
+          </section>
+        )}
+
+        {/*
+          * The ask, under what they can choose from.
+          *
+          * Alex asked for this to be easy to find for agents: the reward is
+          * a specific watch somebody has had in mind for a year, and the
+          * chance that it is one of the dozen in the case today is small.
+          * Without this the page quietly says "pick from these or nothing".
+          */}
+        {live && (
+          <section className="pt-2">
+            <AskForWatch token={token} as="agent" />
+            <AsksSoFar rows={asks} heading="What we are looking for, for you" />
           </section>
         )}
 

@@ -118,3 +118,20 @@ export function withinCap(priceBase: number | null, capBase: number): boolean {
   if (priceBase === null) return false
   return capBase > 0 && priceBase <= capBase
 }
+
+/**
+ * What one deal has to be worth for a plan to add up.
+ *
+ * The point of asking how many deals is that it turns a wish into
+ * arithmetic. "Three million" is a number somebody feels; "three million
+ * across ten deals" is three hundred thousand a deal, which is either what
+ * they did last year or a conversation worth having in January rather than
+ * in November.
+ *
+ * Rounded down, because a plan that needs 299,999.6 a deal needs 300,000.
+ */
+export function impliedDeal(proposedTargetBase: number | null, dealsTarget: number | null): number | null {
+  if (proposedTargetBase === null || dealsTarget === null) return null
+  if (proposedTargetBase <= 0 || dealsTarget <= 0) return null
+  return Math.floor(proposedTargetBase / dealsTarget)
+}

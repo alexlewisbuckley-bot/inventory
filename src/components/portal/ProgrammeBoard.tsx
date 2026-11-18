@@ -2,9 +2,10 @@
 import { useState } from 'react'
 import { Check, Copy, Plus, TrendingUp } from 'lucide-react'
 import {
-  addAgentAction, enrolAgentAction, recordProgressAction,
+  acceptPlanAction, addAgentAction, enrolAgentAction, recordProgressAction,
   setProgrammeStatusAction, setTargetAction,
 } from '@/app/actions/partner-programmes'
+import { impliedDeal } from '@/lib/programme'
 import { money } from './filters'
 import { PROGRAMME_KIND_LABELS, type ProgrammeKind, type ProgrammeStatus } from '@/lib/enums'
 
@@ -26,6 +27,15 @@ export interface AgentCard {
   capBase: number
   pickedLabel: string | null
   pickedNote: string | null
+  /** What they said in their own survey, if they have filled it in. */
+  plan: {
+    proposedTargetBase: number | null
+    dealsTarget: number | null
+    approach: string | null
+    support: string | null
+    submittedAt: string | null
+    acceptedAt: string | null
+  } | null
 }
 
 export interface ProgrammeBoardData {
@@ -47,6 +57,16 @@ function toBase(raw: string): number | null {
   if (!Number.isFinite(value) || value < 0) return null
   return Math.round(value * 100)
 }
+
+/*
+ * Grouped as it is typed.
+ *
+ * Twelve figures in a sitting, each one a million or two: "2500000" and
+ * "250000" are a keystroke apart and look alike at this size. The commas are
+ * what makes a missed nought visible before it is saved.
+ */
+const digitsOnly = (text: string) => text.replace(/[^0-9]/g, '')
+const grouped = (digits: string) => (digits ? Number(digits).toLocaleString('en-US') : '')
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -196,6 +216,8 @@ export function ProgrammeBoard({ token, data }: { token: string; data: Programme
                 goalId: agent.goalId!, asOf, amountBase, note: null, byName: byName || null,
               }))}
             onEnrol={() => run(() => enrolAgentAction(token, data.id, agent.agentId))}
+            onAcceptPlan={() => agent.goalId
+              && run(() => acceptPlanAction(token, data.id, agent.goalId!))}
           />
         ))}
       </ul>
@@ -240,8 +262,8 @@ function AddAgent({ busy, single, onAdd }: {
         <label className="flex flex-col gap-1">
           <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Their target</span>
           <input
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
+            value={grouped(target)}
+            onChange={(event) => setTarget(digitsOnly(event.target.value))}
             inputMode="numeric"
             placeholder="3,000,000"
             className="h-9 w-36 border border-black/15 px-2 text-right text-[13.5px] tabular-nums outline-none focus:border-black/45"
@@ -264,7 +286,9 @@ function AddAgent({ busy, single, onAdd }: {
   )
 }
 
-function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord, onEnrol }: {
+function AgentRowView({
+  agent, single, busy, copied, onCopy, onTarget, onRecord, onEnrol, onAcceptPlan,
+}: {
   agent: AgentCard
   single: boolean
   busy: boolean
@@ -273,6 +297,7 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord,
   onTarget: (targetBase: number | null) => void
   onRecord: (asOf: string, amountBase: number) => void
   onEnrol: () => void
+  onAcceptPlan: () => void
 }) {
   const [figure, setFigure] = useState('')
   const [asOf, setAsOf] = useState(today())
@@ -357,6 +382,12 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord,
           {!agent.pickedLabel && agent.pickedNote && (
             <p className="mt-1 text-[12px] text-black/55">Asked for: {agent.pickedNote}</p>
           )}
+          <AgentPlanNote
+            plan={agent.plan}
+            targetBase={agent.targetBase}
+            busy={busy}
+            onAccept={onAcceptPlan}
+          />
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
@@ -365,8 +396,8 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord,
               <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Target</span>
               <div className="flex items-center gap-1">
                 <input
-                  value={target}
-                  onChange={(event) => setTarget(event.target.value)}
+                  value={grouped(target)}
+                  onChange={(event) => setTarget(digitsOnly(event.target.value))}
                   inputMode="numeric"
                   className="h-9 w-32 border border-black/15 px-2 text-right text-[13px] tabular-nums outline-none focus:border-black/45"
                 />
@@ -394,8 +425,8 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord,
             <span className="text-[11px] uppercase tracking-[0.07em] text-black/45">Earned so far</span>
             <div className="flex items-center gap-1">
               <input
-                value={figure}
-                onChange={(event) => setFigure(event.target.value)}
+                value={grouped(figure)}
+                onChange={(event) => setFigure(digitsOnly(event.target.value))}
                 inputMode="numeric"
                 placeholder="2,500,000"
                 className="h-9 w-36 border border-black/15 px-2 text-right text-[13px] tabular-nums outline-none focus:border-black/45"
@@ -416,5 +447,87 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord,
         </div>
       </div>
     </li>
+  )
+}
+
+/**
+ * What the agent said in their own survey, on the company's row.
+ *
+ * Alex asked for agents to set their own targets at the start of the year.
+ * This is the other half of that: the company reads the figure, the deals it
+ * rests on, and what the agent asked them for — and takes the figure as the
+ * target with one button, rather than retyping it into the box beside it and
+ * having the two drift apart.
+ *
+ * Collapsed to a line until somebody wants the words, because twelve agents'
+ * plans in full would make this screen unreadable in January and useless by
+ * February.
+ */
+function AgentPlanNote({ plan, targetBase, busy, onAccept }: {
+  plan: AgentCard['plan']
+  targetBase: number | null
+  busy: boolean
+  onAccept: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (!plan?.submittedAt) {
+    return <p className="mt-1.5 text-[12px] text-black/35">Has not set their own target yet</p>
+  }
+
+  const each = impliedDeal(plan.proposedTargetBase, plan.dealsTarget)
+  /*
+   * Offered only where it would change something. Once the target is already
+   * their figure there is nothing to accept, and a button that re-saves the
+   * same number is how people stop trusting buttons.
+   */
+  const acceptable = plan.proposedTargetBase !== null && plan.proposedTargetBase !== targetBase
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[12px]">
+        <span className="text-black/55">
+          Their own aim:{' '}
+          <span className="font-semibold tabular-nums text-black">
+            {plan.proposedTargetBase === null ? 'no figure' : money(plan.proposedTargetBase)}
+          </span>
+          {plan.dealsTarget !== null && ` in ${plan.dealsTarget} ${plan.dealsTarget === 1 ? 'deal' : 'deals'}`}
+          {each !== null && ` · ${money(each)} each`}
+        </span>
+        {plan.acceptedAt && <span className="text-black/40">accepted {plan.acceptedAt}</span>}
+        {acceptable && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onAccept}
+            className="text-[12px] font-semibold text-black underline hover:no-underline disabled:opacity-50"
+          >
+            Make it their target
+          </button>
+        )}
+        {(plan.approach || plan.support) && (
+          <button
+            type="button"
+            onClick={() => setOpen((shown) => !shown)}
+            className="text-[12px] text-black/50 underline hover:text-black"
+          >
+            {open ? 'Hide their plan' : 'Their plan'}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-2 max-w-[560px] border-l-2 border-black/10 pl-3">
+          {plan.approach && (
+            <p className="whitespace-pre-line text-[12.5px] leading-relaxed text-black/70">
+              {plan.approach}
+            </p>
+          )}
+          {plan.support && (
+            <p className="mt-2 whitespace-pre-line text-[12.5px] leading-relaxed text-black/70">
+              <span className="text-black/40">Asked us for: </span>{plan.support}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, notInArray, or, s
 import { db, withTransaction } from '../db/client'
 import {
   activities, brands, customers, customerBrands, deals, dealStageEvents, notifications,
-  offers, requestEnquiries, tasks, users, watches, watchRequests,
+  offers, partnerAgents, partners, requestEnquiries, tasks, users, watches, watchRequests,
 } from '../db/schema'
 import { recordAudit } from './audit'
 import { setWatchStatus } from './watch-service'
@@ -904,10 +904,25 @@ export async function notifyMatchingRequests(watchId: string, actorId: string): 
     customerId: watchRequests.customerId,
     ownerId: watchRequests.ownerId,
     budgetGbp: watchRequests.budgetGbp,
-    customerName: sql<string>`trim(coalesce(${customers.firstName}, '') || ' ' || coalesce(${customers.lastName}, ''))`,
+    /*
+     * Who to go back to, whoever they are.
+     *
+     * A customer's name where there is one; otherwise the agent or the
+     * person at the partner company who asked, and the company itself. An
+     * inner join on customers here is how an ask raised from the portal
+     * would never flip to MATCHED and nobody would be told when the watch
+     * they asked for landed — which is the whole point of asking.
+     */
+    customerName: sql<string>`coalesce(
+      nullif(trim(coalesce(${customers.firstName}, '') || ' ' || coalesce(${customers.lastName}, '')), ''),
+      nullif(concat_ws(' at ', coalesce(${partnerAgents.name}, ${watchRequests.askedByName}), ${partners.name}), ''),
+      'somebody'
+    )`,
   })
     .from(watchRequests)
-    .innerJoin(customers, eq(customers.id, watchRequests.customerId))
+    .leftJoin(customers, eq(customers.id, watchRequests.customerId))
+    .leftJoin(partners, eq(partners.id, watchRequests.partnerId))
+    .leftJoin(partnerAgents, eq(partnerAgents.id, watchRequests.partnerAgentId))
     .where(and(
       isNull(watchRequests.deletedAt),
       inArray(watchRequests.status, ['OPEN', 'SOURCING']),
@@ -929,7 +944,11 @@ export async function notifyMatchingRequests(watchId: string, actorId: string): 
       type: 'SYSTEM',
       subject: `Stock ${watch.stockNo} matches this request`,
       isSystem: true,
-      scope: { customerId: request.customerId, requestId: request.id, watchId: watch.id },
+      scope: {
+        customerId: request.customerId ?? undefined,
+        requestId: request.id,
+        watchId: watch.id,
+      },
       actorId,
     })
 

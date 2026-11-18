@@ -3,7 +3,7 @@ import { isPlaceholderInvoiceNo, normaliseInvoiceNo } from '@/lib/xero-match'
 import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
-  brands, customers, deals, fxRates, offers, sales, tasks, watches, watchRequests,
+  brands, customers, deals, fxRates, offers, partners, sales, tasks, watches, watchRequests,
 } from '../db/schema'
 import { HELD_STATUSES } from '@/lib/enums'
 
@@ -162,6 +162,8 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     customerId: watchRequests.customerId,
     firstName: customers.firstName,
     lastName: customers.lastName,
+    partnerName: partners.name,
+    askedByName: watchRequests.askedByName,
     model: watchRequests.model,
     brandName: brands.name,
     createdAt: watchRequests.createdAt,
@@ -175,7 +177,12 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     )`,
   })
     .from(watchRequests)
-    .innerJoin(customers, eq(customers.id, watchRequests.customerId))
+    /*
+     * Left: a request raised by a partner's agent has no customer row behind
+     * it, and an inner join silently drops it from what is waiting.
+     */
+    .leftJoin(customers, eq(customers.id, watchRequests.customerId))
+    .leftJoin(partners, eq(partners.id, watchRequests.partnerId))
     .leftJoin(brands, eq(brands.id, watchRequests.brandId))
     .where(and(
       isNull(watchRequests.deletedAt),
@@ -189,11 +196,22 @@ export async function worthKnowing(limit = 6): Promise<Notice[]> {
     notices.push({
       id: `match-${row.requestId}`,
       tone: 'opportunity',
-      headline: `${[row.brandName, row.model].filter(Boolean).join(' ') || 'A watch'} in stock matches what ${row.firstName} ${row.lastName} asked for`,
+      /*
+       * Who asked: a customer, or somebody at a partner company. The second
+       * kind has no customer record and no page to call them from, so it
+       * goes to the board the request is worked from instead.
+       */
+      headline: `${[row.brandName, row.model].filter(Boolean).join(' ') || 'A watch'} in stock matches what ${
+        [row.firstName, row.lastName].filter(Boolean).join(' ')
+          || [row.askedByName, row.partnerName].filter(Boolean).join(' at ')
+          || 'somebody'
+      } asked for`,
       detail: waiting > 0
         ? `They have been waiting ${waiting} ${waiting === 1 ? 'day' : 'days'}.`
         : 'Registered today.',
-      action: { label: 'Call them', href: `/customers/${row.customerId}` },
+      action: row.customerId
+        ? { label: 'Call them', href: `/customers/${row.customerId}` }
+        : { label: 'Open the request', href: '/requests' },
     })
   }
 

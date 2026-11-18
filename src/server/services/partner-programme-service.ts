@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
-  brands, partnerAgentGoals, partnerAgentProgress, partnerAgents,
+  brands, partnerAgentGoals, partnerAgentPlans, partnerAgentProgress, partnerAgents,
   partnerProgrammes, partnerProgrammeTiers, partners, watches,
 } from '../db/schema'
 import { newId } from '@/lib/ids'
@@ -55,6 +55,8 @@ export interface AgentRow {
   standing: Standing
   /** What they are working toward, if they have said. */
   picked: { watchId: string | null; label: string | null; note: string | null } | null
+  /** What they said in January, if they have been asked. */
+  plan: AgentPlan | null
 }
 
 export interface ProgrammeView {
@@ -109,6 +111,63 @@ async function latestProgress(programmeId: string): Promise<Map<string, { amount
   )
 }
 
+/** The plan rows for a programme, by goal, so the board can show them. */
+async function plansFor(programmeId: string): Promise<Map<string, AgentPlan>> {
+  const rows = await db
+    .select({
+      goalId: partnerAgentPlans.goalId,
+      proposedTargetBase: partnerAgentPlans.proposedTargetBase,
+      dealsTarget: partnerAgentPlans.dealsTarget,
+      approach: partnerAgentPlans.approach,
+      support: partnerAgentPlans.support,
+      submittedAt: partnerAgentPlans.submittedAt,
+      acceptedAt: partnerAgentPlans.acceptedAt,
+    })
+    .from(partnerAgentPlans)
+    .innerJoin(partnerAgentGoals, eq(partnerAgentGoals.id, partnerAgentPlans.goalId))
+    .where(and(
+      eq(partnerAgentGoals.programmeId, programmeId),
+      isNull(partnerAgentGoals.deletedAt),
+    ))
+  return new Map(rows.map((row) => [row.goalId, asPlan(row)]))
+}
+
+/** One agent's plan, for their own page. */
+async function planFor(goalId: string): Promise<AgentPlan | null> {
+  const [row] = await db
+    .select({
+      proposedTargetBase: partnerAgentPlans.proposedTargetBase,
+      dealsTarget: partnerAgentPlans.dealsTarget,
+      approach: partnerAgentPlans.approach,
+      support: partnerAgentPlans.support,
+      submittedAt: partnerAgentPlans.submittedAt,
+      acceptedAt: partnerAgentPlans.acceptedAt,
+    })
+    .from(partnerAgentPlans)
+    .where(eq(partnerAgentPlans.goalId, goalId))
+    .limit(1)
+  return row ? asPlan(row) : null
+}
+
+function asPlan(row: {
+  proposedTargetBase: number | null
+  dealsTarget: number | null
+  approach: string | null
+  support: string | null
+  submittedAt: Date | null
+  acceptedAt: Date | null
+}): AgentPlan {
+  return {
+    proposedTargetBase: row.proposedTargetBase,
+    dealsTarget: row.dealsTarget,
+    approach: row.approach,
+    support: row.support,
+    // Dates out as dates, not objects: these cross to a client component.
+    submittedAt: row.submittedAt ? row.submittedAt.toISOString().slice(0, 10) : null,
+    acceptedAt: row.acceptedAt ? row.acceptedAt.toISOString().slice(0, 10) : null,
+  }
+}
+
 /** One programme, with its rungs and everybody on it. */
 export async function getProgramme(programmeId: string): Promise<ProgrammeView | null> {
   const [programme] = await db
@@ -118,9 +177,10 @@ export async function getProgramme(programmeId: string): Promise<ProgrammeView |
     .limit(1)
   if (!programme) return null
 
-  const [tiers, progress, rows] = await Promise.all([
+  const [tiers, progress, plans, rows] = await Promise.all([
     tiersOf(programmeId),
     latestProgress(programmeId),
+    plansFor(programmeId),
     db
       .select({
         agentId: partnerAgents.id,
@@ -182,6 +242,7 @@ export async function getProgramme(programmeId: string): Promise<ProgrammeView |
           note: row.pickedNote,
         }
         : null,
+      plan: row.goalId ? plans.get(row.goalId) ?? null : null,
     }
   })
 
@@ -429,6 +490,22 @@ export async function progressHistory(goalId: string) {
  * The agent's own door.
  * ------------------------------------------------------------------ */
 
+/**
+ * The start-of-year survey, as both screens read it.
+ *
+ * `proposedTargetBase` is the agent's own figure and nothing else: it does
+ * not move the scheme until somebody at the company accepts it, and
+ * `acceptedAt` is how you tell which happened.
+ */
+export interface AgentPlan {
+  proposedTargetBase: number | null
+  dealsTarget: number | null
+  approach: string | null
+  support: string | null
+  submittedAt: string | null
+  acceptedAt: string | null
+}
+
 export interface AgentView {
   agentName: string
   partnerName: string
@@ -445,6 +522,8 @@ export interface AgentView {
   asOf: string | null
   standing: Standing
   picked: { watchId: string | null; label: string | null; note: string | null }
+  /** Their own plan, or null where they have not been asked yet. */
+  plan: AgentPlan | null
   /** Every figure recorded, so they can see it move rather than take our word. */
   history: Array<{ asOf: string; amountBase: number; note: string | null }>
 }
@@ -510,9 +589,10 @@ export async function getAgentView(token: string): Promise<AgentView | null> {
     .limit(1)
   if (!row) return null
 
-  const [tiers, history] = await Promise.all([
+  const [tiers, history, plan] = await Promise.all([
     tiersOf(row.programmeId),
     progressHistory(row.goalId),
+    planFor(row.goalId),
   ])
   const latest = history[0]
   const earnedBase = latest?.amountBase ?? 0
@@ -543,6 +623,7 @@ export async function getAgentView(token: string): Promise<AgentView | null> {
     asOf: latest ? String(latest.asOf) : null,
     standing: standingFor(earnedBase, rungs),
     picked: { watchId: row.pickedWatchId, label, note: row.pickedNote },
+    plan,
     history: history.map((entry) => ({
       asOf: String(entry.asOf),
       amountBase: entry.amountBase,
@@ -591,4 +672,87 @@ export async function pickReward(input: {
       updatedAt: new Date(),
     })
     .where(eq(partnerAgentGoals.id, view.goalId))
+}
+
+/**
+ * The agent fills in the survey.
+ *
+ * Alex asked for this as a start-of-year thing: "agents to set their targets
+ * at the start of the year and have a plan against obtaining it." So it is
+ * the agent's own write, on their own link, and it is deliberately not the
+ * target. Their figure goes in `proposedTargetBase`; the company's stays on
+ * the goal until somebody there accepts theirs. A scheme where the person
+ * being measured sets the measure, with nobody told, is not a scheme — and
+ * one where their January plan is invisible to the company is a form filled
+ * in for nothing.
+ *
+ * Amendable while the programme runs, because a plan written in January that
+ * cannot be corrected in February is a plan people stop writing. Refused once
+ * it has closed: the year's figures are in by then and a target changed after
+ * the fact rewrites what happened.
+ */
+export async function savePlan(input: {
+  token: string
+  proposedTargetBase: number | null
+  dealsTarget: number | null
+  approach: string | null
+  support: string | null
+}): Promise<void> {
+  const view = await getAgentView(input.token)
+  if (!view) throw new NotFoundError('Agent')
+  if (view.status !== 'OPEN') {
+    throw new ConflictError('This programme is not running, so the plan cannot be changed.')
+  }
+  if (input.proposedTargetBase !== null && input.proposedTargetBase < 0) {
+    throw new ValidationError('A target cannot be less than nothing.')
+  }
+  if (input.dealsTarget !== null && (input.dealsTarget < 0 || !Number.isInteger(input.dealsTarget))) {
+    throw new ValidationError('Give the number of deals as a whole number.')
+  }
+
+  const values = {
+    proposedTargetBase: input.proposedTargetBase,
+    dealsTarget: input.dealsTarget,
+    approach: input.approach?.trim() || null,
+    support: input.support?.trim() || null,
+    submittedAt: new Date(),
+    updatedAt: new Date(),
+  }
+  await db.insert(partnerAgentPlans)
+    .values({ id: newId('pln'), goalId: view.goalId, ...values })
+    /*
+     * Amended rather than added to. `acceptedAt` is left alone on purpose: a
+     * figure the company accepted in January stays accepted, and an agent
+     * editing their plan afterwards cannot quietly un-accept it to put a
+     * different number in its place.
+     */
+    .onConflictDoUpdate({ target: partnerAgentPlans.goalId, set: values })
+}
+
+/**
+ * The company takes the agent's figure as the target.
+ *
+ * Both halves of what Alex asked for: the agent sets their own target, and
+ * the company still decides. One act, so the figure on the scheme and the
+ * figure in the survey cannot drift apart by somebody retyping it.
+ */
+export async function acceptPlan(goalId: string): Promise<void> {
+  const [plan] = await db
+    .select({ proposedTargetBase: partnerAgentPlans.proposedTargetBase })
+    .from(partnerAgentPlans)
+    .where(eq(partnerAgentPlans.goalId, goalId))
+    .limit(1)
+  if (!plan) throw new NotFoundError('Plan')
+  if (plan.proposedTargetBase === null) {
+    throw new ValidationError('They have not put a figure down to accept.')
+  }
+
+  await withTransaction(async () => {
+    await db.update(partnerAgentGoals)
+      .set({ targetBase: plan.proposedTargetBase, updatedAt: new Date() })
+      .where(eq(partnerAgentGoals.id, goalId))
+    await db.update(partnerAgentPlans)
+      .set({ acceptedAt: new Date(), updatedAt: new Date() })
+      .where(eq(partnerAgentPlans.goalId, goalId))
+  })
 }

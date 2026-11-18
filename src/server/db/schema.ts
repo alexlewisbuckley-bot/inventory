@@ -661,6 +661,40 @@ export const partnerAgentGoals = pgTable(
  * said so, and not whether a figure that fell was a correction or a bad
  * quarter. The current figure is the newest row.
  */
+/**
+ * The start-of-year survey: what an agent says they will do.
+ *
+ * Alex asked for "a survey feature for agents to set their targets at the
+ * start of the year and have a plan against obtaining it". The figure here is
+ * theirs, not the company's — the company's target stays on the goal, and
+ * this one only replaces it if somebody at the company accepts it. Otherwise
+ * the person being measured would be setting the measure.
+ */
+export const partnerAgentPlans = pgTable(
+  'partner_agent_plans',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id').notNull()
+      .references(() => partnerAgentGoals.id, { onDelete: 'cascade' }),
+    /** What they are aiming at, in base minor units. */
+    proposedTargetBase: integer('proposed_target_base'),
+    /** How many deals they think it takes, which is what makes the figure checkable. */
+    dealsTarget: integer('deals_target'),
+    /** How they intend to get there, in their own words. */
+    approach: text('approach'),
+    /** And what they need from the company to do it. */
+    support: text('support'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    /** Set when the company takes their figure as the target. */
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    goalIdx: uniqueIndex('partner_agent_plans_goal_idx').on(t.goalId),
+  }),
+)
+
 export const partnerAgentProgress = pgTable(
   'partner_agent_progress',
   {
@@ -1968,7 +2002,19 @@ export const watchRequests = pgTable(
   'watch_requests',
   {
     id: text('id').primaryKey(),
-    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    /*
+     * Who wants it: a customer of ours, or a partner's agent.
+     *
+     * Nullable since the portal learned to write here. Everybody who wanted a
+     * watch used to be somebody we had sold to; a broker's agent asking for a
+     * Daytona through their own link is not, and a stub customer record for
+     * each of them would be a CRM full of people nobody has met.
+     */
+    customerId: text('customer_id').references(() => customers.id, { onDelete: 'cascade' }),
+    partnerId: text('partner_id').references(() => partners.id, { onDelete: 'set null' }),
+    partnerAgentId: text('partner_agent_id').references(() => partnerAgents.id, { onDelete: 'set null' }),
+    /** Who typed it, where the door is a company's rather than a person's. */
+    askedByName: text('asked_by_name'),
     brandId: text('brand_id').references(() => brands.id),
     model: text('model'),
     referenceNo: text('reference_no'),
@@ -1990,6 +2036,7 @@ export const watchRequests = pgTable(
   },
   (t) => ({
     customerIdx: index('watch_requests_customer_idx').on(t.customerId),
+    partnerIdx: index('watch_requests_partner_idx').on(t.partnerId).where(sql`deleted_at IS NULL`),
     statusIdx: index('watch_requests_status_idx').on(t.status).where(sql`deleted_at IS NULL`),
     brandIdx: index('watch_requests_brand_idx').on(t.brandId),
   }),

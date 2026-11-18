@@ -81,7 +81,7 @@ export default async function RequestsPage() {
     <>
       <PageHeader
         title="Wanted"
-        description="What customers are waiting for, and what we already hold that might do."
+        description="Who is waiting — customers and partners both — and what we already hold that might do."
         actions={
           <WantComposer
             can={canCreate}
@@ -96,7 +96,7 @@ export default async function RequestsPage() {
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Open requests" value={requests.length} caption="Across every customer" />
+        <StatCard label="Open requests" value={requests.length} caption="Customers and partners" />
         <StatCard label="Demand on the books" value={money(totalBudget)}
           caption="Budgets of everything outstanding" />
         <StatCard label="Already matchable" value={matchable} tone={matchable > 0 ? 'accent' : 'default'}
@@ -128,9 +128,24 @@ export default async function RequestsPage() {
                 title={[request.brandName, request.model].filter(Boolean).join(' ') || 'Any watch'}
                 description={
                   <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <Link href={`/customers/${request.customerId}`} className="font-bold text-content-accent hover:underline">
-                      {request.customerName}
-                    </Link>
+                    {/*
+                      * Who asked. A customer links to their record; an ask
+                      * raised from a partner's portal has no customer behind
+                      * it, so it names the company and whoever typed it —
+                      * otherwise the row reads as having come from nobody.
+                      */}
+                    {request.customerId ? (
+                      <Link href={`/customers/${request.customerId}`} className="font-bold text-content-accent hover:underline">
+                        {request.customerName}
+                      </Link>
+                    ) : (
+                      <span className="font-bold text-content-primary">
+                        {request.agentName ?? request.askedByName ?? 'Someone'}
+                        {request.partnerName && (
+                          <span className="font-normal text-content-secondary"> at {request.partnerName}</span>
+                        )}
+                      </span>
+                    )}
                     <span>·</span>
                     <span>asked <RelativeTime value={request.createdAt.toISOString()} /></span>
                   </span>

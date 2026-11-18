@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getPortalDoor, getPortalRoom } from '@/server/services/partner-portal-service'
+import { asksFromPartner } from '@/server/services/sourcing-requests'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import { PortalGate } from '@/components/portal/PortalGate'
 import { PortalRoom } from '@/components/portal/PortalRoom'
@@ -51,12 +52,17 @@ export default async function PortalPage({ params }: { params: { token: string }
   const room = await getPortalRoom(params.token)
   if (!room) notFound()
 
+  // What they have already asked us to find, so the ask does not vanish into
+  // a form and get sent again by email next week.
+  const asks = await asksFromPartner(door.id)
+
   return (
     <PortalRoom
       token={params.token}
       partner={room.partner}
       items={room.items}
       orders={room.orders}
+      asks={asks}
     />
   )
 }
