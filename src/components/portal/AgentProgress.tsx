@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Check, Lock } from 'lucide-react'
 import { pickRewardAction } from '@/app/actions/partner-programmes'
+import { AgentPlanForm, AgentPlanSummary } from './AgentPlan'
 import { money } from './filters'
 import { WatchCard, WatchGrid } from './WatchCard'
 import type { AgentView } from '@/server/services/partner-programme-service'
@@ -33,8 +34,19 @@ export function AgentProgress({ token, view, choices }: {
   const [note, setNote] = useState(view.picked.note ?? '')
   const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [editingPlan, setEditingPlan] = useState(false)
 
   const live = view.status === 'OPEN'
+  /*
+   * Whether they have answered the survey.
+   *
+   * Unanswered and the year running, it is the first thing on the page: the
+   * figure underneath is nought in January and a page that leads with nought
+   * is a page that says nothing. Answered, it moves below what they are
+   * working toward, where in March it reads as "this is what I said I would
+   * do" rather than as a form to fill in again.
+   */
+  const planned = view.plan?.submittedAt != null && !editingPlan
 
   const choose = async (watchId: string | null) => {
     setBusy(true)
@@ -72,6 +84,24 @@ export function AgentProgress({ token, view, choices }: {
           )}
         </div>
       </header>
+
+      {live && !planned && (
+        <section id="plan" className="border-b border-black/10 px-5 py-7 sm:px-8">
+          <div className="mx-auto max-w-[1180px]">
+            <h2 className="font-serif text-[22px] leading-tight text-black">
+              {view.plan?.submittedAt ? 'Your plan for the year' : 'Set your year'}
+            </h2>
+            <div className="mt-3">
+              <AgentPlanForm
+                token={token}
+                plan={view.plan}
+                periodStart={view.periodStart}
+                onSaved={() => window.location.reload()}
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="border-b border-black/10 px-5 py-7 sm:px-8">
         <div className="mx-auto max-w-[1180px]">
@@ -186,6 +216,26 @@ export function AgentProgress({ token, view, choices }: {
           )}
           {saved && <p className="mt-2 text-[12.5px] text-black/55">{saved}</p>}
         </section>
+
+        {planned && view.plan && (
+          <section className="border-b border-black/10 py-6">
+            <h2 className="font-serif text-[20px] text-black">Your plan for the year</h2>
+            <div className="mt-3">
+              <AgentPlanSummary
+                plan={view.plan}
+                live={live}
+                /* The form is at the top of the page, so take them to it —
+                   otherwise "Change it" looks like it did nothing. */
+                onEdit={() => {
+                  setEditingPlan(true)
+                  requestAnimationFrame(() => {
+                    document.getElementById('plan')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  })
+                }}
+              />
+            </div>
+          </section>
+        )}
 
         {live && view.standing.capBase > 0 && (
           <section className="pt-6">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { ladderFor, standingFor, withinCap, type Tier } from '@/lib/programme'
+import { impliedDeal, ladderFor, standingFor, withinCap, type Tier } from '@/lib/programme'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 
@@ -180,6 +180,7 @@ const service = read('src/server/services/partner-programme-service.ts')
 const stock = read('src/server/services/partner-programme-stock.ts')
 const actions = read('src/app/actions/partner-programmes.ts')
 const board = read('src/components/portal/ProgrammeBoard.tsx')
+const plan = read('src/components/portal/AgentPlan.tsx')
 const schema = read('src/server/db/schema.ts')
 const migration = read('src/server/db/migrations/0073_incentive_programme.sql')
 const agentPage = read('src/components/portal/AgentProgress.tsx')
@@ -203,6 +204,7 @@ describe('the two doors', () => {
     for (const write of [
       'saveProgrammeAction', 'setTiersAction', 'setProgrammeStatusAction',
       'addAgentAction', 'enrolAgentAction', 'setTargetAction', 'recordProgressAction',
+      'acceptPlanAction',
     ]) {
       const fn = actions.slice(actions.indexOf(`export async function ${write}`))
       expect(fn.slice(0, 700), `${write} does not check the door`)
@@ -218,7 +220,7 @@ describe('the two doors', () => {
      */
     for (const write of [
       'setTiersAction', 'setProgrammeStatusAction', 'addAgentAction',
-      'enrolAgentAction', 'setTargetAction', 'recordProgressAction',
+      'enrolAgentAction', 'setTargetAction', 'recordProgressAction', 'acceptPlanAction',
     ]) {
       const fn = actions.slice(actions.indexOf(`export async function ${write}`))
       expect(fn.slice(0, 700), `${write} does not check ownership`)
@@ -236,7 +238,14 @@ describe('the two doors', () => {
     const fn = actions.slice(actions.indexOf('export async function pickRewardAction'))
     expect(fn).not.toContain('insideOrNull')
     expect(fn).toContain('pickReward({ token')
-    const pick = service.slice(service.indexOf('export async function pickReward'))
+    /*
+     * Bounded to pickReward's own body. Unbounded, this read the rest of the
+     * file too — and passed only for as long as pickReward happened to be
+     * last in it. The next function appended after it was `acceptPlan`,
+     * whose whole job is to write a target.
+     */
+    const from = service.indexOf('export async function pickReward')
+    const pick = service.slice(from, service.indexOf('\n}', service.indexOf('await db.update', from)))
     expect(pick).toContain("if (view.status !== 'OPEN')")
     expect(pick).not.toMatch(/amountBase|targetBase/)
   })
@@ -372,5 +381,104 @@ describe('agents who came from a leaderboard', () => {
     expect(unenrolled).toContain('if (agent.goalId === null)')
     expect(unenrolled).toContain('Add to this programme')
     expect(unenrolled).not.toContain('Earned so far')
+  })
+})
+
+/**
+ * The start-of-year survey.
+ *
+ * Alex: "a survey feature for agents to set their targets at the start of the
+ * year and have a plan against obtaining it." Two people have a claim on that
+ * sentence — the agent, who sets it, and the company, who is running the
+ * scheme — and the whole design turns on keeping them apart: the agent writes
+ * a proposal, the company decides whether it becomes the target.
+ */
+describe('an agent setting their own target', () => {
+  it('turns a figure into arithmetic', () => {
+    // "Three million" is a feeling. "Three million across ten deals" is three
+    // hundred thousand a deal, which is either last year's average or a
+    // conversation worth having in January rather than in November.
+    expect(impliedDeal(m(3), 10)).toBe(m(3) / 10)
+    expect(impliedDeal(m(1), 3)).toBe(Math.floor(m(1) / 3))
+  })
+
+  it('says nothing rather than something wrong', () => {
+    // A plan with no deals in it is not a plan with zero deals, and neither
+    // is one with no figure. Dividing by nought would print Infinity on a
+    // page somebody is reading about their own year.
+    expect(impliedDeal(m(3), 0)).toBeNull()
+    expect(impliedDeal(m(3), null)).toBeNull()
+    expect(impliedDeal(null, 10)).toBeNull()
+    expect(impliedDeal(0, 10)).toBeNull()
+  })
+
+  it('writes a proposal, never the target', () => {
+    /*
+     * The agent's link carries this write. If it set the target, the person
+     * being measured would be setting the measure — so the figure lands in
+     * its own column and the company's target is untouched until somebody
+     * there accepts it.
+     */
+    const fn = service.slice(service.indexOf('export async function savePlan'))
+    const body = fn.slice(0, fn.indexOf('export async function acceptPlan'))
+    expect(body).toContain('proposedTargetBase: input.proposedTargetBase')
+    expect(body).not.toContain('partnerAgentGoals')
+    // And it cannot touch what they have earned.
+    expect(body).not.toMatch(/amountBase|partnerAgentProgress/)
+  })
+
+  it('is the company that makes it the target, in one act', () => {
+    // Both halves of what was asked for. One act, so the figure on the scheme
+    // and the figure in the survey cannot drift apart by somebody retyping it.
+    const fn = service.slice(service.indexOf('export async function acceptPlan'))
+    expect(fn).toContain('.set({ targetBase: plan.proposedTargetBase')
+    expect(fn).toContain('acceptedAt: new Date()')
+    expect(fn).toContain('withTransaction')
+  })
+
+  it('does not let an amendment un-accept a figure', () => {
+    /*
+     * The plan is amendable while the year runs, which it has to be. But if
+     * an amendment cleared `accepted_at`, an agent could have a figure
+     * accepted in January and then quietly put a different one in its place.
+     */
+    const fn = service.slice(service.indexOf('export async function savePlan'))
+    const values = fn.slice(fn.indexOf('const values = {'), fn.indexOf('await db.insert'))
+    expect(values).not.toContain('acceptedAt')
+    expect(fn).toContain('onConflictDoUpdate')
+  })
+
+  it('is closed when the year is', () => {
+    // The year's figures are in by then, and a target changed after the fact
+    // rewrites what happened.
+    const fn = service.slice(service.indexOf('export async function savePlan'))
+    expect(fn.slice(0, 900)).toContain("if (view.status !== 'OPEN')")
+  })
+
+  it('checks a goal id belongs to the programme named with it', () => {
+    /*
+     * This was a real hole. Owning one programme was enough: a partner inside
+     * their own door could pass their own programme id with another company's
+     * goal id, and move that company's agent's figure. The programme check
+     * reads as if it covers this and does not.
+     */
+    for (const write of ['setTargetAction', 'recordProgressAction', 'acceptPlanAction']) {
+      const fn = actions.slice(actions.indexOf(`export async function ${write}`))
+      expect(fn.slice(0, 900), `${write} trusts a goal id`).toContain('await ownsGoal(')
+    }
+    expect(actions).toContain('eq(partnerAgentGoals.programmeId, programmeId)')
+  })
+
+  it('shows the agent the arithmetic while they can still change it', () => {
+    // Finding out that your plan needs 400,000 a deal on the screen where the
+    // figure is still editable is the entire value of asking for the deals.
+    expect(plan).toContain('const each = impliedDeal(toBase(target), toWhole(deals))')
+    expect(plan).toContain('a deal')
+  })
+
+  it('offers the company the button only where it would change something', () => {
+    // A button that re-saves the same number is how people stop trusting
+    // buttons.
+    expect(board).toContain('plan.proposedTargetBase !== null && plan.proposedTargetBase !== targetBase')
   })
 })

@@ -94,6 +94,7 @@ export default async function ProgrammePage({ params }: { params: { token: strin
               capBase: agent.standing.capBase,
               pickedLabel: agent.picked?.label ?? null,
               pickedNote: agent.picked?.note ?? null,
+              plan: agent.plan,
             })),
           }}
         />
