@@ -1,13 +1,14 @@
-import { LayoutGrid, LogOut, Megaphone, Receipt, Settings, Trophy } from 'lucide-react'
+import { LayoutGrid, LogOut, Megaphone, Receipt, Settings, Target, Trophy } from 'lucide-react'
 import { leavePortalAction } from '@/app/actions/partner-portal'
 import { ui } from './ui'
 
-export type PortalSection = 'stock' | 'campaigns' | 'leaderboards' | 'orders' | 'settings'
+export type PortalSection = 'stock' | 'campaigns' | 'leaderboards' | 'programme' | 'orders' | 'settings'
 
 const LINKS: Array<{ key: PortalSection; label: string; path: string; Icon: typeof Receipt }> = [
   { key: 'stock', label: 'Stock', path: '', Icon: LayoutGrid },
   { key: 'campaigns', label: 'Campaigns', path: '/campaigns', Icon: Megaphone },
   { key: 'leaderboards', label: 'Leaderboards', path: '/leaderboards', Icon: Trophy },
+  { key: 'programme', label: 'Incentives', path: '/programme', Icon: Target },
   { key: 'orders', label: 'Orders', path: '/orders', Icon: Receipt },
   { key: 'settings', label: 'Settings', path: '/settings', Icon: Settings },
 ]

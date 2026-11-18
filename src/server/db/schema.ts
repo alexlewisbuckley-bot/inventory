@@ -6,7 +6,7 @@ import {
 import {
   ACTIVITY_DIRECTIONS, ACTIVITY_TYPES, AUDIT_ACTIONS, BOX_PAPERS, CONDITIONS, CONTACT_CHANNELS,
   CURRENCIES, CUSTOMER_STATUSES, CUSTOMER_TIERS, CUSTOMER_TYPES, DEAL_STAGES, DELIVERY_STATUSES, DENSITIES,
-  CAMPAIGN_KINDS, CAMPAIGN_STATUSES,
+  CAMPAIGN_KINDS, CAMPAIGN_STATUSES, PROGRAMME_KINDS, PROGRAMME_STATUSES,
   ENTITY_TYPES, ID_CHECK_STATUSES, ID_DOCUMENT_KINDS, PARTNER_ORDER_STATUSES,
   TRADE_ENQUIRY_KINDS, TRADE_ENQUIRY_STATUSES,
   ENQUIRY_DELIVERY, IMAGE_KINDS, LEAD_SOURCES, LOCATION_TYPES, NOTIFICATION_TYPES,
@@ -466,6 +466,26 @@ export const partnerCampaignRecipients = pgTable(
   }),
 )
 
+/* ------------------------------------------------------------------ *
+ * The incentive programme.
+ *
+ * Alex: "I would like it to be a place the company can add their agents to
+ * the portal and assign a goal against them or a target that is tracked and
+ * obtained against the prize of their choice / wishlist."
+ *
+ * A campaign and a programme look alike and are not. A campaign is one
+ * moment — here are some watches, pick one, done. A programme is a year: a
+ * figure to reach, a thing waiting at the end of it, and a number that moves
+ * every month in between. The difference is the progress log, and everything
+ * else follows from it.
+ * ------------------------------------------------------------------ */
+
+/**
+ * A person at the partner company who is working toward something.
+ *
+ * Their own row rather than a campaign recipient, because an agent outlasts
+ * any one campaign: they are on the 2026 ladder, then the 2027 one, and the
+ * link they were sent in January still has to work in November.
 /**
  * A leaderboard challenge a partner runs for its own people.
  *
@@ -510,11 +530,154 @@ export const partnerAgents = pgTable(
     photoData: bytea('photo_data'),
     photoByteSize: integer('photo_byte_size'),
     sortOrder: integer('sort_order').notNull().default(0),
+    email: text('email'),
+    /*
+     * One long random token, no passphrase over it, exactly as a campaign
+     * recipient's. The same reasoning holds and holds longer: this is a
+     * salesperson checking their own progress from a phone between
+     * appointments, and a passphrase is how that becomes a thing they stop
+     * doing.
+     *
+     * Nullable, because this table was a leaderboard's cast list before it
+     * was a door: everybody already on it was typed in to appear on a board
+     * and has never been sent anywhere. They are given one the first time
+     * somebody puts them on a programme.
+     */
+    token: text('token'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex('partner_agents_token_idx').on(t.token).where(sql`token IS NOT NULL`),
+    partnerIdx: index('partner_agents_partner_idx').on(t.partnerId, t.sortOrder),
+  }),
+)
+
+/** A year's incentive at one company: the shape, the window and the words. */
+export const partnerProgrammes = pgTable(
+  'partner_programmes',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Which of the two shapes this company chose to run. */
+    kind: text('kind', { enum: PROGRAMME_KINDS }).notNull().default('LADDER'),
+    /** What the agents read at the top of their page, in the company's words. */
+    intro: text('intro'),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    status: text('status', { enum: PROGRAMME_STATUSES }).notNull().default('DRAFT'),
+    openedAt: timestamp('opened_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    partnerIdx: index('partner_programmes_partner_idx').on(t.partnerId, t.createdAt),
+  }),
+)
+
+/**
+ * One rung of the ladder: reach this much, and you may choose up to that.
+ *
+ * A SINGLE programme has exactly one of these and it is the whole scheme.
+ * Keeping one table for both means the agent's page reads the same shape
+ * either way, and a company that starts on one target and wants rungs next
+ * year is adding rows rather than being migrated.
+ *
+ * Both figures are base minor units, because everything else in this system
+ * that adds up is.
+ */
+export const partnerProgrammeTiers = pgTable(
+  'partner_programme_tiers',
+  {
+    id: text('id').primaryKey(),
+    programmeId: text('programme_id').notNull()
+      .references(() => partnerProgrammes.id, { onDelete: 'cascade' }),
+    /** What the company calls it — "Gold", "Two million", "The big one". */
+    label: text('label').notNull(),
+    /** What has to be earned to reach it. */
+    thresholdBase: integer('threshold_base').notNull(),
+    /** The most a watch chosen against this rung may be worth. */
+    rewardCapBase: integer('reward_cap_base').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => ({
-    partnerIdx: index('partner_agents_partner_idx').on(t.partnerId, t.sortOrder),
+    programmeIdx: index('partner_programme_tiers_programme_idx').on(t.programmeId, t.thresholdBase),
+  }),
+)
+
+/**
+ * One agent on one programme: their figure, and what they are playing for.
+ *
+ * The target is here and not on the programme because a SINGLE programme
+ * gives everybody a different number — the whole point of it is that Priya's
+ * six million and Tom's three are both fair. On a LADDER it is null and the
+ * rungs do the talking.
+ */
+export const partnerAgentGoals = pgTable(
+  'partner_agent_goals',
+  {
+    id: text('id').primaryKey(),
+    programmeId: text('programme_id').notNull()
+      .references(() => partnerProgrammes.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull()
+      .references(() => partnerAgents.id, { onDelete: 'cascade' }),
+    /** Their own figure on a SINGLE programme; null on a ladder. */
+    targetBase: integer('target_base'),
+    /**
+     * The watch they are working toward.
+     *
+     * A nomination and not a reservation, by the same rule the campaign
+     * shortlist follows: a piece somebody is aiming at in March must stay on
+     * sale, or a year of agents would take the case off the market.
+     */
+    pickedWatchId: text('picked_watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    /** What they want, in their words, for when we do not have it. */
+    pickedNote: text('picked_note'),
+    pickedAt: timestamp('picked_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    uniqueIdx: uniqueIndex('partner_agent_goals_unique_idx').on(t.programmeId, t.agentId),
+    agentIdx: index('partner_agent_goals_agent_idx').on(t.agentId),
+  }),
+)
+
+/**
+ * Where an agent had got to, as at a date.
+ *
+ * A log and not a column, because Alex chose the company keeping it current:
+ * "The partner company updates it ... Each update is dated and logged." A
+ * single number that somebody overwrites every month answers "where are they
+ * now" and nothing else — not whether it has moved since August, not who
+ * said so, and not whether a figure that fell was a correction or a bad
+ * quarter. The current figure is the newest row.
+ */
+export const partnerAgentProgress = pgTable(
+  'partner_agent_progress',
+  {
+    id: text('id').primaryKey(),
+    goalId: text('goal_id').notNull()
+      .references(() => partnerAgentGoals.id, { onDelete: 'cascade' }),
+    /** The date the figure is true as at, which is not the date it was typed. */
+    asOf: date('as_of').notNull(),
+    amountBase: integer('amount_base').notNull(),
+    note: text('note'),
+    /** Who said so: the portal is the partner's own admin, signed in. */
+    recordedVia: text('recorded_via').notNull().default('PORTAL'),
+    recordedByName: text('recorded_by_name'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    goalIdx: index('partner_agent_progress_goal_idx').on(t.goalId, t.asOf),
   }),
 )
 
