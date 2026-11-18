@@ -8,22 +8,26 @@
 -- A campaign and a programme look alike and are not. A campaign is one
 -- moment: here are some watches, pick one, done. A programme is a year — a
 -- figure to reach, a thing waiting at the end of it, and a number that moves
--- every month in between. The progress table is the difference, and
--- everything else follows from it.
+-- every month in between. The progress table is the difference.
+--
+-- `partner_agents` already exists: 0072 built it as a partner's own team,
+-- "kept once and drawn on by every leaderboard". That is the right place for
+-- these people and a second list of the same names would be worse than
+-- useless, so this adds what a programme needs to the team rather than
+-- building a rival to it.
 
-CREATE TABLE IF NOT EXISTS partner_agents (
-  id            text PRIMARY KEY,
-  partner_id    text NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
-  name          text NOT NULL,
-  email         text,
-  token         text NOT NULL,
-  is_active     boolean NOT NULL DEFAULT true,
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now(),
-  deleted_at    timestamptz
-);
-CREATE UNIQUE INDEX IF NOT EXISTS partner_agents_token_idx ON partner_agents (token);
-CREATE INDEX IF NOT EXISTS partner_agents_partner_idx ON partner_agents (partner_id, name);
+-- A door of their own. Nullable because everybody already on this table was
+-- typed in to appear on a leaderboard and has never been sent anywhere; they
+-- are given a link the first time somebody puts them on a programme.
+ALTER TABLE partner_agents ADD COLUMN IF NOT EXISTS token text;
+ALTER TABLE partner_agents ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE partner_agents ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+ALTER TABLE partner_agents ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
+-- Unique where there is one, so two people cannot share a link, and silent
+-- about the many rows that have none.
+CREATE UNIQUE INDEX IF NOT EXISTS partner_agents_token_idx
+  ON partner_agents (token) WHERE token IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS partner_programmes (
   id            text PRIMARY KEY,

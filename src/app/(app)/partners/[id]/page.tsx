@@ -7,6 +7,14 @@ import {
   listCampaigns, listRecipients, shortlistIds,
 } from '@/server/services/partner-campaign-service'
 import { stockForPartner } from '@/server/services/partner-portal-service'
+import { listOrdersForPartner } from '@/server/services/partner-order-service'
+import { OrderHistory } from '@/components/portal/OrderHistory'
+import { LeaderboardList } from '@/components/leaderboard/LeaderboardList'
+import { listLeaderboards, listTeam } from '@/server/services/leaderboard-service'
+import { TeamManager } from '@/components/leaderboard/TeamManager'
+import { brandVars } from '@/components/portal/ui'
+import { dubaiToday } from '@/lib/delivery'
+import { Card, CardHeader } from '@/components/ui'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PartnerCampaigns } from '@/components/reference/PartnerCampaigns'
 import { PartnerBrand } from '@/components/reference/PartnerBrand'
@@ -40,7 +48,7 @@ export default async function PartnerPage({ params }: { params: { id: string } }
    * wait. The shortlist picker needs the stock as well, and only where there
    * is a shortlist campaign to pick for.
    */
-  const [recipientPairs, shortlistPairs, stock] = await Promise.all([
+  const [recipientPairs, shortlistPairs, stock, orders, leaderboards, team] = await Promise.all([
     Promise.all(campaigns.map(async (campaign) => [
       campaign.id, await listRecipients(partner.id, campaign.id),
     ] as const)),
@@ -53,6 +61,9 @@ export default async function PartnerPage({ params }: { params: { id: string } }
     campaigns.some((campaign) => campaign.kind === 'SHORTLIST')
       ? stockForPartner(partner.id)
       : Promise.resolve([]),
+    listOrdersForPartner(partner.id),
+    listLeaderboards(partner.id),
+    listTeam(partner.id),
   ])
 
   return (
@@ -80,6 +91,64 @@ export default async function PartnerPage({ params }: { params: { id: string } }
             brandTakenAt: partner.brandTakenAt ? partner.brandTakenAt.toISOString() : null,
           }}
         />
+      )}
+
+      {/*
+        * What they have bought, and what it has come to.
+        *
+        * The same component the partner sees in their own portal, so the
+        * figures on a call with them are the figures in front of them. Kept
+        * on a light panel in either theme because that is how they see it.
+        */}
+      <Card as="section" className="mb-6">
+        <CardHeader
+          title="Purchase & spend history"
+          description="Everything this partner has ordered, with totals. They see the same figures under Orders in their portal."
+        />
+        <div
+          className="rounded-b-sm bg-white px-5 py-6 text-black sm:px-6"
+          style={{ ['--brand' as string]: partner.brandColor }}
+        >
+          <OrderHistory
+            showStockNo
+            orders={orders.map((order) => ({
+              ...order,
+              placedAt: order.placedAt.toISOString(),
+              completedAt: order.completedAt?.toISOString() ?? null,
+              releasedAt: order.releasedAt?.toISOString() ?? null,
+            }))}
+          />
+        </div>
+      </Card>
+
+      {can(user.role, 'partner:manage') && (
+        <Card as="section" className="mb-6">
+          <div id="team" />
+          <CardHeader
+            title="Their agents"
+            description="The partner's team, kept once with photos. Leaderboards take agents from here. They manage the same list under Settings in their portal."
+          />
+          <div className="rounded-b-sm bg-white px-5 py-6 text-black sm:px-6" style={brandVars(partner.brandColor, partner.accentColor)}>
+            <TeamManager scope={{ kind: 'staff', partnerId: partner.id }} team={team} photoBase={`/api/partners/${partner.id}/team-photo`} />
+          </div>
+        </Card>
+      )}
+
+      {can(user.role, 'partner:manage') && (
+        <Card as="section" className="mb-6">
+          <CardHeader
+            title="Leaderboard challenges"
+            description="Rank this partner's agents week by week against prizes. They manage the same challenges under Leaderboards in their portal."
+          />
+          <div className="rounded-b-sm bg-white px-5 py-6 text-black sm:px-6" style={brandVars(partner.brandColor, partner.accentColor)}>
+            <LeaderboardList
+              scope={{ kind: 'staff', partnerId: partner.id }}
+              rows={leaderboards}
+              today={dubaiToday()}
+              hrefFor={`/partners/${partner.id}/leaderboards`}
+            />
+          </div>
+        </Card>
       )}
 
       <PartnerCampaigns

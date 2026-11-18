@@ -10,6 +10,7 @@ import { FilterBar, FilterRail, SortSelect } from './FilterRail'
 import { WatchCard, WatchGrid } from './WatchCard'
 import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { RecipientView } from '@/server/services/partner-campaign-service'
+import { ui } from './ui'
 
 const INITIAL: CampaignState = { ok: false, message: '' }
 
@@ -408,12 +409,12 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-5"
+      className={ui.backdrop}
       role="dialog"
       aria-modal="true"
       aria-label={`Choose ${describe(item)}`}
     >
-      <div className="w-full max-w-[420px] bg-white p-6">
+      <div className={`${ui.dialog} max-w-[420px]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-serif text-[20px] leading-snug text-black">{describe(item)}</p>
@@ -439,7 +440,7 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
               )
             )}
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black">
+          <button type="button" onClick={onClose} aria-label="Close" className={ui.iconButton}>
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
@@ -450,7 +451,7 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-5 h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white"
+              className={`mt-5 w-full ${ui.primary}`}
               style={{ backgroundColor: 'var(--brand)' }}
             >
               Done
@@ -470,19 +471,19 @@ function ConfirmChoice({ token, item, showPrice, onClose }: {
               )}
             </p>
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+              <span className={ui.label}>
                 Anything we should know (optional)
               </span>
               <textarea
                 name="note"
                 rows={2}
                 placeholder="Sizing, engraving, when you need it"
-                className="mt-1 w-full border border-black/15 px-3 py-2 text-[14px] text-black outline-none placeholder:text-black/30 focus:border-black/50"
+                className={ui.textarea}
               />
             </label>
 
             {state.message && !state.ok && (
-              <p role="alert" className="text-[12.5px] text-[#b42318]">{state.message}</p>
+              <p role="alert" className={ui.error}>{state.message}</p>
             )}
 
             <Confirm />
@@ -499,7 +500,7 @@ function Confirm() {
     <button
       type="submit"
       disabled={pending}
-      className="h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white disabled:opacity-60"
+      className={`w-full ${ui.primary}`}
       style={{ backgroundColor: 'var(--brand)' }}
     >
       {pending ? 'One moment…' : 'Yes, this one'}

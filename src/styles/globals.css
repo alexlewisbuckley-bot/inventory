@@ -414,3 +414,43 @@
 @media (prefers-reduced-motion: reduce) {
   .shop-root * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/*
+ * The whole interface, one step smaller on a desk.
+ *
+ * Alex: "the whole platform feels too zoomed in, can we make it smaller so
+ * it's easier on the eye." Every size in this codebase is a pixel value, so
+ * shrinking them one by one would be a thousand edits that drift; a zoom on
+ * the root scales type, spacing, images and controls together and keeps
+ * every proportion that was designed. Scoped to wider screens only — on a
+ * phone the sizes are already at the edge of comfortable reading.
+ *
+ * Viewport-height boxes are divided back out: under zoom, 100vh is drawn at
+ * 80% of the screen, which would leave the sidebar and full-height pages
+ * stopping short of the bottom edge.
+ */
+@media (min-width: 1024px) {
+  :root { --ui-zoom: 0.8; }
+  html { zoom: var(--ui-zoom); }
+  .h-screen { height: calc(100vh / var(--ui-zoom)); }
+  .min-h-screen { min-height: calc(100vh / var(--ui-zoom)); }
+  .max-h-screen { max-height: calc(100vh / var(--ui-zoom)); }
+}
+
+/*
+ * The public leaderboard, read from across a room.
+ *
+ * The scale-down above is for people working at a desk. The shared board is
+ * put on an office screen and read from metres away, so it undoes that zoom
+ * and then grows with the display: full size on a laptop, larger on a big
+ * monitor or a TV. Zoom compounds, so dividing by --ui-zoom cancels it.
+ */
+@media (min-width: 1024px) {
+  .lb-public { zoom: calc(1 / var(--ui-zoom)); }
+}
+@media (min-width: 1680px) {
+  .lb-public { zoom: calc(1.2 / var(--ui-zoom)); }
+}
+@media (min-width: 2400px) {
+  .lb-public { zoom: calc(1.6 / var(--ui-zoom)); }
+}

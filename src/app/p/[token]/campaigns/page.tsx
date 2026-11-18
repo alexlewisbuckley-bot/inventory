@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { listCampaigns } from '@/server/services/partner-campaign-service'
+import { listLeaderboards } from '@/server/services/leaderboard-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import { PortalGate } from '@/components/portal/PortalGate'
 import { CampaignList } from '@/components/portal/CampaignList'
@@ -33,11 +34,15 @@ export default async function CampaignsPage({ params }: { params: { token: strin
     )
   }
 
-  const campaigns = await listCampaigns(door.id)
+  const [campaigns, leaderboards] = await Promise.all([listCampaigns(door.id), listLeaderboards(door.id)])
 
   return (
     <CampaignList
+      leaderboards={leaderboards}
       token={params.token}
+      hasLogo={door.hasLogo}
+      brandColor={door.brandColor}
+      accentColor={door.accentColor}
       partnerName={door.name}
       campaigns={campaigns.map((row) => ({
         ...row,

@@ -1007,6 +1007,20 @@ export const CAMPAIGN_STATUS_LABELS: Record<CampaignStatus, string> = {
   CLOSED: 'Closed',
 }
 
+/** What a leaderboard prize is. */
+export const PRIZE_KINDS = ['WATCH', 'CASH', 'VOUCHER'] as const
+export type PrizeKind = (typeof PRIZE_KINDS)[number]
+
+export const PRIZE_KIND_LABELS: Record<PrizeKind, string> = {
+  WATCH: 'Watch',
+  CASH: 'Cash',
+  VOUCHER: 'Voucher towards a watch',
+}
+
+/** How a leaderboard prize is won: by finishing position, or by a target. */
+export const PRIZE_RULES = ['RANK', 'TARGET'] as const
+export type PrizeRule = (typeof PRIZE_RULES)[number]
+
 export const PARTNER_ORDER_STATUSES = ['PLACED', 'RELEASED', 'COMPLETED'] as const
 export type PartnerOrderStatus = (typeof PARTNER_ORDER_STATUSES)[number]
 

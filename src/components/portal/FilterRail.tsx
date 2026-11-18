@@ -1,10 +1,14 @@
 'use client'
-import { useState } from 'react'
-import { Check, Search, SlidersHorizontal, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowUpDown, Check, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import {
-  activeCount, buildGroups, pillsFor,
+  activeCount, buildGroups, clearTicks, pillsFor,
   type FilterState, type Filterable, type Group, type Option,
 } from './filters'
+import { brandFill, ui } from './ui'
+
+/** Every filter off, leaving whatever was typed in the search. */
+const clearAll = (state: FilterState): FilterState => clearTicks(state)
 
 /**
  * The filter rail.
@@ -43,7 +47,19 @@ export function FilterRail({ items, state, onChange, offsetClass = 'top-[73px]' 
         * somebody forty watches down the page can still change their mind
         * without scrolling back to the top to do it.
         */}
-      <div className={`sticky ${offsetClass} max-h-[calc(100vh-96px)] overflow-y-auto pb-8`}>
+      <div className={`sticky ${offsetClass} max-h-[calc(100vh-96px)] overflow-y-auto pb-8 pr-1`}>
+        <div className="mb-3 flex items-baseline justify-between">
+          <p className="text-[13px] font-semibold text-black">Filters</p>
+          {activeCount(state) > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange(clearAll(state))}
+              className="text-[12px] text-black/45 underline underline-offset-2 hover:text-black"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
         <Groups groups={groups} state={state} onChange={onChange} />
       </div>
     </aside>
@@ -78,8 +94,21 @@ function FilterGroup({ group, onPick, onClear }: {
   onClear: () => void
 }) {
   const [all, setAll] = useState(false)
-  const shown = all ? group.options : group.options.slice(0, SHOW_AT_FIRST)
-  const hidden = group.options.length - shown.length
+  const [find, setFind] = useState('')
+  /*
+   * A find box on any long group.
+   *
+   * Thirty brands is a list somebody reads top to bottom looking for one
+   * name. Typing three letters of it is faster, and the box only appears
+   * where the list is long enough to need it.
+   */
+  const searchable = group.options.length > SHOW_AT_FIRST
+  const needle = find.trim().toLowerCase()
+  const found = needle
+    ? group.options.filter((option) => option.on || option.label.toLowerCase().includes(needle))
+    : group.options
+  const shown = all || needle ? found : found.slice(0, SHOW_AT_FIRST)
+  const hidden = found.length - shown.length
 
   return (
     <div className="py-4 first:pt-0">
@@ -94,6 +123,19 @@ function FilterGroup({ group, onPick, onClear }: {
         )}
       </div>
 
+      {searchable && (
+        <label className="relative mt-2 block">
+          <span className="sr-only">Find a {group.title.toLowerCase()}</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-black/30" aria-hidden />
+          <input
+            value={find}
+            onChange={(event) => setFind(event.target.value)}
+            placeholder={`Find ${group.title.toLowerCase()}`}
+            className="h-8 w-full rounded-[8px] border border-black/10 bg-black/[0.02] pl-8 pr-2 text-[12.5px] text-black outline-none transition placeholder:text-black/35 focus:border-black/35 focus:bg-white"
+          />
+        </label>
+      )}
+
       <ul className="mt-1.5">
         {shown.map((option) => (
           <li key={option.label}>
@@ -101,6 +143,10 @@ function FilterGroup({ group, onPick, onClear }: {
           </li>
         ))}
       </ul>
+
+      {needle && found.length === 0 && (
+        <p className="py-1 text-[12px] text-black/40">No match.</p>
+      )}
 
       {hidden > 0 && (
         <button
@@ -130,13 +176,13 @@ function FilterRow({ option, onPick }: { option: Option; onPick: () => void }) {
       aria-pressed={option.on}
       disabled={dead}
       onClick={onPick}
-      className={`group flex w-full items-center gap-2.5 py-[5px] text-left ${
+      className={`group -mx-1.5 flex w-[calc(100%+12px)] items-center gap-2.5 rounded-[8px] px-1.5 py-[5px] text-left outline-none transition-colors hover:bg-black/[0.03] focus-visible:ring-2 focus-visible:ring-black/20 ${
         dead ? 'cursor-default opacity-35' : ''
       }`}
     >
       <span
         aria-hidden
-        className={`flex h-[15px] w-[15px] shrink-0 items-center justify-center border transition-colors ${
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
           option.on ? 'border-transparent' : 'border-black/25 group-hover:border-black/60'
         }`}
         style={option.on ? { backgroundColor: 'var(--brand)' } : undefined}
@@ -185,7 +231,7 @@ export function FilterSheet({ items, state, onChange, resultCount, onClose }: {
         {activeCount(state) > 0 && (
           <button
             type="button"
-            onClick={() => onChange({ ...state, brand: '', band: null, size: null, boxPapers: '' })}
+            onClick={() => onChange(clearAll(state))}
             className="text-[13px] text-black/50 hover:text-black"
           >
             Clear all
@@ -194,8 +240,8 @@ export function FilterSheet({ items, state, onChange, resultCount, onClose }: {
         <button
           type="button"
           onClick={onClose}
-          className="ml-auto h-11 px-6 text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white"
-          style={{ backgroundColor: 'var(--brand)' }}
+          className={`ml-auto ${ui.primary}`}
+          style={brandFill}
         >
           Show {resultCount} {resultCount === 1 ? 'watch' : 'watches'}
         </button>
@@ -222,38 +268,70 @@ export function FilterBar({ items, state, onChange, resultCount, total, children
   children?: React.ReactNode
 }) {
   const [sheet, setSheet] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
   const applied = activeCount(state)
+
+  /* "/" to search, as on most shops; Escape clears what was typed. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+      if (event.key === '/' && !typing) {
+        event.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const pills = pillsFor(items, state)
   const hasRail = buildGroups(items, state).length > 0
 
   return (
     <>
       <div className="sticky top-0 z-30 border-b border-black/10 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1480px] items-center gap-2.5 px-5 py-3.5 sm:px-8">
-          <label className="relative flex-1 lg:max-w-[360px]">
+        <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-2.5 px-5 py-3.5 sm:flex-nowrap sm:px-8">
+          <label className="relative w-full sm:w-auto sm:flex-1 lg:max-w-[420px]">
             <span className="sr-only">Search stock</span>
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30" aria-hidden />
             <input
+              ref={searchRef}
+              type="search"
               value={state.q}
               onChange={(event) => onChange({ ...state, q: event.target.value })}
-              placeholder="Search model, reference or dial"
-              className="h-11 w-full border border-black/12 bg-black/[0.02] pl-10 pr-3 text-[14px] text-black outline-none transition-colors placeholder:text-black/35 focus:border-black/45 focus:bg-white"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') onChange({ ...state, q: '' })
+              }}
+              placeholder="Search brand, model, reference or dial"
+              className="h-11 w-full rounded-full border border-black/12 bg-black/[0.03] pl-10 pr-10 text-[14px] text-black outline-none transition placeholder:text-black/35 focus:border-black/40 focus:bg-white focus:ring-4 focus:ring-black/[0.05] [&::-webkit-search-cancel-button]:hidden"
             />
+            {state.q ? (
+              <button
+                type="button"
+                onClick={() => { onChange({ ...state, q: '' }); searchRef.current?.focus() }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-black/40 hover:bg-black/[0.06] hover:text-black"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            ) : (
+              <kbd className="pointer-events-none absolute right-3.5 top-1/2 hidden -translate-y-1/2 rounded border border-black/15 px-1.5 text-[11px] text-black/35 lg:block">/</kbd>
+            )}
           </label>
 
           {hasRail && (
             <button
               type="button"
               onClick={() => setSheet(true)}
-              className={`flex h-11 shrink-0 items-center gap-2 border px-4 text-[13px] lg:hidden ${
-                applied > 0 ? 'border-black text-black' : 'border-black/12 text-black/65'
+              className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-full border px-4 text-[13px] sm:flex-none lg:hidden ${
+                applied > 0 ? 'border-black bg-white text-black' : 'border-black/12 bg-black/[0.03] text-black/65 hover:border-black/30'
               }`}
             >
               <SlidersHorizontal className="h-4 w-4" aria-hidden />
               Filters
               {applied > 0 && (
                 <span
-                  className="flex h-[18px] min-w-[18px] items-center justify-center px-1 text-[11px] font-semibold text-white"
+                  className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-semibold text-white"
                   style={{ backgroundColor: 'var(--brand)' }}
                 >
                   {applied}
@@ -273,24 +351,34 @@ export function FilterBar({ items, state, onChange, resultCount, total, children
         </div>
 
         {/*
-          * The applied filters, on a phone only.
+          * The applied filters, as chips, on every screen.
           *
-          * On a desktop the rail says all of this down the left-hand side, so
-          * repeating it here would be two of the same control arguing.
+          * The rail shows ticks, but a search term or a band chosen forty
+          * watches up is out of sight by the time somebody wonders why the
+          * page is short. One tap on a chip takes that one thing off.
           */}
         {pills.length > 0 && (
-          <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-2 px-5 pb-3 sm:px-8 lg:hidden">
+          <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-2 px-5 pb-3 sm:px-8">
             {pills.map((pill) => (
               <button
                 key={pill.label}
                 type="button"
                 onClick={() => onChange({ ...state, ...pill.patch })}
-                className="flex items-center gap-1.5 border border-black/15 py-1 pl-2.5 pr-1.5 text-[12.5px] text-black/70"
+                className="flex items-center gap-1.5 rounded-full border border-black/15 bg-white py-1 pl-3 pr-2 text-[12.5px] text-black/70 transition-colors hover:border-black/40 hover:text-black"
               >
                 {pill.label}
                 <X className="h-3 w-3" aria-hidden />
               </button>
             ))}
+            {pills.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onChange({ ...clearAll(state), q: '' })}
+                className="px-1 text-[12.5px] text-black/45 underline underline-offset-2 hover:text-black"
+              >
+                Clear all
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -308,22 +396,110 @@ export function FilterBar({ items, state, onChange, resultCount, total, children
   )
 }
 
-/** The sort, as one control the pages fill with their own options. */
+/**
+ * The sort, drawn to match the search box beside it.
+ *
+ * A native select could not be: its arrow sat hard against the edge, it
+ * rendered in the browser's own type, and it opened the operating system's
+ * menu in the middle of a page that is otherwise entirely ours. This is a
+ * listbox with the same height, pill and fill as the search, and a menu that
+ * keeps the keyboard behaviour a select has — arrows, Enter, Escape.
+ */
 export function SortSelect<T extends string>({ value, options, onChange }: {
   value: T
   options: Array<{ value: T; label: string }>
   onChange: (next: T) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const current = options.find((o) => o.value === value) ?? options[0]
+
+  useEffect(() => {
+    if (!open) return
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)))
+    const away = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', away)
+    return () => document.removeEventListener('mousedown', away)
+  }, [open, options, value])
+
+  const choose = (next: T) => {
+    onChange(next)
+    setOpen(false)
+    button.current?.focus()
+  }
+
+  const onKey = (event: React.KeyboardEvent) => {
+    if (!open && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+      event.preventDefault()
+      setOpen(true)
+      return
+    }
+    if (!open) return
+    if (event.key === 'Escape') { event.preventDefault(); setOpen(false) }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setActive((i) => (i + 1) % options.length) }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setActive((i) => (i - 1 + options.length) % options.length) }
+    else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(options[active]!.value) }
+    else if (event.key === 'Tab') setOpen(false)
+  }
+
   return (
-    <select
-      value={value}
-      onChange={(event) => onChange(event.target.value as T)}
-      aria-label="Sort by"
-      className="h-11 shrink-0 border border-black/12 bg-white px-3 text-[13px] text-black outline-none transition-colors hover:border-black/30 focus:border-black/45"
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
+    <div ref={root} className="relative min-w-0 flex-1 sm:flex-none">
+      <button
+        ref={button}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Sort by: ${current?.label}`}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={onKey}
+        className={`flex h-11 w-full items-center gap-2.5 rounded-full border pl-4 pr-3.5 text-left text-[13.5px] text-black outline-none transition sm:w-auto sm:min-w-[210px] ${
+          open
+            ? 'border-black/40 bg-white ring-4 ring-black/[0.05]'
+            : 'border-black/12 bg-black/[0.03] hover:border-black/30 focus-visible:border-black/40 focus-visible:bg-white focus-visible:ring-4 focus-visible:ring-black/[0.05]'
+        }`}
+      >
+        <ArrowUpDown className="h-4 w-4 shrink-0 text-black/35" aria-hidden />
+        <span className="min-w-0 flex-1 truncate">
+          <span className="hidden text-black/45 sm:inline">Sort: </span>
+          <span className="font-medium">{current?.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-black/40 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          aria-label="Sort by"
+          className="absolute right-0 top-[calc(100%+6px)] z-40 w-full min-w-[230px] overflow-hidden rounded-[14px] border border-black/10 bg-white p-1.5 shadow-[0_16px_40px_-16px_rgba(0,0,0,0.3)]"
+        >
+          {options.map((option, index) => {
+            const on = option.value === value
+            return (
+              <li
+                key={option.value}
+                role="option"
+                aria-selected={on}
+                onMouseEnter={() => setActive(index)}
+                onMouseDown={(event) => { event.preventDefault(); choose(option.value) }}
+                className={`flex cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2.5 text-[13.5px] transition-colors ${
+                  index === active ? 'bg-black/[0.04]' : ''
+                } ${on ? 'font-semibold text-black' : 'text-black/70'}`}
+              >
+                {option.label}
+                {on && (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full text-white" style={brandFill}>
+                    <Check className="h-3 w-3" aria-hidden />
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
   )
 }

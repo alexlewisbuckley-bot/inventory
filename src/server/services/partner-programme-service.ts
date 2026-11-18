@@ -43,7 +43,8 @@ export interface AgentRow {
   goalId: string | null
   name: string
   email: string | null
-  token: string
+  /** Null until somebody puts them on a programme and a link is minted. */
+  token: string | null
   isActive: boolean
   /** Their own figure on a single-target programme; null on a ladder. */
   targetBase: number | null
@@ -334,19 +335,32 @@ export async function addAgent(input: {
   return { agentId, token }
 }
 
-/** Put somebody already at the company on this programme too. */
+/**
+ * Put somebody already at the company on this programme too.
+ *
+ * And give them a door if they have not got one. The team list is older than
+ * this feature — it was built as a leaderboard's cast list, where an agent is
+ * a name and a photograph and never signs in anywhere. Enrolling one of those
+ * people is the moment they need a page of their own, so the token is minted
+ * here rather than left null for somebody to wonder about later.
+ */
 export async function enrolAgent(input: {
   programmeId: string
   agentId: string
   targetBase?: number | null
 }): Promise<string> {
   const id = newId('gol')
-  await db.insert(partnerAgentGoals).values({
-    id,
-    programmeId: input.programmeId,
-    agentId: input.agentId,
-    targetBase: input.targetBase ?? null,
-  }).onConflictDoNothing()
+  await withTransaction(async () => {
+    await db.update(partnerAgents)
+      .set({ token: newAgentToken(), updatedAt: new Date() })
+      .where(and(eq(partnerAgents.id, input.agentId), isNull(partnerAgents.token)))
+    await db.insert(partnerAgentGoals).values({
+      id,
+      programmeId: input.programmeId,
+      agentId: input.agentId,
+      targetBase: input.targetBase ?? null,
+    }).onConflictDoNothing()
+  })
   return id
 }
 

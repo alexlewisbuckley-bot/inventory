@@ -4,9 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { getPortalDoor } from '@/server/services/partner-portal-service'
 import { hasPortalPass } from '@/server/auth/portal-pass'
 import {
-  addAgent, createProgramme, getProgramme, pickReward, recordProgress,
+  addAgent, createProgramme, enrolAgent, getProgramme, pickReward, recordProgress,
   setAgentTarget, setProgrammeStatus, setTiers,
 } from '@/server/services/partner-programme-service'
+import { db } from '@/server/db/client'
+import { partnerAgents } from '@/server/db/schema'
+import { and, eq, isNull } from 'drizzle-orm'
 import { isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import type { ProgrammeKind, ProgrammeStatus } from '@/lib/enums'
@@ -50,6 +53,20 @@ function fail(error: unknown, fallback: string): ProgrammeState {
 async function ownsProgramme(partnerId: string, programmeId: string): Promise<boolean> {
   const programme = await getProgramme(programmeId)
   return programme !== null && programme.partnerId === partnerId
+}
+
+/** And that the person named is one of theirs. */
+async function ownsAgent(partnerId: string, agentId: string): Promise<boolean> {
+  const [agent] = await db
+    .select({ id: partnerAgents.id })
+    .from(partnerAgents)
+    .where(and(
+      eq(partnerAgents.id, agentId),
+      eq(partnerAgents.partnerId, partnerId),
+      isNull(partnerAgents.deletedAt),
+    ))
+    .limit(1)
+  return agent !== undefined
 }
 
 export async function saveProgrammeAction(
@@ -119,6 +136,35 @@ export async function addAgentAction(
     return { ok: true, message: 'Added. Their own link is on the row.' }
   } catch (error) {
     return fail(error, 'That person could not be added.')
+  }
+}
+
+/**
+ * Put somebody already on the company's team on this programme.
+ *
+ * The team list is shared with the leaderboards, so the board shows everybody
+ * at the company whether or not they are on this year's scheme. Without this,
+ * those rows had a target box that saved nothing.
+ */
+export async function enrolAgentAction(
+  token: string,
+  programmeId: string,
+  agentId: string,
+): Promise<ProgrammeState> {
+  const door = await insideOrNull(token)
+  if (!door || !await ownsProgramme(door.id, programmeId)) return FAILED
+  /*
+   * And the agent has to be one of theirs. ownsProgramme says the programme
+   * is this partner's; it says nothing about whose person this is, and an id
+   * typed into a request is not a person at this company.
+   */
+  if (!await ownsAgent(door.id, agentId)) return FAILED
+  try {
+    await enrolAgent({ programmeId, agentId })
+    revalidatePath(`/p/${token}/programme`)
+    return { ok: true, message: 'On the programme. Their own link is on the row.' }
+  } catch (error) {
+    return fail(error, 'They could not be put on this programme.')
   }
 }
 

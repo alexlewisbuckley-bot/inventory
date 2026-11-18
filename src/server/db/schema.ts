@@ -17,6 +17,7 @@ import {
   REGISTER_CHECK_STATUSES, ROLES, SALE_CHANNELS, SAVED_VIEW_OBJECTS,
   STOCK_CHECK_LINE_STATUSES, STOCK_CHECK_STATUSES, TASK_KINDS, TASK_STATUSES, THEMES,
   VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
+  PRIZE_KINDS, PRIZE_RULES,
 } from '@/lib/enums'
 
 /**
@@ -485,6 +486,38 @@ export const partnerCampaignRecipients = pgTable(
  * Their own row rather than a campaign recipient, because an agent outlasts
  * any one campaign: they are on the 2026 ladder, then the 2027 one, and the
  * link they were sent in January still has to work in November.
+/**
+ * A leaderboard challenge a partner runs for its own people.
+ *
+ * Agents compete over a fixed run of weeks against a set of prizes; figures
+ * are entered weekly. See migration 0070 for why this is not a campaign row.
+ */
+export const partnerLeaderboards = pgTable(
+  'partner_leaderboards',
+  {
+    id: text('id').primaryKey(),
+    partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    intro: text('intro'),
+    metricLabel: text('metric_label').notNull().default('Commission earned'),
+    startsOn: date('starts_on').notNull(),
+    endsOn: date('ends_on').notNull(),
+    shareToken: text('share_token').notNull(),
+    isPublished: boolean('is_published').notNull().default(false),
+    /** Set once its prizes are settled; figures and sharing wait for it. */
+    launchedAt: timestamp('launched_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    shareIdx: uniqueIndex('partner_leaderboards_share_idx').on(t.shareToken),
+    partnerIdx: index('partner_leaderboards_partner_idx').on(t.partnerId, t.startsOn),
+  }),
+)
+
+/**
+ * A partner's own team: its agents, kept once with their photos and drawn
+ * on by every leaderboard. See migration 0072.
  */
 export const partnerAgents = pgTable(
   'partner_agents',
@@ -492,6 +525,11 @@ export const partnerAgents = pgTable(
     id: text('id').primaryKey(),
     partnerId: text('partner_id').notNull().references(() => partners.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    subtitle: text('subtitle'),
+    photoMime: text('photo_mime'),
+    photoData: bytea('photo_data'),
+    photoByteSize: integer('photo_byte_size'),
+    sortOrder: integer('sort_order').notNull().default(0),
     email: text('email'),
     /*
      * One long random token, no passphrase over it, exactly as a campaign
@@ -499,16 +537,21 @@ export const partnerAgents = pgTable(
      * salesperson checking their own progress from a phone between
      * appointments, and a passphrase is how that becomes a thing they stop
      * doing.
+     *
+     * Nullable, because this table was a leaderboard's cast list before it
+     * was a door: everybody already on it was typed in to appear on a board
+     * and has never been sent anywhere. They are given one the first time
+     * somebody puts them on a programme.
      */
-    token: text('token').notNull(),
+    token: text('token'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
   (t) => ({
-    tokenIdx: uniqueIndex('partner_agents_token_idx').on(t.token),
-    partnerIdx: index('partner_agents_partner_idx').on(t.partnerId, t.name),
+    tokenIdx: uniqueIndex('partner_agents_token_idx').on(t.token).where(sql`token IS NOT NULL`),
+    partnerIdx: index('partner_agents_partner_idx').on(t.partnerId, t.sortOrder),
   }),
 )
 
@@ -635,6 +678,69 @@ export const partnerAgentProgress = pgTable(
   },
   (t) => ({
     goalIdx: index('partner_agent_progress_goal_idx').on(t.goalId, t.asOf),
+  }),
+)
+
+export const partnerLeaderboardAgents = pgTable(
+  'partner_leaderboard_agents',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    subtitle: text('subtitle'),
+    photoMime: text('photo_mime'),
+    photoData: bytea('photo_data'),
+    photoByteSize: integer('photo_byte_size'),
+    /** The team member this was taken from, where it was. */
+    partnerAgentId: text('partner_agent_id').references(() => partnerAgents.id, { onDelete: 'set null' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    boardIdx: index('partner_leaderboard_agents_board_idx').on(t.leaderboardId, t.sortOrder),
+  }),
+)
+
+export const partnerLeaderboardPrizes = pgTable(
+  'partner_leaderboard_prizes',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    kind: text('kind', { enum: PRIZE_KINDS }).notNull().default('WATCH'),
+    valueBase: integer('value_base'),
+    rule: text('rule', { enum: PRIZE_RULES }).notNull().default('RANK'),
+    rank: integer('rank'),
+    targetBase: integer('target_base'),
+    watchId: text('watch_id').references(() => watches.id, { onDelete: 'set null' }),
+    /** The partner order holding the watch, for a prize chosen from stock. */
+    orderId: text('order_id').references(() => partnerOrders.id, { onDelete: 'set null' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    boardIdx: index('partner_leaderboard_prizes_board_idx').on(t.leaderboardId, t.sortOrder),
+  }),
+)
+
+export const partnerLeaderboardEntries = pgTable(
+  'partner_leaderboard_entries',
+  {
+    id: text('id').primaryKey(),
+    leaderboardId: text('leaderboard_id').notNull()
+      .references(() => partnerLeaderboards.id, { onDelete: 'cascade' }),
+    agentId: text('agent_id').notNull()
+      .references(() => partnerLeaderboardAgents.id, { onDelete: 'cascade' }),
+    weekStart: date('week_start').notNull(),
+    commissionBase: integer('commission_base').notNull().default(0),
+    deals: integer('deals').notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    weekIdx: uniqueIndex('partner_leaderboard_entries_week_idx').on(t.agentId, t.weekStart),
+    boardIdx: index('partner_leaderboard_entries_board_idx').on(t.leaderboardId, t.weekStart),
   }),
 )
 

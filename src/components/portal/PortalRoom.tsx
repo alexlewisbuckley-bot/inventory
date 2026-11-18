@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { Check, X } from 'lucide-react'
 import {
-  placeOrderAction, placeOrdersAction, leavePortalAction,
+  placeOrderAction, placeOrdersAction,
   type OrderState, type BulkState,
 } from '@/app/actions/partner-portal'
 import { percentFromBps } from '@/lib/partner-rate'
@@ -12,6 +12,10 @@ import {
 } from '@/lib/enums'
 import { FilterBar, FilterRail, SortSelect } from './FilterRail'
 import { WatchCard, WatchGrid } from './WatchCard'
+import { PartnerMark, PortalHeader } from './PortalHeader'
+import { PortalNav } from './PortalNav'
+import { DeliveryPicker } from './DeliveryPicker'
+import { brandFill, ui } from './ui'
 import { applyFilters, money, priceBands, sizeBands, NO_FILTERS, type FilterState } from './filters'
 import type { PortalItem, PortalOrder } from '@/server/services/partner-portal-service'
 
@@ -126,55 +130,33 @@ export function PortalRoom({ token, partner, items, orders }: {
         ['--accent' as string]: partner.accentColor,
       }}
     >
-      <header className="border-b border-black/10 px-5 py-6 sm:px-8">
-        <div className="mx-auto flex max-w-[1480px] flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <div>
-            {partner.hasLogo ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={`/p/${token}/logo`} alt={partner.name} className="h-9 w-auto object-contain" />
-            ) : (
-              <p className="font-serif text-[26px] leading-tight" style={{ color: 'var(--brand)' }}>
-                {partner.name}
-              </p>
-            )}
-            <p className="mt-1 text-[13px] text-black/55">
-              {partner.discountBps > 0
-                /*
-                 * "Up to", not "every".
-                 *
-                 * A handful of pieces sit at a floor the rate would have gone
-                 * through, so they are discounted by less. Stating the rate as
-                 * a flat promise would make the page contradict its own
-                 * numbers on those rows, and a partner checking the
-                 * arithmetic would find us short rather than careful.
-                 */
-                ? `Prices below are up to ${percentFromBps(partner.discountBps)} off our asking price.`
-                : 'Stock available to you now.'}
-            </p>
-          </div>
-          <div className="flex items-center gap-5">
-            {/* Campaigns are the reason most partners are here at all, so the
-                way to them is beside the sign-out rather than buried. */}
-            <a
-              href={`/p/${token}/programme`}
-              className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
+      <PortalHeader
+        wide
+        brand={<PartnerMark token={token} name={partner.name} hasLogo={partner.hasLogo} />}
+        eyebrow="Partner stock"
+        subtitle={partner.discountBps > 0 ? (
+          /*
+           * "Up to", not "every".
+           *
+           * A handful of pieces sit at a floor the rate would have gone
+           * through, so they are discounted by less. Stating the rate as a
+           * flat promise would make the page contradict its own numbers on
+           * those rows, and a partner checking the arithmetic would find us
+           * short rather than careful.
+           */
+          <>
+            Prices below are up to{' '}
+            <span
+              className="inline-flex items-center rounded-full px-2 py-[1px] text-[12.5px] font-semibold tabular-nums"
+              style={brandFill}
             >
-              Incentive
-            </a>
-            <a
-              href={`/p/${token}/campaigns`}
-              className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
-            >
-              Campaigns
-            </a>
-            <form action={leavePortalAction.bind(null, token)}>
-              <button type="submit" className="text-[12px] uppercase tracking-[0.08em] text-black/40 hover:text-black/70">
-                Sign out
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
+              {percentFromBps(partner.discountBps)}
+            </span>{' '}
+            off our asking price.
+          </>
+        ) : 'Stock available to you now.'}
+        actions={<PortalNav token={token} active="stock" />}
+      />
 
       {held.length > 0 && (
         /*
@@ -234,11 +216,18 @@ export function PortalRoom({ token, partner, items, orders }: {
 
         <div className="min-w-0 flex-1">
           {shown.length === 0 ? (
-            <p className="py-20 text-center text-[14px] text-black/45">
-              {items.length === 0
-                ? 'Nothing is available just now. This list changes daily.'
-                : 'Nothing matches that. Try a wider price band, or clear a filter.'}
-            </p>
+            <div className="rounded-[14px] border border-dashed border-black/15 px-6 py-20 text-center">
+              <p className="text-[14px] text-black/50">
+                {items.length === 0
+                  ? 'Nothing is available just now. This list changes daily.'
+                  : 'Nothing matches that. Try a wider price band, or clear a filter.'}
+              </p>
+              {items.length > 0 && (
+                <button type="button" onClick={() => setFilters(NO_FILTERS)} className={`mt-4 ${ui.outline}`}>
+                  Clear search and filters
+                </button>
+              )}
+            </div>
           ) : (
             <WatchGrid>
               {shown.map((item) => (
@@ -251,11 +240,11 @@ export function PortalRoom({ token, partner, items, orders }: {
                   onSelect={() => toggle(item.id)}
                 >
                   <p className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-[15px] font-semibold tabular-nums text-black">
+                    <span className="whitespace-nowrap text-[15px] font-semibold tabular-nums text-black">
                       {money(item.priceGbp)}
                     </span>
                     {item.priceGbp !== item.askingGbp && (
-                      <span className="text-[12.5px] tabular-nums text-black/40 line-through">
+                      <span className="whitespace-nowrap text-[12.5px] tabular-nums text-black/40 line-through">
                         {money(item.askingGbp)}
                       </span>
                     )}
@@ -264,7 +253,7 @@ export function PortalRoom({ token, partner, items, orders }: {
                   <button
                     type="button"
                     onClick={() => setTaking(item)}
-                    className="mt-3 h-10 w-full text-[12px] font-semibold uppercase tracking-[0.08em] text-white"
+                    className={`mt-3 !h-10 w-full ${ui.primary} !text-[12px]`}
                     style={{ backgroundColor: 'var(--brand)' }}
                   >
                     Reserve
@@ -285,7 +274,7 @@ export function PortalRoom({ token, partner, items, orders }: {
         * that is the ordinary case, not an edge one.
         */}
       {picked.size > 0 && (
-        <div className="sticky bottom-0 z-20 border-t border-black/10 bg-white/95 px-5 py-3.5 backdrop-blur sm:px-8">
+        <div className="sticky bottom-0 z-20 border-t border-black/10 bg-white/95 px-5 py-3.5 shadow-[0_-8px_24px_-16px_rgba(0,0,0,0.25)] backdrop-blur sm:px-8">
           <div className="mx-auto flex max-w-[1480px] flex-wrap items-center gap-x-5 gap-y-2">
             <p className="text-[14px] text-black">
               <span className="font-semibold tabular-nums">{picked.size}</span>
@@ -302,7 +291,7 @@ export function PortalRoom({ token, partner, items, orders }: {
             <button
               type="button"
               onClick={() => setBasketOpen(true)}
-              className="ml-auto h-11 px-6 text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white"
+              className={`ml-auto ${ui.primary}`}
               style={{ backgroundColor: 'var(--brand)' }}
             >
               Reserve {picked.size === 1 ? 'it' : `all ${picked.size}`}
@@ -345,12 +334,12 @@ function ReserveDialog({ token, item, onClose }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-5"
+      className={ui.backdrop}
       role="dialog"
       aria-modal="true"
       aria-label={`Reserve ${describe(item)}`}
     >
-      <div className="w-full max-w-[420px] bg-white p-6">
+      <div className={`${ui.dialog} max-w-[540px]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="font-serif text-[19px] leading-snug text-black">{describe(item)}</p>
@@ -358,7 +347,7 @@ function ReserveDialog({ token, item, onClose }: {
               {money(item.priceGbp)}
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black">
+          <button type="button" onClick={onClose} aria-label="Close" className={ui.iconButton}>
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
@@ -369,7 +358,7 @@ function ReserveDialog({ token, item, onClose }: {
             <button
               type="button"
               onClick={onClose}
-              className="mt-5 h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white"
+              className={`mt-5 w-full ${ui.primary}`}
               style={{ backgroundColor: 'var(--brand)' }}
             >
               Done
@@ -378,30 +367,33 @@ function ReserveDialog({ token, item, onClose }: {
         ) : (
           <form action={action} className="mt-5 space-y-3">
             <input type="hidden" name="watchId" value={item.id} />
+            <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">Your name</span>
+              <span className={ui.label}>Your name</span>
               <input
                 name="placedByName"
                 required
-                className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.field}
               />
             </label>
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">Email</span>
+              <span className={ui.label}>Email</span>
               <input
                 name="placedByEmail"
                 type="email"
-                className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.field}
               />
             </label>
+            </div>
+            <DeliveryPicker />
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+              <span className={ui.label}>
                 Anything we should know
               </span>
               <textarea
                 name="note"
                 rows={2}
-                className="mt-1 w-full border border-black/15 px-3 py-2 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.textarea}
               />
             </label>
 
@@ -411,7 +403,7 @@ function ReserveDialog({ token, item, onClose }: {
             </p>
 
             {state.message && !state.ok && (
-              <p role="alert" className="text-[12.5px] text-[#b42318]">{state.message}</p>
+              <p role="alert" className={ui.error}>{state.message}</p>
             )}
 
             <Submit />
@@ -428,7 +420,7 @@ function Submit() {
     <button
       type="submit"
       disabled={pending}
-      className="h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white disabled:opacity-60"
+      className={`w-full ${ui.primary}`}
       style={{ backgroundColor: 'var(--brand)' }}
     >
       {pending ? 'Reserving…' : 'Reserve it'}
@@ -459,12 +451,12 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black/40 p-0 sm:items-center sm:p-5"
+      className={ui.backdrop}
       role="dialog"
       aria-modal="true"
       aria-label={`Reserve ${items.length} watches`}
     >
-      <div className="max-h-full w-full max-w-[460px] overflow-y-auto bg-white p-6">
+      <div className={`${ui.dialog} max-w-[540px]`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             {/*
@@ -488,7 +480,7 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
               </>
             )}
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-black/40 hover:text-black">
+          <button type="button" onClick={onClose} aria-label="Close" className={ui.iconButton}>
             <X className="h-5 w-5" aria-hidden />
           </button>
         </div>
@@ -511,7 +503,7 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
             <button
               type="button"
               onClick={onDone}
-              className="mt-5 h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white"
+              className={`mt-5 w-full ${ui.primary}`}
               style={{ backgroundColor: 'var(--brand)' }}
             >
               Done
@@ -530,30 +522,33 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
               ))}
             </ul>
 
+            <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">Your name</span>
+              <span className={ui.label}>Your name</span>
               <input
                 name="placedByName"
                 required
-                className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.field}
               />
             </label>
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">Email</span>
+              <span className={ui.label}>Email</span>
               <input
                 name="placedByEmail"
                 type="email"
-                className="mt-1 h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.field}
               />
             </label>
+            </div>
+            <DeliveryPicker />
             <label className="block">
-              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-black/55">
+              <span className={ui.label}>
                 Anything we should know
               </span>
               <textarea
                 name="note"
                 rows={2}
-                className="mt-1 w-full border border-black/15 px-3 py-2 text-[14px] text-black outline-none focus:border-black/50"
+                className={ui.textarea}
               />
             </label>
 
@@ -563,7 +558,7 @@ function BasketDialog({ token, items, total, onClose, onDone }: {
             </p>
 
             {state.message && !state.ok && (
-              <p role="alert" className="text-[12.5px] text-[#b42318]">{state.message}</p>
+              <p role="alert" className={ui.error}>{state.message}</p>
             )}
 
             <BasketSubmit count={items.length} />
@@ -580,7 +575,7 @@ function BasketSubmit({ count }: { count: number }) {
     <button
       type="submit"
       disabled={pending}
-      className="h-11 w-full text-[12.5px] font-semibold uppercase tracking-[0.08em] text-white disabled:opacity-60"
+      className={`w-full ${ui.primary}`}
       style={{ backgroundColor: 'var(--brand)' }}
     >
       {pending ? 'Reserving…' : `Reserve ${count === 1 ? 'it' : `all ${count}`}`}

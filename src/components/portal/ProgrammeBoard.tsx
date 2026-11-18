@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { Check, Copy, Plus, TrendingUp } from 'lucide-react'
 import {
-  addAgentAction, recordProgressAction, setProgrammeStatusAction, setTargetAction,
+  addAgentAction, enrolAgentAction, recordProgressAction,
+  setProgrammeStatusAction, setTargetAction,
 } from '@/app/actions/partner-programmes'
 import { money } from './filters'
 import { PROGRAMME_KIND_LABELS, type ProgrammeKind, type ProgrammeStatus } from '@/lib/enums'
@@ -13,7 +14,8 @@ export interface AgentCard {
   goalId: string | null
   name: string
   email: string | null
-  token: string
+  /** Null for somebody who has never been given a link. */
+  token: string | null
   targetBase: number | null
   earnedBase: number
   asOf: string | null
@@ -75,7 +77,8 @@ export function ProgrammeBoard({ token, data }: { token: string; data: Programme
     if (result.ok) window.location.reload()
   }
 
-  const copy = async (agentToken: string) => {
+  const copy = async (agentToken: string | null) => {
+    if (!agentToken) return
     await navigator.clipboard?.writeText(`${window.location.origin}/a/${agentToken}`)
     setCopied(agentToken)
     setTimeout(() => setCopied(null), 2000)
@@ -84,12 +87,10 @@ export function ProgrammeBoard({ token, data }: { token: string; data: Programme
   return (
     <div className="mx-auto max-w-[1180px] px-5 py-7 sm:px-8">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-black/10 pb-5">
-        <div>
-          <h1 className="font-serif text-[26px] leading-tight text-black">{data.name}</h1>
-          <p className="mt-1 text-[13px] text-black/55">
-            {PROGRAMME_KIND_LABELS[data.kind]} · {data.periodStart} to {data.periodEnd}
-          </p>
-        </div>
+        {/* The programme's name is in the page header above; this is the rest of it. */}
+        <p className="text-[13px] text-black/55">
+          {PROGRAMME_KIND_LABELS[data.kind]} · {data.periodStart} to {data.periodEnd}
+        </p>
         <div className="flex items-center gap-3">
           <span className={`text-[12px] uppercase tracking-[0.08em] ${
             data.status === 'OPEN' ? 'text-black' : 'text-black/40'
@@ -194,6 +195,7 @@ export function ProgrammeBoard({ token, data }: { token: string; data: Programme
               && run(() => recordProgressAction(token, data.id, {
                 goalId: agent.goalId!, asOf, amountBase, note: null, byName: byName || null,
               }))}
+            onEnrol={() => run(() => enrolAgentAction(token, data.id, agent.agentId))}
           />
         ))}
       </ul>
@@ -262,7 +264,7 @@ function AddAgent({ busy, single, onAdd }: {
   )
 }
 
-function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord }: {
+function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord, onEnrol }: {
   agent: AgentCard
   single: boolean
   busy: boolean
@@ -270,6 +272,7 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord 
   onCopy: () => void
   onTarget: (targetBase: number | null) => void
   onRecord: (asOf: string, amountBase: number) => void
+  onEnrol: () => void
 }) {
   const [figure, setFigure] = useState('')
   const [asOf, setAsOf] = useState(today())
@@ -277,20 +280,57 @@ function AgentRowView({ agent, single, busy, copied, onCopy, onTarget, onRecord 
     agent.targetBase === null ? '' : String(Math.round(agent.targetBase / 100)),
   )
 
+  /*
+   * Somebody at the company who is not on this programme.
+   *
+   * The team list is shared with the leaderboards, so this board shows
+   * everybody who works there — which is right, because that is how you put
+   * one of them on the scheme. What is not right is showing them a target box
+   * and a figure box when there is no goal for either to be saved against:
+   * every one of those buttons would be a tick that does nothing. One button
+   * instead, and the rest of the row appears once they are on it.
+   */
+  if (agent.goalId === null) {
+    return (
+      <li className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+        <div className="min-w-[200px]">
+          <p className="text-[15px] font-semibold text-black/70">{agent.name}</p>
+          {agent.email && <p className="text-[12px] text-black/40">{agent.email}</p>}
+        </div>
+        <p className="text-[12.5px] text-black/45">Not on this programme</p>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onEnrol}
+          className="h-9 border border-black/15 px-3 text-[12.5px] text-black/70 hover:border-black/40 hover:text-black disabled:opacity-50"
+        >
+          Add to this programme
+        </button>
+      </li>
+    )
+  }
+
   return (
     <li className="py-4">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-[200px]">
           <p className="text-[15px] font-semibold text-black">{agent.name}</p>
           {agent.email && <p className="text-[12px] text-black/45">{agent.email}</p>}
-          <button
-            type="button"
-            onClick={onCopy}
-            className="mt-1 flex items-center gap-1.5 text-[12px] text-black/50 hover:text-black"
-          >
-            {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />}
-            {copied ? 'Link copied' : 'Copy their link'}
-          </button>
+          {/* Somebody added for a leaderboard has no link until they are put
+              on a programme, and a button that copies nothing is worse than
+              no button. */}
+          {agent.token ? (
+            <button
+              type="button"
+              onClick={onCopy}
+              className="mt-1 flex items-center gap-1.5 text-[12px] text-black/50 hover:text-black"
+            >
+              {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />}
+              {copied ? 'Link copied' : 'Copy their link'}
+            </button>
+          ) : (
+            <p className="mt-1 text-[12px] text-black/35">No link yet</p>
+          )}
         </div>
 
         <div className="min-w-[220px] flex-1">

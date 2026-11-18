@@ -179,6 +179,9 @@ describe('the progress log is a log', () => {
 const service = read('src/server/services/partner-programme-service.ts')
 const stock = read('src/server/services/partner-programme-stock.ts')
 const actions = read('src/app/actions/partner-programmes.ts')
+const board = read('src/components/portal/ProgrammeBoard.tsx')
+const schema = read('src/server/db/schema.ts')
+const migration = read('src/server/db/migrations/0073_incentive_programme.sql')
 const agentPage = read('src/components/portal/AgentProgress.tsx')
 
 /**
@@ -199,7 +202,7 @@ describe('the two doors', () => {
      */
     for (const write of [
       'saveProgrammeAction', 'setTiersAction', 'setProgrammeStatusAction',
-      'addAgentAction', 'setTargetAction', 'recordProgressAction',
+      'addAgentAction', 'enrolAgentAction', 'setTargetAction', 'recordProgressAction',
     ]) {
       const fn = actions.slice(actions.indexOf(`export async function ${write}`))
       expect(fn.slice(0, 700), `${write} does not check the door`)
@@ -215,7 +218,7 @@ describe('the two doors', () => {
      */
     for (const write of [
       'setTiersAction', 'setProgrammeStatusAction', 'addAgentAction',
-      'setTargetAction', 'recordProgressAction',
+      'enrolAgentAction', 'setTargetAction', 'recordProgressAction',
     ]) {
       const fn = actions.slice(actions.indexOf(`export async function ${write}`))
       expect(fn.slice(0, 700), `${write} does not check ownership`)
@@ -305,5 +308,69 @@ describe('the agent’s page', () => {
     // A year of agents aiming at pieces would take the case off the market
     // to give away three, so a pick is a nomination and says so.
     expect(agentPage).toContain('Choosing one does not hold it')
+  })
+})
+
+/**
+ * The team list is shared with the leaderboards.
+ *
+ * Two features arrived on the same table from two directions: a leaderboard's
+ * cast list, where an agent is a name and a photograph, and this, where an
+ * agent is somebody with a target and a link of their own. One list of people
+ * is the right answer — nobody wants to type the same twelve names twice —
+ * but it leaves rows on this board that were never meant for it.
+ */
+describe('agents who came from a leaderboard', () => {
+  it('is one table, not two lists of the same people', () => {
+    // A second table would mean a company's team depended on which screen
+    // they were looking at, and a name corrected in one place staying wrong
+    // in the other.
+    const tables = schema.match(/pgTable\(\s*'partner_agents'/g) ?? []
+    expect(tables.length, 'partner_agents is defined more than once').toBe(1)
+    // And the migration adds to that table rather than building a rival.
+    expect(migration).toContain('ALTER TABLE partner_agents ADD COLUMN IF NOT EXISTS token text')
+    expect(migration).not.toMatch(/CREATE TABLE IF NOT EXISTS partner_agents\b/)
+  })
+
+  it('gives one of them a link the moment they are put on a programme', () => {
+    /*
+     * They have no token: nothing ever sent them anywhere. Enrolling them is
+     * exactly the moment they need a page, so it is minted there — otherwise
+     * the row says "No link yet" for ever and the target set against them is
+     * a figure nobody can see.
+     */
+    const fn = service.slice(service.indexOf('export async function enrolAgent'))
+    const body = fn.slice(0, 1200)
+    expect(body).toContain('newAgentToken()')
+    // Only where there is not one already, or enrolling somebody on a second
+    // programme would break the link they are already using.
+    expect(body).toContain('isNull(partnerAgents.token)')
+  })
+
+  it('checks the person named works there', () => {
+    /*
+     * ownsProgramme says the programme is this company's. It says nothing
+     * about whose person the agent id is, and an id in a payload is a thing
+     * anybody can change — so without this a partner could put another
+     * company's agent on their own scheme and read their link off the row.
+     */
+    const fn = actions.slice(actions.indexOf('export async function enrolAgentAction'))
+    expect(fn.slice(0, 900)).toContain('await ownsAgent(door.id, agentId)')
+    expect(actions).toContain('eq(partnerAgents.partnerId, partnerId)')
+  })
+
+  it('does not offer a target box that saves nothing', () => {
+    /*
+     * The board lists everybody at the company, so somebody not on this
+     * year's programme has no goal for a target or a figure to be saved
+     * against. Those inputs used to render all the same and their buttons
+     * did nothing at all — the same silent failure as a tick that does not
+     * stick, which is the bug Alex has been bitten by twice.
+     */
+    const row = board.slice(board.indexOf('function AgentRowView'))
+    const unenrolled = row.slice(0, row.indexOf('return (\n    <li className="py-4">'))
+    expect(unenrolled).toContain('if (agent.goalId === null)')
+    expect(unenrolled).toContain('Add to this programme')
+    expect(unenrolled).not.toContain('Earned so far')
   })
 })

@@ -5,6 +5,7 @@ import {
   type FilterClause,
 } from '@/lib/filters'
 import { HELD_STATUSES, heldByQuery } from '@/components/inventory/views'
+import { matchesSearch, searchable } from '@/components/portal/filters'
 
 /**
  * The filter grammar.
@@ -349,5 +350,34 @@ describe('the "view stock" link', () => {
     // Both are derived from this one list; the test is here so that changing
     // it without changing the cards fails loudly.
     expect(HELD_STATUSES).toEqual(['IN_STOCK', 'RESERVED', 'SALE_AGREED'])
+  })
+})
+
+describe('portal search', () => {
+  const item = {
+    brandName: 'Rolex', model: '126610LV', modelName: 'Submariner Date', dial: 'Black',
+    year: 2023, caseSizeMm: 41, boxPapers: 'FULL_SET', priceGbp: 1,
+    caseMaterial: 'Steel', bracelet: 'Oyster',
+  }
+  const hay = searchable(item)
+
+  it('needs every word, in any order', () => {
+    expect(matchesSearch(hay, 'steel submariner')).toBe(true)
+    expect(matchesSearch(hay, 'submariner gold')).toBe(false)
+  })
+
+  it('finds a reference however it is typed', () => {
+    expect(matchesSearch(hay, '126610 LV')).toBe(true)
+    expect(matchesSearch(hay, '126610-lv')).toBe(true)
+    expect(matchesSearch(hay, 'rolex 126610')).toBe(true)
+  })
+
+  it('finds a size and ignores accents', () => {
+    expect(matchesSearch(hay, '41mm')).toBe(true)
+    expect(matchesSearch(searchable({ ...item, brandName: 'Hermès' }), 'hermes')).toBe(true)
+  })
+
+  it('treats an empty search as everything', () => {
+    expect(matchesSearch(hay, '   ')).toBe(true)
   })
 })

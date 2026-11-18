@@ -2,6 +2,7 @@
 import { useFormState, useFormStatus } from 'react-dom'
 import { Lock } from 'lucide-react'
 import { enterPortalAction, type GateState } from '@/app/actions/partner-portal'
+import { ui } from './ui'
 
 /**
  * The door.
@@ -34,7 +35,7 @@ export function PortalGate({ token, name, hasLogo, brandColor, accentColor }: {
 
   return (
     <main
-      className="flex min-h-screen items-center justify-center bg-white px-5 py-16"
+      className="flex min-h-screen items-center justify-center bg-gradient-to-b from-black/[0.02] to-white px-5 py-16"
       style={{
         ['--brand' as string]: brandColor,
         ['--accent' as string]: accentColor,
@@ -60,7 +61,9 @@ export function PortalGate({ token, name, hasLogo, brandColor, accentColor }: {
           </p>
         )}
 
-        <div className="border border-black/10 p-7">
+        <div className="overflow-hidden rounded-[20px] border border-black/10 bg-white shadow-[0_20px_50px_-30px_rgba(0,0,0,0.35)]">
+          <div className="h-[3px] w-full" style={{ background: 'var(--brand)' }} aria-hidden />
+          <div className="p-7">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-black/80">
             <Lock className="h-3.5 w-3.5" aria-hidden />
             Partner access
@@ -81,18 +84,19 @@ export function PortalGate({ token, name, hasLogo, brandColor, accentColor }: {
                 placeholder="Passphrase"
                 aria-invalid={state.message ? true : undefined}
                 aria-describedby={state.message ? 'gate-error' : undefined}
-                className="h-11 w-full border border-black/15 px-3 text-[14px] text-black outline-none placeholder:text-black/35 focus:border-black/50"
+                className={`${ui.field} !mt-0`}
               />
             </label>
 
             {state.message && (
-              <p id="gate-error" role="alert" className="mt-2.5 text-[12.5px] text-[#b42318]">
+              <p id="gate-error" role="alert" className={`mt-2.5 ${ui.error}`}>
                 {state.message}
               </p>
             )}
 
             <Submit />
           </form>
+          </div>
         </div>
 
         <p className="mt-5 text-center text-[11.5px] leading-relaxed text-black/40">
@@ -110,7 +114,7 @@ function Submit() {
     <button
       type="submit"
       disabled={pending}
-      className="mt-3 h-11 w-full text-[13px] font-semibold uppercase tracking-[0.08em] text-white transition-opacity disabled:opacity-60"
+      className={`mt-3 w-full ${ui.primary}`}
       style={{ backgroundColor: 'var(--brand)' }}
     >
       {/* The wait is scrypt, which is slow on purpose. Saying so is the

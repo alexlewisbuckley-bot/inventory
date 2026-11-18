@@ -352,7 +352,22 @@ export interface PlaceOrderInput {
 export async function placeOrder(token: string, input: PlaceOrderInput): Promise<string> {
   const door = await getPortalDoor(token)
   if (!door) throw new NotFoundError('Portal')
+  return holdForPartner(door, input)
+}
 
+/**
+ * Put one watch on hold for a partner, as an order at their price.
+ *
+ * The one way stock is held for a partner, whether a buyer reserved it in
+ * the portal or it was chosen as a leaderboard prize — so a prize watch is
+ * checked, priced, audited and announced exactly as any other hold, and our
+ * team releases it from the same held-stock list.
+ */
+export async function holdForPartner(
+  door: { id: string; name: string; discountBps: number },
+  input: PlaceOrderInput,
+  announce: { title?: string; body?: string } = {},
+): Promise<string> {
   return withTransaction(async () => {
     const rows = await db.select({
       id: watches.id,
@@ -412,10 +427,10 @@ export async function placeOrder(token: string, input: PlaceOrderInput): Promise
     })
 
     await tellTheTeam({
-      title: `${door.name} has reserved stock ${watch.stockNo}`,
-      body: input.placedByName
+      title: announce.title ?? `${door.name} has reserved stock ${watch.stockNo}`,
+      body: announce.body ?? (input.placedByName
         ? `${input.placedByName} placed it through the portal. Nothing is paid — it is on hold until somebody here moves it on or releases it.`
-        : 'Placed through the portal. Nothing is paid — it is on hold until somebody here moves it on or releases it.',
+        : 'Placed through the portal. Nothing is paid — it is on hold until somebody here moves it on or releases it.'),
       entityId: watch.id,
     })
 
