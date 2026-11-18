@@ -964,6 +964,40 @@ export const CAMPAIGN_KIND_LABELS: Record<CampaignKind, string> = {
   BUDGET: 'An amount each person can spend',
 }
 
+/**
+ * How a year's incentive is shaped.
+ *
+ * Alex asked for both, "selected by the brokerage" — so it is the company
+ * running the programme that decides, not us. A ladder is the richer one and
+ * the one people talk about ("if x Million AED earnt unlocks x incentive");
+ * a single target is what a small team actually runs, where everybody knows
+ * the number and there is one thing at the end of it.
+ */
+export const PROGRAMME_KINDS = ['LADDER', 'SINGLE'] as const
+export type ProgrammeKind = (typeof PROGRAMME_KINDS)[number]
+
+export const PROGRAMME_KIND_LABELS: Record<ProgrammeKind, string> = {
+  LADDER: 'Rungs that unlock more as they go',
+  SINGLE: 'One target each, one prize',
+}
+
+export const PROGRAMME_KIND_HINTS: Record<ProgrammeKind, string> = {
+  LADDER: 'Set the rungs once and every agent climbs the same ladder. '
+    + 'Each rung says what it unlocks, so somebody short of the next one can see what it is worth.',
+  SINGLE: 'Each agent gets their own figure and one prize against it. '
+    + 'Simpler to run, and nothing is unlocked until the figure is met.',
+}
+
+/** A programme runs through the same three states a campaign does. */
+export const PROGRAMME_STATUSES = ['DRAFT', 'OPEN', 'CLOSED'] as const
+export type ProgrammeStatus = (typeof PROGRAMME_STATUSES)[number]
+
+export const PROGRAMME_STATUS_LABELS: Record<ProgrammeStatus, string> = {
+  DRAFT: 'Not started',
+  OPEN: 'Running',
+  CLOSED: 'Finished',
+}
+
 export const CAMPAIGN_STATUSES = ['DRAFT', 'OPEN', 'CLOSED'] as const
 export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number]
 

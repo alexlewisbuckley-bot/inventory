@@ -156,6 +156,12 @@ export function PortalRoom({ token, partner, items, orders }: {
             {/* Campaigns are the reason most partners are here at all, so the
                 way to them is beside the sign-out rather than buried. */}
             <a
+              href={`/p/${token}/programme`}
+              className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
+            >
+              Incentive
+            </a>
+            <a
               href={`/p/${token}/campaigns`}
               className="text-[12px] uppercase tracking-[0.08em] text-black/50 hover:text-black"
             >
