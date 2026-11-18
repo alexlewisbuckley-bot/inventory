@@ -10,6 +10,7 @@ import { percentFromBps } from '@/lib/partner-rate'
 import {
   BOX_PAPERS_LABELS, CONDITION_LABELS, type BoxPapers, type Condition,
 } from '@/lib/enums'
+import { AskForWatch, AsksSoFar } from './AskForWatch'
 import { FilterBar, FilterRail, SortSelect } from './FilterRail'
 import { WatchCard, WatchGrid } from './WatchCard'
 import { PartnerMark, PortalHeader } from './PortalHeader'
@@ -64,7 +65,7 @@ const SORTS: Array<{ value: Sort; label: string }> = [
  * demand — it is just as likely a walk-in with a deposit down — and showing
  * one would be inventing a story about scarcity out of our own shop floor.
  */
-export function PortalRoom({ token, partner, items, orders }: {
+export function PortalRoom({ token, partner, items, orders, asks }: {
   token: string
   partner: {
     name: string
@@ -75,6 +76,15 @@ export function PortalRoom({ token, partner, items, orders }: {
   }
   items: PortalItem[]
   orders: PortalOrder[]
+  /** What this company has already asked us to find. */
+  asks: Array<{
+    id: string
+    wanted: string | null
+    status: string
+    createdAt: string
+    askedByName: string | null
+    agentName: string | null
+  }>
 }) {
   /*
    * Every filter in one object.
@@ -227,6 +237,15 @@ export function PortalRoom({ token, partner, items, orders }: {
                   Clear search and filters
                 </button>
               )}
+              {/*
+                * The one moment this is certainly wanted: they have been
+                * through the case and the thing they came for is not in it.
+                * Without this, that ends with a closed tab and we never hear
+                * what they were after.
+                */}
+              <div className="mt-6 flex justify-center">
+                <AskForWatch token={token} as="portal" compact />
+              </div>
             </div>
           ) : (
             <WatchGrid>
@@ -262,6 +281,15 @@ export function PortalRoom({ token, partner, items, orders }: {
               ))}
             </WatchGrid>
           )}
+
+          {/*
+            * And at the foot of the list, for the person who went through all
+            * of it. Below the stock rather than above it: a shop that opens
+            * by asking what you want is a shop that does not believe in what
+            * it has.
+            */}
+          <AskForWatch token={token} as="portal" />
+          <AsksSoFar rows={asks} />
         </div>
       </div>
 

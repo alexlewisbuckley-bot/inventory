@@ -4,7 +4,8 @@ import { db } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
   activities, brands, customers, customerBrands, deals, dealStageEvents, offers,
-  sales, suppliers, tasks, users, watches, watchRequests, requestEnquiries,
+  partnerAgents, partners, sales, suppliers, tasks, users, watches, watchRequests,
+  requestEnquiries,
 } from '../db/schema'
 import { filtersToSql, type ColumnMap } from './filter-sql'
 import { CONTACT_FIELDS } from '@/lib/filters'
@@ -596,6 +597,17 @@ export async function findRequests(options: { status?: string[]; customerId?: st
     customerId: watchRequests.customerId,
     customerName: sql<string>`trim(coalesce(${customers.firstName}, '') || ' ' || coalesce(${customers.lastName}, ''))`,
     customerTier: customers.tier,
+    /*
+     * Or the partner who asked, where there is no customer.
+     *
+     * Left-joined, both of them: a request from a broker's agent has no
+     * customer row, and an inner join here is how it would vanish from the
+     * board that exists to work it.
+     */
+    partnerId: watchRequests.partnerId,
+    partnerName: partners.name,
+    agentName: partnerAgents.name,
+    askedByName: watchRequests.askedByName,
     brandId: watchRequests.brandId,
     brandName: brands.name,
     model: watchRequests.model,
@@ -615,7 +627,9 @@ export async function findRequests(options: { status?: string[]; customerId?: st
     )`,
   })
     .from(watchRequests)
-    .innerJoin(customers, eq(customers.id, watchRequests.customerId))
+    .leftJoin(customers, eq(customers.id, watchRequests.customerId))
+    .leftJoin(partners, eq(partners.id, watchRequests.partnerId))
+    .leftJoin(partnerAgents, eq(partnerAgents.id, watchRequests.partnerAgentId))
     .leftJoin(brands, eq(brands.id, watchRequests.brandId))
     .leftJoin(users, eq(users.id, watchRequests.ownerId))
     .where(and(...clauses))
@@ -691,7 +705,8 @@ export async function interestInWatch(watchId: string) {
         referenceNo: watchRequests.referenceNo,
       })
         .from(watchRequests)
-        .innerJoin(customers, eq(customers.id, watchRequests.customerId))
+        /* Left: an ask from a partner's agent is interest in this watch too. */
+        .leftJoin(customers, eq(customers.id, watchRequests.customerId))
         .where(and(
           isNull(watchRequests.deletedAt),
           inArray(watchRequests.status, ['OPEN', 'SOURCING', 'MATCHED']),

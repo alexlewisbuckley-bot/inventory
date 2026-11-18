@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getAgentView } from '@/server/services/partner-programme-service'
 import { stockForAgent } from '@/server/services/partner-programme-stock'
+import { asksFromAgent } from '@/server/services/sourcing-requests'
 import { AgentProgress } from '@/components/portal/AgentProgress'
 
 export const dynamic = 'force-dynamic'
@@ -32,5 +33,8 @@ export default async function AgentPage({ params }: { params: { token: string } 
     ? await stockForAgent(params.token, view.standing.capBase)
     : []
 
-  return <AgentProgress token={params.token} view={view} choices={choices} />
+  // And whatever they have already asked us to find.
+  const asks = await asksFromAgent(params.token)
+
+  return <AgentProgress token={params.token} view={view} choices={choices} asks={asks} />
 }

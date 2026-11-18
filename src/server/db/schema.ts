@@ -2002,7 +2002,19 @@ export const watchRequests = pgTable(
   'watch_requests',
   {
     id: text('id').primaryKey(),
-    customerId: text('customer_id').notNull().references(() => customers.id, { onDelete: 'cascade' }),
+    /*
+     * Who wants it: a customer of ours, or a partner's agent.
+     *
+     * Nullable since the portal learned to write here. Everybody who wanted a
+     * watch used to be somebody we had sold to; a broker's agent asking for a
+     * Daytona through their own link is not, and a stub customer record for
+     * each of them would be a CRM full of people nobody has met.
+     */
+    customerId: text('customer_id').references(() => customers.id, { onDelete: 'cascade' }),
+    partnerId: text('partner_id').references(() => partners.id, { onDelete: 'set null' }),
+    partnerAgentId: text('partner_agent_id').references(() => partnerAgents.id, { onDelete: 'set null' }),
+    /** Who typed it, where the door is a company's rather than a person's. */
+    askedByName: text('asked_by_name'),
     brandId: text('brand_id').references(() => brands.id),
     model: text('model'),
     referenceNo: text('reference_no'),
@@ -2024,6 +2036,7 @@ export const watchRequests = pgTable(
   },
   (t) => ({
     customerIdx: index('watch_requests_customer_idx').on(t.customerId),
+    partnerIdx: index('watch_requests_partner_idx').on(t.partnerId).where(sql`deleted_at IS NULL`),
     statusIdx: index('watch_requests_status_idx').on(t.status).where(sql`deleted_at IS NULL`),
     brandIdx: index('watch_requests_brand_idx').on(t.brandId),
   }),
