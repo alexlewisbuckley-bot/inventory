@@ -915,6 +915,25 @@ export const saleToCommissionSchema = z.object({
   feeCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
 })
 
+/**
+ * A commission that was really a sale of our own watch.
+ *
+ * The cost is optional and separate from the price: it belongs to the stock
+ * record, not the invoice, and is only written where somebody actually types
+ * it. A conversion that silently set a cost of nothing would hand the whole
+ * invoice to the profit line, which is the error being corrected.
+ */
+export const commissionToSaleSchema = z.object({
+  brokerageId: z.string().trim().min(1),
+  watchId: z.string().trim().min(1, 'Choose which of our watches this was.'),
+  invoiceNo: z.string().trim().min(1, 'Give the invoice number.').max(60),
+  saleAmount: z.coerce.number().positive('Enter what it sold for.'),
+  saleCurrency: z.enum(CURRENCIES).default(BASE_CURRENCY),
+  channel: z.enum(SALE_CHANNELS).default('RETAIL'),
+  purchaseAmount: z.coerce.number().nonnegative().nullable().optional(),
+  purchaseCurrency: z.enum(CURRENCIES).nullable().optional(),
+})
+
 export const dealSchema = z.object({
   title: z.string().trim().min(1, 'Give the deal a name you would recognise in a list.').max(140),
   customerId: z.string().trim().optional().or(z.literal('')).transform((v) => v || null),

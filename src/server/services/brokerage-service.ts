@@ -3,9 +3,12 @@ import { db, withTransaction } from '../db/client'
 import { brands, brokerages, buybackCharges, buybacks, sales, salesPeople, watches } from '../db/schema'
 import { newId } from '@/lib/ids'
 import { recordAudit } from './audit'
-import { ConflictError, NotFoundError } from '@/lib/errors'
+import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors'
 import { getRateTable } from './fx-service'
-import { BASE_CURRENCY, type CurrencyCode } from '@/lib/enums'
+import { BASE_CURRENCY, type CurrencyCode, type SaleChannel } from '@/lib/enums'
+import { can } from '@/lib/permissions'
+import { diff } from '@/lib/diff'
+import { saleMoney } from './watch-service'
 import type { BrokerageAmendInput } from '@/lib/validation'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { commissionForMonth, salesByPerson } from '../repositories/sale-repository'
@@ -34,11 +37,16 @@ const live = () => and(isNull(brokerages.voidedAt), isNull(brokerages.deletedAt)
  * the paperwork is kept as agreed, and the base figure is derived once here
  * so every report adds up the same number.
  */
+/** The managed rate for a currency, or parity where it is the base. */
+function rateFor(currency: CurrencyCode, rates: RateTable): number {
+  return currency === BASE_CURRENCY ? RATE_SCALE : rates[currency] ?? RATE_SCALE
+}
+
 export function feeInBase(amount: number, currency: CurrencyCode, rates: RateTable): {
   feeBase: number
   feeFxRate: number
 } {
-  const rate = currency === BASE_CURRENCY ? RATE_SCALE : rates[currency] ?? RATE_SCALE
+  const rate = rateFor(currency, rates)
   return {
     feeBase: currency === BASE_CURRENCY ? amount : Math.round((amount * RATE_SCALE) / rate),
     feeFxRate: rate,
@@ -948,4 +956,194 @@ export async function linkWatchToBrokerage(
       actorId: actor.id,
     })
   })
+}
+
+/**
+ * A commission that should have been a sale of our own watch.
+ *
+ * Alex: "this deal was recorded as a commission, but it actually turns out
+ * that it was a purchase and sale invoice ... I'm also unable to rectify it
+ * and update it and make it a purchase of a watch."
+ *
+ * The other direction of `convertSaleToBrokerage`, and the harder one. Going
+ * the first way, everything the commission needs is already on the sale: the
+ * watch, the date, the customer, the person who sold it. Coming back, two
+ * things are missing that no fee ever carried — which watch of ours it was,
+ * where the fee was not linked to one, and what we paid for it. A sale
+ * without a cost claims the whole invoice as profit, which is the exact lie
+ * this conversion exists to undo.
+ *
+ * So the cost is read from the watch rather than invented, and may be
+ * corrected here only by somebody who may correct it anywhere: `watch:amend`
+ * is the owner's, by the same reasoning as on the sale correction dialog.
+ *
+ * The commission is voided rather than deleted, as every correction on this
+ * ledger is, and the watch stays sold — it did sell. Only what the business
+ * earned on it changes, and that is the whole point: a fee is all profit, a
+ * sale is a price less a cost.
+ */
+export async function convertBrokerageToSale(
+  brokerageId: string,
+  input: {
+    watchId: string
+    invoiceNo: string
+    saleAmount: number
+    saleCurrency: CurrencyCode
+    channel: SaleChannel
+    /** What we paid, where it is being corrected at the same time. */
+    purchaseAmount?: number | null
+    purchaseCurrency?: CurrencyCode | null
+  },
+  actor: SessionUser,
+): Promise<string> {
+  const [fee] = await db
+    .select()
+    .from(brokerages)
+    .where(and(eq(brokerages.id, brokerageId), isNull(brokerages.voidedAt), isNull(brokerages.deletedAt)))
+    .limit(1)
+  if (!fee) throw new NotFoundError('Commission')
+
+  /*
+   * The watch has to be the one the fee was already against, where it was
+   * against one.
+   *
+   * Otherwise this becomes a way to move a recorded deal onto a different
+   * piece — which is not a correction, it is a different sale, and the
+   * answer to that is to void and record it properly.
+   */
+  if (fee.watchId && fee.watchId !== input.watchId) {
+    throw new ConflictError(
+      'That commission is already against another watch. Void it and record the sale instead.',
+    )
+  }
+
+  const [watch] = await db.select().from(watches)
+    .where(and(eq(watches.id, input.watchId), isNull(watches.deletedAt)))
+    .limit(1)
+  if (!watch) throw new NotFoundError('Watch')
+
+  /*
+   * One live sale per watch, as everywhere else.
+   *
+   * `assertBrokerable` is the same guard read the other way round and cannot
+   * be reused: this fee is itself a live commission against this watch, so
+   * that check would refuse the conversion on the strength of the row being
+   * converted.
+   */
+  const [existingSale] = await db.select({ id: sales.id }).from(sales)
+    .where(and(eq(sales.watchId, input.watchId), isNull(sales.voidedAt), isNull(sales.deletedAt)))
+    .limit(1)
+  if (existingSale) {
+    throw new ConflictError('That watch already has a sale recorded against it.')
+  }
+  if (!fee.watchId) {
+    const [otherFee] = await db.select({ id: brokerages.id }).from(brokerages)
+      .where(and(
+        eq(brokerages.watchId, input.watchId),
+        isNull(brokerages.voidedAt),
+        isNull(brokerages.deletedAt),
+      ))
+      .limit(1)
+    if (otherFee) throw new ConflictError('That watch already has a commission recorded against it.')
+  }
+
+  const rates = await getRateTable()
+
+  // The cost: the watch's own figure, unless this is correcting it.
+  let costBase = watch.purchasePriceGbp
+  let costPatch: Record<string, unknown> | null = null
+  if (input.purchaseAmount !== null && input.purchaseAmount !== undefined) {
+    const currency = input.purchaseCurrency ?? watch.purchaseCurrency ?? BASE_CURRENCY
+    const costRate = currency === watch.purchaseCurrency && watch.purchaseFxRate
+      ? watch.purchaseFxRate
+      : rateFor(currency, rates)
+    const minor = Math.round(input.purchaseAmount * 100)
+    const base = currency === BASE_CURRENCY ? minor : Math.round((minor * RATE_SCALE) / costRate)
+
+    if (base !== watch.purchasePriceGbp || minor !== watch.purchaseAmount) {
+      if (!can(actor.role, 'watch:amend')) {
+        throw new ForbiddenError('Changing what a watch cost is the owner’s to do.')
+      }
+      costBase = base
+      costPatch = {
+        purchaseAmount: minor,
+        purchaseCurrency: currency,
+        purchasePriceGbp: base,
+        purchasePriceUsd: base,
+        purchaseFxRate: costRate,
+        updatedAt: new Date(),
+        version: watch.version + 1,
+      }
+    }
+  }
+
+  const figures = saleMoney(
+    Math.round(input.saleAmount * 100),
+    input.saleCurrency,
+    rateFor(input.saleCurrency, rates),
+    costBase,
+  )
+
+  const id = newId('sal')
+  await withTransaction(async () => {
+    await db.update(brokerages)
+      .set({
+        voidedAt: new Date(),
+        voidedById: actor.id,
+        voidReason: 'Recorded as a sale instead',
+        updatedAt: new Date(),
+      })
+      .where(eq(brokerages.id, brokerageId))
+
+    await db.insert(sales).values({
+      id,
+      watchId: input.watchId,
+      invoiceNo: input.invoiceNo,
+      saleDate: fee.brokeredOn,
+      ...figures,
+      saleCurrency: input.saleCurrency,
+      customerName: fee.soldTo ?? null,
+      customerId: fee.customerId,
+      channel: input.channel,
+      paymentStatus: fee.paymentStatus,
+      soldById: fee.soldById,
+      /*
+       * Carried over, not dropped. The fee had been reconciled against a
+       * Xero import or it had not; converting it is not news about Xero,
+       * and starting the sale blank would put a row that reconciled last
+       * month back on the "not in Xero" pile.
+       */
+      xeroSeenImportId: fee.xeroSeenImportId,
+      notes: fee.notes,
+      recordedById: actor.id,
+    })
+
+    if (costPatch) await db.update(watches).set(costPatch).where(eq(watches.id, input.watchId))
+
+    if (watch.status !== 'SOLD') {
+      await db.update(watches)
+        .set({ status: 'SOLD', updatedAt: new Date(), version: watch.version + (costPatch ? 2 : 1) })
+        .where(eq(watches.id, input.watchId))
+      const { closeHoldsForWatch } = await import('./partner-hold-sync')
+      await closeHoldsForWatch(input.watchId, 'SOLD', actor.id, watch.stockNo)
+    }
+
+    await recordAudit({
+      entityType: 'Watch',
+      entityId: input.watchId,
+      action: 'UPDATE',
+      summary: `${actor.name} re-recorded the commission as a sale on invoice ${input.invoiceNo}`,
+      actorId: actor.id,
+      changes: costPatch ? diff(watch, costPatch, ['purchasePriceGbp']) : undefined,
+    })
+  })
+
+  await recordAudit({
+    entityType: 'Brokerage',
+    entityId: brokerageId,
+    action: 'UPDATE',
+    summary: `${actor.name} converted the commission to a sale on invoice ${input.invoiceNo}`,
+    actorId: actor.id,
+  })
+  return id
 }

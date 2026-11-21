@@ -418,7 +418,15 @@ describe('a sale that should have been a commission', () => {
     // "Correct this sale" opened on a commission showing Stock 0 and a
     // cost of nothing: a form editing a record that does not exist,
     // addressed by an id belonging to another table.
-    const branch = table.slice(table.indexOf("if (sale.kind === 'COMMISSION')"))
+    /*
+     * Anchored on the menu itself, not on the kind check.
+     *
+     * The row's void handler now asks the same question — a commission
+     * voids on its own ledger — so slicing from the first `sale.kind ===
+     * 'COMMISSION'` started the slice in the component body and swept in
+     * the comments that explain why the sale verbs were taken off.
+     */
+    const branch = table.slice(table.indexOf('const commissionItems: MenuItem[]'))
     const ownVerbs = branch.slice(0, branch.indexOf('const items: MenuItem[]'))
     expect(ownVerbs).not.toMatch(/Correct this sale/)
     expect(ownVerbs).not.toMatch(/Void the sale/)
@@ -473,5 +481,107 @@ describe('a linked commission shows its watch', () => {
     // render a link to nowhere.
     expect(table).toMatch(/stockless\(sale\) && !sale\.watchId \? '—' : sale\.stockNo/)
     expect(table).toMatch(/\{sale\.watchId \? \(/)
+  })
+})
+
+/**
+ * A fee that was really a sale.
+ *
+ * Alex: "this deal was recorded as a commission, but it actually turns out
+ * that it was a purchase and sale invoice. So I'm unable to void the sale
+ * because it doesn't have a watch assigned against it. And I'm also unable to
+ * rectify it and update it and make it a purchase of a watch."
+ *
+ * Two separate faults in one sentence: a void that went to the wrong ledger,
+ * and a conversion that only ran one way.
+ */
+describe('a commission that should have been a sale', () => {
+  const table = read('src/components/sales/SalesTable.tsx')
+  const service = read('src/server/services/brokerage-service.ts')
+  const actions = read('src/app/actions/watches.ts')
+  const modal = read('src/components/sales/CommissionToSaleModal.tsx')
+
+  it('voids on its own ledger rather than through a watch', () => {
+    /*
+     * The bug Alex hit. Every row shared one void handler, and it took
+     * `sale.watchId` because voiding a sale walks from the watch to its one
+     * live sale. A commission has no such sale to walk to — the watch, where
+     * there is one at all, went out on a fee — so the dialog opened on
+     * nothing. `VoidCommissionModal` was built, mounted, and unreachable.
+     */
+    const handler = table.slice(table.indexOf('onVoid={() => {'), table.indexOf('onVoid={() => {') + 600)
+    expect(handler).toContain("if (sale.kind === 'COMMISSION')")
+    expect(handler).toContain('setVoidCommissionTarget({')
+    // And it takes the fee's own id, not the watch's.
+    expect(handler).toMatch(/setVoidCommissionTarget\(\{\s*id: sale\.id/)
+  })
+
+  it('offers the conversion both ways round', () => {
+    // "Record as a commission" existed on a sale row from the start. Its
+    // opposite number did not, so a fee booked by mistake could only be
+    // voided and retyped as a whole sale.
+    expect(table).toContain("label: 'Record as a sale of our watch…'")
+    expect(service).toContain('export async function convertBrokerageToSale')
+    expect(service).toContain('export async function convertSaleToBrokerage')
+  })
+
+  it('keeps the fee on the record rather than deleting it', () => {
+    // An invoice that was issued is a fact, and the reports already skip
+    // voided rows — the same reasoning the other direction follows.
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain("voidReason: 'Recorded as a sale instead'")
+    expect(fn).not.toContain('delete(brokerages)')
+  })
+
+  it('works out profit from the cost rather than claiming the invoice', () => {
+    /*
+     * The whole point of the conversion. A fee is all profit because nothing
+     * was bought; a sale is a price less what we paid. Converting one into
+     * the other without a cost would leave the row claiming the entire
+     * invoice as margin, which is the error being corrected, more loudly.
+     */
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain('let costBase = watch.purchasePriceGbp')
+    expect(fn).toMatch(/saleMoney\(\s*Math\.round\(input\.saleAmount \* 100\),[\s\S]*costBase,/)
+  })
+
+  it('lets only the owner restate what the watch cost', () => {
+    // The same line the sale correction dialog draws: `sale:delete` is a
+    // manager's, and what the business paid is not theirs to change by way
+    // of the invoice screen.
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain("if (!can(actor.role, 'watch:amend'))")
+    expect(modal).toContain('canAmendCost && (')
+  })
+
+  it('refuses to move a fee onto a different watch', () => {
+    // That is not a correction, it is a different deal — and the answer to
+    // a different deal is to void this one and record it properly.
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain('if (fee.watchId && fee.watchId !== input.watchId)')
+  })
+
+  it('keeps one live sale per watch', () => {
+    /*
+     * `assertBrokerable` asks the same question the other way round and
+     * cannot be reused here: the fee being converted is itself a live
+     * commission against this watch, so that guard would refuse every
+     * conversion on the strength of the row being converted.
+     */
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain('That watch already has a sale recorded against it.')
+    expect(fn).not.toContain('await assertBrokerable(')
+  })
+
+  it('carries the Xero reconciliation across', () => {
+    // Converting a fee is not news about Xero. Starting the sale blank would
+    // put a row that reconciled last month back on the "not in Xero" pile.
+    const fn = service.slice(service.indexOf('export async function convertBrokerageToSale'))
+    expect(fn).toContain('xeroSeenImportId: fee.xeroSeenImportId')
+  })
+
+  it('is behind the same door as voiding, because that is half of it', () => {
+    const fn = actions.slice(actions.indexOf('export async function commissionToSaleAction'))
+    expect(fn.slice(0, 500)).toContain("requireCapability('sale:delete')")
   })
 })
