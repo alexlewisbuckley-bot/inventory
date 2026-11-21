@@ -2,7 +2,9 @@
 import { revalidatePath } from 'next/cache'
 import { requireCapability } from '@/server/auth/session'
 import { rateLimit, LIMITS } from '@/server/auth/rate-limit'
-import { brokerageAmendSchema, brokerageSchema, saleToCommissionSchema } from '@/lib/validation'
+import {
+  brokerageAmendSchema, brokerageSchema, commissionToSaleSchema, saleToCommissionSchema,
+} from '@/lib/validation'
 import {
   createWatch, updateWatch, moveWatches, recordSale, deleteWatch, restoreWatch,
   setWatchStatus, voidSale,
@@ -355,6 +357,35 @@ export async function saleToCommissionAction(
     return { ok: true, message: 'Recorded as a commission. The sale has been voided.', id }
   } catch (error) {
     return toState(error, 'Could not convert that sale.')
+  }
+}
+
+/**
+ * Re-record a commission as a sale of our own watch.
+ *
+ * Alex: "this deal was recorded as a commission, but it actually turns out
+ * that it was a purchase and sale invoice." The other direction of
+ * `saleToCommissionAction`, behind the same door — it voids one record and
+ * writes another, which is the voiding capability either way round.
+ */
+export async function commissionToSaleAction(input: unknown): Promise<ActionState> {
+  const actor = await requireCapability('sale:delete')
+  rateLimit({ key: `mutate:${actor.id}`, ...LIMITS.mutation })
+
+  const parsed = commissionToSaleSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, message: 'Check the sale details.', errors: fieldErrors(parsed.error) }
+  }
+
+  try {
+    const { convertBrokerageToSale } = await import('@/server/services/brokerage-service')
+    const { brokerageId, ...rest } = parsed.data
+    const id = await convertBrokerageToSale(brokerageId, rest, actor)
+    refreshLedger()
+    revalidatePath('/inventory/content')
+    return { ok: true, message: 'Recorded as a sale. The commission has been voided.', id }
+  } catch (error) {
+    return toState(error, 'Could not convert that commission.')
   }
 }
 

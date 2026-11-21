@@ -2,7 +2,9 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState } from 'react'
-import { BadgeCheck, Handshake, Link2 as LinkIcon, MoreHorizontal, Pencil, Undo2 } from 'lucide-react'
+import {
+  BadgeCheck, Handshake, Link2 as LinkIcon, MoreHorizontal, Pencil, Receipt, Undo2,
+} from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useListQuery } from '@/hooks/useListQuery'
 import {
@@ -15,6 +17,9 @@ import type { LedgerKind } from '@/lib/ledger-kind'
 import { stockless } from '@/lib/ledger-kind'
 import { flagsFor, flagTone, FLAG_LABELS, type LastImport } from '@/lib/sale-flags'
 import { SaleToCommissionModal } from '@/components/sales/SaleToCommissionModal'
+import {
+  CommissionToSaleModal, type CommissionToSaleTarget,
+} from '@/components/sales/CommissionToSaleModal'
 import { EditCommissionModal, LinkWatchModal, VoidCommissionModal } from '@/components/sales/CommissionActions'
 import { markSalePaidAction } from '@/app/actions/watches'
 import { formatPct } from '@/lib/money'
@@ -84,6 +89,7 @@ export function SalesTable({
   >(null)
   const [voidCommissionTarget, setVoidCommissionTarget] =
     useState<{ id: string; label: string } | null>(null)
+  const [saleTarget, setSaleTarget] = useState<CommissionToSaleTarget | null>(null)
 
   const confirmPaid = async (sale: SaleListItem) => {
     const result = await markSalePaidAction(sale.id)
@@ -321,6 +327,24 @@ export function SalesTable({
                     fee: money(sale.amountGbp),
                     soldById: sale.soldById ?? '',
                   })}
+                  onCommissionToSale={() => setSaleTarget({
+                    id: sale.id,
+                    /*
+                      A fee on somebody else's watch has no brand of ours to
+                      print: the ledger fills that column with the word
+                      "Commission", which reads as a brand name the moment it
+                      is put in front of the description.
+                    */
+                    label: sale.watchId
+                      ? `${sale.brandName} ${sale.model}`.trim()
+                      : sale.model,
+                    reference: sale.invoiceNo,
+                    feeBase: sale.amountGbp,
+                    feeAmount: sale.saleAmount,
+                    feeCurrency: sale.saleCurrency,
+                    watchId: sale.watchId || null,
+                    stockNo: sale.stockNo || null,
+                  })}
                   onOpenLoan={() => router.push('/buybacks')}
                   onCommission={() => setCommissionTarget({
                     id: sale.id,
@@ -348,13 +372,32 @@ export function SalesTable({
                     stockNo: sale.stockNo,
                     label: `${sale.brandName} ${sale.model}`,
                   })}
-                  onVoid={() => setVoidTarget({
-                    // The watch, not the sale: voiding walks from the watch
-                    // to its one live sale, so that is the handle it takes.
-                    id: sale.watchId,
-                    stockNo: sale.stockNo,
-                    label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
-                  })}
+                  /*
+                    Two ledgers, two voids.
+                    
+                    A sale is voided through its watch — voiding walks from
+                    the watch to its one live sale, so that is the handle it
+                    takes. A commission has no such sale to walk to: the
+                    watch, where there is one at all, went out on a fee. Sent
+                    to the sale's dialog it found nothing and the row could
+                    not be voided, which is exactly what Alex hit: "I'm
+                    unable to void the sale because it doesn't have a watch
+                    assigned against it."
+                  */
+                  onVoid={() => {
+                    if (sale.kind === 'COMMISSION') {
+                      setVoidCommissionTarget({
+                        id: sale.id,
+                        label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`.trim(),
+                      })
+                      return
+                    }
+                    setVoidTarget({
+                      id: sale.watchId,
+                      stockNo: sale.stockNo,
+                      label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
+                    })
+                  }}
                 />
               </TD>
             </TR>
@@ -419,6 +462,15 @@ export function SalesTable({
         onDone={() => router.refresh()}
       />
 
+      <CommissionToSaleModal
+        open={saleTarget !== null}
+        target={saleTarget}
+        stock={stock}
+        canAmendCost={canAmendCost}
+        onClose={() => setSaleTarget(null)}
+        onDone={() => router.refresh()}
+      />
+
       <VoidCommissionModal
         open={voidCommissionTarget !== null}
         target={voidCommissionTarget}
@@ -448,7 +500,10 @@ export function SalesTable({
  * Nothing at all is rendered when the reader may do neither, rather than a
  * trigger that opens on an empty menu.
  */
-function RowActions({ sale, canAmend, canVoid, onCorrect, onCorrectCommission, onPaid, onVoid, onCommission, onLink, onOpenLoan }: {
+function RowActions({
+  sale, canAmend, canVoid, onCorrect, onCorrectCommission, onPaid, onVoid,
+  onCommission, onCommissionToSale, onLink, onOpenLoan,
+}: {
   sale: SaleListItem & { kind?: LedgerKind }
   canAmend: boolean
   canVoid: boolean
@@ -456,6 +511,7 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onCorrectCommission, o
   onPaid: () => void
   onVoid: () => void
   onCommission: () => void
+  onCommissionToSale: () => void
   onLink: () => void
   onCorrectCommission: () => void
   onOpenLoan: () => void
@@ -509,6 +565,22 @@ function RowActions({ sale, canAmend, canVoid, onCorrect, onCorrectCommission, o
         label: 'Link one of our watches…',
         onSelect: onLink,
         icon: <LinkIcon className="h-3.5 w-3.5" />,
+      }] : []),
+      /*
+       * The other kind of wrong, and the mirror of "Record as a commission"
+       * on a sale row. Alex: "it actually turns out that it was a purchase
+       * and sale invoice ... I'm also unable to rectify it and update it and
+       * make it a purchase of a watch."
+       *
+       * Behind the voiding door, like its opposite number, because that is
+       * half of what it does.
+       */
+      ...(canVoid ? [{
+        id: 'to-sale',
+        label: 'Record as a sale of our watch…',
+        onSelect: onCommissionToSale,
+        icon: <Receipt className="h-3.5 w-3.5" />,
+        separated: canAmend,
       }] : []),
       ...(canVoid ? [{
         id: 'void-commission',
