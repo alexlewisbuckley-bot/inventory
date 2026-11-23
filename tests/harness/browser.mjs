@@ -12,7 +12,16 @@ export const BASE = process.env.HARNESS_URL ?? 'http://localhost:3000'
 export const EMAIL = process.env.HARNESS_EMAIL ?? 'alex@bluecroft.co.uk'
 export const PASSWORD = process.env.HARNESS_PASSWORD ?? 'Bluecroft2026!'
 
-const FALLBACK = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
+/*
+ * The stable path first. The versioned directory moves every time
+ * Playwright updates — which is precisely the drift this harness was
+ * written to stop, and it had drifted again: chromium-1194 is long gone.
+ */
+const FALLBACKS = [
+  '/opt/pw-browsers/chromium',
+  '/opt/pw-browsers/chromium-1243/chrome-linux/chrome',
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+]
 
 /** Every authenticated route, for sweeps that must cover the whole product. */
 export const ROUTES = [
@@ -26,7 +35,7 @@ export const ROUTES = [
 export async function launch({ width = 1440, height = 1000, colorScheme } = {}) {
   const browser = await chromium.launch({
     executablePath: process.env.CHROMIUM_PATH
-      || (existsSync(FALLBACK) ? FALLBACK : undefined),
+      || FALLBACKS.find((path) => existsSync(path)),
     args: ['--no-proxy-server'],
   })
   const ctx = await browser.newContext({

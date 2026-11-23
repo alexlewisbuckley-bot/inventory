@@ -1,6 +1,8 @@
 'use client'
 import { useState, useTransition } from 'react'
-import { AlertTriangle, Check, Eye, Info, Link2, RefreshCw, Sparkles, X } from 'lucide-react'
+import {
+  AlertTriangle, ArrowRight, Check, Eye, Info, Link2, RefreshCw, Sparkles, X,
+} from 'lucide-react'
 import {
   approveLinkAction, askClaudeAction, ignoreTransferAction, scanWalletsAction, unlinkAction,
 } from '@/app/actions/wallets'
@@ -23,12 +25,30 @@ export interface BoardTransferView {
   ignoreReason: string | null
   links: Array<{
     id: string
+    kind: 'SALE' | 'COMMISSION'
+    targetId: string
     reference: string
+    customerName: string | null
+    label: string | null
+    at: string | null
     amountUsd: number
     basis: string
     confidence: number
     reason: string | null
+    approvedAt: string | null
+    approvedBy: string | null
   }>
+}
+
+/*
+ * How the match was arrived at, said rather than abbreviated.
+ * "rule" on a screen is a word somebody has to be told the meaning of; a
+ * short clause is one they can read.
+ */
+const BASIS_WORDS: Record<string, string> = {
+  RULE: 'matched on the figures',
+  AI: 'suggested by Claude, approved here',
+  HUMAN: 'chosen by hand',
 }
 
 const TONE_ICON = {
@@ -42,6 +62,38 @@ const TONE_CLASS = {
   warn: 'border-state-warning/40 bg-state-warning/5',
   info: 'border-line-subtle bg-surface-subtle',
 } as const
+
+/**
+ * What went wrong when the action itself did not come back.
+ *
+ * A server action can fail without ever returning a result: the function
+ * times out part-way through a scan, a deployment restarts under it, the
+ * connection drops. That rejects the promise, and a rejection inside a
+ * transition is swallowed — the button stops spinning and nothing else
+ * happens, which from the other side of the screen is indistinguishable
+ * from a button that is not wired up. Saying so is the whole point.
+ */
+function mishap(error: unknown): { message: string; detail: string } {
+  const text = error instanceof Error ? error.message : String(error ?? '')
+  if (/fetch|network|load failed/i.test(text)) {
+    return {
+      message: 'That did not reach the server.',
+      detail: 'The connection dropped part-way. Try it again.',
+    }
+  }
+  return {
+    message: 'The server did not finish that.',
+    detail: text
+      ? `${text} — if this was a scan, it may have been cut short part-way through.`
+      : 'It may have been cut short part-way through. Try it again.',
+  }
+}
+
+/** A redirect is the framework working, not a failure: let it through. */
+function isRedirect(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest
+  return typeof digest === 'string' && /^NEXT_(REDIRECT|NOT_FOUND)/.test(digest)
+}
 
 /**
  * What arrived, and what it paid for.
@@ -75,20 +127,32 @@ export function PaymentsBoard({ transfers, payables, proposals, flags, totals }:
 
   const run = (work: () => Promise<{ ok: boolean; message: string; detail?: string }>) => {
     start(async () => {
-      const result = await work()
-      if (result.ok) toast.success(result.message, result.detail)
-      else toast.error(result.message, result.detail)
+      try {
+        const result = await work()
+        if (result.ok) toast.success(result.message, result.detail)
+        else toast.error(result.message, result.detail)
+      } catch (error) {
+        if (isRedirect(error)) throw error
+        const said = mishap(error)
+        toast.error(said.message, said.detail)
+      }
     })
   }
 
   const scan = () => run(() => scanWalletsAction(null))
 
   const ask = () => start(async () => {
-    const result = await askClaudeAction()
-    if (!result.ok) { toast.error(result.message); return }
-    setAiProposals(result.proposals ?? [])
-    setNotes(result.notes ?? [])
-    toast.success(result.message, result.notes?.[0])
+    try {
+      const result = await askClaudeAction()
+      if (!result.ok) { toast.error(result.message); return }
+      setAiProposals(result.proposals ?? [])
+      setNotes(result.notes ?? [])
+      toast.success(result.message, result.notes?.[0])
+    } catch (error) {
+      if (isRedirect(error)) throw error
+      const said = mishap(error)
+      toast.error(said.message, said.detail)
+    }
   })
 
   const byPayment = new Map<string, Proposal[]>()
@@ -219,33 +283,103 @@ export function PaymentsBoard({ transfers, payables, proposals, flags, totals }:
       {/* ------------------------------------------------ what is placed */}
       {placed.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-small font-bold text-content-primary">Placed</h2>
+          <h2 className="text-small font-bold text-content-primary">
+            Placed
+            <span className="ml-2 font-normal text-content-secondary">{placed.length}</span>
+          </h2>
+          {/*
+            The record of a decision, not a tick.
+            Somebody checking a reconciliation needs three things in front of
+            them: which payment, which deal, and on what grounds. The
+            invoice number alone answers none of them — it names a row.
+            So: the money as the chain recorded it, the deal in words
+            anybody here would recognise, and the sentence the match was
+            made on, kept exactly as it read when it was approved.
+          */}
           <Card className="overflow-hidden">
             <ul className="divide-y divide-line-subtle">
               {placed.map((transfer) => (
-                <li key={transfer.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                  <span className="font-bold tabular-nums text-content-primary">
-                    {formatUsdt(transfer.amountUsd)}
-                  </span>
-                  <span className="text-caption text-content-secondary">
-                    {transfer.at.slice(0, 10)} · {shortAddress(transfer.counterparty)}
-                  </span>
-                  {transfer.links.map((link) => (
-                    <span key={link.id} className="flex items-center gap-2 text-caption">
-                      <Chip tone="neutral">{link.reference}</Chip>
-                      <span className="text-content-secondary">
-                        {formatUsdt(link.amountUsd)} · {link.basis.toLowerCase()}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={pending}
-                        onClick={() => run(() => unlinkAction(link.id))}
-                        className="text-content-secondary underline hover:text-content-primary"
-                      >
-                        unlink
-                      </button>
+                <li key={transfer.id} className="px-5 py-4">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="font-bold tabular-nums text-content-primary">
+                      {formatUsdt(transfer.amountUsd)}
                     </span>
-                  ))}
+                    <span className="text-caption text-content-secondary">
+                      {transfer.at.slice(0, 10)} · from {shortAddress(transfer.counterparty)}
+                      {' · '}{transfer.walletLabel} · {WALLET_CHAIN_LABELS[transfer.chain]}
+                    </span>
+                    <a
+                      href={explorerLink(transfer.chain, transfer.txHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-caption text-content-secondary underline hover:text-content-primary"
+                    >
+                      on the chain
+                    </a>
+                    {transfer.linkedUsd < transfer.amountUsd && (
+                      <Chip tone="gold">
+                        {formatUsdt(transfer.amountUsd - transfer.linkedUsd)} still unplaced
+                      </Chip>
+                    )}
+                  </div>
+
+                  <ul className="mt-2 flex flex-col gap-2">
+                    {transfer.links.map((link) => (
+                      <li
+                        key={link.id}
+                        className="rounded-md border border-line-subtle bg-surface-subtle px-4 py-3"
+                      >
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                          <ArrowRight
+                            className="h-3.5 w-3.5 shrink-0 text-content-secondary"
+                            aria-hidden
+                          />
+                          <a
+                            href={`/sales?q=${encodeURIComponent(link.reference)}`}
+                            className="text-small font-bold text-content-primary underline decoration-line-subtle underline-offset-2 hover:decoration-current"
+                          >
+                            {link.reference}
+                          </a>
+                          <span className="text-small text-content-primary">
+                            {[link.customerName, link.label].filter(Boolean).join(' · ')
+                              || (link.kind === 'SALE' ? 'a sale' : 'a commission')}
+                          </span>
+                          <span className="ml-auto font-bold tabular-nums text-content-primary">
+                            {formatUsdt(link.amountUsd)}
+                          </span>
+                        </div>
+
+                        {/*
+                          The reasoning, verbatim. A match approved on
+                          "exactly what INV-0148 was waiting for" and one
+                          approved on "the only invoice within 2% of this
+                          figure" are different degrees of certain, and the
+                          difference is only visible if the sentence is kept.
+                        */}
+                        {link.reason && (
+                          <p className="mt-1.5 text-caption text-content-secondary">
+                            Why: {link.reason}
+                          </p>
+                        )}
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-content-secondary">
+                          <span>{BASIS_WORDS[link.basis] ?? link.basis.toLowerCase()}</span>
+                          {link.confidence > 0 && <span>· {link.confidence}% sure</span>}
+                          {link.approvedBy && <span>· approved by {link.approvedBy}</span>}
+                          {link.approvedAt && <span>· {link.approvedAt.slice(0, 10)}</span>}
+                          {link.at && <span>· invoiced {link.at.slice(0, 10)}</span>}
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => run(() => unlinkAction(link.id))}
+                            className="underline hover:text-content-primary"
+                          >
+                            unlink
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))}
             </ul>

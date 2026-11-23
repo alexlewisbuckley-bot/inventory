@@ -14,6 +14,14 @@ import type { WalletChain } from '@/lib/enums'
 export const metadata: Metadata = { title: 'USDT payments' }
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+/*
+ * Reading two chains is several round trips to a public explorer, and a
+ * rate-limited one is read with waits between attempts. The platform default
+ * is ten seconds, which kills the request mid-scan and hands the browser a
+ * failure with no body — which is why a scan could look like a button that
+ * does nothing.
+ */
+export const maxDuration = 60
 
 /**
  * The money as the chain recorded it, against the invoices it settled.
@@ -84,11 +92,18 @@ export default async function PaymentsPage() {
           ignoreReason: transfer.ignoreReason,
           links: transfer.links.map((link) => ({
             id: link.id,
+            kind: link.kind,
+            targetId: link.targetId,
             reference: link.reference,
+            customerName: link.customerName,
+            label: link.label,
+            at: link.at,
             amountUsd: link.amountUsd,
             basis: link.basis,
             confidence: link.confidence,
             reason: link.reason,
+            approvedAt: link.approvedAt,
+            approvedBy: link.approvedBy,
           })),
         }))}
         payables={board.payables}
@@ -116,7 +131,6 @@ export default async function PaymentsPage() {
             chain: key.chain,
             source: key.source,
             hint: key.hint,
-            required: key.required,
           }))}
         />
       </div>

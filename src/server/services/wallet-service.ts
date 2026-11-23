@@ -2,7 +2,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { liveSale } from '../db/predicates'
 import {
-  brands, brokerages, sales, walletCounterparties, walletLinks, walletScans,
+  brands, brokerages, sales, users, walletCounterparties, walletLinks, walletScans,
   walletTransfers, wallets, watches,
 } from '../db/schema'
 import { newId } from '@/lib/ids'
@@ -168,7 +168,17 @@ export async function scanWallets(
     eq(wallets.isActive, true),
     walletId ? eq(wallets.id, walletId) : undefined,
   ))
-  if (targets.length === 0) throw new NotFoundError('Wallet')
+  /*
+   * "Wallet not found" is true and useless when the answer is that none has
+   * been added yet. Somebody pressing scan on an empty board is told what to
+   * do about it rather than told a lookup failed.
+   */
+  if (targets.length === 0) {
+    if (walletId) throw new NotFoundError('Wallet')
+    throw new ValidationError(
+      'No wallet is being watched yet — add the address you are paid into, below, then scan it.',
+    )
+  }
 
   const scanId = newId('scn')
   await db.insert(walletScans).values({
@@ -272,10 +282,17 @@ export interface BoardTransfer extends Payment {
     kind: 'SALE' | 'COMMISSION'
     targetId: string
     reference: string
+    /** Who the invoice was to, and what it was for. */
+    customerName: string | null
+    label: string | null
+    at: string | null
     amountUsd: number
     basis: string
     confidence: number
     reason: string | null
+    /** When a person agreed to it, and which person. */
+    approvedAt: string | null
+    approvedBy: string | null
   }>
 }
 
@@ -327,6 +344,15 @@ export async function loadBoard(): Promise<Board> {
         .orderBy(desc(walletTransfers.blockTime))
         .limit(500),
 
+      /*
+       * A link, and enough of what it points at to be read without going
+       * anywhere. The invoice reference alone says which row it is, not
+       * which deal — and "INV-0148" is no use to somebody checking whether
+       * a payment was placed correctly. The sale's own columns are joined
+       * here rather than looked up against `payables`, because applying a
+       * payment is what settles an invoice: the moment this link is made,
+       * that invoice leaves the waiting list and could not be found there.
+       */
       db.select({
         id: walletLinks.id,
         transferId: walletLinks.transferId,
@@ -336,12 +362,24 @@ export async function loadBoard(): Promise<Board> {
         basis: walletLinks.basis,
         confidence: walletLinks.confidence,
         reason: walletLinks.reason,
+        approvedAt: walletLinks.approvedAt,
+        approvedBy: users.name,
         saleInvoice: sales.invoiceNo,
+        saleCustomer: sales.customerName,
+        saleAt: sales.saleDate,
+        brandName: brands.name,
+        model: watches.model,
         feeReference: brokerages.reference,
+        feeCustomer: brokerages.soldTo,
+        feeDescription: brokerages.description,
+        feeAt: brokerages.brokeredOn,
       })
         .from(walletLinks)
         .leftJoin(sales, eq(sales.id, walletLinks.saleId))
-        .leftJoin(brokerages, eq(brokerages.id, walletLinks.brokerageId)),
+        .leftJoin(watches, eq(watches.id, sales.watchId))
+        .leftJoin(brands, eq(brands.id, watches.brandId))
+        .leftJoin(brokerages, eq(brokerages.id, walletLinks.brokerageId))
+        .leftJoin(users, eq(users.id, walletLinks.approvedById)),
 
       /*
        * Invoices still waiting. A sale marked paid in full is not on the
@@ -415,10 +453,17 @@ export async function loadBoard(): Promise<Board> {
         kind,
         targetId,
         reference: link.saleInvoice ?? link.feeReference ?? '—',
+        customerName: link.saleCustomer ?? link.feeCustomer,
+        label: link.saleId
+          ? `${link.brandName ?? ''} ${link.model ?? ''}`.trim() || null
+          : link.feeDescription,
+        at: (link.saleAt ?? link.feeAt)?.toISOString() ?? null,
         amountUsd: link.amountUsd,
         basis: link.basis,
         confidence: link.confidence,
         reason: link.reason,
+        approvedAt: link.approvedAt?.toISOString() ?? null,
+        approvedBy: link.approvedBy,
       },
     ])
   }
