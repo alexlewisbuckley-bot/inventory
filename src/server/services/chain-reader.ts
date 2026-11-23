@@ -35,12 +35,28 @@ export interface ChainTransfer {
   raw: Record<string, unknown>
 }
 
+/** What a read came back with, and whether it was cut short. */
+export interface ChainRead {
+  transfers: ChainTransfer[]
+  /** Set where a rate limit stopped the read before it ran out of pages. */
+  stoppedBy?: string
+}
+
 export interface FetchOptions {
   /** Nothing before this. The first scan of an old wallet is otherwise its whole life. */
   since?: Date | null
   /** A ceiling on one run, so a wallet with a long history cannot hang a request. */
   limit?: number
 }
+
+/**
+ * A pause between pages.
+ *
+ * TronGrid's free tier is metered per second, and ten pages fired back to
+ * back is the surest way to meet it. A quarter of a second between them costs
+ * a scan two seconds and takes the commonest cause of a 429 off the table.
+ */
+const PAGE_PAUSE_MS = 250
 
 /** A page at a time from the explorers, and a run of pages at most this long. */
 const PAGE = 200
@@ -57,21 +73,88 @@ export class ChainError extends Error {
   }
 }
 
-async function getJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const response = await fetch(url, {
-      headers: { accept: 'application/json', ...headers },
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    if (!response.ok) {
-      throw new Error(`the explorer answered ${response.status}`)
+/**
+ * How long to wait before trying again, and whether to bother.
+ *
+ * Alex, on the first real scan: "The chain could not be read. TRC Main
+ * Wallet: the explorer answered 429."
+ *
+ * 429 is TronGrid's rate limiter, and it is the ordinary answer rather than a
+ * fault: the free endpoint is metered per IP, and a deployment shares its IP
+ * with every other tenant on that host. So the limit is reached by other
+ * people's traffic as readily as by ours, and the right response is to wait
+ * and ask again rather than to report that the chain is unreadable.
+ *
+ * `Retry-After` is honoured where the explorer sends one, because its own
+ * number is better than our guess. Otherwise it doubles: a second, two, four.
+ *
+ * A 5xx is retried for the same reason. A 4xx that is not 429 is not — a bad
+ * key or a malformed address will say the same thing however many times it is
+ * asked, and retrying it only makes somebody wait longer for the same answer.
+ */
+export function waitFor(status: number, attempt: number, retryAfter?: string | null): number | null {
+  const retryable = status === 429 || (status >= 500 && status < 600)
+  if (!retryable || attempt >= MAX_ATTEMPTS) return null
+
+  const asked = Number(retryAfter)
+  if (Number.isFinite(asked) && asked > 0) {
+    // Seconds, by the standard. Capped, because an explorer asking for five
+    // minutes is asking for longer than a scan is allowed to take.
+    return Math.min(asked * 1000, MAX_BACKOFF_MS)
+  }
+  return Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS)
+}
+
+/** Three goes at a page: the first, then two retries. */
+const MAX_ATTEMPTS = 3
+const BASE_BACKOFF_MS = 1_200
+const MAX_BACKOFF_MS = 6_000
+
+const sleep = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms) })
+
+/**
+ * What a rate limit means to the person who pressed the button.
+ *
+ * "The explorer answered 429" is the truth and is no use: it names the
+ * mechanism rather than the fix. A free key raises TronGrid's ceiling by
+ * better than an order of magnitude, and the box to paste it into is on the
+ * same screen as the error.
+ */
+function limitMessage(chain: WalletChain): string {
+  return chain === 'TRON'
+    ? 'TronGrid is rate-limiting us. A free TronGrid key raises the limit a long way — '
+      + 'paste one into Explorer keys below, or wait a minute and scan again.'
+    : 'Etherscan is rate-limiting us. Wait a minute and scan again, or use a key with a higher tier.'
+}
+
+async function getJson(
+  url: string, chain: WalletChain, headers: Record<string, string> = {},
+): Promise<unknown> {
+  for (let attempt = 1; ; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'application/json', ...headers },
+        signal: controller.signal,
+        cache: 'no-store',
+      })
+      if (response.ok) return await response.json()
+
+      const wait = waitFor(response.status, attempt, response.headers.get('retry-after'))
+      if (wait === null) {
+        throw new ChainError(
+          response.status === 429
+            ? limitMessage(chain)
+            : `the explorer answered ${response.status}`,
+          chain,
+        )
+      }
+      logger.info('the explorer asked us to slow down', { chain, status: response.status, wait })
+      await sleep(wait)
+    } finally {
+      clearTimeout(timer)
     }
-    return await response.json()
-  } finally {
-    clearTimeout(timer)
   }
 }
 
@@ -87,7 +170,7 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
  * `min_timestamp` is milliseconds, and the response carries a fingerprint for
  * the next page rather than a page number.
  */
-async function fetchTron(address: string, options: FetchOptions): Promise<ChainTransfer[]> {
+async function fetchTron(address: string, options: FetchOptions): Promise<ChainRead> {
   const key = await explorerKey('TRON')
   const limit = options.limit ?? DEFAULT_LIMIT
   const contract = USDT_CONTRACTS.TRON
@@ -95,6 +178,7 @@ async function fetchTron(address: string, options: FetchOptions): Promise<ChainT
   let fingerprint: string | null = null
 
   for (let page = 0; page < MAX_PAGES && found.length < limit; page += 1) {
+    try {
     const url = new URL(`https://api.trongrid.io/v1/accounts/${encodeURIComponent(address)}/transactions/trc20`)
     url.searchParams.set('contract_address', contract)
     url.searchParams.set('limit', String(Math.min(PAGE, limit - found.length)))
@@ -102,7 +186,8 @@ async function fetchTron(address: string, options: FetchOptions): Promise<ChainT
     if (options.since) url.searchParams.set('min_timestamp', String(options.since.getTime()))
     if (fingerprint) url.searchParams.set('fingerprint', fingerprint)
 
-    const body = await getJson(url.toString(), key ? { 'TRON-PRO-API-KEY': key } : {})
+    if (page > 0) await sleep(PAGE_PAUSE_MS)
+    const body = await getJson(url.toString(), 'TRON', key ? { 'TRON-PRO-API-KEY': key } : {})
     const page_ = body as {
       success?: boolean
       error?: unknown
@@ -121,9 +206,24 @@ async function fetchTron(address: string, options: FetchOptions): Promise<ChainT
 
     fingerprint = page_.meta?.fingerprint ?? null
     if (!fingerprint || rows.length === 0) break
+    } catch (error) {
+      /*
+       * Keep what arrived before the limit did.
+       *
+       * Throwing here lost four pages of real transfers because the fifth
+       * was refused — and the next scan would have had to read them all
+       * again. What is held is stored, the run says it was cut short, and
+       * because a transfer is recognised by its own content a re-scan costs
+       * nothing but time.
+       */
+      if (found.length > 0 && error instanceof ChainError) {
+        return { transfers: found, stoppedBy: error.message }
+      }
+      throw error
+    }
   }
 
-  return found
+  return { transfers: found }
 }
 
 /**
@@ -178,7 +278,7 @@ export function readTronRow(row: unknown): ChainTransfer | null {
  * and a dealer whose payments stop reconciling because an explorer renamed a
  * path should be able to fix it in a text box rather than wait for us.
  */
-async function fetchEthereum(address: string, options: FetchOptions): Promise<ChainTransfer[]> {
+async function fetchEthereum(address: string, options: FetchOptions): Promise<ChainRead> {
   const key = await explorerKey('ETHEREUM')
   if (!key) {
     throw new ChainError(
@@ -192,6 +292,7 @@ async function fetchEthereum(address: string, options: FetchOptions): Promise<Ch
   const found: ChainTransfer[] = []
 
   for (let page = 1; page <= MAX_PAGES && found.length < limit; page += 1) {
+    try {
     const url = new URL(etherscanBase())
     url.searchParams.set('chainid', '1')
     url.searchParams.set('module', 'account')
@@ -203,7 +304,8 @@ async function fetchEthereum(address: string, options: FetchOptions): Promise<Ch
     url.searchParams.set('sort', 'desc')
     url.searchParams.set('apikey', key)
 
-    const body = await getJson(url.toString())
+    if (page > 1) await sleep(PAGE_PAUSE_MS)
+    const body = await getJson(url.toString(), 'ETHEREUM')
     const answer = body as { status?: string; message?: string; result?: unknown }
 
     /*
@@ -215,6 +317,11 @@ async function fetchEthereum(address: string, options: FetchOptions): Promise<Ch
     if (answer.status !== '1') {
       const message = String(answer.message ?? '')
       if (/no transactions found/i.test(message)) break
+      // Etherscan answers 200 with the limit in the body, so the status-code
+      // retry above never sees it.
+      if (/rate limit|max calls per sec/i.test(message)) {
+        throw new ChainError(limitMessage('ETHEREUM'), 'ETHEREUM')
+      }
       throw new ChainError(
         `Etherscan said: ${message || 'the request was refused'}`,
         'ETHEREUM',
@@ -231,9 +338,15 @@ async function fetchEthereum(address: string, options: FetchOptions): Promise<Ch
       found.push(transfer)
     }
     if (rows.length === 0) break
+    } catch (error) {
+      if (found.length > 0 && error instanceof ChainError) {
+        return { transfers: found, stoppedBy: error.message }
+      }
+      throw error
+    }
   }
 
-  return found
+  return { transfers: found }
 }
 
 /** Overridable, because an explorer's URL is not a thing worth a deploy. */
@@ -280,14 +393,16 @@ export async function fetchTransfers(
   chain: WalletChain,
   address: string,
   options: FetchOptions = {},
-): Promise<ChainTransfer[]> {
+): Promise<ChainRead> {
   const value = normaliseAddress(chain, address)
-  const transfers = chain === 'TRON'
+  const read = chain === 'TRON'
     ? await fetchTron(value, options)
     : await fetchEthereum(value, options)
 
-  logger.info('wallet scanned', { chain, transfers: transfers.length })
-  return transfers
+  logger.info('wallet scanned', {
+    chain, transfers: read.transfers.length, stopped: Boolean(read.stoppedBy),
+  })
+  return read
 }
 
 /**

@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   candidates, daysApart, flagsFor, proposeLinks, sameMoney, tolerance,
   type Payable, type Payment,
 } from '@/lib/wallet-match'
 import { normaliseAddress, rawFromUsd, usdFromRaw, validAddress } from '@/lib/usdt'
-import { readEtherscanRow, readTronRow } from '@/server/services/chain-reader'
+import { fetchTransfers, readEtherscanRow, readTronRow, waitFor } from '@/server/services/chain-reader'
 import { AI_CONFIDENCE_CEILING, validate } from '@/server/services/wallet-ai'
 
 const read = (path: string) => readFileSync(path, 'utf8')
@@ -574,4 +574,90 @@ describe('which rule gets to speak first', () => {
     )
     expect(proposals[0].targetId).toBe('exact')
   })
+})
+
+/**
+ * Being rate-limited, which is the ordinary answer rather than a fault.
+ *
+ * Alex, on the first real scan: "The chain could not be read. TRC Main
+ * Wallet: the explorer answered 429." TronGrid meters its free endpoint per
+ * IP, and a deployment shares its IP with every other tenant on the host — so
+ * the limit is reached by other people's traffic as readily as by ours.
+ */
+describe('when the explorer says slow down', () => {
+  it('waits and tries again, twice', () => {
+    expect(waitFor(429, 1)).toBe(1_200)
+    expect(waitFor(429, 2)).toBe(2_400)
+    // Three goes at a page, then it is reported rather than hammered.
+    expect(waitFor(429, 3)).toBeNull()
+  })
+
+  it('does the number the explorer asked for, within reason', () => {
+    // Its own figure beats our guess.
+    expect(waitFor(429, 1, '3')).toBe(3_000)
+    // But an explorer asking for five minutes is asking for longer than a
+    // scan is allowed to take.
+    expect(waitFor(429, 1, '300')).toBe(6_000)
+    expect(waitFor(429, 1, 'soon')).toBe(1_200)
+  })
+
+  it('retries a server error and not a refusal', () => {
+    /*
+     * A bad key or a malformed address says the same thing however many
+     * times it is asked, and retrying only makes somebody wait longer for
+     * the same answer.
+     */
+    expect(waitFor(503, 1)).toBe(1_200)
+    expect(waitFor(500, 1)).toBe(1_200)
+    expect(waitFor(401, 1)).toBeNull()
+    expect(waitFor(403, 1)).toBeNull()
+    expect(waitFor(404, 1)).toBeNull()
+  })
+})
+
+describe('a read that is cut short', () => {
+  const realFetch = globalThis.fetch
+
+  afterEach(() => { globalThis.fetch = realFetch })
+
+  it('keeps the pages that arrived before the refusal', async () => {
+    /*
+     * The failure this prevents: four pages of real transfers thrown away
+     * because the fifth was refused, and the next scan having to read them
+     * all again. A transfer is recognised by its own content, so what is
+     * held costs nothing to re-read — but only if it was held.
+     */
+    let call = 0
+    globalThis.fetch = (async () => {
+      call += 1
+      if (call === 1) {
+        return new Response(JSON.stringify({
+          success: true,
+          data: [{
+            transaction_id: 'tx-1',
+            token_info: { symbol: 'USDT', address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', decimals: 6 },
+            block_timestamp: 1_763_000_000_000,
+            from: 'TPayer', to: 'TOurs', value: '40000000000',
+          }],
+          meta: { fingerprint: 'next-page' },
+        }), { status: 200 })
+      }
+      return new Response('nope', { status: 403 })
+    }) as typeof fetch
+
+    const read = await fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg')
+    expect(read.transfers).toHaveLength(1)
+    expect(read.transfers[0].amountUsd).toBe(usd(40_000))
+    // And it says it was stopped, rather than pretending that was all of it.
+    expect(read.stoppedBy).toBeTruthy()
+  })
+
+  it('tells somebody what to do about a rate limit, not its status code', async () => {
+    // "The explorer answered 429" is the truth and is no use: it names the
+    // mechanism rather than the fix.
+    globalThis.fetch = (async () => new Response('slow down', { status: 429 })) as typeof fetch
+
+    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg'))
+      .rejects.toThrow(/free TronGrid key/i)
+  }, 15_000)
 })

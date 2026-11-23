@@ -193,10 +193,17 @@ export async function scanWallets(
         ? new Date(newest.at.getTime() - 60 * 60 * 1000)
         : wallet.watchFrom ?? null
 
-      const transfers = await fetchTransfers(wallet.chain as WalletChain, wallet.address, { since })
-      found += transfers.length
+      const read = await fetchTransfers(wallet.chain as WalletChain, wallet.address, { since })
+      found += read.transfers.length
+      /*
+       * A read cut short by a rate limit is not a failure: what arrived is
+       * stored, and it is said rather than swallowed so somebody knows there
+       * is more behind it. Scanning again costs nothing — a transfer is
+       * recognised by its own content, so the ones already held are skipped.
+       */
+      if (read.stoppedBy) errors.push({ wallet: wallet.label, message: read.stoppedBy })
 
-      for (const transfer of transfers) {
+      for (const transfer of read.transfers) {
         if (transfer.amountUsd === null) {
           logger.warn('a transfer was skipped: its amount could not be read', {
             chain: wallet.chain, txHash: transfer.txHash,
