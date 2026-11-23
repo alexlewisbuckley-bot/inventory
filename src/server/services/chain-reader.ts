@@ -47,6 +47,15 @@ export interface FetchOptions {
   since?: Date | null
   /** A ceiling on one run, so a wallet with a long history cannot hang a request. */
   limit?: number
+  /**
+   * When this read must be finished, as a clock reading.
+   *
+   * Shared across the wallets in one scan rather than given to each, because
+   * the thing being protected is the request they all run inside: two
+   * wallets each waiting patiently is one wallet's patience twice over, and
+   * the second one is what gets cut off.
+   */
+  deadline?: number
 }
 
 /**
@@ -92,23 +101,46 @@ export class ChainError extends Error {
  * key or a malformed address will say the same thing however many times it is
  * asked, and retrying it only makes somebody wait longer for the same answer.
  */
-export function waitFor(status: number, attempt: number, retryAfter?: string | null): number | null {
+export function waitFor(
+  status: number, attempt: number, retryAfter?: string | null, msLeft = Infinity,
+): number | null {
   const retryable = status === 429 || (status >= 500 && status < 600)
-  if (!retryable || attempt >= MAX_ATTEMPTS) return null
+  if (!retryable) return null
+
+  /*
+   * A rate limit is given far more patience than a server fault.
+   *
+   * They are different things wearing the same shape. A 5xx means the
+   * explorer is unwell, and asking a fourth time does not mend it. A 429
+   * means we asked too fast — the one failure that waiting genuinely cures,
+   * and on a shared host it is reached by other tenants' traffic as often as
+   * by ours. Three goes at it spent three and a half seconds and gave up,
+   * which is not waiting; it is a pause.
+   */
+  const ceiling = status === 429 ? LIMIT_ATTEMPTS : MAX_ATTEMPTS
+  if (attempt >= ceiling) return null
 
   const asked = Number(retryAfter)
-  if (Number.isFinite(asked) && asked > 0) {
+  const wait = Number.isFinite(asked) && asked > 0
     // Seconds, by the standard. Capped, because an explorer asking for five
     // minutes is asking for longer than a scan is allowed to take.
-    return Math.min(asked * 1000, MAX_BACKOFF_MS)
-  }
-  return Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS)
+    ? Math.min(asked * 1000, MAX_BACKOFF_MS)
+    : Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS)
+
+  /*
+   * Never sleep past the budget. A wait that outlives the request it is
+   * waiting for buys nothing: the function is killed mid-sleep and
+   * everything already read is lost with it. Better to stop here, hand back
+   * the pages we have, and say what stopped us.
+   */
+  return wait >= msLeft ? null : wait
 }
 
-/** Three goes at a page: the first, then two retries. */
+/** Three goes at a page that errored; eight at one that was merely metered. */
 const MAX_ATTEMPTS = 3
+const LIMIT_ATTEMPTS = 8
 const BASE_BACKOFF_MS = 1_200
-const MAX_BACKOFF_MS = 6_000
+const MAX_BACKOFF_MS = 10_000
 
 const sleep = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms) })
 
@@ -133,6 +165,18 @@ function limitMessage(chain: WalletChain): string {
     + 'happening, but nothing here needs one.'
 }
 
+/**
+ * Stopped by the clock, said as a state of play rather than a failure.
+ *
+ * Nothing is lost when this happens: a transfer is recognised by its own
+ * content, so everything read is kept and scanning again picks up where this
+ * one stopped instead of starting over.
+ */
+function outOfTime(chain: WalletChain): string {
+  return `${EXPLORER[chain]} was still rate-limiting us when this scan ran out of time. `
+    + 'Everything it did read has been kept — scan again in a minute to carry on from there.'
+}
+
 /** What to call each explorer when telling somebody it would not answer. */
 const EXPLORER: Record<WalletChain, string> = {
   TRON: 'TronGrid (tronscan\u2019s own source)',
@@ -141,6 +185,7 @@ const EXPLORER: Record<WalletChain, string> = {
 
 async function getJson(
   url: string, chain: WalletChain, headers: Record<string, string> = {},
+  deadline = Infinity,
 ): Promise<unknown> {
   for (let attempt = 1; ; attempt += 1) {
     const controller = new AbortController()
@@ -153,7 +198,9 @@ async function getJson(
       })
       if (response.ok) return await response.json()
 
-      const wait = waitFor(response.status, attempt, response.headers.get('retry-after'))
+      const wait = waitFor(
+        response.status, attempt, response.headers.get('retry-after'), deadline - Date.now(),
+      )
       if (wait === null) {
         throw new ChainError(
           response.status === 429
@@ -175,7 +222,7 @@ async function getJson(
        * dropped connection is the most retryable failure there is.
        */
       const aborted = (error as { name?: string } | null)?.name === 'AbortError'
-      const wait = waitFor(503, attempt, null)
+      const wait = waitFor(503, attempt, null, deadline - Date.now())
       if (wait === null) {
         throw new ChainError(
           aborted
@@ -212,6 +259,11 @@ async function fetchTron(address: string, options: FetchOptions): Promise<ChainR
   let fingerprint: string | null = null
 
   for (let page = 0; page < MAX_PAGES && found.length < limit; page += 1) {
+    // Out of time: hand back what was read rather than start a page that
+    // will be killed half-way through.
+    if (options.deadline && Date.now() > options.deadline) {
+      return { transfers: found, stoppedBy: outOfTime('TRON') }
+    }
     try {
     const url = new URL(`https://api.trongrid.io/v1/accounts/${encodeURIComponent(address)}/transactions/trc20`)
     url.searchParams.set('contract_address', contract)
@@ -221,7 +273,9 @@ async function fetchTron(address: string, options: FetchOptions): Promise<ChainR
     if (fingerprint) url.searchParams.set('fingerprint', fingerprint)
 
     if (page > 0) await sleep(PAGE_PAUSE_MS)
-    const body = await getJson(url.toString(), 'TRON', key ? { 'TRON-PRO-API-KEY': key } : {})
+    const body = await getJson(
+      url.toString(), 'TRON', key ? { 'TRON-PRO-API-KEY': key } : {}, options.deadline,
+    )
     const page_ = body as {
       success?: boolean
       error?: unknown
@@ -386,6 +440,9 @@ async function fetchEtherscanShaped(
   const found: ChainTransfer[] = []
 
   for (let page = 1; page <= MAX_PAGES && found.length < limit; page += 1) {
+    if (options.deadline && Date.now() > options.deadline) {
+      return { transfers: found, stoppedBy: outOfTime('ETHEREUM') }
+    }
     try {
       const url = new URL(source.base)
       if (source.chainId) url.searchParams.set('chainid', source.chainId)
@@ -399,7 +456,7 @@ async function fetchEtherscanShaped(
       if (source.usesKey && key) url.searchParams.set('apikey', key)
 
       if (page > 1) await sleep(PAGE_PAUSE_MS)
-      const body = await getJson(url.toString(), 'ETHEREUM')
+      const body = await getJson(url.toString(), 'ETHEREUM', {}, options.deadline)
       const answer = body as { status?: string; message?: string; result?: unknown }
 
       /*

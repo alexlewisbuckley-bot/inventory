@@ -160,6 +160,12 @@ export interface ScanResult {
  * overlap costs nothing — a transfer already held is recognised by its own
  * identity and skipped.
  */
+/** Short of the route's sixty seconds, leaving room to write what was read. */
+const SCAN_BUDGET_MS = 45_000
+const WALLET_PAUSE_MS = 500
+
+const pause = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms) })
+
 export async function scanWallets(
   walletId: string | null, actor: SessionUser,
 ): Promise<ScanResult> {
@@ -189,8 +195,24 @@ export async function scanWallets(
   let added = 0
   const errors: ScanResult['errors'] = []
 
-  for (const wallet of targets) {
+  /*
+   * One budget for the whole scan, not one per wallet.
+   *
+   * The thing with a time limit is the request all of these run inside, and
+   * the route allows sixty seconds. Forty-five leaves room for the writes
+   * and the page that follows, and means two wallets cannot each wait
+   * patiently and have the second one killed for it.
+   */
+  const deadline = Date.now() + SCAN_BUDGET_MS
+
+  for (const [index, wallet] of targets.entries()) {
     try {
+      /*
+       * A breath between wallets. These endpoints meter by the second, and
+       * finishing one wallet's last page and starting the next one's first
+       * in the same instant is the surest way to be told to slow down.
+       */
+      if (index > 0) await pause(WALLET_PAUSE_MS)
       const [newest] = await db
         .select({ at: walletTransfers.blockTime })
         .from(walletTransfers)
@@ -203,7 +225,9 @@ export async function scanWallets(
         ? new Date(newest.at.getTime() - 60 * 60 * 1000)
         : wallet.watchFrom ?? null
 
-      const read = await fetchTransfers(wallet.chain as WalletChain, wallet.address, { since })
+      const read = await fetchTransfers(
+        wallet.chain as WalletChain, wallet.address, { since, deadline },
+      )
       found += read.transfers.length
       /*
        * A read cut short by a rate limit is not a failure: what arrived is
