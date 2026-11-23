@@ -1102,3 +1102,40 @@ export const OVERHEAD_CADENCE_LABELS: Record<OverheadCadence, string> = {
 export const OVERHEAD_PER_YEAR: Record<OverheadCadence, number> = {
   MONTHLY: 12, QUARTERLY: 4, ANNUAL: 1, ONE_OFF: 0,
 }
+
+/* ================= USDT wallets ================= */
+
+/**
+ * The chains a USDT payment can arrive on.
+ *
+ * Alex settles on both. TRON carries most of it — a transfer costs a dollar
+ * or two and clears in a minute, which is why the trade in Dubai runs on it —
+ * and Ethereum carries the larger, slower institutional payments.
+ *
+ * The token is the same dollar either side and has six decimals on both,
+ * which is the only arithmetic fact the rest of the system needs.
+ */
+export const WALLET_CHAINS = ['TRON', 'ETHEREUM'] as const
+export type WalletChain = (typeof WALLET_CHAINS)[number]
+
+export const WALLET_CHAIN_LABELS: Record<WalletChain, string> = {
+  TRON: 'TRON (TRC-20)',
+  ETHEREUM: 'Ethereum (ERC-20)',
+}
+
+/** The USDT contract on each chain. Not configurable: these are the token. */
+export const USDT_CONTRACTS: Record<WalletChain, string> = {
+  TRON: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+  ETHEREUM: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+}
+
+/** USDT is six decimals on both chains. */
+export const USDT_DECIMALS = 6
+
+/** Money in, money out. Ours is the wallet; the direction is relative to it. */
+export const TRANSFER_DIRECTIONS = ['IN', 'OUT'] as const
+export type TransferDirection = (typeof TRANSFER_DIRECTIONS)[number]
+
+/** Who proposed a link, kept after approval because it is a different fact. */
+export const LINK_BASES = ['RULE', 'AI', 'HUMAN'] as const
+export type LinkBasis = (typeof LINK_BASES)[number]

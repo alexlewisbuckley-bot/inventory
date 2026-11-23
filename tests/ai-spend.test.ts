@@ -11,6 +11,7 @@ const SERVICES = {
   gap: 'src/server/services/gap-ai.ts',
   'watch-photo': 'src/server/services/watch-ai.ts',
   'xero-screenshot': 'src/server/services/xero-vision.ts',
+  'wallet-reconcile': 'src/server/services/wallet-ai.ts',
 } as const
 
 /**

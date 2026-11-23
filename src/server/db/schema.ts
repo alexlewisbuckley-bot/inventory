@@ -18,6 +18,7 @@ import {
   STOCK_CHECK_LINE_STATUSES, STOCK_CHECK_STATUSES, TASK_KINDS, TASK_STATUSES, THEMES,
   VAT_CHECK_STATUSES, VAT_SCHEMES, WATCH_STATUSES,
   PRIZE_KINDS, PRIZE_RULES,
+  WALLET_CHAINS, TRANSFER_DIRECTIONS, LINK_BASES,
 } from '@/lib/enums'
 
 /**
@@ -2401,6 +2402,194 @@ export type NewActivity = typeof activities.$inferInsert
 export type Task = typeof tasks.$inferSelect
 export type NewTask = typeof tasks.$inferInsert
 export type Tag = typeof tags.$inferSelect
+
+/* ================= USDT wallets ================= */
+
+/**
+ * A wallet of ours, as an address.
+ *
+ * Alex: "we need an inovative way to utilise AI and our USDT wallet addresses
+ * the record all transactions."
+ *
+ * Nothing here is a key and nothing here can spend. An address is public —
+ * the whole chain can read it already — and reading it is all this does. The
+ * reason to hold them is that the chain is better evidence than an invoice:
+ * it cannot be edited after the fact, and every payment is on it whether or
+ * not anybody wrote it down.
+ */
+export const wallets = pgTable(
+  'wallets',
+  {
+    id: text('id').primaryKey(),
+    label: text('label').notNull(),
+    chain: text('chain', { enum: WALLET_CHAINS }).notNull(),
+    /**
+     * As the chain writes it.
+     *
+     * TRON is case-sensitive base58. Ethereum is stored lower-cased, because
+     * the same address arrives in four capitalisations and they are one
+     * wallet — which is a bug nobody finds until a payment goes unmatched.
+     */
+    address: text('address').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    notes: text('notes'),
+    /** How far back the first scan looks, so an old wallet is not re-read whole. */
+    watchFrom: timestamp('watch_from', { withTimezone: true }),
+    createdById: text('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => ({
+    addressIdx: uniqueIndex('wallets_address_idx').on(t.chain, t.address)
+      .where(sql`deleted_at IS NULL`),
+  }),
+)
+
+/** One run against the explorers, so a batch can be reviewed as a batch. */
+export const walletScans = pgTable(
+  'wallet_scans',
+  {
+    id: text('id').primaryKey(),
+    /** Null means every active wallet, which is the ordinary case. */
+    walletId: text('wallet_id').references(() => wallets.id, { onDelete: 'cascade' }),
+    status: text('status').notNull().default('RUNNING'),
+    found: integer('found').notNull().default(0),
+    added: integer('added').notNull().default(0),
+    error: text('error'),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => ({ recentIdx: index('wallet_scans_recent_idx').on(t.startedAt) }),
+)
+
+/** One transfer of one token, as the chain has it. */
+export const walletTransfers = pgTable(
+  'wallet_transfers',
+  {
+    id: text('id').primaryKey(),
+    walletId: text('wallet_id').notNull().references(() => wallets.id, { onDelete: 'cascade' }),
+    chain: text('chain', { enum: WALLET_CHAINS }).notNull(),
+    txHash: text('tx_hash').notNull(),
+    /** Where an explorer gives one. Neither of ours does — see the index below. */
+    logIndex: integer('log_index').notNull().default(0),
+    direction: text('direction', { enum: TRANSFER_DIRECTIONS }).notNull(),
+    counterparty: text('counterparty').notNull(),
+    /**
+     * The integer the chain stores, as text.
+     *
+     * Up to 256 bits, which no JavaScript number holds — and rounding
+     * somebody's payment on the way into the database is not a thing to do
+     * casually. The usable figure is derived from it once, below.
+     */
+    amountRaw: text('amount_raw').notNull(),
+    /** The same figure in cents, USDT being a six-decimal dollar. */
+    amountUsd: integer('amount_usd').notNull(),
+    tokenSymbol: text('token_symbol').notNull().default('USDT'),
+    contract: text('contract').notNull(),
+    blockTime: timestamp('block_time', { withTimezone: true }).notNull(),
+    scanId: text('scan_id').references(() => walletScans.id, { onDelete: 'set null' }),
+    /**
+     * Everything the explorer said, kept whole.
+     *
+     * A field nothing reads today is the field somebody needs when a payment
+     * is disputed a year from now.
+     */
+    raw: jsonb('raw').$type<Record<string, unknown>>().notNull().default({}),
+    /** Set when this one is not ours to reconcile: our own transfer, a gas top-up, a test. */
+    ignoredAt: timestamp('ignored_at', { withTimezone: true }),
+    ignoredById: text('ignored_by_id').references(() => users.id, { onDelete: 'set null' }),
+    ignoreReason: text('ignore_reason'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    /*
+     * What makes two rows the same transfer.
+     *
+     * The obvious key is the hash and the log index, and neither explorer
+     * returns a log index: both give one row per transfer carrying the
+     * transaction's hash and nothing to tell two transfers inside one
+     * transaction apart. So the identity is what the row says — who paid
+     * whom, how much, in which transaction — which makes a re-scan idempotent
+     * where a position in a page of results would duplicate a payment every
+     * time a page boundary moved.
+     */
+    identityIdx: uniqueIndex('wallet_transfers_identity_idx')
+      .on(t.chain, t.txHash, t.direction, t.counterparty, t.amountRaw),
+    timeIdx: index('wallet_transfers_time_idx').on(t.blockTime),
+    walletIdx: index('wallet_transfers_wallet_idx').on(t.walletId, t.blockTime),
+  }),
+)
+
+/**
+ * What a transfer paid for.
+ *
+ * A row per pairing rather than a column on either side, because neither
+ * direction is one-to-one: one payment settles two invoices often enough,
+ * and one invoice is routinely paid in three transfers over a week.
+ */
+export const walletLinks = pgTable(
+  'wallet_links',
+  {
+    id: text('id').primaryKey(),
+    transferId: text('transfer_id').notNull()
+      .references(() => walletTransfers.id, { onDelete: 'cascade' }),
+    /** Exactly one of these, which a check constraint enforces. */
+    saleId: text('sale_id').references(() => sales.id, { onDelete: 'cascade' }),
+    brokerageId: text('brokerage_id').references(() => brokerages.id, { onDelete: 'cascade' }),
+    /** This record's share of the transfer, in cents. */
+    amountUsd: integer('amount_usd').notNull(),
+    /**
+     * Who thought of it, kept after approval.
+     *
+     * "The model suggested this and somebody agreed" is a different fact
+     * from "somebody typed it in", and the difference is the first thing
+     * worth knowing when a reconciliation turns out to be wrong.
+     */
+    basis: text('basis', { enum: LINK_BASES }).notNull().default('RULE'),
+    confidence: integer('confidence').notNull().default(0),
+    reason: text('reason'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
+    approvedById: text('approved_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    transferIdx: index('wallet_links_transfer_idx').on(t.transferId),
+    saleIdx: index('wallet_links_sale_idx').on(t.saleId),
+    brokerageIdx: index('wallet_links_brokerage_idx').on(t.brokerageId),
+  }),
+)
+
+/**
+ * A counterparty we have seen before.
+ *
+ * The second payment from the same address is the easiest match in the
+ * system, and the chain gives it away: an address that paid invoice 1727 in
+ * March is almost certainly the same customer in June. Learned when somebody
+ * approves a link rather than typed in by hand.
+ */
+export const walletCounterparties = pgTable(
+  'wallet_counterparties',
+  {
+    id: text('id').primaryKey(),
+    chain: text('chain', { enum: WALLET_CHAINS }).notNull(),
+    address: text('address').notNull(),
+    customerId: text('customer_id')
+      .references((): AnyPgColumn => customers.id, { onDelete: 'set null' }),
+    partnerId: text('partner_id')
+      .references((): AnyPgColumn => partners.id, { onDelete: 'set null' }),
+    label: text('label'),
+    note: text('note'),
+    firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+    lastSeen: timestamp('last_seen', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => ({
+    addressIdx: uniqueIndex('wallet_counterparties_address_idx').on(t.chain, t.address),
+  }),
+)
 
 /* ================= Xero reconciliation ================= */
 

@@ -19,7 +19,9 @@ import { businessToday, startOfMonthUtc } from '@/lib/dates'
  */
 
 /** The features that spend. Named rather than free text so a report can group. */
-export const AI_FEATURES = ['invoice', 'gap', 'watch-photo', 'xero-screenshot'] as const
+export const AI_FEATURES = [
+  'invoice', 'gap', 'watch-photo', 'xero-screenshot', 'wallet-reconcile',
+] as const
 export type AiFeature = (typeof AI_FEATURES)[number]
 
 export const AI_FEATURE_LABELS: Record<AiFeature, string> = {
@@ -27,6 +29,7 @@ export const AI_FEATURE_LABELS: Record<AiFeature, string> = {
   gap: 'Filling content gaps',
   'watch-photo': 'Reading watch photographs',
   'xero-screenshot': 'Reading Xero screenshots',
+  'wallet-reconcile': 'Placing USDT payments',
 }
 
 /**
