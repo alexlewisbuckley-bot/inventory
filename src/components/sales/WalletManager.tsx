@@ -22,7 +22,38 @@ export interface KeyRow {
   chain: WalletChain
   source: 'stored' | 'environment' | 'none'
   hint: string | null
-  required: boolean
+}
+
+/**
+ * What went wrong when the action itself did not come back.
+ *
+ * A server action can fail without ever returning a result: the function
+ * times out part-way through a scan, a deployment restarts under it, the
+ * connection drops. That rejects the promise, and a rejection inside a
+ * transition is swallowed — the button stops spinning and nothing else
+ * happens, which from the other side of the screen is indistinguishable
+ * from a button that is not wired up. Saying so is the whole point.
+ */
+function mishap(error: unknown): { message: string; detail: string } {
+  const text = error instanceof Error ? error.message : String(error ?? '')
+  if (/fetch|network|load failed/i.test(text)) {
+    return {
+      message: 'That did not reach the server.',
+      detail: 'The connection dropped part-way. Try it again.',
+    }
+  }
+  return {
+    message: 'The server did not finish that.',
+    detail: text
+      ? `${text} — if this was a scan, it may have been cut short part-way through.`
+      : 'It may have been cut short part-way through. Try it again.',
+  }
+}
+
+/** A redirect is the framework working, not a failure: let it through. */
+function isRedirect(error: unknown): boolean {
+  const digest = (error as { digest?: unknown } | null)?.digest
+  return typeof digest === 'string' && /^NEXT_(REDIRECT|NOT_FOUND)/.test(digest)
 }
 
 /**
@@ -46,9 +77,15 @@ export function WalletManager({ wallets, keys }: { wallets: WalletRow[]; keys: K
 
   const run = (work: () => Promise<{ ok: boolean; message: string; detail?: string }>) => {
     start(async () => {
-      const result = await work()
-      if (result.ok) toast.success(result.message, result.detail)
-      else toast.error(result.message, result.detail)
+      try {
+        const result = await work()
+        if (result.ok) toast.success(result.message, result.detail)
+        else toast.error(result.message, result.detail)
+      } catch (error) {
+        if (isRedirect(error)) throw error
+        const said = mishap(error)
+        toast.error(said.message, said.detail)
+      }
     })
   }
 
@@ -150,7 +187,7 @@ export function WalletManager({ wallets, keys }: { wallets: WalletRow[]; keys: K
                     type="button"
                     size="sm"
                     variant="ghost"
-                    disabled={pending}
+                    loading={pending}
                     onClick={() => run(() => scanWalletsAction(wallet.id))}
                   >
                     Scan this one
@@ -174,37 +211,50 @@ export function WalletManager({ wallets, keys }: { wallets: WalletRow[]; keys: K
 
       <Card className="overflow-hidden">
         <div className="border-b border-line-subtle px-5 py-4">
-          <h2 className="text-small font-bold text-content-primary">Explorer keys</h2>
-          <p className="text-caption text-content-secondary">
-            Read-only keys for the public block explorers. They raise a rate limit and can see
-            nothing the chain does not already show the world.
-          </p>
+          <h2 className="text-small font-bold text-content-primary">
+            Explorer keys
+            <span className="ml-2 font-normal text-content-secondary">optional</span>
+          </h2>
           {/*
-            Said properly, because "TRON works without one" was true and
-            misleading: it works until the free endpoint meters us, and it
-            meters per IP — which on a shared host means other people's
-            traffic counts against us as readily as our own.
+            Leading with the fact that nothing is needed here, because the
+            screen used to say the opposite and a box labelled "Key" reads
+            as a thing somebody has to go and get.
           */}
+          <p className="text-caption text-content-secondary">
+            Nothing is needed here. Both chains are read from public sources that ask for no
+            key — a transfer is public, and these pages show it to anybody.
+          </p>
           <p className="mt-1.5 text-caption text-content-secondary">
-            Etherscan refuses an unkeyed request outright —{' '}
+            TRON is read from TronGrid and Ethereum from{' '}
             <a
-              href="https://etherscan.io/myapikey"
+              href="https://eth.blockscout.com"
               target="_blank"
               rel="noreferrer"
               className="underline hover:text-content-primary"
             >
-              a free key
-            </a>{' '}
-            takes a minute. TRON works without one and is rate-limited hard without one, so{' '}
+              Blockscout
+            </a>
+            , both unkeyed. They meter by IP rather than by account, so a busy day can be
+            answered with “slow down”; a scan waits and tries again, and anything it could not
+            reach is said rather than swallowed. A free key — from{' '}
             <a
               href="https://www.trongrid.io/dashboard"
               target="_blank"
               rel="noreferrer"
               className="underline hover:text-content-primary"
             >
-              a free TronGrid key
+              TronGrid
             </a>{' '}
-            is worth the same minute.
+            or{' '}
+            <a
+              href="https://etherscan.io/myapikey"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              Etherscan
+            </a>{' '}
+            — only raises that ceiling. It is never required, and a scan never waits on one.
           </p>
         </div>
         <ul className="divide-y divide-line-subtle">
@@ -232,7 +282,7 @@ function ExplorerKeyRow({ row, busy, onSave }: {
         <p className="text-small font-bold text-content-primary">{WALLET_CHAIN_LABELS[row.chain]}</p>
         <p className="text-caption text-content-secondary">
           {row.source === 'none'
-            ? row.required ? 'No key — this chain cannot be scanned' : 'No key — expect to be rate-limited'
+            ? 'No key — read from the public source'
             : `Set ${row.source === 'stored' ? 'here' : 'on the deployment'} · ${row.hint}`}
         </p>
       </div>

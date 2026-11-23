@@ -40,7 +40,6 @@ export interface ExplorerKeyStatus {
   hint: string | null
   updatedAt: Date | null
   /** Whether scanning that chain works at all without it. */
-  required: boolean
 }
 
 /** The last four characters and a length, which is all a screen ever needs. */
@@ -86,12 +85,12 @@ export async function explorerKeyStatus(): Promise<ExplorerKeyStatus[]> {
   return (Object.keys(NAMES) as WalletChain[]).map((chain) => {
     const stored = rows.find((row) => row.name === NAMES[chain])
     if (stored && open(stored.secret)) {
-      return { chain, source: 'stored' as const, hint: stored.hint, updatedAt: stored.updatedAt, required: chain === 'ETHEREUM' }
+      return { chain, source: 'stored' as const, hint: stored.hint, updatedAt: stored.updatedAt }
     }
     const env = fromEnv(chain)
     return env
-      ? { chain, source: 'environment' as const, hint: hintFor(env), updatedAt: null, required: chain === 'ETHEREUM' }
-      : { chain, source: 'none' as const, hint: null, updatedAt: null, required: chain === 'ETHEREUM' }
+      ? { chain, source: 'environment' as const, hint: hintFor(env), updatedAt: null }
+      : { chain, source: 'none' as const, hint: null, updatedAt: null }
   })
 }
 

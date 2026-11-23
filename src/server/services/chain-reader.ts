@@ -121,10 +121,22 @@ const sleep = (ms: number) => new Promise((resolve) => { setTimeout(resolve, ms)
  * same screen as the error.
  */
 function limitMessage(chain: WalletChain): string {
-  return chain === 'TRON'
-    ? 'TronGrid is rate-limiting us. A free TronGrid key raises the limit a long way — '
-      + 'paste one into Explorer keys below, or wait a minute and scan again.'
-    : 'Etherscan is rate-limiting us. Wait a minute and scan again, or use a key with a higher tier.'
+  const who = chain === 'TRON' ? 'TronGrid' : 'the public explorer'
+  /*
+   * Waiting comes first, because waiting is the answer. The keyless sources
+   * meter by the minute, not by the day: a scan that was turned away is
+   * nearly always fine a minute later, and whatever it did read is kept, so
+   * scanning again costs nothing and repeats nothing.
+   */
+  return `${who} is rate-limiting us — it meters by the minute, so scan again shortly and `
+    + 'it will pick up where this left off. A free key below raises the ceiling if this keeps '
+    + 'happening, but nothing here needs one.'
+}
+
+/** What to call each explorer when telling somebody it would not answer. */
+const EXPLORER: Record<WalletChain, string> = {
+  TRON: 'TronGrid (tronscan\u2019s own source)',
+  ETHEREUM: 'Etherscan',
 }
 
 async function getJson(
@@ -151,6 +163,28 @@ async function getJson(
         )
       }
       logger.info('the explorer asked us to slow down', { chain, status: response.status, wait })
+      await sleep(wait)
+    } catch (error) {
+      // A sentence we chose already: leave it alone.
+      if (error instanceof ChainError) throw error
+      /*
+       * A request that never got an answer at all — DNS, a refused or
+       * dropped connection, or our own timeout firing. `fetch` reports every
+       * one of these as "fetch failed", which told whoever was reconciling
+       * invoices precisely nothing. It is also worth one more attempt: a
+       * dropped connection is the most retryable failure there is.
+       */
+      const aborted = (error as { name?: string } | null)?.name === 'AbortError'
+      const wait = waitFor(503, attempt, null)
+      if (wait === null) {
+        throw new ChainError(
+          aborted
+            ? `${EXPLORER[chain]} did not answer within ${Math.round(TIMEOUT_MS / 1000)} seconds`
+            : `${EXPLORER[chain]} could not be reached — check this deployment can make outbound requests to it`,
+          chain,
+        )
+      }
+      logger.info('the explorer did not answer; trying again', { chain, attempt, wait })
       await sleep(wait)
     } finally {
       clearTimeout(timer)
@@ -266,81 +300,143 @@ export function readTronRow(row: unknown): ChainTransfer | null {
 /* ------------------------------------------------------------- Ethereum -- */
 
 /**
- * Etherscan, through the versioned endpoint and a key.
+ * Ethereum, from whatever public source will answer without being paid.
  *
- * The key is not optional here, which is the one way the two chains differ
- * in practice: Etherscan refuses an unkeyed request rather than rate-limiting
- * it. A free key covers a desk's usage many times over, and it is set in
- * settings so a lapsed one can be replaced without a deploy.
+ * Alex: "I dont want it to use keys i just want it to look at the publicly
+ * available information of transactions."
  *
- * The URL shape is a setting too. Etherscan has moved its API between forms
- * more than once — a single endpoint carrying a chain id is the current one —
- * and a dealer whose payments stop reconciling because an explorer renamed a
- * path should be able to fix it in a text box rather than wait for us.
+ * That is the right instinct and it took a rewrite to honour, because
+ * Etherscan stopped serving unkeyed requests when it moved to v2 — every
+ * call needs a key now, free tier included. What it did not take away is the
+ * data: an ERC-20 transfer is public, and Blockscout runs a public Ethereum
+ * instance that serves the same query, in the same request shape, for
+ * nobody's key at all.
+ *
+ * So the sources are tried in order and the keyless one goes first. A key,
+ * if somebody has bothered with one, is a fallback that raises a ceiling —
+ * never a requirement, and never the thing standing between a dealer and
+ * their own payments.
  */
+interface Source {
+  name: string
+  base: string
+  /** Appended as `apikey` when we hold one. Never required to try. */
+  usesKey: boolean
+  /** Etherscan carries the chain in the query; a per-chain instance does not. */
+  chainId?: string
+}
+
+export function ethereumSources(key: string | null): Source[] {
+  const sources: Source[] = [{
+    name: 'Blockscout',
+    base: process.env.BLOCKSCOUT_API_URL?.trim() || 'https://eth.blockscout.com/api',
+    usesKey: false,
+  }]
+  /*
+   * Only when there is one. Listing Etherscan without a key would spend an
+   * attempt — and a few seconds of somebody's scan — on a request we already
+   * know it will refuse.
+   */
+  if (key) {
+    sources.push({ name: 'Etherscan', base: etherscanBase(), usesKey: true, chainId: '1' })
+  }
+  return sources
+}
+
 async function fetchEthereum(address: string, options: FetchOptions): Promise<ChainRead> {
-  const key = await explorerKey('ETHEREUM')
-  if (!key) {
-    throw new ChainError(
-      'Etherscan needs an API key. Add one in Settings → Integrations and scan again.',
-      'ETHEREUM',
-    )
+  const key = (await explorerKey('ETHEREUM')) ?? null
+  const sources = ethereumSources(key)
+  const refusals: string[] = []
+
+  for (const source of sources) {
+    try {
+      return await fetchEtherscanShaped(source, address, options, key)
+    } catch (error) {
+      if (!(error instanceof ChainError)) throw error
+      refusals.push(`${source.name}: ${error.message}`)
+      logger.warn('a public source would not answer; trying the next', {
+        source: source.name, message: error.message,
+      })
+    }
   }
 
+  /*
+   * Every source refused. Said in full rather than summarised: when two
+   * public explorers both decline, which one said what is the only thing
+   * that tells somebody whether to wait a minute or change something.
+   */
+  throw new ChainError(
+    refusals.join(' · ') || 'no public source would answer',
+    'ETHEREUM',
+  )
+}
+
+/**
+ * The Etherscan request shape, which Blockscout also speaks.
+ *
+ * One loop for both, because they genuinely are the same query — the same
+ * `module=account&action=tokentx` with the same paging and the same row
+ * shape. Writing it twice would be two things to keep in step for no gain.
+ */
+async function fetchEtherscanShaped(
+  source: Source, address: string, options: FetchOptions, key: string | null,
+): Promise<ChainRead> {
   const limit = options.limit ?? DEFAULT_LIMIT
   const contract = USDT_CONTRACTS.ETHEREUM
   const found: ChainTransfer[] = []
 
   for (let page = 1; page <= MAX_PAGES && found.length < limit; page += 1) {
     try {
-    const url = new URL(etherscanBase())
-    url.searchParams.set('chainid', '1')
-    url.searchParams.set('module', 'account')
-    url.searchParams.set('action', 'tokentx')
-    url.searchParams.set('contractaddress', contract)
-    url.searchParams.set('address', address)
-    url.searchParams.set('page', String(page))
-    url.searchParams.set('offset', String(Math.min(PAGE, limit - found.length)))
-    url.searchParams.set('sort', 'desc')
-    url.searchParams.set('apikey', key)
+      const url = new URL(source.base)
+      if (source.chainId) url.searchParams.set('chainid', source.chainId)
+      url.searchParams.set('module', 'account')
+      url.searchParams.set('action', 'tokentx')
+      url.searchParams.set('contractaddress', contract)
+      url.searchParams.set('address', address)
+      url.searchParams.set('page', String(page))
+      url.searchParams.set('offset', String(Math.min(PAGE, limit - found.length)))
+      url.searchParams.set('sort', 'desc')
+      if (source.usesKey && key) url.searchParams.set('apikey', key)
 
-    if (page > 1) await sleep(PAGE_PAUSE_MS)
-    const body = await getJson(url.toString(), 'ETHEREUM')
-    const answer = body as { status?: string; message?: string; result?: unknown }
+      if (page > 1) await sleep(PAGE_PAUSE_MS)
+      const body = await getJson(url.toString(), 'ETHEREUM')
+      const answer = body as { status?: string; message?: string; result?: unknown }
 
-    /*
-     * "No transactions found" arrives as a failure status with an empty
-     * result, which is not a failure: it is the answer for a wallet that has
-     * not been paid yet, and treating it as an error would put a red banner
-     * over a working scan.
-     */
-    if (answer.status !== '1') {
-      const message = String(answer.message ?? '')
-      if (/no transactions found/i.test(message)) break
-      // Etherscan answers 200 with the limit in the body, so the status-code
-      // retry above never sees it.
-      if (/rate limit|max calls per sec/i.test(message)) {
-        throw new ChainError(limitMessage('ETHEREUM'), 'ETHEREUM')
+      /*
+       * "No transactions found" arrives as a failure status with an empty
+       * result, which is not a failure: it is the answer for a wallet that
+       * has not been paid yet, and treating it as an error would put a red
+       * banner over a working scan.
+       */
+      if (answer.status !== '1') {
+        const message = String(answer.message ?? '')
+        if (/no transactions found|no records found/i.test(message)) break
+        // Both answer 200 with the limit in the body, so the status-code
+        // retry above never sees it.
+        if (/rate limit|max calls per sec|too many/i.test(message)) {
+          throw new ChainError(limitMessage('ETHEREUM'), 'ETHEREUM')
+        }
+        throw new ChainError(message || 'the request was refused', 'ETHEREUM')
       }
-      throw new ChainError(
-        `Etherscan said: ${message || 'the request was refused'}`,
-        'ETHEREUM',
-      )
-    }
 
-    const rows = Array.isArray(answer.result) ? answer.result : []
-    for (const row of rows) {
-      const transfer = readEtherscanRow(row)
-      if (!transfer) continue
-      // The explorer returns everything from the beginning when asked for a
-      // window it does not support, so the window is applied here as well.
-      if (options.since && transfer.blockTime < options.since) continue
-      found.push(transfer)
-    }
-    if (rows.length === 0) break
+      const rows = Array.isArray(answer.result) ? answer.result : []
+      for (const row of rows) {
+        const transfer = readEtherscanRow(row)
+        if (!transfer) continue
+        // A source given a window it does not support returns everything
+        // from the beginning, so the window is applied here as well.
+        if (options.since && transfer.blockTime < options.since) continue
+        found.push(transfer)
+      }
+      if (rows.length === 0) break
     } catch (error) {
+      /*
+       * Pages already read are kept, and only then is the next source tried
+       * — but a partial read is returned rather than thrown, because what
+       * arrived is real money that arrived.
+       */
       if (found.length > 0 && error instanceof ChainError) {
-        return { transfers: found, stoppedBy: error.message }
+        return { transfers: found, stoppedBy: `${source.name}: ${error.message}` }
       }
       throw error
     }

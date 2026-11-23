@@ -1,11 +1,23 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   candidates, daysApart, flagsFor, proposeLinks, sameMoney, tolerance,
   type Payable, type Payment,
 } from '@/lib/wallet-match'
 import { normaliseAddress, rawFromUsd, usdFromRaw, validAddress } from '@/lib/usdt'
-import { fetchTransfers, readEtherscanRow, readTronRow, waitFor } from '@/server/services/chain-reader'
+import {
+  ethereumSources, fetchTransfers, readEtherscanRow, readTronRow, waitFor,
+} from '@/server/services/chain-reader'
+import { explorerKey } from '@/server/services/explorer-keys'
+
+/*
+ * The key lookup reads the database, which these tests have no business
+ * touching: what is under test is which source a scan reaches for, not where
+ * a key is kept.
+ */
+vi.mock('@/server/services/explorer-keys', () => ({
+  explorerKey: vi.fn(async () => undefined),
+}))
 import { AI_CONFIDENCE_CEILING, validate } from '@/server/services/wallet-ai'
 
 const read = (path: string) => readFileSync(path, 'utf8')
@@ -654,10 +666,82 @@ describe('a read that is cut short', () => {
 
   it('tells somebody what to do about a rate limit, not its status code', async () => {
     // "The explorer answered 429" is the truth and is no use: it names the
-    // mechanism rather than the fix.
+    // mechanism rather than the fix. The fix is to wait — these sources
+    // meter by the minute — and the message has to say so without sending
+    // somebody off to fetch a key they were told they did not need.
     globalThis.fetch = (async () => new Response('slow down', { status: 429 })) as typeof fetch
 
     await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg'))
-      .rejects.toThrow(/free TronGrid key/i)
-  }, 15_000)
+      .rejects.toThrow(/scan again shortly/i)
+    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg'))
+      .rejects.toThrow(/nothing here needs one/i)
+  }, 30_000)
+
+  /* ------------------------------------------------- reading without a key */
+
+  it('reads Ethereum from a keyless source, and does not list Etherscan without a key', () => {
+    // Alex: "I dont want it to use keys i just want it to look at the
+    // publicly available information of transactions." Etherscan cannot
+    // serve that — v2 refuses every unkeyed request — so the keyless source
+    // has to be the one a scan actually uses.
+    const none = ethereumSources(null)
+    expect(none).toHaveLength(1)
+    expect(none[0].name).toBe('Blockscout')
+    expect(none[0].usesKey).toBe(false)
+  })
+
+  it('keeps the keyless source first even when a key is held', () => {
+    // A key is a raised ceiling, not a promotion: somebody who pasted one in
+    // months ago should not quietly go back to needing it.
+    const both = ethereumSources('a-key')
+    expect(both.map((source) => source.name)).toEqual(['Blockscout', 'Etherscan'])
+    expect(both[0].usesKey).toBe(false)
+    expect(both[1].usesKey).toBe(true)
+  })
+
+  it('falls through to the next source when the first one refuses', async () => {
+    /*
+     * The point of two sources. Blockscout answers "refused"; Etherscan,
+     * which we hold a key for, answers properly — and the scan returns the
+     * transfer rather than the first refusal.
+     */
+    const seen: string[] = []
+    globalThis.fetch = (async (url: string | URL) => {
+      const href = String(url)
+      seen.push(new URL(href).hostname)
+      if (href.includes('blockscout')) {
+        return new Response(JSON.stringify({ status: '0', message: 'refused' }), { status: 200 })
+      }
+      // One page, then the end of them: a source that kept answering with
+      // the same row would be paged until the ceiling, which is the loop
+      // working and not what this test is about.
+      const first = seen.filter((host) => host.includes('etherscan')).length === 1
+      return new Response(JSON.stringify({
+        status: '1',
+        result: first ? [{
+          hash: '0xabc', from: '0xpayer', to: '0xours', value: '40000000000',
+          timeStamp: '1763000000', tokenDecimal: '6', tokenSymbol: 'USDT',
+          contractAddress: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+        }] : [],
+      }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    vi.mocked(explorerKey).mockResolvedValue('a-key')
+    const read = await fetchTransfers('ETHEREUM', '0x809314689AB5C2bEdA81f5421CE06917D6d25467')
+    expect(read.transfers).toHaveLength(1)
+    expect(seen[0]).toContain('blockscout')
+    expect(seen.some((host) => host.includes('etherscan'))).toBe(true)
+  }, 20_000)
+
+  it('says what every source said when they all refuse', async () => {
+    // One refusal summarised away is the difference between "wait a minute"
+    // and "something is actually wrong".
+    globalThis.fetch = (async () => new Response(
+      JSON.stringify({ status: '0', message: 'refused by this one' }), { status: 200 },
+    )) as typeof fetch
+
+    vi.mocked(explorerKey).mockResolvedValue(undefined)
+    await expect(fetchTransfers('ETHEREUM', '0x809314689AB5C2bEdA81f5421CE06917D6d25467'))
+      .rejects.toThrow(/Blockscout: refused by this one/)
+  }, 20_000)
 })
