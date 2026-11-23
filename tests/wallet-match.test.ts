@@ -597,11 +597,17 @@ describe('which rule gets to speak first', () => {
  * the limit is reached by other people's traffic as readily as by ours.
  */
 describe('when the explorer says slow down', () => {
-  it('waits and tries again, twice', () => {
+  it('waits, doubling, and keeps waiting', () => {
     expect(waitFor(429, 1)).toBe(1_200)
     expect(waitFor(429, 2)).toBe(2_400)
-    // Three goes at a page, then it is reported rather than hammered.
-    expect(waitFor(429, 3)).toBeNull()
+    expect(waitFor(429, 3)).toBe(4_800)
+    /*
+     * Three goes spent three and a half seconds and gave up, which is not
+     * waiting out a meter — it is a pause. Alex hit the limit again on a
+     * real scan with that policy in place.
+     */
+    expect(waitFor(429, 7)).toBeGreaterThan(0)
+    expect(waitFor(429, 8)).toBeNull()
   })
 
   it('does the number the explorer asked for, within reason', () => {
@@ -609,7 +615,7 @@ describe('when the explorer says slow down', () => {
     expect(waitFor(429, 1, '3')).toBe(3_000)
     // But an explorer asking for five minutes is asking for longer than a
     // scan is allowed to take.
-    expect(waitFor(429, 1, '300')).toBe(6_000)
+    expect(waitFor(429, 1, '300')).toBe(10_000)
     expect(waitFor(429, 1, 'soon')).toBe(1_200)
   })
 
@@ -671,9 +677,12 @@ describe('a read that is cut short', () => {
     // somebody off to fetch a key they were told they did not need.
     globalThis.fetch = (async () => new Response('slow down', { status: 429 })) as typeof fetch
 
-    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg'))
+    // With the budget a real scan runs under, rather than waiting out the
+    // whole retry ladder in a unit test.
+    const soon = { deadline: Date.now() + 2_000 }
+    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg', soon))
       .rejects.toThrow(/scan again shortly/i)
-    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg'))
+    await expect(fetchTransfers('TRON', 'TYqv8YV8LoHUwaosFWPf4tnj7HTyLo2PHg', soon))
       .rejects.toThrow(/nothing here needs one/i)
   }, 30_000)
 
@@ -744,4 +753,35 @@ describe('a read that is cut short', () => {
     await expect(fetchTransfers('ETHEREUM', '0x809314689AB5C2bEdA81f5421CE06917D6d25467'))
       .rejects.toThrow(/Blockscout: refused by this one/)
   }, 20_000)
+  /* ------------------------------------------- waiting out a rate limit -- */
+
+  it('gives a rate limit far more patience than a server fault', () => {
+    // They wear the same shape and are different things: waiting cures the
+    // one and does nothing for the other.
+    expect(waitFor(429, 3)).toBeGreaterThan(0)
+    expect(waitFor(429, 7)).toBeGreaterThan(0)
+    expect(waitFor(429, 8)).toBeNull()
+
+    expect(waitFor(503, 2)).toBeGreaterThan(0)
+    expect(waitFor(503, 3)).toBeNull()
+  })
+
+  it('never sleeps past the time the scan has left', () => {
+    /*
+     * A wait that outlives its own request buys nothing — the function is
+     * killed mid-sleep and everything read is lost with it.
+     */
+    expect(waitFor(429, 1, null, 50)).toBeNull()
+    expect(waitFor(429, 1, null, 60_000)).toBe(1_200)
+    // And a Retry-After it cannot afford is refused just the same.
+    expect(waitFor(429, 1, '9', 2_000)).toBeNull()
+  })
+
+  it('still refuses to retry what retrying cannot fix', () => {
+    // A bad address says the same thing however many times it is asked.
+    expect(waitFor(400, 1)).toBeNull()
+    expect(waitFor(404, 1)).toBeNull()
+    expect(waitFor(200, 1)).toBeNull()
+  })
+
 })

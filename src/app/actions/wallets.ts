@@ -45,12 +45,26 @@ export async function scanWalletsAction(walletId?: string | null): Promise<Walle
     const result = await scanWallets(walletId ?? null, actor)
     refresh()
 
-    if (result.errors.length > 0 && result.added === 0) {
-      return {
-        ok: false,
-        message: 'The chain could not be read.',
-        detail: result.errors.map((error) => `${error.wallet}: ${error.message}`).join(' · '),
-      }
+    /*
+     * The whole message, not a list of wallet names. What stopped a scan is
+     * nearly always a rate limit, and the sentence that says so also says
+     * what to do about it — which is no use summarised away.
+     */
+    const detail = result.errors.length > 0
+      ? result.errors.map((error) => `${error.wallet}: ${error.message}`).join(' · ')
+      : undefined
+
+    /*
+     * "The chain could not be read" only when none of it was.
+     *
+     * It said that whenever nothing new turned up, which on a second scan of
+     * a wallet already read is the ordinary, correct answer — and reporting
+     * a working scan as a failure is how somebody stops believing the
+     * screen. A read that reached the chain and found nothing new is a
+     * success with a note attached, not a failure.
+     */
+    if (result.errors.length > 0 && result.found === 0) {
+      return { ok: false, message: 'The chain could not be read.', detail }
     }
 
     return {
@@ -58,14 +72,7 @@ export async function scanWalletsAction(walletId?: string | null): Promise<Walle
       message: result.added === 0
         ? 'Nothing new since the last scan.'
         : `${result.added} new ${result.added === 1 ? 'transfer' : 'transfers'}.`,
-      /*
-       * The whole message, not a list of wallet names. What stopped a scan
-       * is nearly always a rate limit, and the sentence that says so also
-       * says what fixes it — which is no use summarised away.
-       */
-      detail: result.errors.length > 0
-        ? result.errors.map((error) => `${error.wallet}: ${error.message}`).join(' · ')
-        : undefined,
+      detail,
     }
   } catch (error) {
     return toState(error, 'The wallets could not be scanned.')
