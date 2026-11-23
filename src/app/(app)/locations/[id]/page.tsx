@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { and, asc, eq, isNull } from 'drizzle-orm'
 import { ArrowLeft } from 'lucide-react'
 import { requireCapability } from '@/server/auth/session'
@@ -11,6 +11,8 @@ import { watchQuerySchema } from '@/lib/validation'
 import { parseFilters, toSearchParams, WATCH_FIELDS } from '@/lib/filters'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { InventoryList } from '@/components/inventory/InventoryList'
+import { AVAILABLE_QUERY, locationViews } from '@/components/inventory/views'
+import { ViewBar } from '@/components/ui/DataList'
 import { Card, LinkButton, SkeletonTable, StatCard } from '@/components/ui'
 import { getRateTable } from '@/server/services/fx-service'
 import { getPreferencesFor } from '@/server/services/settings-service'
@@ -45,6 +47,25 @@ export default async function LocationPage(
   { params, searchParams }: { params: { id: string }; searchParams: SearchParams },
 ) {
   const user = await requireCapability('location:manage')
+
+  /*
+   * What is here, not what has ever been here.
+   *
+   * Alex, on a sold Richard Mille still standing in "In transit": "If sold
+   * remove from location and move out from view." It was in the list and its
+   * £120,279 was inside "Capital held", which is the figure somebody reads to
+   * know what is tied up in that place — so the page disagreed with the
+   * locations index beside it, which has always counted live stock only.
+   *
+   * Done as a redirect rather than as a default applied when no status clause
+   * is present, for the reason the stock list does it: a hidden default makes
+   * the URL stop describing what is on the screen, and the chips below decide
+   * which one is lit by comparing themselves against the URL. A clause
+   * somebody can see is a clause they can take off.
+   */
+  if (Object.keys(searchParams).length === 0) {
+    redirect(`/locations/${params.id}?${AVAILABLE_QUERY}`)
+  }
 
   const [location] = await db
     .select()
@@ -91,6 +112,19 @@ export default async function LocationPage(
     cost: ['purchasePriceGbp', 'estProfitGbp', 'actualProfitGbp'],
   })
 
+  /*
+   * Which of the two the page is showing, so the figures say what they are.
+   *
+   * "Capital held" over a list of sold watches is not a smaller truth, it is
+   * a wrong one: that money came back. And "Asking" is the price we were
+   * asking, which is not what any of them made — that is on the sales ledger,
+   * and the card says so rather than printing a number nobody should read.
+   */
+  const showingSold = (query.f ?? []).some(
+    (clause) => clause.field === 'status' && clause.operator === 'is'
+      && clause.values.includes('SOLD'),
+  )
+
   return (
     <>
       <PageHeader
@@ -123,11 +157,37 @@ export default async function LocationPage(
       )}
 
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <StatCard label="Watches" value={String(result.total)} />
-        {canSeeCost(user.role) && <StatCard label="Capital held" value={money(summary.totalCostGbp)} />}
-        {capabilities['revenue:read'] && (
+        <StatCard
+          label={showingSold ? 'Sold from here' : 'Watches'}
+          value={String(result.total)}
+        />
+        {canSeeCost(user.role) && (
+          <StatCard
+            label={showingSold ? 'What they cost' : 'Capital held'}
+            value={money(summary.totalCostGbp)}
+          />
+        )}
+        {capabilities['revenue:read'] && !showingSold && (
           <StatCard label="Asking" value={money(summary.estSaleGbp)} />
         )}
+        {capabilities['revenue:read'] && showingSold && (
+          <StatCard
+            label="What they made"
+            value="On the sales ledger"
+            caption="This page knows the asking price, not the invoice"
+          />
+        )}
+      </div>
+
+      {/*
+        Two chips, no saving.
+        
+        A view saved here would carry this location in its query and then
+        offer itself on the stock list, where it would be a chip that empties
+        the page — held-away stock is not on that list at all.
+      */}
+      <div className="mb-4">
+        <ViewBar object="watch" builtIn={locationViews()} saved={[]} canSave={false} />
       </div>
 
       <Card>

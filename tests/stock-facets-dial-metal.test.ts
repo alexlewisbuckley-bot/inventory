@@ -260,6 +260,51 @@ describe('the location is the one way in', () => {
     expect(page).toContain('not on the main stock list')
   })
 
+  it('opens on what is there, not on what has ever been there', () => {
+    /*
+     * Alex, on a sold Richard Mille still standing in "In transit": "If sold
+     * remove from location and move out from view." Its £120,279 was inside
+     * "Capital held" — the figure somebody reads to know what is tied up in
+     * that place — so this page disagreed with the locations index beside it,
+     * which has always counted live stock only.
+     *
+     * A redirect rather than a hidden default, for the reason the stock list
+     * gives: a default applied in silence makes the URL stop describing the
+     * screen, and the chips decide which one is lit by reading the URL.
+     */
+    expect(page).toContain('redirect(`/locations/${params.id}?${AVAILABLE_QUERY}`)')
+    expect(page).toContain('Object.keys(searchParams).length === 0')
+  })
+
+  it('keeps a way back to what left', () => {
+    /*
+     * Hiding is only honest if there is a way back. Taking sold stock off
+     * this page takes it off the last list that showed it: held-away stock is
+     * not on the main stock list at all, so its "Sold" view cannot answer
+     * "what went out of Hong Kong this year" either.
+     */
+    expect(page).toContain('builtIn={locationViews()}')
+    const views = readFileSync(join(process.cwd(), 'src/components/inventory/views.ts'), 'utf8')
+    expect(views).toContain("label: 'Sold from here'")
+    expect(views).toContain('query: SOLD_QUERY')
+  })
+
+  it('does not call a sold watch capital held', () => {
+    // Over a list of sold watches that is not a smaller truth, it is a wrong
+    // one: the money came back. And "Asking" is what we were asking, which is
+    // not what any of them made.
+    expect(page).toContain("label={showingSold ? 'What they cost' : 'Capital held'}")
+    expect(page).toContain("capabilities['revenue:read'] && !showingSold")
+    expect(page).toContain("value=\"On the sales ledger\"")
+  })
+
+  it('cannot save a view that would empty the stock list', () => {
+    // A view saved here carries this location in its query and would then
+    // offer itself on the stock list, where held-away stock does not appear
+    // at all — a chip that empties the page.
+    expect(page).toContain('canSave={false}')
+  })
+
   it('is where the Locations card sends somebody who may open it', () => {
     // Otherwise "View stock →" on Hong Kong leads to an empty table: the card
     // saying nine watches and the list it points at showing none.

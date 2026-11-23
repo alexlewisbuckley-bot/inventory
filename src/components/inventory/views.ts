@@ -25,9 +25,44 @@ import type { BuiltInView } from '@/components/ui/DataList'
  */
 export const AVAILABLE_QUERY = 'f=status%3AisNot%3ASOLD'
 
+/** Its opposite, written once so the chip and the page agree on it. */
+export const SOLD_QUERY = 'f=status%3Ais%3ASOLD'
+
 /** Available stock standing in one place. */
 export function locationQuery(locationId: string): string {
   return `${AVAILABLE_QUERY}&f=${encodeURIComponent(`locationId:is:${locationId}`)}`
+}
+
+/**
+ * The two views a location's own page has.
+ *
+ * Alex, looking at a sold Richard Mille still standing in "In transit": "If
+ * sold remove from location and move out from view."
+ *
+ * So the page opens on what is actually there. The second chip exists
+ * because taking sold stock off this page takes it off the last list that
+ * showed it: stock held away is not on the main stock list at all, so its
+ * "Sold" view cannot answer "what went out of Hong Kong this year" either.
+ * Hidden rather than deleted is only honest if there is a way back to it.
+ *
+ * Nothing about where the stock is, because this page already knows: the
+ * location is fixed by the route and cannot be argued with from the URL.
+ */
+export function locationViews(): readonly BuiltInView[] {
+  return [
+    {
+      id: 'here',
+      label: 'Here now',
+      query: AVAILABLE_QUERY,
+      description: 'What is standing in this location',
+    },
+    {
+      id: 'sold',
+      label: 'Sold from here',
+      query: SOLD_QUERY,
+      description: 'What has left — the money is on the sales ledger',
+    },
+  ]
 }
 
 /**
@@ -75,7 +110,7 @@ export const INVENTORY_VIEWS: readonly BuiltInView[] = [
   {
     id: 'sold',
     label: 'Sold',
-    query: 'f=status%3Ais%3ASOLD',
+    query: SOLD_QUERY,
     description: 'Completed sales',
   },
   {
