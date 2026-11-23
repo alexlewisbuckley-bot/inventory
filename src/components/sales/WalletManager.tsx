@@ -177,8 +177,34 @@ export function WalletManager({ wallets, keys }: { wallets: WalletRow[]; keys: K
           <h2 className="text-small font-bold text-content-primary">Explorer keys</h2>
           <p className="text-caption text-content-secondary">
             Read-only keys for the public block explorers. They raise a rate limit and can see
-            nothing the chain does not already show the world. TRON works without one;
-            Etherscan needs one.
+            nothing the chain does not already show the world.
+          </p>
+          {/*
+            Said properly, because "TRON works without one" was true and
+            misleading: it works until the free endpoint meters us, and it
+            meters per IP — which on a shared host means other people's
+            traffic counts against us as readily as our own.
+          */}
+          <p className="mt-1.5 text-caption text-content-secondary">
+            Etherscan refuses an unkeyed request outright —{' '}
+            <a
+              href="https://etherscan.io/myapikey"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              a free key
+            </a>{' '}
+            takes a minute. TRON works without one and is rate-limited hard without one, so{' '}
+            <a
+              href="https://www.trongrid.io/dashboard"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-content-primary"
+            >
+              a free TronGrid key
+            </a>{' '}
+            is worth the same minute.
           </p>
         </div>
         <ul className="divide-y divide-line-subtle">
@@ -206,7 +232,7 @@ function ExplorerKeyRow({ row, busy, onSave }: {
         <p className="text-small font-bold text-content-primary">{WALLET_CHAIN_LABELS[row.chain]}</p>
         <p className="text-caption text-content-secondary">
           {row.source === 'none'
-            ? row.required ? 'No key — this chain cannot be scanned' : 'No key — scanning is slower'
+            ? row.required ? 'No key — this chain cannot be scanned' : 'No key — expect to be rate-limited'
             : `Set ${row.source === 'stored' ? 'here' : 'on the deployment'} · ${row.hint}`}
         </p>
       </div>

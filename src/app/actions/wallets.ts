@@ -58,8 +58,13 @@ export async function scanWalletsAction(walletId?: string | null): Promise<Walle
       message: result.added === 0
         ? 'Nothing new since the last scan.'
         : `${result.added} new ${result.added === 1 ? 'transfer' : 'transfers'}.`,
+      /*
+       * The whole message, not a list of wallet names. What stopped a scan
+       * is nearly always a rate limit, and the sentence that says so also
+       * says what fixes it — which is no use summarised away.
+       */
       detail: result.errors.length > 0
-        ? `Some wallets could not be read: ${result.errors.map((e) => e.wallet).join(', ')}`
+        ? result.errors.map((error) => `${error.wallet}: ${error.message}`).join(' · ')
         : undefined,
     }
   } catch (error) {
