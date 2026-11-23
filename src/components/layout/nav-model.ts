@@ -83,6 +83,15 @@ export function navGroups(role: Role, counts: SidebarCounts): NavGroup[] {
          * checked on the Apply button.
          */
         { href: '/sales/reconcile', label: 'Reconcile', icon: Scale, capability: 'data:import', match: '/sales/reconcile' },
+        /*
+         * The other half of the ledger: what actually arrived.
+         *
+         * Beside Reconcile because it is the same job against a better
+         * source — Xero says what was invoiced, the chain says what was
+         * paid — and behind `sale:update`, because deciding which invoice
+         * a payment settled is the same act as marking it paid.
+         */
+        { href: '/sales/payments', label: 'USDT', icon: Coins, capability: 'sale:update', match: '/sales/payments' },
         // Beside Sales rather than under Manage: a buy-back is money out
         // and money earned, and the people who read the ledger are the
         // people who need to know what is out on loan.
