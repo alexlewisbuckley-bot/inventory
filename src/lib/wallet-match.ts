@@ -40,6 +40,23 @@ export interface Payable {
   dueUsd: number
   /** The invoice date. */
   at: string
+  /** How much wallet money is already attributed to it, in cents. */
+  linkedUsd?: number
+  /**
+   * Already marked paid in the ledger, by this or by any other means.
+   *
+   * Still a candidate, and this is the point. Alex: "It is not linking
+   * transactions to past sales which it should." A dealer marks an invoice
+   * paid when the money lands; the USDT that landed is what paid it. Showing
+   * the matcher only what is still owed means a wallet full of a year's
+   * receipts has nothing to match against, and the board sits there having
+   * scanned and done nothing.
+   *
+   * Linking to one of these attributes a payment rather than settling an
+   * invoice — nothing about the sale changes — so it is proposed a little
+   * less confidently and said in different words.
+   */
+  settled?: boolean
 }
 
 export interface Proposal {
@@ -85,14 +102,42 @@ export function sameMoney(a: number, b: number): boolean {
  * A deposit lands before the invoice is raised and a settlement lands after
  * the watch has shipped, so the window is wide on both sides. It is a
  * candidacy test, not a scoring one: being close counts towards confidence
- * further down.
+ * further down, and a payment three months off an invoice will be proposed
+ * quietly rather than not at all.
+ *
+ * Six weeks was too mean for the trade. A watch invoiced in March and paid
+ * in May is ordinary — the money moves when the customer's exchange lets it
+ * move — and a window that excludes it produces a board with nothing on it.
  */
-export const WINDOW_DAYS = 45
+export const WINDOW_DAYS = 90
 
 const DAY = 24 * 60 * 60 * 1000
 
 export function daysApart(a: string, b: string): number {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / DAY
+}
+
+/**
+ * The figure a payment is matched against.
+ *
+ * What is still owed, where anything is; the whole invoice where it has
+ * already been marked paid. Without the second half, a settled invoice has
+ * nothing to match on — its outstanding figure is zero, and zero matches
+ * nothing but a payment of nothing.
+ */
+export function targetUsd(payable: Payable): number {
+  if (payable.dueUsd > 0) return payable.dueUsd
+  /*
+   * Nothing outstanding means one of two quite different things, and
+   * conflating them would double-apply money.
+   *
+   * Either the invoice was marked paid in the ledger and no payment of ours
+   * has been put against it — in which case the whole invoice is what a
+   * transfer would be attributed to, which is the point of all this — or it
+   * has already been explained by payments we linked, in which case there is
+   * nothing left for another one to be.
+   */
+  return payable.settled && !payable.linkedUsd ? payable.totalUsd : 0
 }
 
 /** What is left of a payment once anything already linked is taken off. */
@@ -110,7 +155,7 @@ export function unapplied(payment: Payment): number {
  */
 export function candidates(payment: Payment, payables: Payable[]): Payable[] {
   return payables.filter(
-    (payable) => payable.dueUsd > 0 && daysApart(payment.at, payable.at) <= WINDOW_DAYS,
+    (payable) => targetUsd(payable) > 0 && daysApart(payment.at, payable.at) <= WINDOW_DAYS,
   )
 }
 
@@ -131,6 +176,13 @@ function score(payment: Payment, payable: Payable, exact: boolean, alone: boolea
   if (days <= 2) confidence += 8
   else if (days <= 10) confidence += 4
   else if (days > 30) confidence -= 6
+  if (days > 60) confidence -= 6
+  /*
+   * An invoice still waiting is the better answer than one already marked
+   * paid, where both fit. Not by much — the settled one is often exactly
+   * right — but enough that a tie goes to the money somebody is still owed.
+   */
+  if (payable.settled) confidence -= 8
   return Math.max(1, Math.min(99, confidence))
 }
 
@@ -153,32 +205,54 @@ function money(cents: number): string {
  */
 function oneToOne(payment: Payment, pool: Payable[], exactOnly: boolean): Proposal[] {
   const amount = unapplied(payment)
-  const exact = pool.filter((payable) => payable.dueUsd === amount)
+  const exact = pool.filter((payable) => targetUsd(payable) === amount)
   const near = exactOnly
     ? []
-    : pool.filter((payable) => payable.dueUsd !== amount && sameMoney(payable.dueUsd, amount))
+    : pool.filter(
+      (payable) => targetUsd(payable) !== amount && sameMoney(targetUsd(payable), amount),
+    )
 
   const hits = exact.length > 0 ? exact : near
   if (hits.length === 0) return []
 
-  // Several invoices for the same figure is the case to be careful with:
-  // propose the nearest in date, and say so, rather than picking silently.
-  const sorted = [...hits].sort((a, b) => daysApart(payment.at, a.at) - daysApart(payment.at, b.at))
+  /*
+   * Several invoices for the same figure is the case to be careful with:
+   * propose one still owed before one already marked paid, then the nearest
+   * in date, and say so rather than picking silently.
+   *
+   * The preference has to be in the choosing, not only in the confidence —
+   * shading the score of an answer already chosen changes the number next to
+   * it and not the answer.
+   */
+  const sorted = [...hits].sort((a, b) => {
+    const owed = Number(Boolean(a.settled)) - Number(Boolean(b.settled))
+    if (owed !== 0) return owed
+    return daysApart(payment.at, a.at) - daysApart(payment.at, b.at)
+  })
   const best = sorted[0]
   const alone = hits.length === 1
   const isExact = exact.length > 0
 
+  /*
+   * Said as what it is. A settled invoice is not "waiting for" anything —
+   * claiming it is would be the screen telling somebody something they can
+   * see is untrue, which is how a reconciliation tool loses its reader.
+   */
   const reason = alone
-    ? isExact
-      ? `${money(amount)} is exactly what ${best.reference} is waiting for`
-      : `${money(amount)} is within a few dollars of ${best.reference}`
-    : `${hits.length} invoices are waiting for this figure — ${best.reference} is the closest in date`
+    ? best.settled
+      ? isExact
+        ? `${money(amount)} is exactly ${best.reference}, which is already marked paid — this looks like the payment that paid it`
+        : `${money(amount)} is within a few dollars of ${best.reference}, already marked paid`
+      : isExact
+        ? `${money(amount)} is exactly what ${best.reference} is waiting for`
+        : `${money(amount)} is within a few dollars of ${best.reference}`
+    : `${hits.length} invoices match this figure — ${best.reference} is the closest in date`
 
   return [{
     paymentId: payment.id,
     kind: best.kind,
     targetId: best.id,
-    amountUsd: Math.min(amount, best.dueUsd),
+    amountUsd: Math.min(amount, targetUsd(best)),
     confidence: score(payment, best, isExact, alone),
     reason,
   }]
@@ -206,7 +280,7 @@ function coversSeveral(payment: Payment, pool: Payable[]): Proposal[] {
 
   for (const group of byCustomer.values()) {
     if (group.length < 2) continue
-    const sorted = [...group].sort((a, b) => b.dueUsd - a.dueUsd).slice(0, 6)
+    const sorted = [...group].sort((a, b) => targetUsd(b) - targetUsd(a)).slice(0, 6)
 
     for (let size = 2; size <= Math.min(4, sorted.length); size += 1) {
       const found = subsetSummingTo(sorted, size, amount)
@@ -216,7 +290,7 @@ function coversSeveral(payment: Payment, pool: Payable[]): Proposal[] {
         paymentId: payment.id,
         kind: payable.kind,
         targetId: payable.id,
-        amountUsd: payable.dueUsd,
+        amountUsd: targetUsd(payable),
         confidence: Math.min(90, score(payment, payable, true, true) - 4),
         reason: `${money(amount)} settles ${references} together`,
       }))
@@ -229,7 +303,7 @@ function coversSeveral(payment: Payment, pool: Payable[]): Proposal[] {
 function subsetSummingTo(pool: Payable[], size: number, target: number): Payable[] | null {
   const walk = (start: number, chosen: Payable[]): Payable[] | null => {
     if (chosen.length === size) {
-      const total = chosen.reduce((sum, payable) => sum + payable.dueUsd, 0)
+      const total = chosen.reduce((sum, payable) => sum + targetUsd(payable), 0)
       return total === target ? chosen : null
     }
     for (let index = start; index < pool.length; index += 1) {
@@ -244,41 +318,128 @@ function subsetSummingTo(pool: Payable[], size: number, target: number): Payable
 /**
  * Several payments settling one invoice.
  *
- * The other half of the same story: a customer pays a 126,519 invoice in a
- * 50,000, a 50,000 and a 26,519 over four days, often because that is what
- * their exchange lets them move at once. Proposed as a set from one payer
- * where the set is exact.
+ * Alex: "even some transactions are sent in two parts, but it should be
+ * trying to match these up". A customer pays a 126,519 invoice as a 50,000,
+ * a 50,000 and a 26,519 over four days, usually because that is what their
+ * exchange will move at once.
+ *
+ * The first version of this added up *every* payment a payer had made in the
+ * window and asked whether the total was an invoice. That only worked for a
+ * payer who had paid exactly one invoice and nothing else: three payments
+ * covering two invoices summed to neither, so a customer who pays in parts
+ * regularly — the very case this is for — got nothing. It now searches the
+ * subsets, the same way one payment covering several invoices does, and
+ * keeps going across invoices rather than stopping at the first.
  */
 function paidInInstalments(payments: Payment[], pool: Payable[]): Proposal[] {
   const proposals: Proposal[] = []
+  const used = new Set<string>()
+
   const byPayer = new Map<string, Payment[]>()
   for (const payment of payments) {
     if (unapplied(payment) <= 0) continue
     byPayer.set(payment.counterparty, [...(byPayer.get(payment.counterparty) ?? []), payment])
   }
 
-  for (const group of byPayer.values()) {
-    if (group.length < 2) continue
-    for (const payable of pool) {
-      const within = group.filter((payment) => daysApart(payment.at, payable.at) <= WINDOW_DAYS)
-      if (within.length < 2) continue
-      const total = within.reduce((sum, payment) => sum + unapplied(payment), 0)
-      if (!sameMoney(total, payable.dueUsd)) continue
+  /*
+   * Largest invoice first. A set of parts is far likelier to be explaining
+   * the big invoice than the small one, and settling the small one first can
+   * consume a part the big one needed.
+   */
+  const ordered = [...pool].sort((a, b) => targetUsd(b) - targetUsd(a))
 
-      for (const payment of within) {
+  for (const payable of ordered) {
+    for (const group of byPayer.values()) {
+      const within = group.filter(
+        (payment) => !used.has(payment.id)
+          && daysApart(payment.at, payable.at) <= WINDOW_DAYS,
+      )
+      if (within.length < 2) continue
+
+      // Two or three parts. Four is a person's job, not a search's.
+      const found = partsSummingTo(within, targetUsd(payable))
+      if (!found) continue
+
+      const total = found.reduce((sum, payment) => sum + unapplied(payment), 0)
+      for (const payment of found) {
+        used.add(payment.id)
         proposals.push({
           paymentId: payment.id,
           kind: payable.kind,
           targetId: payable.id,
           amountUsd: unapplied(payment),
-          confidence: Math.min(88, score(payment, payable, total === payable.dueUsd, true) - 2),
-          reason: `${within.length} payments from this address come to ${money(total)}, which is ${payable.reference}`,
+          confidence: Math.min(88, score(payment, payable, total === targetUsd(payable), true) - 2),
+          reason: payable.settled
+            ? `${found.length} payments from this address come to ${money(total)}, which is ${payable.reference} — already marked paid`
+            : `${found.length} payments from this address come to ${money(total)}, which is ${payable.reference}`,
         })
       }
-      return proposals
+      break
     }
   }
   return proposals
+}
+
+/**
+ * The two or three payments that come to this figure, if any do.
+ *
+ * Within tolerance rather than to the cent, because a customer paying in
+ * parts pays a withdrawal fee on each one: three transfers against a 126,519
+ * invoice arrive as 126,514.20 more often than they arrive exact, and
+ * demanding the cent is how this finds nothing in practice.
+ */
+function partsSummingTo(payments: Payment[], target: number): Payment[] | null {
+  const pool = [...payments].sort((a, b) => unapplied(b) - unapplied(a)).slice(0, 8)
+
+  for (const size of [2, 3]) {
+    const walk = (start: number, chosen: Payment[]): Payment[] | null => {
+      if (chosen.length === size) {
+        const total = chosen.reduce((sum, payment) => sum + unapplied(payment), 0)
+        return sameMoney(total, target) ? chosen : null
+      }
+      for (let index = start; index < pool.length; index += 1) {
+        const found = walk(index + 1, [...chosen, pool[index]])
+        if (found) return found
+      }
+      return null
+    }
+    const found = walk(0, [])
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * A payment that is plainly part of one invoice, where only part has come.
+ *
+ * The last and least certain pass, and deliberately narrow: the payer must
+ * be an address we already know pays this customer, the payment must be
+ * smaller than the invoice, and there must be exactly one invoice it could
+ * belong to. Without it a first instalment sits on the board saying nothing
+ * until its sibling arrives — which, when a customer pays half now and half
+ * next month, is the whole month.
+ */
+function partOfOne(payment: Payment, pool: Payable[]): Proposal[] {
+  if (!payment.knownCustomerId) return []
+  const amount = unapplied(payment)
+
+  const theirs = pool.filter(
+    (payable) => payable.customerId === payment.knownCustomerId && targetUsd(payable) > amount,
+  )
+  if (theirs.length !== 1) return []
+
+  const payable = theirs[0]
+  const left = targetUsd(payable) - amount
+  return [{
+    paymentId: payment.id,
+    kind: payable.kind,
+    targetId: payable.id,
+    amountUsd: amount,
+    // Low, and it should be: this is the likeliest reading, not a certainty.
+    confidence: Math.max(1, Math.min(62, score(payment, payable, false, true) - 14)),
+    reason: `${money(amount)} from an address that pays ${payable.customerName ?? 'this customer'}`
+      + `, against ${payable.reference} — ${money(left)} of it would still be outstanding`,
+  }]
 }
 
 /**
@@ -344,6 +505,18 @@ export function proposeLinks(payments: Payment[], payables: Payable[]): Proposal
     const several = coversSeveral(payment, pool)
     if (several.length > 0) {
       proposals.push(...several)
+      spoken.add(payment.id)
+      continue
+    }
+
+    /*
+     * Last, and only for a payment nothing else could explain: the first
+     * half of something, from an address we recognise. Said with the
+     * confidence it deserves, which is not much.
+     */
+    const part = partOfOne(payment, pool)
+    if (part.length > 0) {
+      proposals.push(...part)
       spoken.add(payment.id)
     }
   }
@@ -449,6 +622,16 @@ export function flagsFor(input: {
   }
 
   for (const payable of input.payables) {
+    /*
+     * A settled invoice raises nothing.
+     *
+     * These are on the board so a payment can be attributed to one, not
+     * because anybody is owed anything: flagging them would put "INV-0101
+     * has been waiting 300 days" against every sale the business made last
+     * year, and a warnings list that long is a warnings list nobody reads.
+     */
+    if (payable.settled) continue
+
     const applied = appliedTo.get(payable.id) ?? 0
     const outstanding = payable.dueUsd - applied
 

@@ -13,7 +13,8 @@ import { RATE_SCALE } from '@/lib/currency'
 import { normaliseAddress, validAddress } from '@/lib/usdt'
 import { BASE_CURRENCY, type WalletChain } from '@/lib/enums'
 import {
-  flagsFor, proposeLinks, type Flag, type Payable, type Payment, type Proposal,
+  flagsFor, proposeLinks, tolerance,
+  type Flag, type Payable, type Payment, type Proposal,
 } from '@/lib/wallet-match'
 import { ChainError, directionFor, fetchTransfers } from './chain-reader'
 import { logger } from '@/lib/logger'
@@ -285,7 +286,12 @@ export async function scanWallets(
 /* --------------------------------------------------------------- the board -- */
 
 /** How far back the board looks. Older than this is history, not a queue. */
-const BOARD_DAYS = 120
+/*
+ * A year. Alex: "It is not linking transactions to past sales which it
+ * should." Four months of history is not where a dealer's past sales live,
+ * and a board that cannot see them cannot match them.
+ */
+const BOARD_DAYS = 365
 
 /** Base minor units into USDT cents, through the managed rate table. */
 function usdFromBase(base: number, usdRate: number): number {
@@ -406,10 +412,16 @@ export async function loadBoard(): Promise<Board> {
         .leftJoin(users, eq(users.id, walletLinks.approvedById)),
 
       /*
-       * Invoices still waiting. A sale marked paid in full is not on the
-       * board: it has been accounted for, by this or by a bank transfer, and
-       * a reconciliation screen that lists settled invoices is a screen
-       * nobody can see the open ones on.
+       * Every live sale in the window, settled or not.
+       *
+       * It used to be the unpaid ones only, on the reasoning that a screen
+       * listing settled invoices is a screen nobody can find the open ones
+       * on. That is right about the *screen* and wrong about the *matching*:
+       * a dealer marks an invoice paid when the money lands, so the USDT
+       * that landed is precisely the thing that paid it — and hiding those
+       * invoices left a wallet full of a year's receipts with nothing to
+       * match against. The screen still leads with what is owed; a settled
+       * invoice is offered for attribution and says so.
        */
       db.select({
         id: sales.id,
@@ -418,6 +430,7 @@ export async function loadBoard(): Promise<Board> {
         at: sales.saleDate,
         customerId: sales.customerId,
         customerName: sales.customerName,
+        status: sales.paymentStatus,
         brandName: brands.name,
         model: watches.model,
       })
@@ -429,7 +442,6 @@ export async function loadBoard(): Promise<Board> {
           // a single edit rather than a hunt through every query.
           liveSale(),
           gte(sales.saleDate, since),
-          inArray(sales.paymentStatus, ['PENDING', 'OVERDUE', 'DEPOSIT']),
         )),
 
       db.select({
@@ -439,6 +451,7 @@ export async function loadBoard(): Promise<Board> {
         at: brokerages.brokeredOn,
         customerId: brokerages.customerId,
         customerName: brokerages.soldTo,
+        status: brokerages.paymentStatus,
         description: brokerages.description,
       })
         .from(brokerages)
@@ -446,7 +459,6 @@ export async function loadBoard(): Promise<Board> {
           isNull(brokerages.voidedAt),
           isNull(brokerages.deletedAt),
           gte(brokerages.brokeredOn, since),
-          inArray(brokerages.paymentStatus, ['PENDING', 'OVERDUE', 'DEPOSIT']),
         )),
 
       db.select({
@@ -515,6 +527,15 @@ export async function loadBoard(): Promise<Board> {
   const payables: Payable[] = [
     ...saleRows.map((row) => {
       const totalUsd = usdFromBase(row.base, usdRate)
+      const linkedUsd = appliedTo.get(row.id) ?? 0
+      /*
+       * What is owed, as the ledger has it.
+       *
+       * A sale marked paid owes nothing however the arithmetic falls — the
+       * figure is the ledger's answer, not ours — so a settled invoice has
+       * no outstanding amount and is offered for attribution instead.
+       */
+      const settled = row.status === 'PAID'
       return {
         kind: 'SALE' as const,
         id: row.id,
@@ -523,12 +544,16 @@ export async function loadBoard(): Promise<Board> {
         customerId: row.customerId,
         customerName: row.customerName,
         totalUsd,
-        dueUsd: Math.max(0, totalUsd - (appliedTo.get(row.id) ?? 0)),
+        dueUsd: settled ? 0 : Math.max(0, totalUsd - linkedUsd),
+        linkedUsd,
+        settled,
         at: row.at.toISOString(),
       }
     }),
     ...feeRows.map((row) => {
       const totalUsd = usdFromBase(row.base, usdRate)
+      const linkedUsd = appliedTo.get(row.id) ?? 0
+      const settled = row.status === 'PAID'
       return {
         kind: 'COMMISSION' as const,
         id: row.id,
@@ -537,7 +562,9 @@ export async function loadBoard(): Promise<Board> {
         customerId: row.customerId,
         customerName: row.customerName,
         totalUsd,
-        dueUsd: Math.max(0, totalUsd - (appliedTo.get(row.id) ?? 0)),
+        dueUsd: settled ? 0 : Math.max(0, totalUsd - linkedUsd),
+        linkedUsd,
+        settled,
         at: row.at.toISOString(),
       }
     }),
@@ -670,6 +697,22 @@ async function customerFor(kind: 'SALE' | 'COMMISSION', id: string): Promise<str
  * date is the chain's, not today's: when the money actually arrived is the
  * fact worth keeping, and it is the one a dispute turns on.
  */
+/**
+ * Whether what has arrived covers the invoice.
+ *
+ * The same few dollars the matcher allows, not a flat one.
+ *
+ * They had drifted apart, and the gap showed up the moment a real invoice
+ * was paid in two parts: the matcher is content that 6,804.50 settles a
+ * 6,807.50 invoice, because each transfer pays a withdrawal fee out of
+ * itself — but this then insisted on a dollar, called it short, and left an
+ * invoice everybody had agreed was paid sitting at DEPOSIT for ever. One
+ * rule, so a figure the system proposed is a figure the system accepts.
+ */
+function settledBy(paid: number, totalUsd: number): boolean {
+  return paid >= totalUsd - tolerance(totalUsd)
+}
+
 async function settle(
   kind: 'SALE' | 'COMMISSION', id: string, paidOn: Date,
 ): Promise<void> {
@@ -683,24 +726,41 @@ async function settle(
   const paid = Number(applied?.total ?? 0)
 
   if (kind === 'SALE') {
-    const [sale] = await db.select({ base: sales.saleAmountGbp }).from(sales)
-      .where(eq(sales.id, id)).limit(1)
+    const [sale] = await db.select({ base: sales.saleAmountGbp, status: sales.paymentStatus })
+      .from(sales).where(eq(sales.id, id)).limit(1)
     if (!sale) return
     const totalUsd = usdFromBase(sale.base, usdRate)
+    const covered = settledBy(paid, totalUsd)
+
+    /*
+     * Attribution never un-pays an invoice.
+     *
+     * Putting half a payment against a sale somebody has already marked paid
+     * says where that money came from. It does not say the sale is unpaid —
+     * and this used to write exactly that, dropping a PAID sale to DEPOSIT
+     * and throwing away the date it was paid on, because the links did not
+     * happen to add up to the whole. A status a person set is theirs; this
+     * only ever moves one forward.
+     */
+    if (sale.status === 'PAID' && !covered) return
+
     await db.update(sales).set({
-      paymentStatus: paid >= totalUsd - 100 ? 'PAID' : 'DEPOSIT',
-      paidOn: paid >= totalUsd - 100 ? paidOn : null,
+      paymentStatus: covered ? 'PAID' : 'DEPOSIT',
+      paidOn: covered ? paidOn : null,
       updatedAt: new Date(),
     }).where(eq(sales.id, id))
     return
   }
 
-  const [fee] = await db.select({ base: brokerages.feeBase }).from(brokerages)
-    .where(eq(brokerages.id, id)).limit(1)
+  const [fee] = await db.select({ base: brokerages.feeBase, status: brokerages.paymentStatus })
+    .from(brokerages).where(eq(brokerages.id, id)).limit(1)
   if (!fee) return
   const totalUsd = usdFromBase(fee.base, usdRate)
+  const covered = settledBy(paid, totalUsd)
+  if (fee.status === 'PAID' && !covered) return
+
   await db.update(brokerages).set({
-    paymentStatus: paid >= totalUsd - 100 ? 'PAID' : 'DEPOSIT',
+    paymentStatus: covered ? 'PAID' : 'DEPOSIT',
     updatedAt: new Date(),
   }).where(eq(brokerages.id, id))
 }
