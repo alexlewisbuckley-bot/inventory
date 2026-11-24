@@ -195,7 +195,7 @@ describe('matching a payment to an invoice', () => {
     )
     expect(proposals).toHaveLength(1)
     expect(proposals[0].targetId).toBe('s1')
-    expect(proposals[0].reason).toContain('2 invoices are waiting')
+    expect(proposals[0].reason).toContain('2 invoices match this figure')
     expect(proposals[0].confidence).toBeLessThan(90)
   })
 
@@ -784,4 +784,149 @@ describe('a read that is cut short', () => {
     expect(waitFor(200, 1)).toBeNull()
   })
 
+})
+
+/**
+ * Matching against sales that are already in the books.
+ *
+ * Alex: "It is not linking transactions to past sales which it should... it
+ * should be trying to match these up so we know what has come in USDT and
+ * what it is linked to and which sale, right now it's just scanning and
+ * doing nothing."
+ *
+ * It was doing nothing because it was only ever shown invoices still waiting
+ * for money, and a dealer marks an invoice paid the day the money lands. A
+ * year of receipts had nothing to match against.
+ */
+describe('attributing a payment to a sale already marked paid', () => {
+  const settled = (over: Partial<Payable> & { id: string; reference: string; totalUsd: number }) =>
+    payable({ dueUsd: 0, settled: true, ...over })
+
+  it('matches a payment to a past sale that is already paid', () => {
+    const proposals = proposeLinks(
+      [payment({ id: 'p1', amountUsd: usd(40_000), at: '2026-09-12T10:00:00Z' })],
+      [settled({ id: 's1', reference: 'INV-0101', totalUsd: usd(40_000), at: '2026-09-10T09:00:00Z' })],
+    )
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0].targetId).toBe('s1')
+    // And says what it is, rather than claiming the invoice is waiting.
+    expect(proposals[0].reason).toContain('already marked paid')
+  })
+
+  it('prefers an invoice still owed over one already paid, on a tie', () => {
+    // Both fit the figure. The money somebody is still owed is the better
+    // answer, and the one a person would reach for first.
+    const proposals = proposeLinks(
+      [payment({ id: 'p1', amountUsd: usd(40_000), at: '2026-09-12T10:00:00Z' })],
+      [
+        settled({ id: 'old', reference: 'INV-0101', totalUsd: usd(40_000), at: '2026-09-11T09:00:00Z' }),
+        payable({ id: 'open', reference: 'INV-0148', dueUsd: usd(40_000), at: '2026-09-11T09:00:00Z' }),
+      ],
+    )
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0].targetId).toBe('open')
+  })
+
+  it('will not attribute a second payment to a sale already explained', () => {
+    /*
+     * The distinction that stops money being counted twice: owing nothing
+     * because a person marked it paid is a candidate, owing nothing because
+     * our own links already cover it is not.
+     */
+    const proposals = proposeLinks(
+      [payment({ id: 'p1', amountUsd: usd(40_000), at: '2026-09-12T10:00:00Z' })],
+      [settled({
+        id: 's1', reference: 'INV-0101', totalUsd: usd(40_000),
+        linkedUsd: usd(40_000), at: '2026-09-10T09:00:00Z',
+      })],
+    )
+    expect(proposals).toHaveLength(0)
+  })
+})
+
+/**
+ * A payment that arrives in parts.
+ *
+ * Alex: "even some transactions are sent in two parts, but it should be
+ * trying to match these up".
+ */
+describe('a payment sent in parts', () => {
+  it('puts two transfers together against one invoice', () => {
+    const proposals = proposeLinks(
+      [
+        payment({ id: 'a', amountUsd: usd(25_000), at: '2026-09-11T10:00:00Z', counterparty: 'TPayer1' }),
+        payment({ id: 'b', amountUsd: usd(15_000), at: '2026-09-13T10:00:00Z', counterparty: 'TPayer1' }),
+      ],
+      [payable({ id: 's1', reference: 'INV-0148', dueUsd: usd(40_000), at: '2026-09-10T09:00:00Z' })],
+    )
+    expect(proposals).toHaveLength(2)
+    expect(new Set(proposals.map((proposal) => proposal.paymentId))).toEqual(new Set(['a', 'b']))
+    expect(proposals.every((proposal) => proposal.targetId === 's1')).toBe(true)
+    expect(proposals[0].reason).toContain('2 payments from this address')
+  })
+
+  it('finds the two that go together among three that do not', () => {
+    /*
+     * The case the old rule could not do at all. It added up everything a
+     * payer had sent and asked whether the total was an invoice — so a
+     * customer who pays one invoice in parts and another outright summed to
+     * neither, and got nothing. Which is the customer this is for.
+     */
+    const proposals = proposeLinks(
+      [
+        payment({ id: 'a', amountUsd: usd(25_000), at: '2026-09-11T10:00:00Z', counterparty: 'TPayer1' }),
+        payment({ id: 'b', amountUsd: usd(15_000), at: '2026-09-13T10:00:00Z', counterparty: 'TPayer1' }),
+        payment({ id: 'c', amountUsd: usd(9_000), at: '2026-09-14T10:00:00Z', counterparty: 'TPayer1' }),
+      ],
+      [payable({ id: 's1', reference: 'INV-0148', dueUsd: usd(40_000), at: '2026-09-10T09:00:00Z' })],
+    )
+    const placed = proposals.filter((proposal) => proposal.targetId === 's1')
+    expect(new Set(placed.map((proposal) => proposal.paymentId))).toEqual(new Set(['a', 'b']))
+    // And the odd one out is left alone rather than forced in.
+    expect(proposals.some((proposal) => proposal.paymentId === 'c')).toBe(false)
+  })
+
+  it('allows for the fee taken off each part', () => {
+    // Three transfers against a 126,519 invoice arrive as 126,514.20 more
+    // often than they arrive exact; demanding the cent finds nothing.
+    const proposals = proposeLinks(
+      [
+        payment({ id: 'a', amountUsd: usd(50_000) - 160, at: '2026-09-11T10:00:00Z', counterparty: 'TPayer1' }),
+        payment({ id: 'b', amountUsd: usd(76_519) - 160, at: '2026-09-12T10:00:00Z', counterparty: 'TPayer1' }),
+      ],
+      [payable({ id: 's1', reference: 'INV-0148', dueUsd: usd(126_519), at: '2026-09-10T09:00:00Z' })],
+    )
+    expect(proposals).toHaveLength(2)
+  })
+
+  it('reads a lone first instalment from a known payer, quietly', () => {
+    /*
+     * Half now and half next month means the first half sits there saying
+     * nothing for a month. Proposed, but at a confidence that makes plain it
+     * is the likeliest reading rather than a certainty.
+     */
+    const proposals = proposeLinks(
+      [payment({
+        id: 'p1', amountUsd: usd(20_000), at: '2026-09-12T10:00:00Z', knownCustomerId: 'cust-1',
+      })],
+      [payable({
+        id: 's1', reference: 'INV-0148', dueUsd: usd(40_000),
+        customerId: 'cust-1', customerName: 'Watch Co', at: '2026-09-10T09:00:00Z',
+      })],
+    )
+    expect(proposals).toHaveLength(1)
+    expect(proposals[0].targetId).toBe('s1')
+    expect(proposals[0].confidence).toBeLessThanOrEqual(62)
+    expect(proposals[0].reason).toContain('would still be outstanding')
+  })
+
+  it('does not guess a part-payment from an address it does not know', () => {
+    // Without a payer we recognise, a figure smaller than an invoice is just
+    // a figure smaller than an invoice.
+    const proposals = proposeLinks(
+      [payment({ id: 'p1', amountUsd: usd(20_000), at: '2026-09-12T10:00:00Z' })],
+      [payable({ id: 's1', reference: 'INV-0148', dueUsd: usd(40_000), at: '2026-09-10T09:00:00Z' })],
+    )
+    expect(proposals).toHaveLength(0)
+  })
 })

@@ -9,7 +9,7 @@ import {
 import { Button, Card, Chip, ComboSelect, EmptyState, StatCard, useToast } from '@/components/ui'
 import { formatUsdt, shortAddress } from '@/lib/usdt'
 import { WALLET_CHAIN_LABELS, type WalletChain } from '@/lib/enums'
-import type { Flag, Payable, Proposal } from '@/lib/wallet-match'
+import { targetUsd, type Flag, type Payable, type Proposal } from '@/lib/wallet-match'
 
 export interface BoardTransferView {
   id: string
@@ -189,7 +189,7 @@ export function PaymentsBoard({ transfers, payables, proposals, flags, totals }:
         <StatCard
           label="Invoices waiting"
           value={formatUsdt(totals.waitingUsd)}
-          caption={`${payables.length} open`}
+          caption={`${payables.filter((payable) => !payable.settled).length} open`}
         />
         <StatCard
           label="Last scan"
@@ -527,10 +527,23 @@ function PaymentRow({ transfer, payables, proposals, busy, onApprove, onIgnore }
                 name="payable"
                 label="Against which invoice"
                 placeholder="An invoice that is waiting"
-                options={payables.map((payable) => ({
-                  value: `${payable.kind}:${payable.id}`,
-                  label: `${payable.reference} · ${formatUsdt(payable.dueUsd)} · ${payable.customerName ?? payable.label}`,
-                }))}
+                /*
+                  Open invoices first, and a settled one says so.
+
+                  Both belong in the list — attributing a payment to a sale
+                  already marked paid is the point of half of this — but
+                  somebody reconciling is nearly always looking for what is
+                  owed, and a list that opens on last March's paid invoices
+                  is a list they scroll past.
+                */
+                options={[...payables]
+                  .sort((a, b) => Number(Boolean(a.settled)) - Number(Boolean(b.settled)))
+                  .map((payable) => ({
+                    value: `${payable.kind}:${payable.id}`,
+                    label: payable.settled
+                      ? `${payable.reference} · ${formatUsdt(payable.totalUsd)} · ${payable.customerName ?? payable.label} · already paid`
+                      : `${payable.reference} · ${formatUsdt(payable.dueUsd)} · ${payable.customerName ?? payable.label}`,
+                  }))}
                 value={manual}
                 onChange={setManual}
                 emptyMessage="No invoice is waiting."
@@ -551,7 +564,7 @@ function PaymentRow({ transfer, payables, proposals, busy, onApprove, onIgnore }
                   // The smaller of the two, so linking a large payment to a
                   // small invoice leaves the rest of it on the board rather
                   // than silently over-paying.
-                  amountUsd: Math.min(left, payable?.dueUsd ?? left),
+                  amountUsd: Math.min(left, payable ? targetUsd(payable) : left),
                   basis: 'HUMAN',
                   confidence: 100,
                   reason: 'Chosen by hand',
