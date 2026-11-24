@@ -192,3 +192,86 @@ describe('accrual', () => {
     expect(list.slice(0, 600)).toMatch(/await accrueAllOpen\(\)/)
   })
 })
+
+/**
+ * Going round again.
+ *
+ * Alex: "He's agreed to pay the interest again for another month, but there
+ * doesn't seem to be a way to really easily record that that's happening
+ * again for the month after... it should automatically renew but if we know
+ * sooner we should also be able to click a button."
+ *
+ * The billing never needed the button — a month open is a month earned. What
+ * needed it was the agreement, which had nowhere to live, so a loan ran past
+ * its redemption date with nothing on the screen acknowledging it.
+ */
+describe('renewing a buy-back', () => {
+  const service = read('src/server/services/buyback-service.ts')
+  const renew = service.slice(
+    service.indexOf('export async function renewBuyback'),
+    service.indexOf('/** The money for one charge is in. */'),
+  )
+
+  it('is its own function, bounded', () => {
+    // Guards below read this slice; if it ever stops being the real body
+    // they would pass against nothing.
+    expect(renew.length).toBeGreaterThan(400)
+    expect(renew).toMatch(/buybackRenewals/)
+  })
+
+  it('does not raise a month of interest', () => {
+    /*
+     * The thing this must never do. Interest is earned in arrears, so
+     * billing the coming month on the day it is agreed charges a customer
+     * for time they have not had — and the accrual would raise it again on
+     * the anniversary, charging twice.
+     */
+    expect(renew).not.toMatch(/kind: 'INTEREST'/)
+    expect(renew).not.toMatch(/periodIndex: [^n]/)
+  })
+
+  it('counts from the date already agreed, not from today', () => {
+    // A loan due on the 14th, renewed on the 2nd, runs to the 14th of next
+    // month. From today it would quietly give away the twelve days between.
+    expect(renew).toMatch(/loan\.dueOn \?\?/)
+    expect(renew).toMatch(/addMonths\(from, months\)/)
+  })
+
+  it('refuses a loan that is already closed', () => {
+    // Renewing a redeemed loan starts it billing against watches that have
+    // gone back to the customer.
+    expect(renew).toMatch(/loan\.status !== 'OPEN'/)
+    expect(renew).toMatch(/ConflictError/)
+  })
+
+  it('only charges a fee when one was actually agreed', () => {
+    // A prefilled fee is a fee charged by accident.
+    expect(renew).toMatch(/if \(input\.fee && input\.fee\.amount > 0\)/)
+    const modal = read('src/components/buybacks/RenewBuybackModal.tsx')
+    expect(modal).toMatch(/useState\(''\)/)
+    expect(modal).toMatch(/Leave blank unless you charged one/)
+  })
+
+  it('writes the agreement down rather than only moving a date', () => {
+    // "He has rolled on four times, most recently on the 2nd" is the
+    // question this exists to answer, and a moved date cannot answer it.
+    const schema = read('src/server/db/migrations/0077_buyback_renewals.sql')
+    expect(schema).toMatch(/CREATE TABLE IF NOT EXISTS buyback_renewals/)
+    expect(schema).toMatch(/previous_due_on/)
+    expect(schema).toMatch(/agreed_on/)
+    expect(renew).toMatch(/previousDueOn: loan\.dueOn/)
+  })
+
+  it('tells the screen what is coming, so nobody goes looking for a button', () => {
+    /*
+     * The billing was always automatic and never said so, which is why it
+     * looked as though nothing was happening.
+     */
+    const list = service.slice(service.indexOf('export async function listBuybacks'))
+    expect(list).toMatch(/nextChargeOn/)
+    expect(list).toMatch(/rolledPastDue/)
+    // And no next charge on a loan that is finished.
+    expect(list).toMatch(/open \? dueDateFor/)
+    expect(list).toMatch(/const open = row\.status === 'OPEN'/)
+  })
+})

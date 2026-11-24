@@ -1,13 +1,15 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
-import { buybackCharges, buybackItems, buybacks, customers, salesPeople } from '../db/schema'
+import {
+  buybackCharges, buybackItems, buybackRenewals, buybacks, customers, salesPeople,
+} from '../db/schema'
 import { newId } from '@/lib/ids'
 import { addMonths } from '@/lib/checks'
 import { BASE_CURRENCY, type BuybackChargeKind, type BuybackStatus, type CurrencyCode } from '@/lib/enums'
 import { RATE_SCALE, type RateTable } from '@/lib/currency'
 import { getRateTable } from './fx-service'
 import { recordAudit } from './audit'
-import { NotFoundError, ValidationError } from '@/lib/errors'
+import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors'
 import type { SessionUser } from '../auth/session'
 
 /**
@@ -312,6 +314,118 @@ export async function addExtensionFee(
   })
 }
 
+/**
+ * Record that a buy-back is going round again.
+ *
+ * Alex: "it should automatically renew but if we know sooner we should also
+ * be able to click a button."
+ *
+ * It does automatically renew, and this button does not bill anything early.
+ * Interest is earned in arrears — a month open is a month owed, raised on
+ * the anniversary — and raising next month's charge today would bill a
+ * customer for time they have not had yet, which is the one thing this
+ * service must never do.
+ *
+ * What it records is the agreement. The loan's redemption date moves
+ * forward, the conversation is written down with the date it happened on,
+ * and the screen stops showing a loan as past its date when everybody knows
+ * it has been rolled on. An extension fee rides along where one was charged,
+ * because the two are agreed in the same breath.
+ */
+export async function renewBuyback(
+  input: {
+    buybackId: string
+    months?: number
+    /** When they agreed, where that is not today. */
+    agreedOn?: Date | null
+    /** An extension fee, where one is charged for rolling on. */
+    fee?: { amount: number; currency: CurrencyCode } | null
+    note?: string | null
+  },
+  actor: SessionUser,
+): Promise<string> {
+  const months = Math.trunc(input.months ?? 1)
+  if (months < 1 || months > 24) {
+    throw new ValidationError('Renew for between one and twenty-four months.', {
+      months: 'One to twenty-four.',
+    })
+  }
+
+  return withTransaction(async () => {
+    const rows = await db.select().from(buybacks)
+      .where(and(eq(buybacks.id, input.buybackId), isNull(buybacks.deletedAt))).limit(1)
+    const loan = rows[0]
+    if (!loan) throw new NotFoundError('Buy-back')
+    /*
+     * A redeemed or defaulted loan is finished. Renewing one would start it
+     * billing again against watches that have gone back to the customer or
+     * become ours, and neither is a thing anybody meant to do.
+     */
+    if (loan.status !== 'OPEN') {
+      throw new ConflictError('That buy-back is closed. Only an open one can be renewed.')
+    }
+
+    /*
+     * From the date it was already due, not from today.
+     *
+     * A loan due on the 14th that is renewed on the 2nd runs to the 14th of
+     * next month. Counting from today would quietly give away the twelve
+     * days between — and counting from today on a loan already past its date
+     * would quietly take a fortnight back.
+     */
+    const from = loan.dueOn ?? dueDateFor(loan.startedOn, periodsElapsed(loan.startedOn, new Date()) + 1)
+    const newDueOn = addMonths(from, months) ?? from
+
+    let chargeId: string | null = null
+    if (input.fee && input.fee.amount > 0) {
+      const rates = await getRateTable()
+      const { base, fxRate } = inBase(input.fee.amount, input.fee.currency, rates)
+      chargeId = newId('bbc')
+      await db.insert(buybackCharges).values({
+        id: chargeId,
+        buybackId: loan.id,
+        kind: 'EXTENSION',
+        periodIndex: null,
+        // Due when it was agreed, not when the extension ends: it is a fee
+        // for extending, payable now, not another month of interest.
+        dueOn: input.agreedOn ?? new Date(),
+        amount: input.fee.amount,
+        currency: input.fee.currency,
+        fxRate,
+        amountBase: base,
+        notes: input.note?.trim() || null,
+      })
+    }
+
+    const id = newId('bbr')
+    await db.insert(buybackRenewals).values({
+      id,
+      buybackId: loan.id,
+      agreedOn: input.agreedOn ?? new Date(),
+      previousDueOn: loan.dueOn,
+      newDueOn,
+      months,
+      chargeId,
+      note: input.note?.trim() || null,
+      recordedById: actor.id,
+    })
+
+    await db.update(buybacks)
+      .set({ dueOn: newDueOn, updatedAt: new Date() })
+      .where(eq(buybacks.id, loan.id))
+
+    await recordAudit({
+      entityType: 'Buyback',
+      entityId: loan.id,
+      action: 'UPDATE',
+      actorId: actor.id,
+      summary: `${actor.name} renewed ${loan.customerName}'s buy-back for `
+        + `${months} ${months === 1 ? 'month' : 'months'}, to ${newDueOn.toISOString().slice(0, 10)}`,
+    })
+    return id
+  })
+}
+
 /** The money for one charge is in. */
 export async function markChargePaid(chargeId: string, actor: SessionUser): Promise<void> {
   const updated = await db.update(buybackCharges)
@@ -515,6 +629,21 @@ export interface BuybackSummary {
   chargedBase: number
   paidBase: number
   items: number
+  /*
+   * What is coming, worked out rather than stored.
+   *
+   * The billing was always automatic and never said so, which is why it
+   * looked as though nothing was happening: a loan showed what it had been
+   * charged and left you to work out whether anything more was due. Saying
+   * "next charge 14 December, 500.00" is the difference between trusting it
+   * and going looking for a button to press.
+   */
+  nextChargeOn: Date | null
+  nextChargeBase: number | null
+  /** Months it has run past the date it was agreed to be redeemed on. */
+  rolledPastDue: boolean
+  renewals: number
+  lastRenewedOn: Date | null
 }
 
 /**
@@ -558,6 +687,12 @@ export async function listBuybacks(status?: BuybackStatus[]): Promise<BuybackSum
       items: sql<number>`(
         SELECT count(*) FROM buyback_items i WHERE i.buyback_id = buybacks.id
       )`.mapWith(Number),
+      renewals: sql<number>`(
+        SELECT count(*) FROM buyback_renewals r WHERE r.buyback_id = buybacks.id
+      )`.mapWith(Number),
+      lastRenewedOn: sql<Date | null>`(
+        SELECT max(r.agreed_on) FROM buyback_renewals r WHERE r.buyback_id = buybacks.id
+      )`,
     })
     .from(buybacks)
     .leftJoin(salesPeople, eq(salesPeople.id, buybacks.soldById))
@@ -566,7 +701,24 @@ export async function listBuybacks(status?: BuybackStatus[]): Promise<BuybackSum
     // running longest is the one most likely to need chasing.
     .orderBy(asc(buybacks.status), asc(buybacks.startedOn))
 
-  return rows as BuybackSummary[]
+  const now = new Date()
+  return rows.map((row) => {
+    const open = row.status === 'OPEN'
+    /*
+     * The month after the last one earned. Interest is in arrears, so the
+     * next charge falls on the next anniversary — and on a closed loan
+     * there is no next charge, however the arithmetic falls.
+     */
+    const next = periodsElapsed(row.startedOn, now, row.closedOn) + 1
+    return {
+      ...row,
+      nextChargeOn: open ? dueDateFor(row.startedOn, next) : null,
+      nextChargeBase: open ? row.monthlyBase : null,
+      // Past the date it was agreed to be redeemed on, and still running.
+      rolledPastDue: open && Boolean(row.dueOn) && row.dueOn! < now,
+      lastRenewedOn: row.lastRenewedOn ? new Date(row.lastRenewedOn) : null,
+    }
+  }) as BuybackSummary[]
 }
 
 export interface BuybackCharge {
