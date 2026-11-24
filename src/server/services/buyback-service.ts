@@ -320,17 +320,22 @@ export async function addExtensionFee(
  * Alex: "it should automatically renew but if we know sooner we should also
  * be able to click a button."
  *
- * It does automatically renew, and this button does not bill anything early.
- * Interest is earned in arrears — a month open is a month owed, raised on
- * the anniversary — and raising next month's charge today would bill a
- * customer for time they have not had yet, which is the one thing this
- * service must never do.
+ * And invoices it. Alex: "when we click the button to confirm an additional
+ * month we can push it to sale as it's now been invoiced too on this
+ * specific day."
  *
- * What it records is the agreement. The loan's redemption date moves
- * forward, the conversation is written down with the date it happened on,
- * and the screen stops showing a loan as past its date when everybody knows
- * it has been rolled on. An extension fee rides along where one was charged,
- * because the two are agreed in the same breath.
+ * That is the thing the first version got wrong. It recorded the agreement
+ * and left the billing to the monthly accrual, so a renewal put nothing in
+ * the sales ledger and the money appeared weeks later on the anniversary —
+ * which is not how the business works. The invoice goes out the day the
+ * customer agrees, so the charge is raised that day and carries that date.
+ *
+ * It cannot double-bill. A month of interest is identified by its period
+ * number, the unique index on (buyback_id, period_index) refuses a second
+ * row for one, and the monthly accrual skips any period already raised. So
+ * the charge this raises today is the same charge the accrual would have
+ * raised on the anniversary — raised early and dated honestly, not an extra
+ * one alongside it.
  */
 export async function renewBuyback(
   input: {
@@ -343,7 +348,14 @@ export async function renewBuyback(
     note?: string | null
   },
   actor: SessionUser,
-): Promise<string> {
+): Promise<{
+  id: string
+  newDueOn: Date
+  /** Months of interest this renewal actually invoiced. */
+  invoicedCount: number
+  invoicedBase: number
+  invoicedOn: Date
+}> {
   const months = Math.trunc(input.months ?? 1)
   if (months < 1 || months > 24) {
     throw new ValidationError('Renew for between one and twenty-four months.', {
@@ -376,6 +388,57 @@ export async function renewBuyback(
     const from = loan.dueOn ?? dueDateFor(loan.startedOn, periodsElapsed(loan.startedOn, new Date()) + 1)
     const newDueOn = addMonths(from, months) ?? from
 
+    const invoicedOn = input.agreedOn ?? new Date()
+
+    /*
+     * Which months these are.
+     *
+     * From whichever is further along: the months already earned, or the
+     * last period already on the loan. Renewing twice in one month must not
+     * re-raise a period that is already invoiced, and renewing a loan whose
+     * accrual has run ahead must not go back and fill a gap behind it.
+     */
+    const raised = await db
+      .select({ periodIndex: buybackCharges.periodIndex })
+      .from(buybackCharges)
+      .where(and(
+        eq(buybackCharges.buybackId, loan.id),
+        eq(buybackCharges.kind, 'INTEREST'),
+        isNull(buybackCharges.voidedAt),
+      ))
+    const highest = raised.reduce(
+      (top, row) => Math.max(top, row.periodIndex ?? 0), 0,
+    )
+    const lastBilled = Math.max(highest, periodsElapsed(loan.startedOn, invoicedOn, loan.closedOn))
+
+    const invoiced: string[] = []
+    for (let month = 1; month <= months; month += 1) {
+      const period = lastBilled + month
+      try {
+        const chargeId = newId('bbc')
+        await db.insert(buybackCharges).values({
+          id: chargeId,
+          buybackId: loan.id,
+          kind: 'INTEREST',
+          periodIndex: period,
+          // The day it was invoiced, which is what puts it in the sales
+          // ledger today rather than on an anniversary weeks away.
+          dueOn: invoicedOn,
+          // The figures as they stand now. A rate changed later moves
+          // future months and never one already billed.
+          amount: monthlyFor(loan.principalAmount, loan.rateBps),
+          currency: loan.principalCurrency,
+          fxRate: loan.principalFxRate,
+          amountBase: loan.monthlyBase,
+        })
+        invoiced.push(chargeId)
+      } catch (error) {
+        // Already invoiced, by an accrual or by an earlier press of this
+        // button. The index refusing it is the index doing its job.
+        if (!isDuplicatePeriod(error)) throw error
+      }
+    }
+
     let chargeId: string | null = null
     if (input.fee && input.fee.amount > 0) {
       const rates = await getRateTable()
@@ -388,7 +451,7 @@ export async function renewBuyback(
         periodIndex: null,
         // Due when it was agreed, not when the extension ends: it is a fee
         // for extending, payable now, not another month of interest.
-        dueOn: input.agreedOn ?? new Date(),
+        dueOn: invoicedOn,
         amount: input.fee.amount,
         currency: input.fee.currency,
         fxRate,
@@ -401,7 +464,7 @@ export async function renewBuyback(
     await db.insert(buybackRenewals).values({
       id,
       buybackId: loan.id,
-      agreedOn: input.agreedOn ?? new Date(),
+      agreedOn: invoicedOn,
       previousDueOn: loan.dueOn,
       newDueOn,
       months,
@@ -422,7 +485,21 @@ export async function renewBuyback(
       summary: `${actor.name} renewed ${loan.customerName}'s buy-back for `
         + `${months} ${months === 1 ? 'month' : 'months'}, to ${newDueOn.toISOString().slice(0, 10)}`,
     })
-    return id
+
+    /*
+     * What was invoiced, so the confirmation can say it.
+     *
+     * "Updated but not showing in sales" was the question this answers:
+     * somebody renewed a loan and went looking for the money. Now it is
+     * there the moment they look, and the message says so with the figure.
+     */
+    return {
+      id,
+      newDueOn,
+      invoicedCount: invoiced.length,
+      invoicedBase: invoiced.length * loan.monthlyBase,
+      invoicedOn,
+    }
   })
 }
 
