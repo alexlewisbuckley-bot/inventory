@@ -219,15 +219,43 @@ describe('renewing a buy-back', () => {
     expect(renew).toMatch(/buybackRenewals/)
   })
 
-  it('does not raise a month of interest', () => {
+  it('invoices the month, dated the day it was agreed', () => {
     /*
-     * The thing this must never do. Interest is earned in arrears, so
-     * billing the coming month on the day it is agreed charges a customer
-     * for time they have not had — and the accrual would raise it again on
-     * the anniversary, charging twice.
+     * Alex: "when we click the button to confirm an additional month we can
+     * push it to sale as it's now been invoiced too on this specific day."
+     *
+     * The first version recorded the agreement and left the billing to the
+     * monthly accrual, so a renewal put nothing in the sales ledger and the
+     * money turned up weeks later on the anniversary. The invoice goes out
+     * the day they agree, so the charge is raised then and carries that date.
      */
-    expect(renew).not.toMatch(/kind: 'INTEREST'/)
-    expect(renew).not.toMatch(/periodIndex: [^n]/)
+    expect(renew).toMatch(/kind: 'INTEREST'/)
+    /*
+     * Bounded to the interest insert itself. Matching `dueOn: invoicedOn`
+     * anywhere in the function passed while the interest charge was dated
+     * on its anniversary, because the extension fee a few lines below is
+     * dated that way too — a guard that was reading the wrong row.
+     */
+    const interest = renew.slice(
+      renew.indexOf("kind: 'INTEREST'"),
+      renew.indexOf('amountBase: loan.monthlyBase'),
+    )
+    expect(interest).toMatch(/dueOn: invoicedOn/)
+    expect(interest).not.toMatch(/dueDateFor/)
+  })
+
+  it('cannot bill a month that is already invoiced', () => {
+    /*
+     * The guard that makes invoicing early safe. A month is identified by
+     * its period number; the unique index refuses a second row for one, and
+     * the accrual skips any period already raised. So the charge raised
+     * today is the one the anniversary would have raised, not an extra.
+     */
+    expect(renew).toMatch(/isDuplicatePeriod/)
+    // From whichever is further along: months earned, or months already on
+    // the loan. Neither renewing twice in a day nor an accrual that has run
+    // ahead may re-raise a period.
+    expect(renew).toMatch(/Math\.max\(highest, periodsElapsed\(/)
   })
 
   it('counts from the date already agreed, not from today', () => {
@@ -260,6 +288,34 @@ describe('renewing a buy-back', () => {
     expect(schema).toMatch(/previous_due_on/)
     expect(schema).toMatch(/agreed_on/)
     expect(renew).toMatch(/previousDueOn: loan\.dueOn/)
+  })
+
+  it('says what it invoiced, so nobody goes looking for it', () => {
+    // "Updated but not showing in sales" was somebody renewing a loan and
+    // going to look for the money. It is there now, and the message says so.
+    const actions = read('src/app/actions/buybacks.ts')
+    const renewAction = actions.slice(
+      actions.indexOf('export async function renewBuybackAction'),
+      actions.indexOf('export async function redeemBuybackAction'),
+    )
+    expect(renewAction).toMatch(/invoiced and on the sales/)
+    // And says plainly when a second press charged nothing.
+    expect(renewAction).toMatch(/already invoiced, so nothing was charged again/)
+  })
+
+  it('says what it is about to charge before it charges it', () => {
+    // The one control on the page that puts money on the ledger. The figure
+    // it is about to put there should not be a surprise.
+    const modal = read('src/components/buybacks/RenewBuybackModal.tsx')
+    expect(modal).toMatch(/This invoices/)
+    expect(modal).toMatch(/Renew and invoice/)
+    expect(modal).toMatch(/will not charge\s*\n?\s*them twice/)
+  })
+
+  it('lets a charge raised in error be voided', () => {
+    // Raising one is now a single press, so undoing one has to be too.
+    const manager = read('src/components/buybacks/BuybackManager.tsx')
+    expect(manager).toMatch(/voidBuybackChargeAction/)
   })
 
   it('tells the screen what is coming, so nobody goes looking for a button', () => {

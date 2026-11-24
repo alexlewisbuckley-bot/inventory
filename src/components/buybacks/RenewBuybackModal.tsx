@@ -2,7 +2,8 @@
 import { useState } from 'react'
 import { Button, Modal, SelectField, TextField, useToast } from '@/components/ui'
 import { renewBuybackAction } from '@/app/actions/buybacks'
-import { CURRENCIES } from '@/lib/enums'
+import { formatCurrency } from '@/lib/currency'
+import { BASE_CURRENCY, CURRENCIES } from '@/lib/enums'
 
 export interface RenewTarget {
   id: string
@@ -18,14 +19,16 @@ export interface RenewTarget {
 /**
  * "He's agreed to pay the interest again for another month."
  *
- * The thing this dialog has to be clearest about is what it does *not* do.
+ * The thing this dialog has to be clearest about is that it bills.
  *
- * Interest on a buy-back is not typed in and never was: every month a loan
- * stays open earns its charge, raised automatically. So this does not bill
- * anything, and pressing it twice does not charge twice. What it records is
- * the agreement — that the customer has said they will take another month —
- * which until now had nowhere to live, leaving a loan running past the date
- * it was due to be redeemed with nothing on the screen acknowledging it.
+ * Alex: "when we click the button to confirm an additional month we can push
+ * it to sale as it's now been invoiced too on this specific day." So pressing
+ * it raises the month's interest there and then, dated today, and it is on
+ * the sales ledger before the dialog has closed.
+ *
+ * Pressing it twice still does not charge twice: a month of interest is
+ * identified by its period number and the database refuses a second row for
+ * one. The second press moves the date on and says nothing was charged.
  *
  * The fee is blank and ought to stay blank most of the time. It is for a
  * charge made *for extending*, over and above the month's interest, which is
@@ -44,6 +47,8 @@ export function RenewBuybackModal({ target, onClose, onDone }: {
   const [feeCurrency, setFeeCurrency] = useState('AED')
   const [note, setNote] = useState('')
 
+  const count = Number(months) || 1
+
   const submit = async () => {
     setBusy(true)
     try {
@@ -56,7 +61,7 @@ export function RenewBuybackModal({ target, onClose, onDone }: {
         note: note.trim() || null,
       })
       if (result.ok) {
-        toast.success(result.message ?? 'Renewed.')
+        toast.success(result.message ?? 'Renewed.', result.detail)
         onDone()
         onClose()
       } else {
@@ -69,19 +74,17 @@ export function RenewBuybackModal({ target, onClose, onDone }: {
     }
   }
 
-  const count = Number(months) || 1
-
   return (
     <Modal
       open
       onClose={onClose}
       title={`${target.customerName} is taking another month`}
-      description="Records the agreement and moves the redemption date. It does not charge anything: the monthly interest is raised on its own, as it always has been."
+      description="Invoices the month's interest, dated today, and moves the redemption date. It goes straight onto the sales ledger."
       footer={(
         <>
           <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={submit} disabled={busy}>
-            {busy ? 'Recording…' : `Renew for ${count} ${count === 1 ? 'month' : 'months'}`}
+            {busy ? 'Invoicing…' : `Renew and invoice ${count} ${count === 1 ? 'month' : 'months'}`}
           </Button>
         </>
       )}
@@ -113,9 +116,18 @@ export function RenewBuybackModal({ target, onClose, onDone }: {
         />
 
         <div className="sm:col-span-2 rounded-md border border-line-subtle bg-surface-subtle px-4 py-3">
-          <p className="text-caption text-content-secondary">
-            Their interest carries on being charged every month either way — this does not add
-            a month&rsquo;s interest and pressing it twice will not charge them twice.
+          {/*
+            The figure, before it is charged rather than after. This is the
+            one control on the page that puts money on the ledger, and the
+            amount it is about to put there should not be a surprise.
+          */}
+          <p className="text-small text-content-primary">
+            This invoices <strong>{formatCurrency(target.monthlyBase * count, BASE_CURRENCY)}</strong>
+            {count > 1 ? ` — ${count} months of interest` : ''}, dated {agreedOn || 'today'}.
+          </p>
+          <p className="mt-1 text-caption text-content-secondary">
+            It appears on the sales ledger straight away. Pressing it twice will not charge
+            them twice — a month already invoiced is refused.
             {target.renewals > 0 && ` They have rolled on ${target.renewals} ${target.renewals === 1 ? 'time' : 'times'} already.`}
           </p>
         </div>

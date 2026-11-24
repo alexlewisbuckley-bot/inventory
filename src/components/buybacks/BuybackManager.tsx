@@ -12,6 +12,7 @@ import { formatDate } from '@/lib/dates'
 import { BUYBACK_STATUS_LABELS, type BuybackStatus, type CurrencyCode } from '@/lib/enums'
 import {
   defaultBuybackAction, markBuybackChargePaidAction, recordBuybackAction, redeemBuybackAction,
+  voidBuybackChargeAction,
 } from '@/app/actions/buybacks'
 import { RenewBuybackModal } from './RenewBuybackModal'
 
@@ -274,9 +275,28 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
                     </TD>
                     <TD align="right">
                       {canWrite && charge.paymentStatus !== 'PAID' && (
-                        <Button size="sm" variant="ghost" onClick={() => run(() => markBuybackChargePaidAction(charge.id))}>
-                          Payment received
-                        </Button>
+                        <span className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => run(() => markBuybackChargePaidAction(charge.id))}>
+                            Payment received
+                          </Button>
+                          {/*
+                            Raising a charge is now one press of a button, so
+                            undoing one has to be too. Voiding keeps the row
+                            and takes it out of the figures, which is what an
+                            invoice raised in error needs — and it frees the
+                            month to be invoiced again properly.
+                          */}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const reason = window.prompt('Why is this being voided?')
+                              if (reason?.trim()) run(() => voidBuybackChargeAction(charge.id, reason.trim()))
+                            }}
+                          >
+                            Void
+                          </Button>
+                        </span>
                       )}
                     </TD>
                   </TR>

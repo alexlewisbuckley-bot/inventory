@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { requireCapability } from '@/server/auth/session'
 import { describeDbError, isAppError } from '@/lib/errors'
 import { logger } from '@/lib/logger'
-import { CURRENCIES } from '@/lib/enums'
+import { BASE_CURRENCY, CURRENCIES } from '@/lib/enums'
 import {
   addExtensionFee, defaultBuyback, markChargePaid, recordBuyback, redeemBuyback, voidCharge,
 } from '@/server/services/buyback-service'
@@ -157,7 +157,7 @@ export async function renewBuybackAction(input: {
   feeAmount?: number | null
   feeCurrency?: string | null
   note?: string | null
-}): Promise<ActionState> {
+}): Promise<ActionState & { detail?: string }> {
   const actor = await requireCapability('buyback:write')
   const schema = z.object({
     buybackId: z.string().min(1),
@@ -172,7 +172,7 @@ export async function renewBuybackAction(input: {
 
   try {
     const { renewBuyback } = await import('@/server/services/buyback-service')
-    await renewBuyback({
+    const done = await renewBuyback({
       buybackId: parsed.data.buybackId,
       months: parsed.data.months,
       agreedOn: parsed.data.agreedOn ?? null,
@@ -183,10 +183,23 @@ export async function renewBuybackAction(input: {
     }, actor)
     refreshBuybacks()
     const months = parsed.data.months
+    const day = (date: Date) => date.toLocaleDateString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric',
+    })
+    /*
+     * What was invoiced, where it went, and when.
+     *
+     * "Updated but not showing in sales" was somebody renewing a loan and
+     * going to look for the money. It is in the ledger now, and saying so
+     * with the figure saves the trip.
+     */
     return {
       ok: true,
-      message: `Renewed for ${months} ${months === 1 ? 'month' : 'months'}. `
-        + 'The interest goes on being charged every month as before.',
+      message: `Renewed for ${months} ${months === 1 ? 'month' : 'months'}, to ${day(done.newDueOn)}.`,
+      detail: done.invoicedCount > 0
+        ? `${BASE_CURRENCY} ${(done.invoicedBase / 100).toFixed(2)} invoiced and on the sales `
+          + `ledger, dated ${day(done.invoicedOn)}.`
+        : 'Those months were already invoiced, so nothing was charged again.',
     }
   } catch (error) {
     return toState(error, 'Could not renew that buy-back.')
