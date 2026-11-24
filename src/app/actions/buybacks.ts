@@ -142,6 +142,57 @@ export async function addExtensionFeeAction(input: {
   }
 }
 
+/**
+ * "He's agreed to another month."
+ *
+ * The billing does not need this — it rolls on by itself — so this writes
+ * down the agreement rather than the money: the loan's redemption date moves
+ * and the conversation is on the record. A fee rides along only where one
+ * was actually charged for rolling on.
+ */
+export async function renewBuybackAction(input: {
+  buybackId: string
+  months?: number
+  agreedOn?: string | null
+  feeAmount?: number | null
+  feeCurrency?: string | null
+  note?: string | null
+}): Promise<ActionState> {
+  const actor = await requireCapability('buyback:write')
+  const schema = z.object({
+    buybackId: z.string().min(1),
+    months: z.coerce.number().int().min(1).max(24).default(1),
+    agreedOn: z.coerce.date().nullish(),
+    feeAmount: z.coerce.number().int().nonnegative().nullish(),
+    feeCurrency: z.enum(CURRENCIES).nullish(),
+    note: z.string().trim().max(500).nullish(),
+  })
+  const parsed = schema.safeParse(input)
+  if (!parsed.success) return { ok: false, message: 'Check the months and the date.' }
+
+  try {
+    const { renewBuyback } = await import('@/server/services/buyback-service')
+    await renewBuyback({
+      buybackId: parsed.data.buybackId,
+      months: parsed.data.months,
+      agreedOn: parsed.data.agreedOn ?? null,
+      fee: parsed.data.feeAmount
+        ? { amount: parsed.data.feeAmount, currency: parsed.data.feeCurrency ?? 'AED' }
+        : null,
+      note: parsed.data.note ?? null,
+    }, actor)
+    refreshBuybacks()
+    const months = parsed.data.months
+    return {
+      ok: true,
+      message: `Renewed for ${months} ${months === 1 ? 'month' : 'months'}. `
+        + 'The interest goes on being charged every month as before.',
+    }
+  } catch (error) {
+    return toState(error, 'Could not renew that buy-back.')
+  }
+}
+
 export async function redeemBuybackAction(id: string): Promise<ActionState> {
   const actor = await requireCapability('buyback:write')
   try {

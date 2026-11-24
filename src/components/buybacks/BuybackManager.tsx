@@ -13,6 +13,7 @@ import { BUYBACK_STATUS_LABELS, type BuybackStatus, type CurrencyCode } from '@/
 import {
   defaultBuybackAction, markBuybackChargePaidAction, recordBuybackAction, redeemBuybackAction,
 } from '@/app/actions/buybacks'
+import { RenewBuybackModal } from './RenewBuybackModal'
 
 export interface BuybackRow {
   id: string
@@ -27,6 +28,12 @@ export interface BuybackRow {
   chargedBase: number
   paidBase: number
   items: number
+  /** What is coming, so the screen says so instead of leaving it to be guessed. */
+  nextChargeOn: string | null
+  nextChargeBase: number | null
+  rolledPastDue: boolean
+  renewals: number
+  lastRenewedOn: string | null
 }
 
 export interface ChargeRow {
@@ -59,6 +66,7 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
   const toast = useToast()
   const [recording, setRecording] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
+  const [renewing, setRenewing] = useState<BuybackRow | null>(null)
   const [, start] = useTransition()
 
   const live = loans.filter((loan) => loan.status === 'OPEN')
@@ -141,6 +149,21 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
                           {formatDate(new Date(loan.dueOn))}
                         </span>
                       ) : <span className="text-content-secondary">—</span>}
+                      {/*
+                        Rolled on, and how many times. A loan in its fifth
+                        month by agreement and one four months past its date
+                        look identical without this, and they are not at all
+                        the same conversation to be having.
+                      */}
+                      {loan.renewals > 0 && (
+                        <span className="block text-caption text-content-secondary">
+                          rolled on {loan.renewals}×
+                          {loan.lastRenewedOn && ` · ${formatDate(new Date(loan.lastRenewedOn))}`}
+                        </span>
+                      )}
+                      {loan.rolledPastDue && loan.renewals === 0 && (
+                        <span className="block text-caption text-state-danger">past its date</span>
+                      )}
                     </TD>
                     <TD align="right" className="font-bold">{money(loan.principalBase)}</TD>
                     {/* The rate as agreed and what it comes to, together:
@@ -148,7 +171,16 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
                         arithmetic on before it means anything. */}
                     <TD align="right" className="whitespace-nowrap text-content-secondary">
                       {money(loan.monthlyBase)}
-                      <span className="block text-caption">{(loan.rateBps / 100).toFixed(2)}%</span>
+                      <span className="block text-caption">
+                        {(loan.rateBps / 100).toFixed(2)}%
+                        {/*
+                          The date the next month falls due, next to the
+                          figure it will be for. The billing was always
+                          automatic and never said so, which is precisely
+                          why it looked as though nothing was happening.
+                        */}
+                        {loan.nextChargeOn && ` · next ${formatDate(new Date(loan.nextChargeOn))}`}
+                      </span>
                     </TD>
                     <TD align="right" className="text-content-secondary">{money(loan.chargedBase)}</TD>
                     <TD align="right" className={outstanding > 0 ? 'font-semibold text-state-warning' : 'text-content-secondary'}>
@@ -168,6 +200,16 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
                         <LoanMenu
                           label={`Actions for ${loan.customerName}`}
                           items={[
+                            {
+                              /*
+                                First, because it is the commonest thing
+                                that happens to a buy-back and the one Alex
+                                went looking for and could not find.
+                              */
+                              id: 'renew',
+                              label: 'They are taking another month…',
+                              onSelect: () => setRenewing(loan),
+                            },
                             {
                               id: 'redeem',
                               label: 'They redeemed it',
@@ -193,6 +235,20 @@ export function BuybackManager({ loans, charges, people, canWrite }: {
             </TBody>
           </Table>
         </Card>
+      )}
+
+      {renewing && (
+        <RenewBuybackModal
+          target={{
+            id: renewing.id,
+            customerName: renewing.customerName,
+            dueOn: renewing.dueOn,
+            monthlyBase: renewing.monthlyBase,
+            renewals: renewing.renewals,
+          }}
+          onClose={() => setRenewing(null)}
+          onDone={() => router.refresh()}
+        />
       )}
 
       {open && (

@@ -2333,6 +2333,36 @@ export const buybackCharges = pgTable(
   }),
 )
 
+/**
+ * A buy-back going round again.
+ *
+ * The billing never needed this — a month open is a month earned, and the
+ * charges raise themselves. What needed it is the agreement: the
+ * conversation where the customer says they will take another month. With
+ * nowhere to put that, a loan simply ran past the date it was due to be
+ * redeemed and the screen said nothing about it.
+ */
+export const buybackRenewals = pgTable(
+  'buyback_renewals',
+  {
+    id: text('id').primaryKey(),
+    buybackId: text('buyback_id').notNull()
+      .references((): AnyPgColumn => buybacks.id, { onDelete: 'cascade' }),
+    /** When they agreed, which is not always when somebody typed it in. */
+    agreedOn: timestamp('agreed_on', { withTimezone: true }).notNull().defaultNow(),
+    previousDueOn: timestamp('previous_due_on', { withTimezone: true }),
+    newDueOn: timestamp('new_due_on', { withTimezone: true }).notNull(),
+    months: integer('months').notNull().default(1),
+    /** The extension fee raised with it, where one was charged. */
+    chargeId: text('charge_id')
+      .references((): AnyPgColumn => buybackCharges.id, { onDelete: 'set null' }),
+    note: text('note'),
+    recordedById: text('recorded_by_id').notNull().references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ loanIdx: index('buyback_renewals_loan_idx').on(t.buybackId, t.agreedOn) }),
+)
+
 export const overheads = pgTable(
   'overheads',
   {

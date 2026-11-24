@@ -47,6 +47,11 @@ export default async function BuybacksPage() {
           chargedBase: loan.chargedBase,
           paidBase: loan.paidBase,
           items: loan.items,
+          nextChargeOn: loan.nextChargeOn?.toISOString() ?? null,
+          nextChargeBase: loan.nextChargeBase,
+          rolledPastDue: loan.rolledPastDue,
+          renewals: Number(loan.renewals),
+          lastRenewedOn: loan.lastRenewedOn?.toISOString() ?? null,
         }))}
         charges={charges.map((charge) => ({
           id: charge.id,
