@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { isPlaceholderInvoiceNo, normaliseInvoiceNo } from '@/lib/xero-match'
 import { db } from '../db/client'
-import { liveSale } from '../db/predicates'
+import { liveSale, onHandStock } from '../db/predicates'
 import {
   brands, customers, deals, fxRates, offers, partners, sales, tasks, watches, watchRequests,
 } from '../db/schema'
@@ -91,17 +91,28 @@ export async function stockSnapshot(ageingDays = 90): Promise<StockSnapshot> {
       capital: sql<number>`coalesce(sum(${watches.purchasePriceGbp}), 0)`,
     })
       .from(watches)
-      .where(and(isNull(watches.deletedAt), sql`${watches.status} IN ('IN_STOCK', 'RESERVED', 'SALE_AGREED')`)),
-
-    db.select({ count: sql<number>`count(*)` }).from(watches)
+      /*
+       * Only stock we can put our hands on, as the stock list counts it.
+       *
+       * This read 294 held while the sidebar beside it read 198, because
+       * the list applies the held-away rule and this did not. Two figures
+       * for the same thing on the same screen is one figure nobody trusts.
+       */
       .where(and(
-        isNull(watches.deletedAt), isNull(watches.estSaleGbp),
+        isNull(watches.deletedAt),
+        onHandStock(),
         sql`${watches.status} IN ('IN_STOCK', 'RESERVED', 'SALE_AGREED')`,
       )),
 
     db.select({ count: sql<number>`count(*)` }).from(watches)
       .where(and(
-        isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK'),
+        isNull(watches.deletedAt), isNull(watches.estSaleGbp), onHandStock(),
+        sql`${watches.status} IN ('IN_STOCK', 'RESERVED', 'SALE_AGREED')`,
+      )),
+
+    db.select({ count: sql<number>`count(*)` }).from(watches)
+      .where(and(
+        isNull(watches.deletedAt), eq(watches.status, 'IN_STOCK'), onHandStock(),
         lt(watches.purchaseDate, cutoff),
       )),
   ])

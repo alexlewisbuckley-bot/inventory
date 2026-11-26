@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import { onHandStock } from '@/server/db/predicates'
 import { db } from '../db/client'
 import type { Role } from '@/lib/enums'
 import { formatBase, type DisplayMoney } from '@/lib/currency'
@@ -130,6 +131,14 @@ async function watchHits(
       -- Sales — see saleHits, which matches on the watch as well as on the
       -- invoice precisely so that nothing is lost by this line.
       AND w.status <> 'SOLD'
+      -- And nothing standing somewhere we cannot put our hands on it.
+      --
+      -- Alex: "they are seeing various watches that are in inactive
+      -- locations." The stock list has hidden these since the held-away
+      -- rule went in; the palette never learned it, so searching a
+      -- reference turned up five watches the list beside it would not
+      -- show. Same predicate as the list, so the two cannot drift again.
+      AND ${onHandStock('w.location_id')}
       AND (
         w.model ILIKE ${like}
         OR w.serial ILIKE ${like}

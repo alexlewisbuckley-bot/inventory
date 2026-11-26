@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { onHandStock } from '../db/predicates'
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import {
@@ -502,7 +503,7 @@ async function choicesFor(campaign: {
      * promised to a named person, so offering one that is in another country
      * is a promise made against stock nobody here can put their hands on.
      */
-    sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
+    onHandStock(),
     sql`EXISTS (
       SELECT 1 FROM watch_images i
       WHERE i.watch_id = watches.id AND i.kind = 'WATCH'

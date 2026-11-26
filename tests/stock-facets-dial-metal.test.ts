@@ -109,7 +109,11 @@ describe('where the stock list opens', () => {
      */
     const repo = read('src/server/repositories/watch-repository.ts')
     expect(repo).toContain('if (!scope.heldAway) {')
-    expect(repo).toContain('IN (SELECT l.id FROM locations l WHERE l.is_on_hand)')
+    // The rule now lives in one predicate — `onHandStock` in
+    // src/server/db/predicates.ts — because it had been written out by
+    // hand in a dozen queries and two of them forgot it. What this guard
+    // is about is that this query applies it, however it is spelled.
+    expect(repo).toContain('onHandStock()')
     const validation = read('src/lib/validation.ts')
     expect(validation).not.toContain('heldAway')
   })
@@ -220,14 +224,22 @@ describe('stock held away is off every outward channel', () => {
      * being shown the Hong Kong vault and whatever was in a courier's bag.
      */
     const portal = read2('src/server/services/partner-portal-service.ts')
-    expect(portal).toContain('watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)')
+    // The rule now lives in one predicate — `onHandStock` in
+    // src/server/db/predicates.ts — because it had been written out by
+    // hand in a dozen queries and two of them forgot it. What this guard
+    // is about is that this query applies it, however it is spelled.
+    expect(portal).toContain('onHandStock()')
   })
 
   it('is off a reward campaign, where the promise is worse', () => {
     // A campaign is a watch promised to a named person, so offering one in
     // another country is a promise against stock nobody here can reach.
     const campaign = read2('src/server/services/partner-campaign-service.ts')
-    expect(campaign).toContain('watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)')
+    // The rule now lives in one predicate — `onHandStock` in
+    // src/server/db/predicates.ts — because it had been written out by
+    // hand in a dozen queries and two of them forgot it. What this guard
+    // is about is that this query applies it, however it is spelled.
+    expect(campaign).toContain('onHandStock()')
   })
 })
 
