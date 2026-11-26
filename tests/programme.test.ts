@@ -284,7 +284,10 @@ describe('what an agent is allowed to see', () => {
   })
 
   it('shows the same held-away rule as every other outward channel', () => {
-    expect(stock.match(/locations l WHERE l\.is_on_hand/g)?.length).toBe(2)
+    // Both queries in this file, and through the shared predicate rather
+    // than a copy of the sub-select: it had been written out by hand in a
+    // dozen places and two of them forgot it.
+    expect(stock.match(/onHandStock\(\)/g)?.length).toBe(2)
   })
 
   it('tells nothing to a link preview', () => {

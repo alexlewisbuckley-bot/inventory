@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { onHandStock } from '../db/predicates'
 import { db } from '../db/client'
 import { brands, partnerAgents, partners, watches } from '../db/schema'
 import { partnerPrice } from '@/lib/partner-rate'
@@ -65,7 +66,7 @@ export async function stockForAgent(token: string, capBase: number): Promise<Age
       eq(watches.status, 'IN_STOCK'),
       isNull(watches.deletedAt),
       sql`${watches.estSaleGbp} IS NOT NULL`,
-      sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
+      onHandStock(),
       sql`EXISTS (
         SELECT 1 FROM watch_images i
         WHERE i.watch_id = watches.id AND i.kind = 'WATCH'
@@ -116,7 +117,7 @@ export async function agentImage(token: string, imageId: string) {
       eq(watchImages.id, imageId),
       eq(watchImages.kind, 'WATCH'),
       isNull(watches.deletedAt),
-      sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
+      onHandStock(),
     ))
     .limit(1)
   return row ?? null

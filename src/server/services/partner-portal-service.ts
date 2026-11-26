@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { onHandStock } from '../db/predicates'
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db, withTransaction } from '../db/client'
 import { brands, locations, partnerOrders, partners, users, watchImages, watches, notifications } from '../db/schema'
@@ -120,7 +121,7 @@ function onOffer() {
      * image door below joins its own way round and the rule has to be the
      * same in both places.
      */
-    sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`,
+    onHandStock(),
   ]
 }
 

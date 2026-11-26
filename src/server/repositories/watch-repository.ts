@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, isNull, isNotNull, like, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '../db/client'
-import { liveSale } from '../db/predicates'
+import { liveSale, onHandStock } from '../db/predicates'
 import {
   brands, locations, owners, purchaseInvoices, sales, suppliers, users, watchImages, watches,
 } from '../db/schema'
@@ -231,7 +231,7 @@ function buildFilters(query: WatchQuery, scope: StockScope = {}): SQL | undefine
    * brands alone, and a WHERE naming a table it has not joined is a 500.
    */
   if (!scope.heldAway) {
-    clauses.push(sql`watches.location_id IN (SELECT l.id FROM locations l WHERE l.is_on_hand)`)
+    clauses.push(onHandStock())
   }
 
   if (query.q) {
