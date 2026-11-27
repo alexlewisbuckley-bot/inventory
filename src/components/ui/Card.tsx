@@ -68,8 +68,21 @@ export function StatCard({ label, value, caption, tone = 'default', icon }: {
         <p className="text-caption font-semibold text-content-secondary">{label}</p>
         {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
       </div>
+      {/*
+        Smaller on a phone, because the box is smaller.
+
+        Two of these to a 390-pixel row leaves each about 140 wide, and
+        "AED 3,695,415" at 21px wants 175 — so the figure either ran off the
+        card or, once it could wrap, broke after "AED" and left the currency
+        stranded on a line of its own. Sixteen pixels fits it on one line,
+        and it is still far and away the largest thing on the card next to a
+        12px label. The full size returns as soon as there is room for it.
+
+        Wrapping stays available underneath as the backstop: a longer figure
+        in a narrower box should go onto two lines rather than be cut in half.
+      */}
       <p className={cn(
-        'mt-2 text-h3 font-extrabold tabular-nums sm:text-h2',
+        'mt-2 text-body-lg font-extrabold tabular-nums min-[480px]:text-h3 sm:text-h2',
         tone === 'accent' && 'text-content-accent',
         tone === 'danger' && 'text-state-danger',
         tone === 'default' && 'text-content-primary',
