@@ -10,6 +10,7 @@
 export { FilterBar } from './FilterBar'
 export type { ReferenceOptions } from './FilterBar'
 export { FilterChip } from './FilterChip'
+export { ListControls } from './ListControls'
 export { SelectAllBanner } from './SelectAllBanner'
 export { ViewBar } from './ViewBar'
 export type { BuiltInView, SavedView } from './ViewBar'

@@ -15,10 +15,20 @@ const VARIANTS: Record<ButtonVariant, string> = {
   subtle: 'bg-surface-subtle text-content-primary border border-line-subtle hover:border-line-strong',
 }
 
+/*
+ * The height is the touch target and does not move; the padding either side
+ * of the label does, below sm.
+ *
+ * Two ordinary page actions — "Record a commission" and "Export" — came to
+ * 378 pixels at these paddings, which is twenty more than a 390-wide phone
+ * has between its gutters, so every page with two buttons in its header
+ * stacked them and spent a hundred and sixty pixels doing it. Eight pixels a
+ * side is the difference between one row and two.
+ */
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'h-8 px-3.5 text-[11px] gap-1.5',
-  md: 'h-11 px-6 text-[12px] gap-2',
-  lg: 'h-12 px-8 text-[13px] gap-2.5',
+  sm: 'h-8 px-3 text-[11px] gap-1.5 sm:px-3.5',
+  md: 'h-11 px-4 text-[12px] gap-2 sm:px-6',
+  lg: 'h-12 px-5 text-[13px] gap-2.5 sm:px-8',
 }
 
 interface BaseProps {

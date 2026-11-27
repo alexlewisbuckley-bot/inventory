@@ -280,3 +280,88 @@ describe('the controls above the stock list', () => {
   })
 })
 
+/**
+ * The sales ledger on a phone.
+ *
+ * Alex: "the entire mobile / iPhone duo experience is poor and lacks the
+ * efficiency of a modern web app and feels more like a condensed desktop
+ * tool. Can you overhaul the key features, search, inventory, sales and
+ * adding an item."
+ *
+ * Measured at 390 wide before touching it: 299 elements of this page sat
+ * past the right edge of the screen, the worst of any screen in the
+ * application. The table is 1,412 pixels where it is complete, so the sales
+ * list on a phone was a date and half an invoice number, with the profit
+ * four screens of sideways scrolling away.
+ */
+describe('the sales ledger on a phone', () => {
+  const table = read('src/components/sales/SalesTable.tsx')
+  const page = read('src/app/(app)/sales/page.tsx')
+
+  it('folds its three bars of controls behind one button', () => {
+    // Views, a date range and the filter bar: three glanceable rows on a
+    // wide screen, most of a screen before the first sale on a phone.
+    const controls = page.slice(page.indexOf('<ListControls'), page.indexOf('</ListControls>'))
+    expect(controls).toContain('<ViewBar')
+    expect(controls).toContain('<SalesFilterBar')
+    expect(controls).toContain('<FilterBar')
+  })
+
+  it('renders the rows as cards below sm, and the table above it', () => {
+    expect(table).toMatch(/<ul className="divide-y divide-line-subtle sm:hidden">/)
+    // And the table genuinely out of the way, not merely scrolled off: a
+    // table still in the layout is what put 299 elements past the edge.
+    expect(table).toMatch(/<div className="hidden sm:block">\n\s*{\/\* Fixed/)
+  })
+
+  it('wires the row menu once, for both renderings', () => {
+    /*
+     * The menu carries a hundred lines of callbacks — correct, void, link a
+     * watch, turn a commission back into a sale. Copied for the phone, the
+     * copy is where a verb goes missing, so both call one builder.
+     */
+    expect(table.match(/<RowActions/g) ?? []).toHaveLength(1)
+    expect(table).toMatch(/const actionsFor = /)
+    expect(table.match(/actionsFor\(sale\)/g) ?? []).toHaveLength(2)
+  })
+
+  it('shows what the card is for: the money, and whether it is in', () => {
+    const card = table.slice(table.indexOf('sm:hidden'), table.indexOf('<div className="hidden sm:block">'))
+    expect(card).toContain('money(sale.amountGbp)')
+    expect(card).toContain('signed(sale.profitGbp)')
+    // The flags are computed the same way as the table's, not re-derived.
+    expect(card).toContain('flagsOf(sale)')
+    expect(card).toContain('PAYMENT_STATUS_LABELS[sale.paymentStatus]')
+  })
+})
+
+/**
+ * The furniture at the top of every screen.
+ */
+describe('a page heading on a phone', () => {
+  it('steps down a size, and keeps the one the wide screen had', () => {
+    /*
+     * 36px of title, a description, then the actions, then 32 pixels of air:
+     * the first 280 pixels of every screen in the product. A desktop heading
+     * shrunk to fit is the complaint itself.
+     */
+    const header = read('src/components/layout/PageHeader.tsx')
+    expect(header).toMatch(/text-h2 font-light text-content-primary sm:text-h1/)
+    expect(header).toMatch(/className="mb-5 sm:mb-8"/)
+  })
+
+  it('fits two ordinary actions on one row', () => {
+    /*
+     * "Record a commission" and "Export" came to 378 pixels at the desktop
+     * padding, twenty more than a 390-wide phone has between its gutters —
+     * so every page with two buttons in its header stacked them and spent a
+     * hundred and sixty pixels doing it.
+     *
+     * The height does not move: it is the touch target.
+     */
+    const button = read('src/components/ui/Button.tsx')
+    expect(button).toMatch(/md: 'h-11 px-4 text-\[12px\] gap-2 sm:px-6'/)
+    expect(button).toMatch(/sm: 'h-8 px-3 .*sm:px-3\.5'/)
+    expect(button).toMatch(/lg: 'h-12 px-5 .*sm:px-8'/)
+  })
+})

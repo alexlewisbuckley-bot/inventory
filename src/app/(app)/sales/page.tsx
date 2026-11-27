@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/layout/PageHeader'
 import { SalesTable } from '@/components/sales/SalesTable'
 import { SalesFilterBar } from '@/components/sales/SalesFilterBar'
 import { SALES_VIEWS } from '@/components/sales/views'
-import { FilterBar, ViewBar } from '@/components/ui/DataList'
+import { FilterBar, ListControls, ViewBar } from '@/components/ui/DataList'
 import { listViews } from '@/server/services/views-service'
 import { parseFilters, SALE_FIELDS, toSearchParams } from '@/lib/filters'
 import { Card, StatCard, LinkButton, EmptyState, StatGrid } from '@/components/ui'
@@ -267,26 +267,33 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         )}
       </StatGrid>
 
-      {/* Above the date range and the filter bar, as on the stock list: a
-          view is which list you are looking at, and the two bars below are
-          how you narrow the one you chose. */}
-      <ViewBar object="sale" builtIn={SALES_VIEWS} saved={savedViews} />
+      {/* Three bars of controls, which on a wide screen is three glanceable
+          rows and on a phone was most of a screen before the first sale.
+          Folded behind one button below lg, with the search box and the
+          count of what is on left out in front — the same treatment, and
+          the same component, as the stock list. */}
+      <ListControls search="Search by invoice, buyer, model or stock number…">
+        {/* Above the date range and the filter bar, as on the stock list: a
+            view is which list you are looking at, and the two bars below are
+            how you narrow the one you chose. */}
+        <ViewBar object="sale" builtIn={SALES_VIEWS} saved={savedViews} />
 
-      {/* The date range keeps its own control — a from/to pair is the one
-          filter a chip cannot express as well as two date inputs, and the
-          ledger is read by date more than by anything else. */}
-      <SalesFilterBar />
+        {/* The date range keeps its own control — a from/to pair is the one
+            filter a chip cannot express as well as two date inputs, and the
+            ledger is read by date more than by anything else. */}
+        <SalesFilterBar />
 
-      <FilterBar
-        fields={SALE_FIELDS}
-        placeholder="Search by invoice number, buyer, model or stock number…"
-        options={{
-          // So "Sold by" offers the people rather than a box to type an id
-          // into — and so a link from the sales-by-person report lands on a
-          // chip that reads their name.
-          salesPeople: salesPeople.map((person) => ({ value: person.id, label: person.name })),
-        }}
-      />
+        <FilterBar
+          fields={SALE_FIELDS}
+          placeholder="Search by invoice number, buyer, model or stock number…"
+          options={{
+            // So "Sold by" offers the people rather than a box to type an id
+            // into — and so a link from the sales-by-person report lands on a
+            // chip that reads their name.
+            salesPeople: salesPeople.map((person) => ({ value: person.id, label: person.name })),
+          }}
+        />
+      </ListControls>
 
       <Card className="overflow-hidden">
         {result.total === 0 ? (
