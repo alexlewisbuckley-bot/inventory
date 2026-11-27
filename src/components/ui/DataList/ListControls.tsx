@@ -96,7 +96,22 @@ export function ListControls({ search, children }: {
   return (
     <>
       {/* ------------------------------------------------ phone and tablet */}
-      <div className="mb-4 flex flex-col gap-2 lg:hidden">
+      {/*
+        Pinned under the header, because searching should never mean
+        scrolling back.
+        Alex: "Filter and search on inventory should be sticky when
+        scrolling." Forty rows down a stock list, the control that narrows
+        it was four hundred pixels above the fold — so the way to search was
+        to scroll to the top, search, and lose your place in the list.
+
+        Sixty pixels down, which is the header's own height: it is `top-0`
+        and would otherwise sit on top of this. Below the header's z-30 so
+        that a menu opening out of the header still covers this bar rather
+        than being covered by it. The negative margin and padding let the
+        background reach the gutters, so rows pass underneath it rather than
+        beside it.
+      */}
+      <div className="sticky top-[60px] z-20 -mx-4 mb-4 flex flex-col gap-2 border-b border-line-subtle bg-surface-subtle px-4 pb-2 pt-2 sm:-mx-5 sm:px-5 lg:hidden">
         <div className="flex items-center gap-2">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">{search}</span>

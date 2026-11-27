@@ -248,6 +248,28 @@ describe('the controls above the stock list', () => {
     expect(bar).toMatch(/relative hidden min-w-\[240px\] flex-1 lg:block/)
   })
 
+  it('keeps the search box on screen while the list scrolls', () => {
+    /*
+     * Alex: "Filter and search on inventory should be sticky when scrolling."
+     *
+     * Forty rows down a stock list the control that narrows it was four
+     * hundred pixels above the fold, so the way to search was to scroll to
+     * the top, search, and lose your place.
+     *
+     * Sixty pixels down because the header is `top-0` and `h-[60px]`; below
+     * its z-30 so a menu opening out of the header still covers this bar.
+     * Both numbers are read off the header here rather than trusted, because
+     * a bar pinned to the wrong offset either hides under the header or
+     * leaves a gap of list showing through above it.
+     */
+    expect(controls).toMatch(/sticky top-\[60px\] z-20/)
+
+    const shell = read('src/components/layout/TopBar.tsx')
+    expect(shell).toMatch(/sticky top-0/)
+    expect(shell).toMatch(/h-\[60px\]/)
+    expect(shell).toMatch(/z-30/)
+  })
+
   it('makes the figures a strip to swipe rather than a screen to scroll', () => {
     // Six cards stacked ran to 560 pixels and put the stock below the fold.
     const card = read('src/components/ui/Card.tsx')
