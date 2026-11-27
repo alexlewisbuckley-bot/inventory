@@ -57,14 +57,72 @@ describe('a price in a narrow box', () => {
     expect(gallery).toMatch(/flex flex-1 flex-col items-end/)
   })
 
+  it('gives a stat card the whole row on a phone', () => {
+    /*
+     * Alex again, with AED 28,727,500 and AED 25,471,707 running off their
+     * cards: "Again can't view these figures very accurately, presented off
+     * screen."
+     *
+     * Two cards to a 390-pixel row leaves each about 140 inside its padding,
+     * and "+AED 26,326,430" wants about 190 at any size somebody would call
+     * a headline figure. Shrinking it far enough would have put the figure
+     * at 15px against a 12px label, which is not a headline. So one to a row
+     * until there is room for two.
+     */
+    const card = read('src/components/ui/Card.tsx')
+    const grid = card.slice(card.indexOf('export function StatGrid'), card.indexOf('export function StatCard'))
+    expect(grid).toMatch(/min-\[520px\]:grid-cols-2/)
+    /*
+     * And no bare one left beside it. Written as a lookahead first, which
+     * matched the very string it was meant to exempt — `.` does not cross a
+     * newline, so "grid-cols-2'," read as unprefixed and the guard passed
+     * for the wrong reason.
+     */
+    const bare = [...grid.matchAll(/(.{0,12})grid-cols-2/g)]
+      .filter((match) => !match[1].endsWith('min-[520px]:'))
+    expect(bare).toEqual([])
+  })
+
+  it('is the only place that breakpoint is written', () => {
+    /*
+     * The class string it replaces was copied onto four pages, and the fifth
+     * would have been written without the breakpoint — which is exactly how
+     * the rule for held-away stock came to be missing from two queries.
+     */
+    const pages = [
+      'src/app/(app)/inventory/page.tsx',
+      'src/app/(app)/sales/page.tsx',
+      'src/app/(app)/reports/page.tsx',
+      'src/app/(app)/inventory/[id]/page.tsx',
+    ]
+    for (const page of pages) {
+      const text = read(page)
+      expect(text).toContain('<StatGrid')
+      expect(text).not.toContain('grid grid-cols-2 gap-3 sm:gap-6')
+    }
+  })
+
+  it('keeps a seven-figure price inside its table column', () => {
+    /*
+     * A Richard Mille at "AED 1,200,000" wants 96 pixels and a 120px column
+     * gives it 88, so the expensive stock was clipped on every screen while
+     * a Submariner fitted — the wrong way round. And on Sales, the margin
+     * column gave "↓ AED 184,652 vs est." 98 pixels for a line needing 121.
+     */
+    const list = read('src/components/inventory/InventoryList.tsx')
+    expect(list).toMatch(/cost: 136, trade: 136, estSale: 136, profit: 144/)
+    const sales = read('src/components/sales/SalesTable.tsx')
+    expect(sales).toMatch(/width="164px"[^>]*sortKey="margin"/)
+  })
+
   it('sizes a stat figure to the card it is in', () => {
     /*
-     * "AED 3,695,415" at 21px wants 175 pixels and the card gives it 140, so
-     * once it could wrap it broke after "AED" and left the currency stranded
-     * on a line of its own. Smaller at phone width, full size from 480 up.
+     * Full size at every width, now that it has the row to itself: laid
+     * across on a phone — label left, figure right where the eye goes for a
+     * number — and back into a column from 520 up.
      */
     const card = read('src/components/ui/Card.tsx')
     const stat = card.slice(card.indexOf('export function StatCard'))
-    expect(stat).toMatch(/text-body-lg font-extrabold tabular-nums min-\[480px\]:text-h3 sm:text-h2/)
+    expect(stat).toMatch(/text-h3 font-extrabold tabular-nums min-\[520px\]:mt-2 min-\[520px\]:text-left sm:text-h2/)
   })
 })

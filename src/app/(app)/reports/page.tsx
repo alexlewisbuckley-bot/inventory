@@ -13,7 +13,7 @@ import { watchQuerySchema } from '@/lib/validation'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { ReportTabs } from '@/components/reports/ReportTabs'
 import { reportTabs } from '@/components/reports/tabs'
-import { Card, CardBody, CardHeader, StatCard, EmptyState } from '@/components/ui'
+import { Card, CardBody, CardHeader, StatCard, EmptyState, StatGrid } from '@/components/ui'
 import { MonthlyChart } from '@/components/reports/MonthlyChart'
 import { formatPct } from '@/lib/money'
 import { cn } from '@/lib/cn'
@@ -76,7 +76,7 @@ export default async function ReportsPage() {
 
       <ReportTabs tabs={reportTabs(user.role)} />
 
-      <section aria-label="Headline figures" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
+      <StatGrid label="Headline figures" wide>
         {/* Money lent on buy-backs is capital out too, and it is the half
             of it that is easiest to forget: it is not on a shelf and it
             does not show in a stock count, but it is not in the bank
@@ -108,7 +108,7 @@ export default async function ReportsPage() {
           caption={`${formatPct(sales.avgMarginBps / 100)} weighted margin on stock`}
         />
         <StatCard label="Sell-through" value={formatPct(turnover * 100, 0)} caption="of all stock ever acquired" />
-      </section>
+      </StatGrid>
 
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

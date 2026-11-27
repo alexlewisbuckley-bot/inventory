@@ -13,7 +13,7 @@ import { ImageGallery } from '@/components/inventory/ImageGallery'
 import { WhatsAppPost } from '@/components/inventory/WhatsAppPost'
 import { pickPostImage } from '@/lib/whatsapp-post'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { Card, CardHeader, CardBody, CardFooter, StatCard, StatusChip, Chip, LinkButton } from '@/components/ui'
+import { Card, CardHeader, CardBody, CardFooter, StatCard, StatusChip, Chip, LinkButton, StatGrid } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, describeRate, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -142,7 +142,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           Absent, not blanked: a tile reading "•••" is an advertisement for a
           number the reader is not allowed, and it invites asking somebody who
           is. */}
-      <section aria-label="Financial summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
+      <StatGrid label="Financial summary" wide>
         {canSeeCost(user.role) && (
           <StatCard
             label="Purchase price"
@@ -170,7 +170,7 @@ export default async function WatchDetailPage({ params }: { params: { id: string
           />
         )}
         <StatCard label="Days held" value={held ?? '—'} caption={`Purchased ${formatDate(watch.purchaseDate)}`} />
-      </section>
+      </StatGrid>
 
       <div className="grid items-start gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-1">

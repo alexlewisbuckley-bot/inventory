@@ -22,7 +22,7 @@ import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
-import { Card, StatCard, LinkButton, SkeletonTable } from '@/components/ui'
+import { Card, StatCard, LinkButton, SkeletonTable, StatGrid } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -290,7 +290,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         the retail figure in somebody's head. Each channel's value and its
         profit sit next to each other, with what the stock cost beside them.
       */}
-      <section aria-label="Summary of the current view" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-3">
+      <StatGrid label="Summary of the current view">
         <StatCard label="In view" value={summary.inStockCount} caption={`${summary.unpricedCount} without a price`} />
         {showTotals && showRevenue && (
           <StatCard label="Retail value" value={money(summary.estSaleGbp)} caption={`${summary.pricedCount} priced`} />
@@ -321,7 +321,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
             tone="accent"
           />
         )}
-      </section>
+      </StatGrid>
 
       <ViewBar object="watch" builtIn={inventoryViews({ queues: showQueues })} saved={savedViews} />
 

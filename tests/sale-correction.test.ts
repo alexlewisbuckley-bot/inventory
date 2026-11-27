@@ -115,9 +115,11 @@ describe('where it is reached from', () => {
     expect(table).toMatch(/label: 'Correct this sale…'/)
     expect(table).toMatch(/label: 'Void the sale…'/)
     // And the table was narrowed by the slack the buttons used to need.
-    // The sum grew by the Sold by column; what matters is that the actions
-    // control is still counted, not squeezed out of the others' width.
-    expect(table).toMatch(/\(showCost \? 1212 : 862\) \+ 110 \+ 56/)
+    // The sum grew by the Sold by column, and again by the 34 pixels the
+    // margin column needed for "↓ AED 184,652 vs est." underneath it. What
+    // matters is that the actions control is still counted, not squeezed
+    // out of the others' width.
+    expect(table).toMatch(/\(showCost \? 1246 : 862\) \+ 110 \+ 56/)
   })
 
   it('offers no trigger at all to a reader who may do neither', () => {

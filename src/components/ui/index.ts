@@ -3,7 +3,7 @@ export { Button, IconButton, LinkButton } from './Button'
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
 export { Chip, StatusChip, UnpricedChip } from './Chip'
 export type { ChipTone } from './Chip'
-export { Card, CardHeader, CardBody, CardFooter, StatCard } from './Card'
+export { Card, CardHeader, CardBody, CardFooter, StatCard, StatGrid } from './Card'
 export {
   Field, TextField, SelectField, TextareaField, Checkbox, RadioCard, SegmentedField,
 } from './Field'

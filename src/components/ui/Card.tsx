@@ -55,6 +55,48 @@ export function CardFooter({ children, className }: { children: ReactNode; class
 }
 
 /** Headline metric tile used across the dashboard and list headers. */
+/**
+ * The row of figures a page opens with.
+ *
+ * Alex, twice, from a phone: "Can't view pricing and product tiles properly
+ * on mobile", then "Again can't view these figures very accurately,
+ * presented off screen" — the second with AED 28,727,500 and AED 25,471,707
+ * running off the edge of their cards.
+ *
+ * Two cards to a 390-pixel row leaves each about 140 wide inside its
+ * padding. "+AED 26,326,430" wants about 190 at any size somebody would call
+ * a headline figure, so on a phone it either overflowed, or — once it could
+ * wrap — broke after the currency and left "+AED" stranded on a line of its
+ * own. Shrinking it far enough to fit would have put the headline figure at
+ * 15px against a 12px label, which is not a headline any more.
+ *
+ * So one to a row until there is room for two. The figures are then readable
+ * at full size, which is the entire purpose of the card, and the extra
+ * height costs a phone about one more flick of the thumb.
+ *
+ * A component rather than the class string it replaces, because that string
+ * was copied onto four pages and the fifth would have been written without
+ * the breakpoint. tests/mobile-money.test.ts fails the build if one is.
+ */
+export function StatGrid({ label, wide = false, children }: {
+  label: string
+  /** Four across on a large screen rather than three. */
+  wide?: boolean
+  children: ReactNode
+}) {
+  return (
+    <section
+      aria-label={label}
+      className={cn(
+        'mb-8 grid gap-3 sm:gap-6 min-[520px]:grid-cols-2',
+        wide ? 'xl:grid-cols-4' : 'xl:grid-cols-3',
+      )}
+    >
+      {children}
+    </section>
+  )
+}
+
 export function StatCard({ label, value, caption, tone = 'default', icon }: {
   label: string
   value: ReactNode
@@ -64,32 +106,38 @@ export function StatCard({ label, value, caption, tone = 'default', icon }: {
 }) {
   return (
     <div className="rounded-sm bg-surface-raised border border-line-subtle px-4 py-4 sm:px-6 sm:py-5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-caption font-semibold text-content-secondary">{label}</p>
-        {icon && <span className="text-content-secondary" aria-hidden>{icon}</span>}
-      </div>
       {/*
-        Smaller on a phone, because the box is smaller.
+        Across on a phone, down on anything else.
 
-        Two of these to a 390-pixel row leaves each about 140 wide, and
-        "AED 3,695,415" at 21px wants 175 — so the figure either ran off the
-        card or, once it could wrap, broke after "AED" and left the currency
-        stranded on a line of its own. Sixteen pixels fits it on one line,
-        and it is still far and away the largest thing on the card next to a
-        12px label. The full size returns as soon as there is room for it.
+        One card to a row gave the figure the width it needed and left most
+        of that width empty beside it, with the page half as long again. Laid
+        across — the label on the left, the figure on the right where the eye
+        already goes for a number — the card is two lines instead of three
+        and the figure keeps its full size.
 
-        Wrapping stays available underneath as the backstop: a longer figure
-        in a narrower box should go onto two lines rather than be cut in half.
+        A grid rather than two layouts: the same three elements in the same
+        order, placed differently. At 520 and above it is `block` and
+        everything falls back into the column it has always been.
       */}
-      <p className={cn(
-        'mt-2 text-body-lg font-extrabold tabular-nums min-[480px]:text-h3 sm:text-h2',
-        tone === 'accent' && 'text-content-accent',
-        tone === 'danger' && 'text-state-danger',
-        tone === 'default' && 'text-content-primary',
-      )}>
-        {value}
-      </p>
-      {caption && <p className="mt-1 text-caption text-content-secondary">{caption}</p>}
+      <div className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 min-[520px]:block">
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="truncate text-caption font-semibold text-content-secondary">{label}</p>
+          {icon && <span className="shrink-0 text-content-secondary" aria-hidden>{icon}</span>}
+        </div>
+
+        <p className={cn(
+          'text-right text-h3 font-extrabold tabular-nums min-[520px]:mt-2 min-[520px]:text-left sm:text-h2',
+          tone === 'accent' && 'text-content-accent',
+          tone === 'danger' && 'text-state-danger',
+          tone === 'default' && 'text-content-primary',
+        )}>
+          {value}
+        </p>
+
+        {caption && (
+          <p className="col-span-2 mt-1 text-caption text-content-secondary">{caption}</p>
+        )}
+      </div>
     </div>
   )
 }

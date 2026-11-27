@@ -9,7 +9,7 @@ import { SALES_VIEWS } from '@/components/sales/views'
 import { FilterBar, ViewBar } from '@/components/ui/DataList'
 import { listViews } from '@/server/services/views-service'
 import { parseFilters, SALE_FIELDS, toSearchParams } from '@/lib/filters'
-import { Card, StatCard, LinkButton, EmptyState } from '@/components/ui'
+import { Card, StatCard, LinkButton, EmptyState, StatGrid } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -203,7 +203,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
         </Card>
       ) : (
         <>
-      <section aria-label="Sales summary" className="mb-8 grid grid-cols-2 gap-3 sm:gap-6 xl:grid-cols-4">
+      <StatGrid label="Sales summary" wide>
         {/* A brokered deal is a sale and the fee is profit, so all three
             of these count it. Margin is the exception below, and for a
             reason rather than an omission. */}
@@ -265,7 +265,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Search
           tone="accent"
         />
         )}
-      </section>
+      </StatGrid>
 
       {/* Above the date range and the filter bar, as on the stock list: a
           view is which list you are looking at, and the two bars below are

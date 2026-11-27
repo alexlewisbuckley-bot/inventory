@@ -141,7 +141,7 @@ export function SalesTable({
         // carried 200px of slack for a labelled Void button, which put the
         // table past the width of a laptop and left the date column clipped
         // behind a sideways scroll. A menu needs a quarter of that.
-        minWidth={`${(showCost ? 1212 : 862) + 110 + 56}px`}
+        minWidth={`${(showCost ? 1246 : 862) + 110 + 56}px`}
       >
         <THead>
           <TR>
@@ -157,7 +157,17 @@ export function SalesTable({
             {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
             {showCost && <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>}
-            {showCost && <TH width="130px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
+            {/*
+              Wide enough for the line underneath it.
+
+              The margin is short; "↓ AED 184,652 vs est." beneath it is not,
+              and at 130px the column gave that line 98 pixels to say it in
+              and clipped the rest — on every screen, desktop included. The
+              figure it cuts off is the one that says whether the watch beat
+              its estimate, so a reader was left with an arrow and a number
+              they could not finish reading.
+            */}
+            {showCost && <TH width="164px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
             {/* Always present, and the one column without a width, so it
                 takes whatever is left over. The watch used to be elastic, and
                 on a wide screen that put a hand's width of empty table
