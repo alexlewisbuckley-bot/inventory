@@ -117,50 +117,65 @@ export function BulkActionBar({
 
   return (
     <>
+      {/*
+        On a phone the bar sat at bottom-6 — behind the bottom navigation — and
+        was wider than the screen, so the count and Delete fell off either
+        side. Below md it now spans the screen above the navigation and stacks:
+        count and clear on top, the verbs beneath, with Move, Export and
+        Delete as icons. From md up it is the single centred row it always was.
+      */}
       <div
         role="region"
         aria-label={`${count} selected`}
-        className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-sm border border-line-subtle bg-surface-raised px-4 py-3 shadow-raised animate-slide-up"
+        className={
+          'fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4rem)] z-40 flex flex-wrap items-center gap-2 '
+          + 'rounded-sm border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-raised animate-slide-up '
+          + 'md:inset-x-auto md:left-1/2 md:w-max md:max-w-[calc(100vw-1.5rem)] md:-translate-x-1/2 md:flex-nowrap md:gap-3 md:px-4 md:py-3 '
+          + 'lg:bottom-6'
+        }
       >
-        <span className="pl-2 text-small font-bold text-content-primary" aria-live="polite">
+        <span className="flex-1 pl-1 text-small font-bold text-content-primary md:flex-none md:pl-2" aria-live="polite">
           {count} selected
         </span>
-        <span className="h-5 w-px bg-line-subtle" aria-hidden />
+        <span className="hidden h-5 w-px bg-line-subtle md:block" aria-hidden />
 
-        {allMatching && (
-          // Said plainly rather than hidden behind a disabled button. The
-          // operator asked for three hundred rows and is being told which
-          // verbs can honour that, which is more useful than three greyed-out
-          // controls and no explanation.
-          <span className="max-w-[220px] text-caption text-content-secondary">
-            Moving and deleting work on rows you have picked. Narrow the filter, or select a page.
-          </span>
-        )}
+        <div className="order-last flex w-full flex-wrap items-center gap-1 md:order-none md:contents">
+          {allMatching && (
+            // Said plainly rather than hidden behind a disabled button. The
+            // operator asked for three hundred rows and is being told which
+            // verbs can honour that, which is more useful than three greyed-out
+            // controls and no explanation.
+            <span className="text-caption text-content-secondary md:max-w-[220px]">
+              Moving and deleting work on rows you have picked. Narrow the filter, or select a page.
+            </span>
+          )}
 
-        {/* First, because a selection made from the list is most often made
-            in order to put those pieces out. Picked rows only: a batch has
-            to be walked through one tap at a time, so "everything matching
-            the filter" is not a thing anybody wants to start. */}
-        {!allMatching && capabilities['watch:broadcast'] && (
-          <GroupPostBatch watchIds={watchIds} onDone={onClear} />
-        )}
+          {/* First, because a selection made from the list is most often made
+              in order to put those pieces out. Picked rows only: a batch has
+              to be walked through one tap at a time, so "everything matching
+              the filter" is not a thing anybody wants to start. */}
+          {!allMatching && capabilities['watch:broadcast'] && (
+            <GroupPostBatch watchIds={watchIds} onDone={onClear} />
+          )}
 
-        {!allMatching && capabilities['watch:move'] && (
-          <Button size="sm" variant="ghost" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => setMoveOpen(true)}>
-            Move
-          </Button>
-        )}
-        {!allMatching && capabilities['report:export'] && (
-          <Button size="sm" variant="ghost" icon={<Download className="h-4 w-4" />} onClick={exportSelection}>
-            Export
-          </Button>
-        )}
-        {!allMatching && capabilities['watch:delete'] && (
-          <Button size="sm" variant="ghost" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDeleteOpen(true)}
-            className="text-state-danger hover:bg-state-danger/8">
-            Delete
-          </Button>
-        )}
+          {!allMatching && capabilities['watch:move'] && (
+            <Button size="sm" variant="ghost" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => setMoveOpen(true)}
+              className="ml-auto md:ml-0">
+              <span className="sr-only sm:not-sr-only">Move</span>
+            </Button>
+          )}
+          {!allMatching && capabilities['report:export'] && (
+            <Button size="sm" variant="ghost" icon={<Download className="h-4 w-4" />} onClick={exportSelection}>
+              <span className="sr-only sm:not-sr-only">Export</span>
+            </Button>
+          )}
+          {!allMatching && capabilities['watch:delete'] && (
+            <Button size="sm" variant="ghost" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDeleteOpen(true)}
+              className="text-state-danger hover:bg-state-danger/8">
+              <span className="sr-only sm:not-sr-only">Delete</span>
+            </Button>
+          )}
+        </div>
 
         <button
           type="button"
