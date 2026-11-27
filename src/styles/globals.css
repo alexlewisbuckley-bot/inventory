@@ -454,3 +454,33 @@
 @media (min-width: 2400px) {
   .lb-public { zoom: calc(1.6 / var(--ui-zoom)); }
 }
+
+/*
+ * No form control below 16px on a phone.
+ *
+ * Alex: "the entire mobile / iPhone duo experience is poor and lacks the
+ * efficiency of a modern web app and feels more like a condensed desktop
+ * tool."
+ *
+ * Part of that is one Safari rule nobody chose: tap an input whose text is
+ * under 16px and iOS zooms the page in to it, and does not zoom back out.
+ * The design sets 14px on every control, and the currency selects 13px, so
+ * filling in a watch meant the page jumping on the first field and every
+ * field after it being typed into at a magnification the layout was never
+ * drawn for. That is exactly what a condensed desktop tool feels like.
+ *
+ * Only the text size, only below sm, and the control heights are untouched:
+ * they are the touch targets and they are already 44px.
+ *
+ * The attribute selector is there for weight, not for filtering — `input`
+ * alone loses to the `text-body` utility class on the element, and this
+ * beats it by one without resorting to `!important`. Checkboxes and radios
+ * are left out: they have no text to zoom to.
+ */
+@media (max-width: 639px) {
+  input[class]:not([type='checkbox']):not([type='radio']),
+  select[class],
+  textarea[class] {
+    font-size: 16px;
+  }
+}
