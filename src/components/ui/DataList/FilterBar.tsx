@@ -138,7 +138,13 @@ export function FilterBar({ fields, options, placeholder, actions }: {
   return (
     <div className="mb-5 flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="relative min-w-[240px] flex-1">
+        {/*
+          Hidden on a phone, where `ListControls` keeps a search box above
+          the fold. Two of them would be two inputs for one query string,
+          and whichever somebody typed into second would appear to lose
+          what they typed into the first.
+        */}
+        <label className="relative hidden min-w-[240px] flex-1 lg:block">
           <span className="sr-only">{placeholder}</span>
           <Search
             className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-secondary"

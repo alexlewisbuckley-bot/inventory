@@ -99,13 +99,31 @@ export function formatCurrency(
 ): string {
   const { decimals = false, fallback = '—' } = options
   if (minor === null || minor === undefined || Number.isNaN(minor)) return fallback
-  return new Intl.NumberFormat(LOCALES[currency] ?? 'en-GB', {
+  const text = new Intl.NumberFormat(LOCALES[currency] ?? 'en-GB', {
     style: 'currency',
     currency,
     currencyDisplay: currency === 'AED' || currency === 'HKD' ? 'code' : 'symbol',
     minimumFractionDigits: decimals ? 2 : 0,
     maximumFractionDigits: decimals ? 2 : 0,
   }).format(minor / 100)
+
+  /*
+   * An ordinary space between the code and the figure, not Intl's hard one.
+   *
+   * Alex, on a phone: "Can't view pricing and product tiles properly on
+   * mobile." The cause was one character. Intl puts U+00A0 after "AED", which
+   * is right nearly everywhere — it keeps a currency with its number — and on
+   * a 170-pixel card it makes "AED 3,695,415" a single token wider than the
+   * box it is in. A token that cannot break does not wrap; it overflows, and
+   * a card with `overflow-hidden` on it cuts the number in half. A figure
+   * reading "AED 3,290,80" is worse than one on two lines, and far worse than
+   * no figure at all, because it looks like a number.
+   *
+   * So it breaks when it has to and stays on one line when it fits, which is
+   * what every card in the application wanted all along. Only the display
+   * string changes: the figures, the currency and the rounding are untouched.
+   */
+  return text.replace(/\u00A0/g, ' ')
 }
 
 /**

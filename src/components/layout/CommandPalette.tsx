@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import {
-  ArrowRight, Banknote, BarChart3, Briefcase, FileText, LifeBuoy, ListChecks, Package, Plus,
-  Search, Settings, Store, Truck, UserRound, Users,
+  ArrowRight, Banknote, BarChart3, Briefcase, Camera, FileText, LifeBuoy, ListChecks, Package, Plus,
+  Search, Settings, Store, Truck, UserRound, Users, ListFilter,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useMounted } from '@/hooks/useMounted'
@@ -21,6 +21,8 @@ interface Hit {
   subtitle: string
   meta: string | null
   href: string
+  /** A photograph for the row, where the kind has one. */
+  imageId?: string | null
   exact: boolean
 }
 
@@ -76,6 +78,18 @@ const KIND_GROUP: Record<Kind, string> = {
 
 /** The order groups appear in. People look for a person first. */
 const GROUP_ORDER: Kind[] = ['contact', 'deal', 'watch', 'sale', 'supplier', 'task']
+
+/** The palette shows the best few of each kind; this is where the rest are. */
+const PER_KIND = 5
+
+const FULL_LIST: Partial<Record<Kind, { noun: string; hint: string; href: string }>> = {
+  watch: { noun: 'watch', hint: 'The stock list, with photographs and filters', href: '/inventory' },
+  sale: { noun: 'sale', hint: 'The sales ledger', href: '/sales' },
+  contact: { noun: 'contact', hint: 'Customers', href: '/customers' },
+  supplier: { noun: 'supplier', hint: 'Suppliers', href: '/suppliers' },
+  deal: { noun: 'deal', hint: 'The deal board', href: '/deals' },
+  task: { noun: 'task', hint: 'Tasks', href: '/tasks' },
+}
 
 const PEEKABLE = new Set<Kind>(['watch', 'contact', 'deal'])
 
@@ -198,6 +212,37 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         if (group.length === 0) continue
         out.push({ type: 'heading', key: `h-${kind}`, label: KIND_GROUP[kind] })
         for (const hit of group) out.push({ type: 'hit', key: hit.id, data: hit })
+
+        /*
+         * A way out of the five.
+         *
+         * Alex: "can't see images or view all just can click 1 watch only."
+         * The palette answers with the best few of each kind, which is the
+         * right thing for a palette and a dead end when the answer is "there
+         * are twenty of those" — and it gave no sign it had stopped at five.
+         * A full group now offers the real list, which has the photographs,
+         * the filters and the rest of the rows.
+         *
+         * Only where the group is full, because a group of three is all of
+         * them and "see all three" sends somebody somewhere they already are.
+         */
+        const more = FULL_LIST[kind]
+        if (more && group.length >= PER_KIND) {
+          out.push({
+            type: 'action',
+            key: `more-${kind}`,
+            data: {
+              id: `more-${kind}`,
+              label: `See every ${more.noun} matching “${term}”`,
+              hint: more.hint,
+              icon: ListFilter,
+              href: `${more.href}?q=${encodeURIComponent(term)}`,
+              // Never matched against: this row is built from a group that
+              // already matched, not found by typing its own label.
+              keywords: '',
+            },
+          })
+        }
       }
     }
 
@@ -342,12 +387,47 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                         selected && 'bg-surface-subtle',
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
+                      {/*
+                        The photograph where there is one.
+
+                        Alex, searching a reference on a phone: "can't see
+                        images... hard to tell which watch it is the way it's
+                        built." Five rows reading "Rolex 126500LN" are five
+                        identical rows, and the picture separates a white dial
+                        from a black one before the serial has been read.
+                      */}
+                      {row.type === 'hit' && row.data.imageId ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/images/${row.data.imageId}`}
+                          alt=""
+                          loading="lazy"
+                          className="h-10 w-10 shrink-0 rounded-xs object-cover"
+                        />
+                      ) : row.type === 'hit' && row.data.kind === 'watch' ? (
+                        // Same footprint as a photograph, so a watch with no
+                        // picture does not knock the column of them out of
+                        // line — which reads as a different kind of row.
+                        <span
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xs bg-surface-subtle"
+                          aria-hidden
+                        >
+                          <Camera className="h-4 w-4 text-content-muted" />
+                        </span>
+                      ) : (
+                        <Icon className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-body font-medium text-content-primary">
                           {row.type === 'action' ? row.data.label : row.data.title}
                         </span>
-                        <span className="block truncate text-caption text-content-secondary">
+                        {/*
+                          Two lines on a narrow screen rather than one cut in
+                          half. The subtitle is the serial, which is the whole
+                          of what tells two of the same reference apart —
+                          "Stock 1722 · seri…" identifies nothing.
+                        */}
+                        <span className="block text-caption text-content-secondary sm:truncate">
                           {row.type === 'action' ? row.data.hint ?? '' : row.data.subtitle}
                         </span>
                       </span>
@@ -356,8 +436,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                           {row.data.meta}
                         </span>
                       )}
+                      {/*
+                        Hidden on touch: peek is bound to the right-arrow key,
+                        and a hint about a key there is no keyboard for only
+                        takes width from the serial.
+                      */}
                       {selected && canPeek && (
-                        <span className="shrink-0 text-micro text-content-secondary">→ peek</span>
+                        <span className="hidden shrink-0 text-micro text-content-secondary sm:inline">→ peek</span>
                       )}
                       <ArrowRight
                         className={cn('h-4 w-4 shrink-0 text-content-secondary', !selected && 'opacity-0')}
@@ -369,7 +454,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               })}
             </ul>
 
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-subtle px-5 py-2.5 text-micro text-content-secondary">
+            {/*
+              Hidden on touch. Four keyboard shortcuts and an Esc on a phone
+              are two lines of advice nobody there can take, and they were
+              two lines taken off the results.
+            */}
+            <div className="hidden flex-wrap items-center gap-x-4 gap-y-1 border-t border-line-subtle px-5 py-2.5 text-micro text-content-secondary sm:flex">
               <span><kbd className="font-sans font-semibold">↑↓</kbd> move</span>
               <span><kbd className="font-sans font-semibold">↵</kbd> open</span>
               <span><kbd className="font-sans font-semibold">⌘↵</kbd> new tab</span>

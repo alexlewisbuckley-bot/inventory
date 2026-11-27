@@ -26,12 +26,15 @@ export function formatMoney(
 ): string {
   const { decimals = false, fallback = '—' } = opts
   if (minor === null || minor === undefined || Number.isNaN(minor)) return fallback
+  // An ordinary space, for the reason given on `formatCurrency`: Intl's hard
+  // one makes a figure a single token that cannot wrap, so on a narrow card
+  // it overflows and is cut in half rather than going onto a second line.
   return new Intl.NumberFormat(LOCALE[currency], {
     style: 'currency',
     currency,
     minimumFractionDigits: decimals ? 2 : 0,
     maximumFractionDigits: decimals ? 2 : 0,
-  }).format(toMajor(minor))
+  }).format(toMajor(minor)).replace(/\u00A0/g, ' ')
 }
 
 /** Format a signed profit figure with an explicit +/- prefix. */

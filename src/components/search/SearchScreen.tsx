@@ -17,6 +17,20 @@ interface Hit {
   subtitle: string
   meta: string | null
   href: string
+  /** A photograph for the row, where the kind has one. */
+  imageId?: string | null
+}
+
+/** The best few of each kind are shown; this is where the rest live. */
+const PER_KIND = 5
+
+const FULL_LIST: Partial<Record<Kind, { noun: string; href: string }>> = {
+  watch: { noun: 'watch', href: '/inventory' },
+  sale: { noun: 'sale', href: '/sales' },
+  contact: { noun: 'contact', href: '/customers' },
+  supplier: { noun: 'supplier', href: '/suppliers' },
+  deal: { noun: 'deal', href: '/deals' },
+  task: { noun: 'task', href: '/tasks' },
 }
 
 const KIND_ICON: Record<Kind, typeof Package> = {
@@ -127,12 +141,33 @@ export function SearchScreen() {
                       href={hit.href}
                       className="flex min-h-[52px] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-subtle"
                     >
-                      <Icon className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
+                      {/*
+                        The photograph, which is how a dealer recognises a
+                        watch. Five rows reading "Rolex 126500LN" are five
+                        identical rows without it.
+                      */}
+                      {hit.imageId ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/images/${hit.imageId}`}
+                          alt=""
+                          loading="lazy"
+                          className="h-11 w-11 shrink-0 rounded-xs object-cover"
+                        />
+                      ) : (
+                        <Icon className="h-4 w-4 shrink-0 text-content-secondary" aria-hidden />
+                      )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-body font-medium text-content-primary">
                           {hit.title}
                         </span>
-                        <span className="block truncate text-caption text-content-secondary">
+                        {/*
+                          Allowed its second line. The subtitle carries the
+                          serial, which is the whole of what separates two of
+                          the same reference, and "Stock 1722 · seri…"
+                          separates nothing.
+                        */}
+                        <span className="block text-caption text-content-secondary">
                           {hit.subtitle}
                         </span>
                       </span>
@@ -144,6 +179,21 @@ export function SearchScreen() {
                     </Link>
                   </li>
                 ))}
+                {/*
+                  Where the rest of them are. The list stops at five of each
+                  kind and used to stop silently, which reads as "that is all
+                  there is" when it means "those are the best five".
+                */}
+                {group.length >= PER_KIND && FULL_LIST[kind] && (
+                  <li>
+                    <Link
+                      href={`${FULL_LIST[kind]!.href}?q=${encodeURIComponent(debounced.trim())}`}
+                      className="flex min-h-[52px] items-center gap-3 px-4 py-2.5 text-small font-semibold text-content-accent transition-colors hover:bg-surface-subtle"
+                    >
+                      See every {FULL_LIST[kind]!.noun} matching “{debounced.trim()}”
+                    </Link>
+                  </li>
+                )}
               </ul>
             </section>
           )

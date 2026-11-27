@@ -101,7 +101,22 @@ export function InventoryGallery({
                   {watch.productType !== 'WATCH' && ` · ${PRODUCT_TYPE_LABELS[watch.productType]}`}
                 </span>
 
-                <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                {/*
+                  Wraps rather than fights for the width.
+
+                  Alex, on a phone: "Can't view pricing and product tiles
+                  properly on mobile." Two cards to a 390-pixel row leaves
+                  each about 160 wide, and a status chip beside "AED 612,000"
+                  wants rather more than that. Side by side with nowhere to
+                  go, the figures ran off the edge and the card's own
+                  `overflow-hidden` cut them in half.
+
+                  Allowed to wrap, the price drops under the chip on a phone
+                  and sits beside it on anything wider, which is the same
+                  card doing the sensible thing at both sizes rather than two
+                  layouts to keep in step.
+                */}
+                <div className="mt-auto flex flex-wrap items-end justify-between gap-x-2 gap-y-1 pt-2">
                   <StatusChip status={watch.status as WatchStatus} />
                   {/* Cost above, at the same size as the figure under it, so
                       the two read down the card as what it cost and then what
@@ -121,7 +136,7 @@ export function InventoryGallery({
                       show one, both or neither. Nothing stands in for a
                       figure somebody may not see: a placeholder would only
                       advertise what is being withheld. */}
-                  <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex flex-1 flex-col items-end gap-0.5">
                     {canSeeCost && (
                       <span className="text-caption text-content-primary">
                         {money(watch.purchasePriceGbp)}

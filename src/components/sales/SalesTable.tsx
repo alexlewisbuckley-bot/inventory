@@ -131,8 +131,204 @@ export function SalesTable({
     [query],
   )
 
+  /*
+   * Every verb a row offers, wired once.
+   *
+   * The table and the phone's card list are two renderings of the same
+   * row, and the menu behind them carries a hundred lines of callbacks.
+   * Copied, the second copy is where a verb goes missing — so it is
+   * built here and both of them call it.
+   */
+  const actionsFor = (sale: SaleListItem & { kind?: LedgerKind }) => (
+    <RowActions
+        sale={sale}
+        canAmend={canAmend}
+        canVoid={canVoid}
+        onPaid={() => { void confirmPaid(sale) }}
+        onLink={() => setLinkTarget({ id: sale.id, label: sale.model })}
+        onCorrectCommission={() => setEditCommissionTarget({
+          id: sale.id,
+          label: `${sale.brandName} ${sale.model}`.trim() || sale.model,
+          // The ledger prints an em dash where there is no
+          // reference; the form must offer an empty box, not that.
+          reference: sale.invoiceNo === '—' ? '' : sale.invoiceNo,
+          paymentStatus: sale.paymentStatus,
+          brokeredOn: new Date(sale.saleDate).toISOString().slice(0, 10),
+          notes: sale.notes ?? '',
+          fee: money(sale.amountGbp),
+          soldById: sale.soldById ?? '',
+        })}
+        onCommissionToSale={() => setSaleTarget({
+          id: sale.id,
+          /*
+            A fee on somebody else's watch has no brand of ours to
+            print: the ledger fills that column with the word
+            "Commission", which reads as a brand name the moment it
+            is put in front of the description.
+          */
+          label: sale.watchId
+            ? `${sale.brandName} ${sale.model}`.trim()
+            : sale.model,
+          reference: sale.invoiceNo,
+          feeBase: sale.amountGbp,
+          feeAmount: sale.saleAmount,
+          feeCurrency: sale.saleCurrency,
+          watchId: sale.watchId || null,
+          stockNo: sale.stockNo || null,
+        })}
+        onOpenLoan={() => router.push('/buybacks')}
+        onCommission={() => setCommissionTarget({
+          id: sale.id,
+          label: `${sale.brandName} ${sale.model}`,
+          invoiceNo: sale.invoiceNo,
+          amountGbp: sale.amountGbp,
+        })}
+        onCorrect={() => setEditTarget({
+          id: sale.id,
+          invoiceNo: sale.invoiceNo,
+          saleDate: sale.saleDate,
+          saleAmount: sale.saleAmount,
+          saleCurrency: sale.saleCurrency,
+          amountGbp: sale.amountGbp,
+          channel: sale.channel,
+          paymentStatus: sale.paymentStatus,
+          deliveryStatus: sale.deliveryStatus,
+          customerName: sale.customerName,
+          customerCompany: sale.customerCompany,
+          notes: sale.notes,
+          soldById: sale.soldById,
+          purchaseAmount: sale.purchaseAmount,
+          purchaseCurrency: sale.purchaseCurrency,
+          costGbp: sale.costGbp,
+          stockNo: sale.stockNo,
+          label: `${sale.brandName} ${sale.model}`,
+        })}
+        /*
+          Two ledgers, two voids.
+          
+          A sale is voided through its watch — voiding walks from
+          the watch to its one live sale, so that is the handle it
+          takes. A commission has no such sale to walk to: the
+          watch, where there is one at all, went out on a fee. Sent
+          to the sale's dialog it found nothing and the row could
+          not be voided, which is exactly what Alex hit: "I'm
+          unable to void the sale because it doesn't have a watch
+          assigned against it."
+        */
+        onVoid={() => {
+          if (sale.kind === 'COMMISSION') {
+            setVoidCommissionTarget({
+              id: sale.id,
+              label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`.trim(),
+            })
+            return
+          }
+          setVoidTarget({
+            id: sale.watchId,
+            stockNo: sale.stockNo,
+            label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
+          })
+        }}
+      />
+  )
+
   return (
     <div className={cn('transition-opacity', query.isPending && 'opacity-60')} aria-busy={query.isPending}>
+      {/*
+        The same rows as cards, below sm.
+
+        The table is 1,412 pixels wide where it is complete, which on a
+        390-wide phone is four screens of sideways scrolling to reach the
+        profit — so in practice nobody reached it, and the sales list on a
+        phone was a date and half an invoice number. Measured before this:
+        299 elements of this page sat past the right edge of the screen, the
+        worst of any screen in the application.
+
+        The card carries what somebody standing up actually wants: which
+        watch, when, what it made, and whether the money is in. Everything
+        else is a tap away in the row's own menu, which is the same menu the
+        table uses.
+      */}
+      <ul className="divide-y divide-line-subtle sm:hidden">
+        {result.items.map((sale) => {
+          const flags = flagsOf(sale)
+          return (
+            <li key={sale.id} className="px-4 py-3.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-body font-bold text-content-primary">
+                    {`${sale.brandName ?? ''} ${sale.model}`.trim()}
+                  </span>
+                  <span className="mt-0.5 block truncate text-caption text-content-secondary">
+                    {formatDate(sale.saleDate)} · {sale.invoiceNo}
+                    {sale.invoiceLines > 1 && ` · ${sale.invoiceLines} watches`}
+                    {!stockless(sale) && sale.stockNo ? ` · Stock ${sale.stockNo}` : ''}
+                  </span>
+                  {/* Channel as words rather than the table's chip: a chip
+                      beside the menu on a 390-wide row costs sixty pixels of
+                      the watch's own name to say what four words say here. */}
+                  <span className="mt-0.5 block truncate text-caption text-content-secondary">
+                    {SALE_CHANNEL_LABELS[sale.channel]}
+                    {sale.customerName ? ` · ${sale.customerName}` : ''}
+                    {sale.soldByName ? ` · ${sale.soldByName}` : ''}
+                  </span>
+                </div>
+                {actionsFor(sale)}
+              </div>
+
+              {/* What is wrong with the row, and whether the money is in.
+                  Same rule as the table: silence is the ordinary ending, so
+                  a line here always means something. */}
+              {(sale.paymentStatus !== 'PAID' || flags.length > 0) && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption font-semibold">
+                  {sale.paymentStatus !== 'PAID' && (
+                    <span className={sale.paymentStatus === 'OVERDUE' ? 'text-state-danger' : 'text-state-warning'}>
+                      {PAYMENT_STATUS_LABELS[sale.paymentStatus]}
+                    </span>
+                  )}
+                  {flags.map((flag) => (
+                    <span
+                      key={flag.kind}
+                      title={flag.detail}
+                      className={flagTone(flag.kind) === 'serious' ? 'text-state-danger' : 'text-state-warning'}
+                    >
+                      {FLAG_LABELS[flag.kind]}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <dl className="mt-2.5 flex items-baseline gap-4 text-caption">
+                <div className="min-w-0">
+                  <dt className="text-content-secondary">Sale</dt>
+                  <dd className="truncate font-bold tabular-nums text-content-primary">{money(sale.amountGbp)}</dd>
+                </div>
+                {showCost && (
+                  <div className="min-w-0">
+                    <dt className="text-content-secondary">Profit</dt>
+                    <dd className={cn(
+                      'truncate font-bold tabular-nums',
+                      sale.profitGbp >= 0 ? 'text-content-accent' : 'text-state-danger',
+                    )}>
+                      {signed(sale.profitGbp)}
+                    </dd>
+                  </div>
+                )}
+                {showCost && (
+                  <div className="min-w-0">
+                    <dt className="text-content-secondary">Margin</dt>
+                    <dd className="truncate font-bold tabular-nums text-content-primary">
+                      {stockless(sale) ? '—' : formatPct(sale.marginBps / 100)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </li>
+          )
+        })}
+      </ul>
+
+      <div className="hidden sm:block">
       {/* Fixed, so the stated widths hold rather than being redistributed by
           content — see the note on the Table component. */}
       <Table
@@ -141,7 +337,7 @@ export function SalesTable({
         // carried 200px of slack for a labelled Void button, which put the
         // table past the width of a laptop and left the date column clipped
         // behind a sideways scroll. A menu needs a quarter of that.
-        minWidth={`${(showCost ? 1212 : 862) + 110 + 56}px`}
+        minWidth={`${(showCost ? 1246 : 862) + 110 + 56}px`}
       >
         <THead>
           <TR>
@@ -157,7 +353,17 @@ export function SalesTable({
             {showCost && <TH width="110px" align="right">Cost</TH>}
             <TH width="110px" align="right" sortKey="amount" sort={sort} onSort={query.sortBy}>Sale</TH>
             {showCost && <TH width="110px" align="right" sortKey="profit" sort={sort} onSort={query.sortBy}>Profit</TH>}
-            {showCost && <TH width="130px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
+            {/*
+              Wide enough for the line underneath it.
+
+              The margin is short; "↓ AED 184,652 vs est." beneath it is not,
+              and at 130px the column gave that line 98 pixels to say it in
+              and clipped the rest — on every screen, desktop included. The
+              figure it cuts off is the one that says whether the watch beat
+              its estimate, so a reader was left with an arrow and a number
+              they could not finish reading.
+            */}
+            {showCost && <TH width="164px" align="right" sortKey="margin" sort={sort} onSort={query.sortBy}>Margin</TH>}
             {/* Always present, and the one column without a width, so it
                 takes whatever is left over. The watch used to be elastic, and
                 on a wide screen that put a hand's width of empty table
@@ -308,102 +514,12 @@ export function SalesTable({
               </TD>
               </>
               )}
-              <TD align="right">
-                <RowActions
-                  sale={sale}
-                  canAmend={canAmend}
-                  canVoid={canVoid}
-                  onPaid={() => { void confirmPaid(sale) }}
-                  onLink={() => setLinkTarget({ id: sale.id, label: sale.model })}
-                  onCorrectCommission={() => setEditCommissionTarget({
-                    id: sale.id,
-                    label: `${sale.brandName} ${sale.model}`.trim() || sale.model,
-                    // The ledger prints an em dash where there is no
-                    // reference; the form must offer an empty box, not that.
-                    reference: sale.invoiceNo === '—' ? '' : sale.invoiceNo,
-                    paymentStatus: sale.paymentStatus,
-                    brokeredOn: new Date(sale.saleDate).toISOString().slice(0, 10),
-                    notes: sale.notes ?? '',
-                    fee: money(sale.amountGbp),
-                    soldById: sale.soldById ?? '',
-                  })}
-                  onCommissionToSale={() => setSaleTarget({
-                    id: sale.id,
-                    /*
-                      A fee on somebody else's watch has no brand of ours to
-                      print: the ledger fills that column with the word
-                      "Commission", which reads as a brand name the moment it
-                      is put in front of the description.
-                    */
-                    label: sale.watchId
-                      ? `${sale.brandName} ${sale.model}`.trim()
-                      : sale.model,
-                    reference: sale.invoiceNo,
-                    feeBase: sale.amountGbp,
-                    feeAmount: sale.saleAmount,
-                    feeCurrency: sale.saleCurrency,
-                    watchId: sale.watchId || null,
-                    stockNo: sale.stockNo || null,
-                  })}
-                  onOpenLoan={() => router.push('/buybacks')}
-                  onCommission={() => setCommissionTarget({
-                    id: sale.id,
-                    label: `${sale.brandName} ${sale.model}`,
-                    invoiceNo: sale.invoiceNo,
-                    amountGbp: sale.amountGbp,
-                  })}
-                  onCorrect={() => setEditTarget({
-                    id: sale.id,
-                    invoiceNo: sale.invoiceNo,
-                    saleDate: sale.saleDate,
-                    saleAmount: sale.saleAmount,
-                    saleCurrency: sale.saleCurrency,
-                    amountGbp: sale.amountGbp,
-                    channel: sale.channel,
-                    paymentStatus: sale.paymentStatus,
-                    deliveryStatus: sale.deliveryStatus,
-                    customerName: sale.customerName,
-                    customerCompany: sale.customerCompany,
-                    notes: sale.notes,
-                    soldById: sale.soldById,
-                    purchaseAmount: sale.purchaseAmount,
-                    purchaseCurrency: sale.purchaseCurrency,
-                    costGbp: sale.costGbp,
-                    stockNo: sale.stockNo,
-                    label: `${sale.brandName} ${sale.model}`,
-                  })}
-                  /*
-                    Two ledgers, two voids.
-                    
-                    A sale is voided through its watch — voiding walks from
-                    the watch to its one live sale, so that is the handle it
-                    takes. A commission has no such sale to walk to: the
-                    watch, where there is one at all, went out on a fee. Sent
-                    to the sale's dialog it found nothing and the row could
-                    not be voided, which is exactly what Alex hit: "I'm
-                    unable to void the sale because it doesn't have a watch
-                    assigned against it."
-                  */
-                  onVoid={() => {
-                    if (sale.kind === 'COMMISSION') {
-                      setVoidCommissionTarget({
-                        id: sale.id,
-                        label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`.trim(),
-                      })
-                      return
-                    }
-                    setVoidTarget({
-                      id: sale.watchId,
-                      stockNo: sale.stockNo,
-                      label: `${sale.brandName} ${sale.model} · ${sale.invoiceNo}`,
-                    })
-                  }}
-                />
-              </TD>
+              <TD align="right">{actionsFor(sale)}</TD>
             </TR>
           ))}
         </TBody>
       </Table>
+      </div>
 
       <Pagination
         page={result.page}

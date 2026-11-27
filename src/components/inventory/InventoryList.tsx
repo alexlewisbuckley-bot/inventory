@@ -79,7 +79,17 @@ export const INVENTORY_COLUMNS: readonly ColumnDefinition[] = [
  */
 const COL_WIDTH = {
   select: 56, photo: 64, stockNo: 84, watch: 176, year: 72, serial: 116, supplier: 140,
-  purchased: 116, cost: 120, trade: 120, estSale: 120, profit: 128, location: 140,
+  /*
+   * The money columns hold seven figures, because some of these watches do.
+   *
+   * At 120 the cell had 88 pixels inside its padding, and "AED 1,200,000"
+   * wants 96 — so a Richard Mille's price was clipped on every screen,
+   * desktop included, while a Submariner's fitted. A column that truncates
+   * the expensive stock and not the cheap stock is the wrong way round.
+   * 136 carries fourteen characters; the profit column takes one more for
+   * its sign.
+   */
+  purchased: 116, cost: 136, trade: 136, estSale: 136, profit: 144, location: 140,
   owner: 140, status: 118, checks: 92, actions: 104,
 } as const
 
