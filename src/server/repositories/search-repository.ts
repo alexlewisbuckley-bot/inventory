@@ -44,6 +44,14 @@ export interface SearchHit {
   /** Right-aligned: money, a stage, a status. */
   meta: string | null
   href: string
+  /**
+   * A photograph to put beside the row, where the kind has one.
+   *
+   * Watches only, so far, and for the reason the subtitle exists: five rows
+   * reading "Rolex 126500LN" cannot be told apart, and the picture tells
+   * them apart faster than the serial does.
+   */
+  imageId?: string | null
   /** True when the query matched an identifier exactly. Ranked to the top. */
   exact: boolean
   updatedAt: Date
@@ -118,6 +126,21 @@ async function watchHits(
            w.est_sale_gbp,
            w.updated_at,
            b.name AS brand_name,
+           /*
+            * The photograph, because a reference is not a watch.
+            *
+            * Alex, searching 126500 on a phone: "can't see images... hard to
+            * tell which watch it is the way it's built." Five results reading
+            * "Rolex 126500LN" are five identical rows; the picture is what
+            * tells a white dial from a black one at a glance, and it is the
+            * thing a dealer recognises before they have read a word.
+            */
+           (
+             SELECT wi.id FROM watch_images wi
+             WHERE wi.watch_id = w.id
+             ORDER BY (wi.kind <> 'WATCH'), wi.sort_order, wi.created_at
+             LIMIT 1
+           ) AS image_id,
            (w.stock_no = ${exactStock}) AS exact
     FROM watches w
     JOIN brands b ON b.id = w.brand_id
@@ -153,6 +176,7 @@ async function watchHits(
   return (rows as unknown as Record<string, unknown>[]).map((row) => ({
     kind: 'watch' as const,
     id: String(row.id),
+    imageId: row.image_id === null ? null : String(row.image_id),
     title: `${row.brand_name} ${row.model}`,
     // The serial is what separates two of the same reference. Without it a
     // list of three identical Daytonas is a list you cannot choose from.

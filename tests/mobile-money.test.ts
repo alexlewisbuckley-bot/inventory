@@ -126,3 +126,66 @@ describe('a price in a narrow box', () => {
     expect(stat).toMatch(/text-h3 font-extrabold tabular-nums min-\[520px\]:mt-2 min-\[520px\]:text-left sm:text-h2/)
   })
 })
+
+/**
+ * Finding a watch on a phone.
+ *
+ * Alex, searching a reference: "Very poor mobile search functionality, can't
+ * see images or view all just can click 1 watch only and hard to tell which
+ * watch it is the way it's built" — with five results reading "Rolex
+ * 126500..." over "Stock 1722 · seri...".
+ *
+ * Three faults in one row: no photograph, a serial cut off mid-word, and no
+ * way past the five the palette shows.
+ */
+describe('searching for a watch on a phone', () => {
+  const palette = read('src/components/layout/CommandPalette.tsx')
+  const screen = read('src/components/search/SearchScreen.tsx')
+  const repo = read('src/server/repositories/search-repository.ts')
+
+  it('fetches a photograph with each watch', () => {
+    // A dealer recognises a watch by its picture long before its serial.
+    expect(repo).toMatch(/AS image_id/)
+    expect(repo).toMatch(/imageId: row\.image_id/)
+  })
+
+  it('shows it, on both search surfaces', () => {
+    for (const source of [palette, screen]) {
+      expect(source).toMatch(/\/api\/images\/\$\{[^}]*imageId\}/)
+    }
+  })
+
+  it('keeps the serial whole on a narrow screen', () => {
+    /*
+     * "Stock 1722 · seri…" identifies nothing, and the serial is the entire
+     * difference between two of the same reference. It may wrap; it may not
+     * be cut.
+     */
+    expect(palette).toMatch(/block text-caption text-content-secondary sm:truncate/)
+    expect(screen).not.toMatch(/block truncate text-caption text-content-secondary/)
+  })
+
+  it('offers the full list once a group is capped', () => {
+    // The palette stops at five of each kind and used to stop silently,
+    // which reads as "that is all there is".
+    for (const source of [palette, screen]) {
+      expect(source).toMatch(/See every \{?/)
+      expect(source).toMatch(/href: '\/inventory'/)
+      /*
+       * The condition, not just the words. Written as a check that the file
+       * contains "PER_KIND" first, which passed happily while the branch
+       * around it was disabled — a guard that reads a string in a dead
+       * branch is a guard that reads nothing.
+       */
+      expect(source).toMatch(/group\.length >= PER_KIND/)
+    }
+  })
+
+  it('does not advertise keys to a screen with no keyboard', () => {
+    // Four shortcuts and an Esc were two lines of advice nobody on a phone
+    // can take, taken off the results.
+    expect(palette).toMatch(/hidden flex-wrap items-center[^"]*sm:flex/)
+    expect(palette).toMatch(/hidden shrink-0 text-micro text-content-secondary sm:inline/)
+  })
+})
+
