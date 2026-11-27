@@ -365,3 +365,75 @@ describe('a page heading on a phone', () => {
     expect(button).toMatch(/lg: 'h-12 px-5 .*sm:px-8'/)
   })
 })
+
+/**
+ * The trade price, on a phone.
+ *
+ * Alex: "You also can't see trade pricing on mobile view - this is info you
+ * need very quickly at a glance."
+ *
+ * It was a column of the desktop stock table and nothing else: not on the
+ * phone's card, not on the gallery card, not in the drawer's Financials
+ * panel, not on the record page's own summary. So the one figure somebody
+ * standing in front of another dealer needs was the one figure a phone could
+ * not reach, while the figures a dealer does not quote were on every screen.
+ */
+describe('what another dealer pays', () => {
+  it('is on the phone card, in the order the table puts it in', () => {
+    const list = read('src/components/inventory/InventoryList.tsx')
+    const card = list.slice(list.indexOf('function MobileRow'), list.indexOf('function Figure'))
+    expect(card).toMatch(/label="Cost"/)
+    expect(card).toMatch(/label="Trade"/)
+    expect(card.indexOf('label="Cost"')).toBeLessThan(card.indexOf('label="Trade"'))
+    expect(card.indexOf('label="Trade"')).toBeLessThan(card.indexOf("sold ? 'Sold for' : 'Retail'"))
+    // The figure itself, not just the word.
+    expect(card).toMatch(/money\(watch\.tradePriceGbp\)/)
+    // A watch never offered to the trade says so rather than showing a zero.
+    expect(card).toMatch(/watch\.tradePriceGbp !== null/)
+  })
+
+  it('keeps four figures two to a line, not four across', () => {
+    /*
+     * Four across was tried first and measured: 75 pixels a figure, and this
+     * business prices in six and seven, so "AED 620,000" broke after the
+     * currency on three cards in five. Two across gives 156, which holds an
+     * eight-figure price whole, and the label beside the figure rather than
+     * above it keeps the card the height it was with three.
+     */
+    const list = read('src/components/inventory/InventoryList.tsx')
+    const card = list.slice(list.indexOf('function MobileRow'), list.indexOf('function Figure'))
+    expect(card).toMatch(/<dl className="mt-2\.5 grid grid-cols-2 /)
+    expect(card).not.toMatch(/grid-cols-4/)
+    // Beside, not above: one flex row per figure.
+    const cell = list.slice(list.indexOf('function Figure'))
+    expect(cell).toMatch(/flex min-w-0 items-baseline/)
+  })
+
+  it('is on the gallery card too, labelled, and only when there is one', () => {
+    /*
+     * Cost over asking price is a pair anyone reads from position and weight
+     * alone; a third unlabelled number between them would be a guess. And a
+     * dash on every card would be three cards in four saying nothing.
+     */
+    const gallery = read('src/components/inventory/InventoryGallery.tsx')
+    expect(gallery).toMatch(/!sold && canSeeRevenue && watch\.tradePriceGbp !== null/)
+    expect(gallery).toMatch(/>Trade</)
+  })
+
+  it('is in the drawer and on the record, between cost and retail', () => {
+    const drawer = read('src/components/inventory/WatchDrawerClient.tsx')
+    const panel = drawer.slice(drawer.indexOf('aria-label="Financials"'))
+    expect(panel).toMatch(/label="Trade price"/)
+    expect(panel.indexOf('label="Purchase price"')).toBeLessThan(panel.indexOf('label="Trade price"'))
+    expect(panel.indexOf('label="Trade price"')).toBeLessThan(panel.indexOf('label="Retail price"'))
+
+    const record = read('src/app/(app)/inventory/[id]/page.tsx')
+    const summary = record.slice(record.indexOf('<StatGrid label="Financial summary"'))
+    expect(summary).toMatch(/label="Trade price"/)
+    expect(summary).toMatch(/Not offered to the trade/)
+    // Behind the same permission as the asking price: both are what we sell
+    // for, and neither is the cost side.
+    const tradeCard = summary.slice(summary.indexOf('label="Trade price"') - 200, summary.indexOf('label="Trade price"'))
+    expect(tradeCard).toMatch(/can\(user\.role, 'revenue:read'\)/)
+  })
+})

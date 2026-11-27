@@ -150,6 +150,18 @@ export default async function WatchDetailPage({ params }: { params: { id: string
             caption={currency === BASE_CURRENCY ? undefined : describeRate(currency, rates)}
           />
         )}
+        {/* What another dealer pays, beside what a customer does. It was a
+            column of the stock table and nothing else — Alex: "You also
+            can't see trade pricing on mobile view - this is info you need
+            very quickly at a glance" — and this is the page somebody opens
+            to answer exactly that. */}
+        {can(user.role, 'revenue:read') && (
+          <StatCard
+            label="Trade price"
+            value={watch.tradePriceGbp !== null ? money(watch.tradePriceGbp) : '—'}
+            caption={watch.tradePriceGbp !== null ? 'What the trade pays' : 'Not offered to the trade'}
+          />
+        )}
         {can(user.role, 'revenue:read') && (
           <StatCard
             label="Retail price"

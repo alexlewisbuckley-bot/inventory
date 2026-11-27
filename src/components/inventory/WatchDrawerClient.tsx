@@ -223,6 +223,17 @@ export function WatchDrawerClient({
           <h3 className="mb-3 text-caption font-semibold text-content-secondary">Financials</h3>
           <dl className="flex flex-col gap-2.5">
             <Money label="Purchase price" value={money(record.purchasePriceGbp)} />
+            {/* Between the two it sits between, in the same order as the
+                table and the form. It was in neither this panel nor
+                anything a phone could reach — Alex: "You also can't see
+                trade pricing on mobile view - this is info you need very
+                quickly at a glance" — while being the figure a dealer
+                quotes another dealer. */}
+            <Money
+              label="Trade price"
+              value={record.tradePriceGbp !== null ? money(record.tradePriceGbp) : 'Not offered to the trade'}
+              muted={record.tradePriceGbp === null}
+            />
             <Money label="Retail price" value={record.estSaleGbp !== null ? money(record.estSaleGbp) : 'Not set'} muted={record.estSaleGbp === null} />
             <Money
               label="Est. profit"
