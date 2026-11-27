@@ -22,7 +22,7 @@ import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
 import { listSalesPeople } from '@/server/services/reference-service'
 import { WatchDrawer } from '@/components/inventory/WatchDrawer'
-import { Card, StatCard, LinkButton, SkeletonTable, StatGrid } from '@/components/ui'
+import { Card, StatCard, LinkButton, SkeletonTable, StatGrid, ListControls } from '@/components/ui'
 import { formatPct } from '@/lib/money'
 import { formatBase, formatBaseSigned, isCurrency } from '@/lib/currency'
 import { getRateTable } from '@/server/services/fx-service'
@@ -323,6 +323,13 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
         )}
       </StatGrid>
 
+      {/*
+        Folded up on a phone. 1,361 pixels of chrome stood between opening
+        this page and seeing a watch — the views wrapped onto four rows, the
+        facets onto three, and every one of them was permanently open. On a
+        wide screen they are a row each and nothing about them changes.
+      */}
+      <ListControls search="Search by stock number, model, reference or serial…">
       <ViewBar object="watch" builtIn={inventoryViews({ queues: showQueues })} saved={savedViews} />
 
       <FilterBar
@@ -341,6 +348,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       {/* One row: the four questions, answered from what is in the case. */}
       <FindBar facets={facets} total={result.total} />
+      </ListControls>
 
       <Card className="overflow-hidden">
         <Suspense fallback={<SkeletonTable rows={10} columns={9} />}>

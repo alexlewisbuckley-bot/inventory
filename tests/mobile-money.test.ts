@@ -115,15 +115,22 @@ describe('a price in a narrow box', () => {
     expect(sales).toMatch(/width="164px"[^>]*sortKey="margin"/)
   })
 
-  it('sizes a stat figure to the card it is in', () => {
+  it('keeps a stat figure at full size and reads down the card', () => {
     /*
-     * Full size at every width, now that it has the row to itself: laid
-     * across on a phone — label left, figure right where the eye goes for a
-     * number — and back into a column from 520 up.
+     * Full size at every width, because the card always has room for it now:
+     * one of a swipeable strip on a phone at 78% of the screen, a grid cell
+     * from 520 up.
+     *
+     * And down rather than across. Laid across for a moment, while the cards
+     * were full width and stacked — but in the strip the card at the edge is
+     * deliberately half visible, and a right-aligned figure on it fell off
+     * the screen, so the card peeking in showed a label and a caption with
+     * no number between them.
      */
     const card = read('src/components/ui/Card.tsx')
     const stat = card.slice(card.indexOf('export function StatCard'))
-    expect(stat).toMatch(/text-h3 font-extrabold tabular-nums min-\[520px\]:mt-2 min-\[520px\]:text-left sm:text-h2/)
+    expect(stat).toMatch(/mt-2 text-h3 font-extrabold tabular-nums sm:text-h2/)
+    expect(stat).not.toMatch(/text-right/)
   })
 })
 
@@ -186,6 +193,68 @@ describe('searching for a watch on a phone', () => {
     // can take, taken off the results.
     expect(palette).toMatch(/hidden flex-wrap items-center[^"]*sm:flex/)
     expect(palette).toMatch(/hidden shrink-0 text-micro text-content-secondary sm:inline/)
+  })
+})
+
+/**
+ * The controls above a list, on a phone.
+ *
+ * Alex: "This whole search and filtering on mobile is awful and takes up so
+ * much space - doesn't feel like a web app feels likes a clunky old tool."
+ *
+ * Measured before touching it: 1,361 pixels of chrome between opening the
+ * stock list and seeing a watch, which on a 390-wide phone is one and a half
+ * screens of scrolling to reach the thing the page is for.
+ */
+describe('the controls above the stock list', () => {
+  const controls = read('src/components/ui/DataList/ListControls.tsx')
+  const page = read('src/app/(app)/inventory/page.tsx')
+
+  it('folds the views, filters and facets behind one button on a phone', () => {
+    expect(page).toContain('<ListControls')
+    // The real components, not a second set built for the phone.
+    expect(page).toContain('<ViewBar')
+    expect(page).toContain('<FilterBar')
+    expect(page).toContain('<FindBar')
+  })
+
+  it('renders them once, not once per breakpoint', () => {
+    /*
+     * Written first as a mobile copy and a desktop copy, which is two filter
+     * bars both writing the query string. Hidden with a class instead, so
+     * there is one of each and the URL has one author.
+     */
+    expect(controls.match(/\{children\}/g) ?? []).toHaveLength(1)
+  })
+
+  it('says how many filters are on, since they are now out of sight', () => {
+    // A filter you cannot see is a filter you forget you set, and "198
+    // watches" with no visible reason is how somebody concludes the stock
+    // has gone missing.
+    expect(controls).toMatch(/const active = useMemo/)
+    expect(controls).toMatch(/\{active\}/)
+  })
+
+  it('writes the search in an effect, not while rendering', () => {
+    // Navigating during render works until it loops.
+    const write = controls.slice(controls.indexOf('const debounced'))
+    expect(write).toMatch(/useEffect\(\(\) => \{[\s\S]*?write\(next\)/)
+  })
+
+  it('leaves one search box on screen, not two', () => {
+    // Two inputs for one query string means whichever somebody types into
+    // second appears to lose what they typed into the first.
+    const bar = read('src/components/ui/DataList/FilterBar.tsx')
+    expect(bar).toMatch(/relative hidden min-w-\[240px\] flex-1 lg:block/)
+  })
+
+  it('makes the figures a strip to swipe rather than a screen to scroll', () => {
+    // Six cards stacked ran to 560 pixels and put the stock below the fold.
+    const card = read('src/components/ui/Card.tsx')
+    const grid = card.slice(card.indexOf('export function StatGrid'), card.indexOf('export function StatCard'))
+    expect(grid).toMatch(/snap-x snap-mandatory/)
+    expect(grid).toMatch(/overflow-x-auto/)
+    expect(grid).toMatch(/min-\[520px\]:grid/)
   })
 })
 
