@@ -270,6 +270,42 @@ describe('the controls above the stock list', () => {
     expect(shell).toMatch(/z-30/)
   })
 
+  it('says only "Search" in a box 240 pixels wide', () => {
+    /*
+     * Alex: "Change search placeholder to fit within search panel just
+     * replace with search." The descriptive line the wide screen's box
+     * carries — "Search by stock number, model, reference or serial…" —
+     * arrived on a phone as "Search by stock n", which lists nothing and
+     * reads like a sentence somebody cut off.
+     *
+     * The full line stays as the box's accessible name, so a screen reader
+     * still hears what can be searched.
+     */
+    expect(controls).toMatch(/placeholder="Search"/)
+    expect(controls).toMatch(/<span className="sr-only">\{search\}<\/span>/)
+  })
+
+  it('colours the Filters button in the brand, not in a shade of the page', () => {
+    /*
+     * Alex: "Replace filter color from grey so it's more visible / sleek
+     * and inline with brand."
+     *
+     * It was `navy-700`, the deep ink of the light palette — but that token
+     * inverts to #D9D3C8 in dark mode, so the one control meant to stand
+     * out when filters are on came out a flat beige slab, lighter than the
+     * page behind it and louder than the Add item button beside it. Sage is
+     * the accent the rest of the product acts in, and it reads as "on" at
+     * both themes because it is a colour rather than a shade of the
+     * background.
+     */
+    expect(controls).toMatch(/border-teal-500 bg-teal-500 text-content-on-accent/)
+    expect(controls).not.toMatch(/bg-navy-700/)
+
+    // The same pair the primary button uses, so the two agree on screen.
+    const button = read('src/components/ui/Button.tsx')
+    expect(button).toMatch(/primary: 'bg-teal-500 text-content-on-accent/)
+  })
+
   it('makes the figures a strip to swipe rather than a screen to scroll', () => {
     // Six cards stacked ran to 560 pixels and put the stock below the fold.
     const card = read('src/components/ui/Card.tsx')

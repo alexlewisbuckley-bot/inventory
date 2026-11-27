@@ -29,7 +29,11 @@ import { cn } from '@/lib/cn'
  * somebody concludes the stock has gone missing.
  */
 export function ListControls({ search, children }: {
-  /** Placeholder for the phone's own search box. */
+  /**
+   * What the phone's search box searches, as its accessible name. The box
+   * itself says only "Search": there is no room on a phone for the line
+   * the wide screen's own box carries.
+   */
   search: string
   /** The real controls: views, filters, facets. Untouched on a wide screen. */
   children: React.ReactNode
@@ -122,7 +126,18 @@ export function ListControls({ search, children }: {
             <input
               value={term}
               onChange={(event) => setTerm(event.target.value)}
-              placeholder={search}
+              /*
+                One word, because the box is 240 pixels wide.
+
+                Alex: "Change search placeholder to fit within search panel
+                just replace with search." The descriptive line the wide
+                screen uses — "Search by stock number, model, reference or
+                serial…" — arrived on a phone as "Search by stock n", which
+                lists nothing and reads like a sentence somebody cut off.
+                The full line is still the box's accessible name above, so
+                a screen reader hears what can be searched.
+              */
+              placeholder="Search"
               inputMode="search"
               className="h-11 w-full rounded-md border border-line-subtle bg-surface-raised pl-10 pr-9 text-body text-content-primary transition-colors placeholder:text-content-muted hover:border-line-strong"
             />
@@ -145,14 +160,26 @@ export function ListControls({ search, children }: {
             className={cn(
               'flex h-11 shrink-0 items-center gap-2 rounded-md border px-3.5 text-small font-semibold transition-colors',
               active > 0
-                ? 'border-navy-700 bg-navy-700 text-white'
+                /*
+                  The brand's sage, not the ink.
+
+                  `navy-700` is the deep ink of the light palette, but in
+                  dark mode it inverts to #D9D3C8 — so on a dark phone the
+                  one control that is meant to stand out when filters are
+                  on came out a flat beige slab, lighter than the page and
+                  louder than the Add item button beside it. Sage is the
+                  accent the rest of the product acts in, and it reads as
+                  "on" at both themes because it is a colour rather than a
+                  shade of the background.
+                */
+                ? 'border-teal-500 bg-teal-500 text-content-on-accent'
                 : 'border-line-subtle bg-surface-raised text-content-primary',
             )}
           >
             <SlidersHorizontal className="h-4 w-4" aria-hidden />
             {open ? 'Done' : 'Filters'}
             {active > 0 && (
-              <span className="rounded-full bg-white/20 px-1.5 text-micro tabular-nums">{active}</span>
+              <span className="rounded-full bg-black/15 px-1.5 text-micro tabular-nums">{active}</span>
             )}
           </button>
         </div>
