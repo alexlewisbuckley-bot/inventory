@@ -477,6 +477,20 @@
  * beats it by one without resorting to `!important`. Checkboxes and radios
  * are left out: they have no text to zoom to.
  */
+/*
+ * The height of the phone's bottom navigation.
+ *
+ * Two things have to sit above it — the selection bar on the stock list and
+ * the save bar on a form — and they were written independently, one at 4rem
+ * and one at 53px, for the same bar. That is how a bar grows a row and one
+ * of the two ends up underneath it.
+ *
+ * 52 pixels of link plus its one-pixel top border. The safe-area inset is
+ * not in here: the bar carries its own padding for that, and anything
+ * sitting above the bar has to add it separately.
+ */
+:root { --bottom-bar: 53px; }
+
 @media (max-width: 639px) {
   input[class]:not([type='checkbox']):not([type='radio']),
   select[class],

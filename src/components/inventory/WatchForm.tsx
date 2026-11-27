@@ -485,11 +485,13 @@ export function WatchForm({
           long as there is form left below it, and settles into place at the
           end.
 
-          Fifty-three pixels up, which is the bottom bar's height, plus
-          whatever the phone reserves below that for its home indicator.
+          The bottom bar's own height, plus whatever the phone reserves
+          below that for its home indicator. Read from --bottom-bar rather
+          than written out, because the selection bar on the stock list
+          needs the same number and the two had already disagreed.
           Only below lg: above it the bar is hidden and the form fits.
         */}
-        <CardFooter className="sticky bottom-[calc(53px+env(safe-area-inset-bottom))] z-10 bg-surface-raised lg:static">
+        <CardFooter className="sticky bottom-[calc(var(--bottom-bar)+env(safe-area-inset-bottom))] z-10 bg-surface-raised lg:static">
           <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
           <SubmitButton mode={mode} noun={noun} />
         </CardFooter>

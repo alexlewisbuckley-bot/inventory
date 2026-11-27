@@ -50,14 +50,44 @@ describe('the form that adds a watch', () => {
      * the phones that have one.
      */
     const form = read('src/components/inventory/WatchForm.tsx')
-    expect(form).toMatch(/sticky bottom-\[calc\(53px\+env\(safe-area-inset-bottom\)\)\] z-10 bg-surface-raised lg:static/)
+    expect(form).toMatch(
+      /sticky bottom-\[calc\(var\(--bottom-bar\)\+env\(safe-area-inset-bottom\)\)\] z-10 bg-surface-raised lg:static/,
+    )
+  })
+})
 
-    // And 53 is the bar, not a number somebody liked: it is fixed to the
-    // bottom and that is what it measures.
+/**
+ * How tall the phone's bottom navigation is.
+ */
+describe('the height of the bottom bar', () => {
+  it('is written down once', () => {
+    /*
+     * Two things sit above it — the selection bar on the stock list and the
+     * save bar on a form — and they were written independently, one at 4rem
+     * and one at 53px, for the same bar. That is how a bar grows a row and
+     * one of the two ends up underneath it.
+     */
+    const css = read('src/styles/globals.css')
+    expect(css).toMatch(/:root \{ --bottom-bar: 53px; \}/)
+
+    // And the bar is built from it, so the number cannot drift from the
+    // thing it measures. Less one pixel, which is its own top border.
     const bar = read('src/components/layout/BottomBar.tsx')
     expect(bar).toMatch(/fixed inset-x-0 bottom-0/)
-    expect(bar).toMatch(/min-h-\[52px\]/)
+    expect(bar).toMatch(/min-h-\[calc\(var\(--bottom-bar\)-1px\)\]/)
     expect(bar).toMatch(/lg:hidden/)
+  })
+
+  it('is what everything standing on it reads', () => {
+    for (const path of [
+      'src/components/inventory/WatchForm.tsx',
+      'src/components/inventory/BulkActionBar.tsx',
+    ]) {
+      const text = read(path)
+      expect(text).toContain('var(--bottom-bar)')
+      // No second opinion about how tall it is.
+      expect(text).not.toMatch(/bottom-\[calc\(env\(safe-area-inset-bottom\)\+4rem\)\]/)
+    }
   })
 })
 

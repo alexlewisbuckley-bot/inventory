@@ -128,7 +128,7 @@ export function BulkActionBar({
         role="region"
         aria-label={`${count} selected`}
         className={
-          'fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+4rem)] z-40 flex flex-wrap items-center gap-2 '
+          'fixed inset-x-3 bottom-[calc(var(--bottom-bar)+env(safe-area-inset-bottom)+0.75rem)] z-40 flex flex-wrap items-center gap-2 '
           + 'rounded-sm border border-line-subtle bg-surface-raised px-3 py-2.5 shadow-raised animate-slide-up '
           + 'md:inset-x-auto md:left-1/2 md:w-max md:max-w-[calc(100vw-1.5rem)] md:-translate-x-1/2 md:flex-nowrap md:gap-3 md:px-4 md:py-3 '
           + 'lg:bottom-6'

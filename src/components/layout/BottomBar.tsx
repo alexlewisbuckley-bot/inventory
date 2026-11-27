@@ -65,7 +65,8 @@ export function BottomBar({ role }: { role: Role | null }) {
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-1.5',
+                  // Less the border above it, which --bottom-bar counts and this does not.
+                  'flex min-h-[calc(var(--bottom-bar)-1px)] flex-col items-center justify-center gap-0.5 py-1.5',
                   active ? 'text-content-accent' : 'text-content-secondary',
                 )}
               >
