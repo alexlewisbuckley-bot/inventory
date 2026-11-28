@@ -57,7 +57,8 @@ describe('a price in a narrow box', () => {
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     const metaRow = gallery.slice(gallery.indexOf('mt-auto flex'))
     expect(metaRow).toMatch(/mt-auto flex flex-col items-start/)
-    expect(metaRow).toMatch(/flex flex-wrap items-baseline/)
+    // One figure to a line, so none of them can be squeezed by another.
+    expect(metaRow).not.toMatch(/flex flex-wrap/)
   })
 
   it('gives a stat card the whole row on a phone', () => {
@@ -456,7 +457,8 @@ describe('what another dealer pays', () => {
      */
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     expect(gallery).toMatch(/!sold && canSeeRevenue && watch\.tradePriceGbp !== null/)
-    expect(gallery).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
+    expect(gallery).toMatch(/\{money\(watch\.tradePriceGbp\)\}/)
+    expect(gallery).toMatch(/>Trade<\/span>/)
   })
 
   it('is in the drawer and on the record, between cost and retail', () => {
@@ -531,20 +533,39 @@ describe('a watch as a card', () => {
     expect(keys(dots)).toEqual(keys(tones))
   })
 
-  it('reads the money down the left edge, with trade beside the price', () => {
+  it('reads the money down the left edge, climbing', () => {
     /*
      * Right-aligned it was a column of figures with nothing to start from,
      * each beginning at a different place because each is a different
-     * length. And "Trade AED 716,122" next to the asking price is the
-     * comparison somebody makes in one look.
+     * length.
+     *
+     * And in the order they climb — paid, trade, retail — so the two gaps
+     * anybody works out in their head are each between neighbours. Alex:
+     * "Trade pricing should go in the middle and move the word trade to
+     * the right side not the left."
      */
     const money = gallery.slice(gallery.indexOf('The money, read down the left edge'))
     expect(money).toMatch(/flex flex-col items-start/)
     expect(money).not.toMatch(/items-end/)
-    // Trade is the smaller of the two, and on the same line.
-    const priceLine = money.slice(money.indexOf('flex flex-wrap items-baseline'))
-    expect(priceLine).toMatch(/text-micro text-content-secondary/)
-    expect(priceLine).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
+
+    const cost = money.indexOf('watch.purchasePriceGbp')
+    const trade = money.indexOf('watch.tradePriceGbp')
+    const asking = money.indexOf('watch.estSaleGbp')
+    expect(cost).toBeLessThan(trade)
+    expect(trade).toBeLessThan(asking)
+  })
+
+  it('puts the word after the figure, not in front of it', () => {
+    /*
+     * Three numbers starting on one line down the left, compared without
+     * stepping over a label. And the same size as the cost above it: the
+     * asking price is the bold one and does not need the other two shrunk
+     * to say so.
+     */
+    const money = gallery.slice(gallery.indexOf('The money, read down the left edge'))
+    const line = money.slice(money.indexOf('watch.tradePriceGbp !== null'))
+    expect(line).toMatch(/\{money\(watch\.tradePriceGbp\)\}\s*\n\s*<span className="text-micro text-content-secondary">Trade<\/span>/)
+    expect(line).not.toMatch(/Trade \{money/)
   })
 })
 
