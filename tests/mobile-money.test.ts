@@ -603,22 +603,34 @@ describe('the filter panel on a phone', () => {
     expect(shell).toContain('flex min-h-screen overflow-x-clip bg-surface-subtle')
   })
 
-  it('puts the views and the facets on one line to swipe', () => {
+  it('puts the facets on one line to swipe', () => {
     /*
-     * Eleven views wrapped onto five rows at 200 pixels, six facet pills
-     * onto three at 136. Side by side they are 40 each. Measured after:
-     * the panel went from 462 pixels to 210.
+     * Six facet pills wrapped onto three rows at 136 pixels. Side by side
+     * they are 44. A pill keeps its own width in the scroller: a flex
+     * child's default is to be squeezed, which would turn six words into
+     * six columns of one letter.
      */
-    for (const source of [views, find]) {
-      expect(source).toMatch(/-mx-3 mb-\d flex .*overflow-x-auto px-3 pb-1/)
-      expect(source).toMatch(/sm:mx-0 sm:flex-wrap sm:overflow-visible/)
-    }
+    expect(find).toMatch(/-mx-3 mb-\d flex .*overflow-x-auto px-3 pb-1/)
+    expect(find).toMatch(/sm:mx-0 sm:flex-wrap sm:overflow-visible/)
+    expect(find).toMatch(/\[&>\*\]:shrink-0/)
   })
 
-  it('keeps a chip its own width inside that scroller', () => {
-    // A flex child's default is to be squeezed, which would turn eleven
-    // view names into eleven columns of one letter.
-    expect(views).toMatch(/inline-flex h-9 shrink-0 items-center rounded-sm/)
-    expect(find).toMatch(/\[&>\*\]:shrink-0/)
+  it('does not show the views on a phone at all', () => {
+    /*
+     * Alex: "Put the views on a slider so not taking up so much space or
+     * hide them I've never used them before."
+     *
+     * A slider first, which took eleven chips from five wrapped rows to
+     * one line of 40 pixels. The second half of that sentence is the
+     * better answer: forty pixels of a control nobody here has ever used
+     * is still forty pixels, on the screen with the fewest to spare.
+     *
+     * Hidden, not unmounted — a saved view applied from a desk still
+     * governs the list when the same URL is opened on a phone. What goes
+     * away is the row of buttons, not the feature.
+     */
+    expect(views).toMatch(/className="mb-4 hidden flex-wrap items-center gap-1\.5 sm:flex"/)
+    // Still there from sm up, where a tablet and a laptop have the room.
+    expect(views).not.toMatch(/sm:hidden/)
   })
 })

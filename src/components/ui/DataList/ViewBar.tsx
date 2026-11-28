@@ -132,25 +132,25 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
 
   return (
     /*
-      One line to swipe on a phone, the wrapped block from sm up.
+      Not on a phone at all.
 
-      Alex: "Filtering is still broken on mobile and very clunky." Eleven
-      views, a saved one and a Save button wrapped onto five rows and took
-      two hundred pixels of a panel that is meant to be glanced at — before
-      the filter chips underneath it had said anything at all. Side by side
-      they are one row of 36 pixels and the rest is a swipe, which is the
-      same gesture the figures above the list already use.
+      Alex: "Put the views on a slider so not taking up so much space or
+      hide them I've never used them before."
 
-      The negative margin lets the row reach the panel's own padding, so a
-      chip scrolling past looks like it is leaving the panel rather than
-      stopping short inside it.
+      They were a slider first, which took the eleven chips from five
+      wrapped rows down to one line of 40 pixels. The second half of that
+      sentence is the better answer: forty pixels of a control nobody here
+      has ever used is still forty pixels, and on the screen with the least
+      of them. Hidden below sm, where the filters that do get used have the
+      room instead; unchanged from sm up, where a tablet and a laptop have
+      space for both and somebody else may well use them.
+
+      Hidden rather than unmounted, so a saved view applied from a desk
+      still governs the list when the same URL is opened on a phone — what
+      goes away is the row of buttons, not the feature.
     */
     <div
-      className={cn(
-        '-mx-3 mb-4 flex snap-x items-center gap-1.5 overflow-x-auto px-3 pb-1',
-        '[&::-webkit-scrollbar]:hidden [scrollbar-width:none]',
-        'sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0',
-      )}
+      className="mb-4 hidden flex-wrap items-center gap-1.5 sm:flex"
       role="group"
       aria-label="Views"
     >
@@ -280,9 +280,8 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
 
 function chipClass(active: boolean): string {
   return cn(
-    // `shrink-0` for the swipe row on a phone: in a horizontal scroller a
-    // flex child's default is to be squeezed, which would turn eleven view
-    // names into eleven columns of one letter rather than a row to swipe.
+    // `shrink-0` so a long view name keeps its width in the wrapped row
+    // rather than being squeezed narrower than the words inside it.
     'inline-flex h-9 shrink-0 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
     active
       ? 'bg-navy-700 text-content-on-brand'
