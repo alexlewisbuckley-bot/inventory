@@ -65,6 +65,50 @@ export function StatusChip({ status, className }: { status: WatchStatus; classNa
   )
 }
 
+/*
+ * The same tones as a dot, for somewhere a chip will not fit.
+ *
+ * Keyed by tone rather than by status, so a status whose tone changes moves
+ * in both places at once. The chip draws its own dot with `bg-current`, off
+ * the tone's text colour; these are those colours named directly, because
+ * there is no chip around them to inherit from.
+ */
+const TONE_DOT: Record<ChipTone, string> = {
+  accent: 'bg-content-accent',
+  navy: 'bg-navy-700',
+  neutral: 'bg-content-secondary',
+  good: 'bg-state-good',
+  warning: 'bg-state-warning',
+  serious: 'bg-state-serious',
+  critical: 'bg-state-critical',
+  gold: 'bg-state-warning',
+  danger: 'bg-state-critical',
+  success: 'bg-state-good',
+}
+
+/**
+ * The status as a dot.
+ *
+ * Alex, on the gallery card: "Remove the in stock tag replace much smaller
+ * where the amber circle is." The chip is a hundred pixels of a card a
+ * hundred and fifty wide, spent saying what nearly every card says — and
+ * the one thing a card is for, the photograph, had to shrink to fit it.
+ *
+ * A dot only works where the label survives it, so the label is part of
+ * the component rather than optional beside it: `title` for a pointer,
+ * `sr-only` for everybody else. Colour alone tells nobody anything in a
+ * black-and-white screenshot, and the colours here are the chip's own.
+ */
+export function StatusDot({ status, className }: { status: WatchStatus; className?: string }) {
+  const label = WATCH_STATUS_LABELS[status]
+  return (
+    <span className={cn('inline-flex items-center', className)} title={label}>
+      <span className={cn('h-2 w-2 shrink-0 rounded-pill', TONE_DOT[WATCH_STATUS_TONE[status]])} aria-hidden />
+      <span className="sr-only">{label}</span>
+    </span>
+  )
+}
+
 /** Chip for watches with no estimated sale price — a data-quality prompt. */
 export function UnpricedChip() {
   return <Chip tone="neutral">Needs price</Chip>

@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { Camera, Handshake } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { StatusChip, UnpricedChip, ZoomButton, useCurrency } from '@/components/ui'
+import { StatusDot, UnpricedChip, ZoomButton, useCurrency } from '@/components/ui'
 import { CheckDot } from '@/components/compliance/CheckLight'
 import { CHECK_TONE_LABELS, watchChecks } from '@/lib/checks'
 import { PRODUCT_TYPE_LABELS, type WatchStatus } from '@/lib/enums'
@@ -79,12 +79,27 @@ export function InventoryGallery({
               <Photo watch={watch} dimmed={sold} showTrade={showTrade} />
 
               <div className="flex flex-1 flex-col gap-1 p-3">
-                <div className="flex items-baseline justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-caption font-bold text-navy-700">{watch.stockNo}</span>
-                  <CheckDot
-                    tone={checks.tone}
-                    label={`${CHECK_TONE_LABELS[checks.tone]} — ${checks.summary}`}
-                  />
+                  {/*
+                    Two dots, two different facts, both labelled.
+
+                    Alex: "Remove the in stock tag replace much smaller where
+                    the amber circle is." The amber circle was already here
+                    and is not the status — it is the supplier's compliance
+                    check — so the status joins it rather than evicting it.
+                    Status first, because it is the one somebody is looking
+                    for; each carries its own words for a pointer and for a
+                    screen reader, since a bare colour says nothing to anyone
+                    reading a printed sheet.
+                  */}
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    <StatusDot status={watch.status as WatchStatus} />
+                    <CheckDot
+                      tone={checks.tone}
+                      label={`${CHECK_TONE_LABELS[checks.tone]} — ${checks.summary}`}
+                    />
+                  </span>
                 </div>
 
                 <span className="truncate text-small font-bold text-content-primary" title={`${watch.brandName} ${watch.model}`}>
@@ -102,68 +117,37 @@ export function InventoryGallery({
                 </span>
 
                 {/*
-                  Wraps rather than fights for the width.
+                  The money, read down the left edge.
 
-                  Alex, on a phone: "Can't view pricing and product tiles
-                  properly on mobile." Two cards to a 390-pixel row leaves
-                  each about 160 wide, and a status chip beside "AED 612,000"
-                  wants rather more than that. Side by side with nowhere to
-                  go, the figures ran off the edge and the card's own
-                  `overflow-hidden` cut them in half.
+                  Alex: "Left align the costs and put trade in small to the
+                  right of the price." Right-aligned it was a column of
+                  figures with nothing to start from, each one beginning at a
+                  different place because each is a different length; against
+                  the left edge they stack under the reference above them and
+                  the eye has one line to follow.
 
-                  Allowed to wrap, the price drops under the chip on a phone
-                  and sits beside it on anything wider, which is the same
-                  card doing the sensible thing at both sizes rather than two
-                  layouts to keep in step.
+                  Cost above, at the same size as the figure under it, so the
+                  two read down the card as what it cost and then what it is
+                  worth — the order they are thought about in, and the one
+                  that makes the gap between them legible without doing the
+                  sum. No label, and not greyed down: this card is only ever
+                  read by people who are allowed the number, and shrinking it
+                  was treating it as an aside when it is half the point of
+                  looking. Weight alone separates them — the asking price is
+                  the bold one.
+
+                  Each figure is behind its own permission, so a card can show
+                  one, both or neither. Nothing stands in for a figure
+                  somebody may not see: a placeholder would only advertise
+                  what is being withheld.
                 */}
-                <div className="mt-auto flex flex-wrap items-end justify-between gap-x-2 gap-y-1 pt-2">
-                  <StatusChip status={watch.status as WatchStatus} />
-                  {/* Cost above, at the same size as the figure under it, so
-                      the two read down the card as what it cost and then what
-                      it is worth — the order they are thought about in, and
-                      the one that makes the gap between them legible without
-                      doing the sum.
-
-                      No label, and not greyed down: this card is only ever
-                      read by people who are allowed the number, and shrinking
-                      it was treating it as an aside when it is half the point
-                      of looking. Weight alone separates them — the asking
-                      price is the bold one — which is enough to tell them
-                      apart at a glance and keeps the two figures on one
-                      typographic step so the column reads as a pair.
-
-                      Each figure is behind its own permission, so a card can
-                      show one, both or neither. Nothing stands in for a
-                      figure somebody may not see: a placeholder would only
-                      advertise what is being withheld. */}
-                  <div className="flex flex-1 flex-col items-end gap-0.5">
-                    {canSeeCost && (
-                      <span className="text-caption text-content-primary">
-                        {money(watch.purchasePriceGbp)}
-                      </span>
-                    )}
-                    {/*
-                      And what another dealer pays, which is the figure
-                      somebody standing in front of one needs fastest.
-
-                      Alex: "You also can't see trade pricing on mobile view
-                      - this is info you need very quickly at a glance." It
-                      was a column of the desktop table and nowhere else.
-
-                      Labelled, where the other two are not: cost over
-                      asking price is a pair anyone reads correctly from
-                      position and weight alone, and a third unlabelled
-                      number between them would be a guess. Only when there
-                      is one — a watch never offered to the trade has
-                      nothing to say here, and a dash on every card would
-                      be three cards in four saying nothing.
-                    */}
-                    {!sold && canSeeRevenue && watch.tradePriceGbp !== null && (
-                      <span className="flex items-baseline gap-1 text-caption text-content-primary">
-                        <span className="text-micro text-content-secondary">Trade</span>
-                        {money(watch.tradePriceGbp)}
-                      </span>
-                    )}
+                <div className="mt-auto flex flex-col items-start gap-0.5 pt-2">
+                  {canSeeCost && (
+                    <span className="text-caption text-content-primary">
+                      {money(watch.purchasePriceGbp)}
+                    </span>
+                  )}
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     {/* Sold rows show what they made, live ones what they ask. */}
                     {sold
                       ? canSeeRevenue && watch.soldAmountGbp !== null && (
@@ -174,6 +158,22 @@ export function InventoryGallery({
                           ? <UnpricedChip />
                           : <span className="text-caption font-bold text-content-primary">{money(watch.estSaleGbp)}</span>
                       )}
+                    {/*
+                      And what another dealer pays, beside it rather than
+                      under it: "Trade AED 716,122" next to the asking price
+                      is the comparison somebody makes in one look, and it is
+                      the smaller of the two because the asking price is the
+                      headline.
+
+                      Only when there is one — a watch never offered to the
+                      trade has nothing to say here, and a dash on every card
+                      would be three cards in four saying nothing.
+                    */}
+                    {!sold && canSeeRevenue && watch.tradePriceGbp !== null && (
+                      <span className="text-micro text-content-secondary">
+                        Trade {money(watch.tradePriceGbp)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

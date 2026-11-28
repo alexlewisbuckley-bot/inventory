@@ -42,19 +42,22 @@ describe('a price in a narrow box', () => {
     expect(formatCurrency(null, 'AED')).toBe('—')
   })
 
-  it('lets a stock tile put its price under the status rather than beside it', () => {
+  it('gives a stock tile\'s price the whole width of the card', () => {
     /*
-     * Two cards to a 390-pixel row leaves each about 160 wide, and a status
-     * chip beside "AED 620,000" wants more than that. Letting the figure
-     * break was not enough on its own: squeezed next to the chip it went to
-     * two lines each and was still clipped. The row has to be able to wrap.
+     * Two cards to a 390-pixel row leaves each about 160 wide, and the
+     * status chip that used to sit beside "AED 620,000" wanted more than
+     * was left: squeezed next to it the figure went to two lines and was
+     * still clipped.
+     *
+     * The chip is a dot in the card's header now, so nothing competes with
+     * the figure for the line — but the line can still hold two things, the
+     * asking price and the trade price beside it, so it must be able to
+     * wrap rather than run off the edge.
      */
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     const metaRow = gallery.slice(gallery.indexOf('mt-auto flex'))
-    expect(metaRow).toMatch(/mt-auto flex flex-wrap/)
-    // And the price column takes the rest of the line, so it stays
-    // right-aligned whether it sits beside the chip or beneath it.
-    expect(gallery).toMatch(/flex flex-1 flex-col items-end/)
+    expect(metaRow).toMatch(/mt-auto flex flex-col items-start/)
+    expect(metaRow).toMatch(/flex flex-wrap items-baseline/)
   })
 
   it('gives a stat card the whole row on a phone', () => {
@@ -453,7 +456,7 @@ describe('what another dealer pays', () => {
      */
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     expect(gallery).toMatch(/!sold && canSeeRevenue && watch\.tradePriceGbp !== null/)
-    expect(gallery).toMatch(/>Trade</)
+    expect(gallery).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
   })
 
   it('is in the drawer and on the record, between cost and retail', () => {
@@ -471,5 +474,76 @@ describe('what another dealer pays', () => {
     // for, and neither is the cost side.
     const tradeCard = summary.slice(summary.indexOf('label="Trade price"') - 200, summary.indexOf('label="Trade price"'))
     expect(tradeCard).toMatch(/can\(user\.role, 'revenue:read'\)/)
+  })
+})
+
+/**
+ * The gallery card, which is 154 pixels wide on a phone.
+ *
+ * Alex: "Remove the in stock tag replace much smaller where the amber
+ * circle is. Left align the costs and put trade in small to the right of
+ * the price."
+ */
+describe('a watch as a card', () => {
+  const gallery = read('src/components/inventory/InventoryGallery.tsx')
+  const chip = read('src/components/ui/Chip.tsx')
+
+  it('shows the status as a dot, not a chip', () => {
+    // A hundred pixels of a hundred-and-fifty-pixel card, spent saying what
+    // nearly every card says.
+    expect(gallery).toMatch(/<StatusDot status=\{watch\.status as WatchStatus\} \/>/)
+    expect(gallery).not.toMatch(/<StatusChip/)
+  })
+
+  it('puts it beside the check light rather than instead of it', () => {
+    /*
+     * The amber circle was already there and is not the status — it is the
+     * supplier's compliance check. Evicting it would have dropped a fact
+     * the card is one of two places to see.
+     */
+    const header = gallery.slice(gallery.indexOf('{watch.stockNo}'), gallery.indexOf('{watch.brandName}'))
+    expect(header).toContain('<StatusDot')
+    expect(header).toContain('<CheckDot')
+    expect(header.indexOf('<StatusDot')).toBeLessThan(header.indexOf('<CheckDot'))
+  })
+
+  it('keeps the words on the dot, for a pointer and a screen reader', () => {
+    // Colour alone says nothing to somebody who cannot tell these apart, or
+    // to anybody reading a printed sheet.
+    const dot = chip.slice(chip.indexOf('export function StatusDot'))
+    expect(dot).toMatch(/title=\{label\}/)
+    expect(dot).toMatch(/className="sr-only">\{label\}/)
+    expect(dot).toMatch(/WATCH_STATUS_LABELS\[status\]/)
+  })
+
+  it('takes the dot colour from the tone the chip uses', () => {
+    /*
+     * Keyed by tone, not by status, so a status whose tone changes moves in
+     * both places at once — the alternative is a dot that is still amber
+     * next to a chip that has gone green.
+     */
+    expect(chip).toMatch(/const TONE_DOT: Record<ChipTone, string>/)
+    expect(chip).toMatch(/TONE_DOT\[WATCH_STATUS_TONE\[status\]\]/)
+    // Every tone the chip knows, so the lookup cannot come back undefined.
+    const tones = chip.slice(chip.indexOf('const TONES:'), chip.indexOf('export interface ChipProps'))
+    const dots = chip.slice(chip.indexOf('const TONE_DOT:'), chip.indexOf('export function StatusDot'))
+    const keys = (text: string) => [...text.matchAll(/^ {2}([a-z]+):/gm)].map((m) => m[1]).sort()
+    expect(keys(dots)).toEqual(keys(tones))
+  })
+
+  it('reads the money down the left edge, with trade beside the price', () => {
+    /*
+     * Right-aligned it was a column of figures with nothing to start from,
+     * each beginning at a different place because each is a different
+     * length. And "Trade AED 716,122" next to the asking price is the
+     * comparison somebody makes in one look.
+     */
+    const money = gallery.slice(gallery.indexOf('The money, read down the left edge'))
+    expect(money).toMatch(/flex flex-col items-start/)
+    expect(money).not.toMatch(/items-end/)
+    // Trade is the smaller of the two, and on the same line.
+    const priceLine = money.slice(money.indexOf('flex flex-wrap items-baseline'))
+    expect(priceLine).toMatch(/text-micro text-content-secondary/)
+    expect(priceLine).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
   })
 })

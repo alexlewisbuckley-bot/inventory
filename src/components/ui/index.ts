@@ -1,7 +1,7 @@
 /** Barrel for the design-system primitives. */
 export { Button, IconButton, LinkButton } from './Button'
 export type { ButtonProps, ButtonVariant, ButtonSize } from './Button'
-export { Chip, StatusChip, UnpricedChip } from './Chip'
+export { Chip, StatusChip, StatusDot, UnpricedChip } from './Chip'
 export type { ChipTone } from './Chip'
 export { Card, CardHeader, CardBody, CardFooter, StatCard, StatGrid } from './Card'
 export {
