@@ -12,6 +12,14 @@ export interface MenuItem {
   tone?: 'default' | 'accent' | 'danger'
   /** Render a rule above this item. */
   separated?: boolean
+  /**
+   * Leave the menu open when this one is chosen.
+   *
+   * For an item that changes the menu rather than acting on the list — "See
+   * more", which has nothing to show for itself if the thing it reveals
+   * disappears in the same breath.
+   */
+  keepOpen?: boolean
 }
 
 /**
@@ -110,7 +118,7 @@ export function AnchoredMenu({ open, onClose, anchorRef, items, label, dismiss =
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault()
         items[active]?.onSelect()
-        if (dismiss === 'on-select') onClose()
+        if (dismiss === 'on-select' && !items[active]?.keepOpen) onClose()
       }
     }
 
@@ -169,7 +177,7 @@ export function AnchoredMenu({ open, onClose, anchorRef, items, label, dismiss =
             role="menuitem"
             data-menu-item={item.id}
             onMouseEnter={() => setActive(index)}
-            onClick={() => { item.onSelect(); if (dismiss === 'on-select') onClose() }}
+            onClick={() => { item.onSelect(); if (dismiss === 'on-select' && !item.keepOpen) onClose() }}
             className={cn(
               'flex w-full items-center gap-2.5 px-3 py-2 text-left text-small transition-colors',
               TONES[item.tone ?? 'default'],

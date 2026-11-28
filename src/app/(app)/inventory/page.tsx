@@ -16,7 +16,7 @@ import { PageActions } from '@/components/layout/PageActions'
 import { FilterBar } from '@/components/ui/DataList'
 import { ViewBar } from '@/components/ui/DataList'
 import { AVAILABLE_QUERY, inventoryViews } from '@/components/inventory/views'
-import { FindBar } from '@/components/inventory/FindBar'
+import { FACET_FIELDS, FindBar } from '@/components/inventory/FindBar'
 import { listViews } from '@/server/services/views-service'
 import { InventoryList } from '@/components/inventory/InventoryList'
 import { customerOptions, openDealsByWatch } from '@/server/repositories/crm-repository'
@@ -334,6 +334,14 @@ export default async function InventoryPage({ searchParams }: { searchParams: Se
 
       <FilterBar
         fields={WATCH_FIELDS}
+        /* Alex: "For filters keep, location, owner, the filters listed
+           below already can be removed and the others hidden with a see
+           more." Where a watch stands and whose it is are the two this
+           menu is opened for; the seven the pills underneath already
+           answer are not offered twice, and the rest are one tap further
+           in rather than fifteen names deep. */
+        hide={FACET_FIELDS}
+        quick={['locationId', 'ownerId']}
         placeholder="Search by stock number, model, reference or serial…"
         options={{
           locations: locationOptions.map((row) => ({ value: row.id, label: row.name })),

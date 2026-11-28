@@ -57,7 +57,8 @@ describe('a price in a narrow box', () => {
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     const metaRow = gallery.slice(gallery.indexOf('mt-auto flex'))
     expect(metaRow).toMatch(/mt-auto flex flex-col items-start/)
-    expect(metaRow).toMatch(/flex flex-wrap items-baseline/)
+    // One figure to a line, so none of them can be squeezed by another.
+    expect(metaRow).not.toMatch(/flex flex-wrap/)
   })
 
   it('gives a stat card the whole row on a phone', () => {
@@ -456,7 +457,8 @@ describe('what another dealer pays', () => {
      */
     const gallery = read('src/components/inventory/InventoryGallery.tsx')
     expect(gallery).toMatch(/!sold && canSeeRevenue && watch\.tradePriceGbp !== null/)
-    expect(gallery).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
+    expect(gallery).toMatch(/\{money\(watch\.tradePriceGbp\)\}/)
+    expect(gallery).toMatch(/>Trade<\/span>/)
   })
 
   it('is in the drawer and on the record, between cost and retail', () => {
@@ -531,20 +533,39 @@ describe('a watch as a card', () => {
     expect(keys(dots)).toEqual(keys(tones))
   })
 
-  it('reads the money down the left edge, with trade beside the price', () => {
+  it('reads the money down the left edge, climbing', () => {
     /*
      * Right-aligned it was a column of figures with nothing to start from,
      * each beginning at a different place because each is a different
-     * length. And "Trade AED 716,122" next to the asking price is the
-     * comparison somebody makes in one look.
+     * length.
+     *
+     * And in the order they climb — paid, trade, retail — so the two gaps
+     * anybody works out in their head are each between neighbours. Alex:
+     * "Trade pricing should go in the middle and move the word trade to
+     * the right side not the left."
      */
     const money = gallery.slice(gallery.indexOf('The money, read down the left edge'))
     expect(money).toMatch(/flex flex-col items-start/)
     expect(money).not.toMatch(/items-end/)
-    // Trade is the smaller of the two, and on the same line.
-    const priceLine = money.slice(money.indexOf('flex flex-wrap items-baseline'))
-    expect(priceLine).toMatch(/text-micro text-content-secondary/)
-    expect(priceLine).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
+
+    const cost = money.indexOf('watch.purchasePriceGbp')
+    const trade = money.indexOf('watch.tradePriceGbp')
+    const asking = money.indexOf('watch.estSaleGbp')
+    expect(cost).toBeLessThan(trade)
+    expect(trade).toBeLessThan(asking)
+  })
+
+  it('puts the word after the figure, not in front of it', () => {
+    /*
+     * Three numbers starting on one line down the left, compared without
+     * stepping over a label. And the same size as the cost above it: the
+     * asking price is the bold one and does not need the other two shrunk
+     * to say so.
+     */
+    const money = gallery.slice(gallery.indexOf('The money, read down the left edge'))
+    const line = money.slice(money.indexOf('watch.tradePriceGbp !== null'))
+    expect(line).toMatch(/\{money\(watch\.tradePriceGbp\)\}\s*\n\s*<span className="text-micro text-content-secondary">Trade<\/span>/)
+    expect(line).not.toMatch(/Trade \{money/)
   })
 })
 
@@ -632,5 +653,79 @@ describe('the filter panel on a phone', () => {
     expect(views).toMatch(/className="mb-4 hidden flex-wrap items-center gap-1\.5 sm:flex"/)
     // Still there from sm up, where a tablet and a laptop have the room.
     expect(views).not.toMatch(/sm:hidden/)
+  })
+})
+
+/**
+ * The `+ Filter` menu.
+ *
+ * Alex: "For filters keep, location, owner, the filters listed below
+ * already can be removed and the others hidden with a see more."
+ *
+ * Fifteen field names in one column, seven of them repeating the facet
+ * pills sitting directly underneath, and the two anybody actually reaches
+ * for — where a watch stands, and whose it is — somewhere in the middle.
+ */
+describe('the fields a filter can be added on', () => {
+  const find = read('src/components/inventory/FindBar.tsx')
+  const bar = read('src/components/ui/DataList/FilterBar.tsx')
+  const page = read('src/app/(app)/inventory/page.tsx')
+
+  it('does not offer what the pills underneath already answer', () => {
+    expect(page).toMatch(/hide=\{FACET_FIELDS\}/)
+    expect(find).toMatch(/export const FACET_FIELDS = \[/)
+  })
+
+  it('names exactly the fields those pills write', () => {
+    /*
+     * The list is declared beside the pills so the two cannot drift, and
+     * this is what makes that true: add a pill without naming it here and
+     * the menu goes on offering the same filter twice; name one here that
+     * no pill answers and the menu quietly loses a field.
+     */
+    const declared = [...find.slice(find.indexOf('export const FACET_FIELDS'), find.indexOf('] as const'))
+      .matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]).sort()
+    // Every key the pills read or write, taken from the pills themselves.
+    const used = [...new Set(
+      [...find.matchAll(/(?:chosen|bound|setRange|toggle)\('([a-zA-Z]+)'/g)].map((m) => m[1]),
+    )].sort()
+    expect(declared).toEqual(used)
+  })
+
+  it('shows the two worth showing, and folds the rest behind one line', () => {
+    expect(page).toMatch(/quick=\{\['locationId', 'ownerId'\]\}/)
+    expect(bar).toMatch(/const front = quick\?\.length \? addable\.filter/)
+    expect(bar).toMatch(/label: `See \$\{rest\.length\} more`/)
+    // No "See more" that opens onto nothing.
+    expect(bar).toMatch(/!showAll && rest\.length > 0/)
+    // And a list that names no favourites still shows everything, which is
+    // what Sales and Contacts do.
+    expect(bar).toMatch(/quick\?\.length \? addable\.filter\(\(field\) => !quick\.includes\(field\.key\)\) : \[\]/)
+  })
+
+  it('leaves the menu open when "See more" is the thing chosen', () => {
+    /*
+     * An item whose whole job is to lengthen the list it is in has nothing
+     * to show for itself if the list closes in the same breath. The menu's
+     * dismissal was all-or-nothing before this; now one item can opt out,
+     * and only this one does.
+     */
+    expect(bar).toMatch(/keepOpen: true/)
+    const menu = read('src/components/ui/AnchoredMenu.tsx')
+    expect(menu).toMatch(/keepOpen\?: boolean/)
+    // Both ways in: a tap, and Enter on the highlighted item. Honouring it
+    // in one and not the other is a menu that behaves differently for
+    // somebody using a keyboard, which is the kind of thing nobody notices
+    // until it is the only way they work.
+    expect(menu).toMatch(/dismiss === 'on-select' && !item\.keepOpen/)
+    expect(menu).toMatch(/dismiss === 'on-select' && !items\[active\]\?\.keepOpen/)
+  })
+
+  it('hides those fields from the menu, not from the list', () => {
+    // A clause on a hidden field still parses, still shows as a chip and
+    // still filters, so a saved view or a shared URL carrying one works.
+    const addable = bar.slice(bar.indexOf('const addable = fields.filter'), bar.indexOf('const front ='))
+    expect(addable).toMatch(/if \(hide\?\.includes\(field\.key\)\) return false/)
+    expect(bar).not.toMatch(/parseFilters\([^)]*hide/)
   })
 })

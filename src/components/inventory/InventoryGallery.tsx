@@ -147,34 +147,45 @@ export function InventoryGallery({
                       {money(watch.purchasePriceGbp)}
                     </span>
                   )}
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    {/* Sold rows show what they made, live ones what they ask. */}
-                    {sold
-                      ? canSeeRevenue && watch.soldAmountGbp !== null && (
-                        <span className="text-caption font-bold text-content-primary">{money(watch.soldAmountGbp)}</span>
-                      )
-                      : canSeeRevenue && (
-                        watch.estSaleGbp === null
-                          ? <UnpricedChip />
-                          : <span className="text-caption font-bold text-content-primary">{money(watch.estSaleGbp)}</span>
-                      )}
-                    {/*
-                      And what another dealer pays, beside it rather than
-                      under it: "Trade AED 716,122" next to the asking price
-                      is the comparison somebody makes in one look, and it is
-                      the smaller of the two because the asking price is the
-                      headline.
 
-                      Only when there is one — a watch never offered to the
-                      trade has nothing to say here, and a dash on every card
-                      would be three cards in four saying nothing.
-                    */}
-                    {!sold && canSeeRevenue && watch.tradePriceGbp !== null && (
-                      <span className="text-micro text-content-secondary">
-                        Trade {money(watch.tradePriceGbp)}
-                      </span>
+                  {/*
+                    What another dealer pays, between what it cost and what
+                    it is asked for.
+
+                    Alex: "Trade pricing should go in the middle and move the
+                    word trade to the right side not the left." It read
+                    beside the asking price before, which put the three
+                    figures in no particular order; down the card they now
+                    climb — paid, trade, retail — and the two gaps anybody
+                    works out in their head are each between neighbours.
+
+                    The word after the figure, not before it, so the three
+                    numbers start on one line down the left and the eye
+                    compares them without stepping over a label. Same size as
+                    the cost above it; the asking price is the bold one and
+                    does not need the other two shrunk to say so.
+
+                    Only when there is one — a watch never offered to the
+                    trade has nothing to say here, and a dash on every card
+                    would be three cards in four saying nothing.
+                  */}
+                  {!sold && canSeeRevenue && watch.tradePriceGbp !== null && (
+                    <span className="flex items-baseline gap-1.5 text-caption text-content-primary">
+                      {money(watch.tradePriceGbp)}
+                      <span className="text-micro text-content-secondary">Trade</span>
+                    </span>
+                  )}
+
+                  {/* Sold rows show what they made, live ones what they ask. */}
+                  {sold
+                    ? canSeeRevenue && watch.soldAmountGbp !== null && (
+                      <span className="text-caption font-bold text-content-primary">{money(watch.soldAmountGbp)}</span>
+                    )
+                    : canSeeRevenue && (
+                      watch.estSaleGbp === null
+                        ? <UnpricedChip />
+                        : <span className="text-caption font-bold text-content-primary">{money(watch.estSaleGbp)}</span>
                     )}
-                  </div>
                 </div>
               </div>
             </Link>

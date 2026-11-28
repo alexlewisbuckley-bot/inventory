@@ -41,6 +41,28 @@ import type { FacetOption, RangeFacet, StockFacetData } from '@/server/repositor
 /** Both ways a bound can be written: the pair in use, and the pair in old links. */
 const RANGE_OPERATORS = new Set<FilterClause['operator']>(['gte', 'lte', 'gt', 'lt'])
 
+/**
+ * The fields the pills below already answer.
+ *
+ * Alex, of the `+ Filter` menu: "the filters listed below already can be
+ * removed." Each of these is one tap here with the counts beside it,
+ * against three taps and a typed value in that menu — and two routes to one
+ * filter is not twice the power, it is a menu nobody finishes reading.
+ *
+ * Declared beside the pills rather than in the menu, so adding a pill and
+ * forgetting to take its name out of the menu is one edit away from being
+ * noticed. A guard checks every key here is a pill and every pill is here.
+ */
+export const FACET_FIELDS = [
+  'brandId',    // Brand
+  'family',     // Model
+  'dial',       // Dial
+  'material',   // Metal
+  'estSaleGbp', // Budget
+  'caseSizeMm', // Size
+  'wears',      // For
+] as const
+
 export function FindBar({ facets, total }: { facets: StockFacetData; total: number }) {
   const router = useRouter()
   const pathname = usePathname()
