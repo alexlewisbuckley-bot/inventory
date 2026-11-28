@@ -61,8 +61,17 @@ describe('what the menu offers', () => {
   })
 
   it('draws a rule where the band changes, and nowhere else', () => {
+    /*
+     * Computed against the list actually rendered, which since the menu
+     * learned to fold itself is `shown` rather than every addable field:
+     * measured against the longer list, the first item after a hidden band
+     * would carry a rule with nothing above it.
+     */
     const bar = read('src/components/ui/DataList/FilterBar.tsx')
-    expect(bar).toMatch(/separated: index > 0 && field\.group !== addable\[index - 1\]\?\.group/)
+    expect(bar).toMatch(/separated: index > 0 && field\.group !== shown\[index - 1\]\?\.group/)
+    // The one rule that is not a band change: the line that lengthens the
+    // menu, kept away from the fields by a rule of its own.
+    expect(bar).toMatch(/id: 'see-more',\n\s*label: `See \$\{rest\.length\} more`,\n\s*separated: true,/)
   })
 })
 

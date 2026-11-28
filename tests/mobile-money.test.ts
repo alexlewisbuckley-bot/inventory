@@ -634,3 +634,77 @@ describe('the filter panel on a phone', () => {
     expect(views).not.toMatch(/sm:hidden/)
   })
 })
+
+/**
+ * The `+ Filter` menu.
+ *
+ * Alex: "For filters keep, location, owner, the filters listed below
+ * already can be removed and the others hidden with a see more."
+ *
+ * Fifteen field names in one column, seven of them repeating the facet
+ * pills sitting directly underneath, and the two anybody actually reaches
+ * for — where a watch stands, and whose it is — somewhere in the middle.
+ */
+describe('the fields a filter can be added on', () => {
+  const find = read('src/components/inventory/FindBar.tsx')
+  const bar = read('src/components/ui/DataList/FilterBar.tsx')
+  const page = read('src/app/(app)/inventory/page.tsx')
+
+  it('does not offer what the pills underneath already answer', () => {
+    expect(page).toMatch(/hide=\{FACET_FIELDS\}/)
+    expect(find).toMatch(/export const FACET_FIELDS = \[/)
+  })
+
+  it('names exactly the fields those pills write', () => {
+    /*
+     * The list is declared beside the pills so the two cannot drift, and
+     * this is what makes that true: add a pill without naming it here and
+     * the menu goes on offering the same filter twice; name one here that
+     * no pill answers and the menu quietly loses a field.
+     */
+    const declared = [...find.slice(find.indexOf('export const FACET_FIELDS'), find.indexOf('] as const'))
+      .matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]).sort()
+    // Every key the pills read or write, taken from the pills themselves.
+    const used = [...new Set(
+      [...find.matchAll(/(?:chosen|bound|setRange|toggle)\('([a-zA-Z]+)'/g)].map((m) => m[1]),
+    )].sort()
+    expect(declared).toEqual(used)
+  })
+
+  it('shows the two worth showing, and folds the rest behind one line', () => {
+    expect(page).toMatch(/quick=\{\['locationId', 'ownerId'\]\}/)
+    expect(bar).toMatch(/const front = quick\?\.length \? addable\.filter/)
+    expect(bar).toMatch(/label: `See \$\{rest\.length\} more`/)
+    // No "See more" that opens onto nothing.
+    expect(bar).toMatch(/!showAll && rest\.length > 0/)
+    // And a list that names no favourites still shows everything, which is
+    // what Sales and Contacts do.
+    expect(bar).toMatch(/quick\?\.length \? addable\.filter\(\(field\) => !quick\.includes\(field\.key\)\) : \[\]/)
+  })
+
+  it('leaves the menu open when "See more" is the thing chosen', () => {
+    /*
+     * An item whose whole job is to lengthen the list it is in has nothing
+     * to show for itself if the list closes in the same breath. The menu's
+     * dismissal was all-or-nothing before this; now one item can opt out,
+     * and only this one does.
+     */
+    expect(bar).toMatch(/keepOpen: true/)
+    const menu = read('src/components/ui/AnchoredMenu.tsx')
+    expect(menu).toMatch(/keepOpen\?: boolean/)
+    // Both ways in: a tap, and Enter on the highlighted item. Honouring it
+    // in one and not the other is a menu that behaves differently for
+    // somebody using a keyboard, which is the kind of thing nobody notices
+    // until it is the only way they work.
+    expect(menu).toMatch(/dismiss === 'on-select' && !item\.keepOpen/)
+    expect(menu).toMatch(/dismiss === 'on-select' && !items\[active\]\?\.keepOpen/)
+  })
+
+  it('hides those fields from the menu, not from the list', () => {
+    // A clause on a hidden field still parses, still shows as a chip and
+    // still filters, so a saved view or a shared URL carrying one works.
+    const addable = bar.slice(bar.indexOf('const addable = fields.filter'), bar.indexOf('const front ='))
+    expect(addable).toMatch(/if \(hide\?\.includes\(field\.key\)\) return false/)
+    expect(bar).not.toMatch(/parseFilters\([^)]*hide/)
+  })
+})
