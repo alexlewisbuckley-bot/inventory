@@ -547,3 +547,78 @@ describe('a watch as a card', () => {
     expect(priceLine).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
   })
 })
+
+/**
+ * Narrowing a list on a phone.
+ *
+ * Alex: "Filtering is still broken on mobile and very clunky."
+ *
+ * Broken literally, and measurably clunky: the panel was 462 pixels of
+ * controls before the stock came back into view, and opening one of them
+ * dragged the whole application sideways.
+ */
+describe('the filter panel on a phone', () => {
+  const find = read('src/components/inventory/FindBar.tsx')
+  const views = read('src/components/ui/DataList/ViewBar.tsx')
+  const shell = read('src/app/(app)/layout.tsx')
+
+  it('opens a facet as a sheet, not a panel hanging off the right edge', () => {
+    /*
+     * The panel is 300 wide and was pinned to the left edge of its own
+     * pill. The Dial pill starts 116 pixels in, so the panel ended at 416
+     * on a 390-wide screen — and nothing clipped it, so the page grew
+     * wider than the phone and slid sideways, header and all.
+     *
+     * Pinned to the viewport it cannot be pushed off the edge by whichever
+     * pill it belongs to.
+     */
+    expect(find).toMatch(/'fixed inset-x-3 bottom-\[calc\(var\(--bottom-bar\)/)
+    expect(find).toMatch(/max-h-\[60vh\] overflow-y-auto/)
+    // And the wide screen keeps the anchored panel it had.
+    expect(find).toMatch(/sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-\[calc\(100%\+6px\)\]/)
+    expect(find).toMatch(/sm:w-\[300px\]/)
+  })
+
+  it('stands on the same bottom bar as everything else that floats', () => {
+    // A sheet that covers the navigation is a sheet you cannot leave.
+    for (const path of [
+      'src/components/inventory/FindBar.tsx',
+      'src/components/inventory/WatchForm.tsx',
+      'src/components/inventory/BulkActionBar.tsx',
+    ]) {
+      expect(read(path)).toContain('var(--bottom-bar)')
+    }
+  })
+
+  it('clips sideways overflow in both shells, not just the partner one', () => {
+    /*
+     * The backstop existed and was on the wrong shell. Anything wider than
+     * the screen makes a phone widen the whole page to fit it, and every
+     * gutter goes with it — which is how one filter panel moved the entire
+     * application sideways.
+     */
+    // The two shell containers by name, not a count of the word: it appears
+    // in the comment above each one, so counting it would pass on prose.
+    expect(shell).toContain('flex min-h-screen flex-col overflow-x-clip bg-surface-subtle')
+    expect(shell).toContain('flex min-h-screen overflow-x-clip bg-surface-subtle')
+  })
+
+  it('puts the views and the facets on one line to swipe', () => {
+    /*
+     * Eleven views wrapped onto five rows at 200 pixels, six facet pills
+     * onto three at 136. Side by side they are 40 each. Measured after:
+     * the panel went from 462 pixels to 210.
+     */
+    for (const source of [views, find]) {
+      expect(source).toMatch(/-mx-3 mb-\d flex .*overflow-x-auto px-3 pb-1/)
+      expect(source).toMatch(/sm:mx-0 sm:flex-wrap sm:overflow-visible/)
+    }
+  })
+
+  it('keeps a chip its own width inside that scroller', () => {
+    // A flex child's default is to be squeezed, which would turn eleven
+    // view names into eleven columns of one letter.
+    expect(views).toMatch(/inline-flex h-9 shrink-0 items-center rounded-sm/)
+    expect(find).toMatch(/\[&>\*\]:shrink-0/)
+  })
+})

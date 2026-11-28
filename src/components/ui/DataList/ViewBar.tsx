@@ -131,7 +131,29 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
   const open = saved.find((view) => view.id === menuFor)
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="Views">
+    /*
+      One line to swipe on a phone, the wrapped block from sm up.
+
+      Alex: "Filtering is still broken on mobile and very clunky." Eleven
+      views, a saved one and a Save button wrapped onto five rows and took
+      two hundred pixels of a panel that is meant to be glanced at — before
+      the filter chips underneath it had said anything at all. Side by side
+      they are one row of 36 pixels and the rest is a swipe, which is the
+      same gesture the figures above the list already use.
+
+      The negative margin lets the row reach the panel's own padding, so a
+      chip scrolling past looks like it is leaving the panel rather than
+      stopping short inside it.
+    */
+    <div
+      className={cn(
+        '-mx-3 mb-4 flex snap-x items-center gap-1.5 overflow-x-auto px-3 pb-1',
+        '[&::-webkit-scrollbar]:hidden [scrollbar-width:none]',
+        'sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0',
+      )}
+      role="group"
+      aria-label="Views"
+    >
       {builtIn.map((view) => (
         <button
           key={view.id}
@@ -145,12 +167,12 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
         </button>
       ))}
 
-      {saved.length > 0 && <span className="mx-1 h-5 w-px bg-line-subtle" aria-hidden />}
+      {saved.length > 0 && <span className="mx-1 h-5 w-px shrink-0 bg-line-subtle" aria-hidden />}
 
       {saved.map((view) => {
         const active = isActive(view.query)
         return (
-          <span key={view.id} className="inline-flex items-center">
+          <span key={view.id} className="inline-flex shrink-0 items-center">
             <button
               type="button"
               onClick={() => apply(view.query)}
@@ -182,6 +204,7 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
         <Button
           variant="ghost"
           size="sm"
+          className="shrink-0"
           icon={<Plus className="h-4 w-4" />}
           onClick={() => setSaving(true)}
           disabled={pending}
@@ -257,7 +280,10 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
 
 function chipClass(active: boolean): string {
   return cn(
-    'inline-flex h-9 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
+    // `shrink-0` for the swipe row on a phone: in a horizontal scroller a
+    // flex child's default is to be squeezed, which would turn eleven view
+    // names into eleven columns of one letter rather than a row to swipe.
+    'inline-flex h-9 shrink-0 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
     active
       ? 'bg-navy-700 text-content-on-brand'
       : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
