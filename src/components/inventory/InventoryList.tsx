@@ -566,33 +566,82 @@ function MobileRow({
         />
       </div>
 
-      <dl className="mt-2.5 flex items-baseline gap-4 text-caption">
-        <div className="min-w-0">
-          <dt className="text-content-secondary">Cost</dt>
-          <dd className="truncate font-bold tabular-nums text-content-primary">{money(watch.purchasePriceGbp)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-content-secondary">{sold ? 'Sold for' : 'Retail'}</dt>
-          <dd className="truncate font-bold tabular-nums text-content-primary">
-            {sold && watch.soldAmountGbp !== null
-              ? money(watch.soldAmountGbp)
-              : watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'No price'}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-content-secondary">{sold ? 'Profit' : 'Est. profit'}</dt>
-          <dd className={cn(
-            'truncate font-bold tabular-nums',
-            profit !== null && profit >= 0 ? 'text-content-accent' : profit !== null ? 'text-state-danger' : 'text-content-secondary',
-          )}>
-            {profit !== null ? signed(profit) : '—'}
-          </dd>
-        </div>
+      {/*
+        Four figures, in the order the table puts them in.
+
+        Alex: "You also can't see trade pricing on mobile view - this is
+        info you need very quickly at a glance." It was a column of the
+        desktop table and nowhere else, so the one number somebody standing
+        in front of another dealer needs was the one number the phone did
+        not have.
+
+        Two to a line, label and figure together on one. Four across was
+        tried first and measured: it gives each figure 75 pixels, and this
+        business prices in six and seven figures — "AED 620,000" wants 96,
+        so three cards in five broke after the currency and the row went
+        ragged. Two across gives 171, which holds a seven-figure price
+        whole, and putting the label beside the figure rather than above it
+        means the card is no taller than it was with three.
+
+        A grid, so the trade price is in the same place on every card and
+        the eye goes straight to it rather than hunting past a long model
+        name.
+      */}
+      <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1 text-caption">
+        <Figure label="Cost" value={money(watch.purchasePriceGbp)} />
+        {/* A watch never offered to the trade says so rather than showing a
+            zero, exactly as its column does. */}
+        <Figure
+          label="Trade"
+          value={watch.tradePriceGbp !== null ? money(watch.tradePriceGbp) : '—'}
+          muted={watch.tradePriceGbp === null}
+        />
+        <Figure
+          label={sold ? 'Sold for' : 'Retail'}
+          value={sold && watch.soldAmountGbp !== null
+            ? money(watch.soldAmountGbp)
+            : watch.estSaleGbp !== null ? money(watch.estSaleGbp) : 'No price'}
+          muted={!sold && watch.estSaleGbp === null}
+        />
+        <Figure
+          label={sold ? 'Profit' : 'Est. profit'}
+          value={profit !== null ? signed(profit) : '—'}
+          tone={profit === null ? undefined : profit >= 0 ? 'good' : 'bad'}
+          muted={profit === null}
+        />
       </dl>
     </li>
   )
 }
 
+
+/**
+ * One figure on a phone's card: what it is, then what it is.
+ *
+ * Beside rather than above, which is what lets four of them sit in the
+ * height two used to take.
+ */
+function Figure({ label, value, tone, muted }: {
+  label: string
+  value: string
+  tone?: 'good' | 'bad'
+  muted?: boolean
+}) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-1.5">
+      <dt className="shrink-0 text-content-secondary">{label}</dt>
+      <dd className={cn(
+        'min-w-0 font-bold tabular-nums',
+        muted ? 'font-normal text-content-muted'
+          : tone === 'good' ? 'text-content-accent'
+          : tone === 'bad' ? 'text-state-danger'
+          : 'text-content-primary',
+      )}>
+        {value}
+      </dd>
+    </div>
+  )
+}
 
 /** The current query with one parameter set, for a link that opens a drawer. */
 function withParam(params: URLSearchParams, key: string, value: string): string {

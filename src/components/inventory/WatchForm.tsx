@@ -399,7 +399,7 @@ export function WatchForm({
             type="button"
             onClick={() => setShowOptional((v) => !v)}
             aria-expanded={showOptional}
-            className="flex w-full items-center justify-between px-6 py-4 text-left"
+            className="flex w-full items-center justify-between px-4 py-4 text-left sm:px-6"
           >
             <span>
               <span className="block text-body font-bold text-content-primary">Additional details</span>
@@ -414,7 +414,7 @@ export function WatchForm({
           </button>
 
           {showOptional && (
-            <div className="grid gap-5 px-6 pb-6 sm:grid-cols-2">
+            <div className="grid gap-5 px-4 pb-6 sm:grid-cols-2 sm:px-6">
               <SelectField
                 name="condition" label="Condition"
                 hint="Leave as “Not recorded” if you have not assessed it yet."
@@ -474,7 +474,24 @@ export function WatchForm({
             </div>
           )}
         </div>
-        <CardFooter>
+        {/*
+          The way to save, kept on the screen.
+
+          The form is 1,950 pixels tall on a phone, so adding a watch meant
+          filling in twelve fields and then scrolling past all of them again
+          to find the button — and a form whose ending you have to go
+          looking for is one people abandon halfway. It sticks to the bottom
+          of the card instead, which means the bottom of the screen for as
+          long as there is form left below it, and settles into place at the
+          end.
+
+          The bottom bar's own height, plus whatever the phone reserves
+          below that for its home indicator. Read from --bottom-bar rather
+          than written out, because the selection bar on the stock list
+          needs the same number and the two had already disagreed.
+          Only below lg: above it the bar is hidden and the form fits.
+        */}
+        <CardFooter className="sticky bottom-[calc(var(--bottom-bar)+env(safe-area-inset-bottom))] z-10 bg-surface-raised lg:static">
           <Button type="button" variant="ghost" onClick={() => router.back()}>Cancel</Button>
           <SubmitButton mode={mode} noun={noun} />
         </CardFooter>

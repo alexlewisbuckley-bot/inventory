@@ -120,7 +120,9 @@ export const savedViews = pgTable(
 
 export const userPreferences = pgTable('user_preferences', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-  theme: text('theme', { enum: THEMES }).notNull().default('SYSTEM'),
+  // Light, not the phone's own setting: see 0078. Dark is a choice here,
+  // not something an operating system makes on somebody's behalf.
+  theme: text('theme', { enum: THEMES }).notNull().default('LIGHT'),
   density: text('density', { enum: DENSITIES }).notNull().default('COMFORTABLE'),
   /**
    * What this person reads figures in, not what they are stored in — see

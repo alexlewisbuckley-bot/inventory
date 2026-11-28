@@ -9,16 +9,35 @@ interface ThemeContextValue {
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
-const STORAGE_KEY = 'bluecroft.theme'
+
+/*
+ * Version two of the key, deliberately.
+ *
+ * Alex: "Please update to light mode only mine is showing black I don't
+ * like it being black or at least have light as default and dark mode as a
+ * selection." Every browser that has ever loaded this holds the string
+ * "SYSTEM" under the old key — not because anybody chose it, but because it
+ * was the default and the provider wrote it down. Changing the default
+ * alone would have reached nobody who had already visited, which is
+ * everybody. A new key starts them all at light; anyone who wants dark
+ * picks it once and keeps it.
+ */
+const STORAGE_KEY = 'bluecroft.theme.v2'
 
 /**
  * Theme controller.
  *
- * `SYSTEM` follows `prefers-color-scheme` live. The choice is mirrored to
- * localStorage for instant application on the next load (see `themeScript`)
- * and persisted server-side through the preferences form.
+ * Light unless somebody says otherwise. `SYSTEM` is still on offer and
+ * still follows `prefers-color-scheme` live — it is just no longer what
+ * you get for never having chosen. The brand is ivory and sage, and a
+ * dealer showing a customer a watch should not be handed a black screen
+ * because their phone is in night mode.
+ *
+ * The choice is mirrored to localStorage for instant application on the
+ * next load (see `themeScript`) and persisted server-side through the
+ * preferences form.
  */
-export function ThemeProvider({ children, initial = 'SYSTEM' }: { children: ReactNode; initial?: Theme }) {
+export function ThemeProvider({ children, initial = 'LIGHT' }: { children: ReactNode; initial?: Theme }) {
   const [theme, setThemeState] = useState<Theme>(initial)
   const [systemDark, setSystemDark] = useState(false)
 
@@ -60,13 +79,23 @@ export function useTheme(): ThemeContextValue {
 }
 
 /**
- * Applied before paint to prevent a light-theme flash for dark-mode users.
- * Injected as a blocking inline script in the root layout.
+ * Applied before paint to prevent a flash of the wrong theme. Injected as a
+ * blocking inline script in the root layout.
+ *
+ * It states the light case as well as the dark one. Leaving `colorScheme`
+ * unset let the operating system style the parts of the page it owns — the
+ * scrollbars, the date picker, the inside of a select — in dark, on a light
+ * page, which is where a light theme on a dark phone looks broken rather
+ * than light.
+ *
+ * The key is the versioned one; the default it falls back to is light.
  */
 export const themeScript = `
 (function(){try{
-  var t = localStorage.getItem('bluecroft.theme') || 'SYSTEM';
+  var t = localStorage.getItem('bluecroft.theme.v2') || 'LIGHT';
   var dark = t === 'DARK' || (t === 'SYSTEM' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  if (dark) { document.documentElement.classList.add('dark'); document.documentElement.style.colorScheme = 'dark'; }
+  var root = document.documentElement;
+  root.classList.toggle('dark', dark);
+  root.style.colorScheme = dark ? 'dark' : 'light';
 }catch(e){}})();
 `.trim()

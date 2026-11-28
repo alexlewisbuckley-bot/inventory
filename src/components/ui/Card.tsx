@@ -21,7 +21,7 @@ export function CardHeader({ title, description, action, className }: {
     // so the text beside them was squeezed to a column about one word across
     // and the buttons still ran off the edge of the card.
     <div className={cn(
-      'flex flex-col gap-3 px-6 py-5 border-b border-line-subtle',
+      'flex flex-col gap-3 px-4 py-5 border-b border-line-subtle sm:px-6',
       'sm:flex-row sm:items-start sm:justify-between sm:gap-4',
       className,
     )}>
@@ -40,7 +40,15 @@ export function CardHeader({ title, description, action, className }: {
 }
 
 export function CardBody({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('px-6 py-5', className)}>{children}</div>
+  /*
+   * Sixteen pixels of padding on a phone rather than twenty-four.
+   *
+   * A card's own padding is spent twice, once each side, and inside the
+   * page's gutters it left a form field 300 pixels of a 390-wide screen to
+   * be filled in. Eight a side back is a field a sixteenth wider and a
+   * price that no longer has to be read in two halves.
+   */
+  return <div className={cn('px-4 py-5 sm:px-6', className)}>{children}</div>
 }
 
 export function CardFooter({ children, className }: { children: ReactNode; className?: string }) {
@@ -48,7 +56,7 @@ export function CardFooter({ children, className }: { children: ReactNode; class
     // Wrapping matters on a narrow phone: a footer holding explanatory text and
     // a button is wider than 320px, and without it the whole page scrolls
     // sideways to reach a button nobody could see.
-    <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-4 border-t border-line-subtle', className)}>
+    <div className={cn('flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-4 border-t border-line-subtle sm:px-6', className)}>
       {children}
     </div>
   )

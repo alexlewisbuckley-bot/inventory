@@ -142,6 +142,28 @@ export function InventoryGallery({
                         {money(watch.purchasePriceGbp)}
                       </span>
                     )}
+                    {/*
+                      And what another dealer pays, which is the figure
+                      somebody standing in front of one needs fastest.
+
+                      Alex: "You also can't see trade pricing on mobile view
+                      - this is info you need very quickly at a glance." It
+                      was a column of the desktop table and nowhere else.
+
+                      Labelled, where the other two are not: cost over
+                      asking price is a pair anyone reads correctly from
+                      position and weight alone, and a third unlabelled
+                      number between them would be a guess. Only when there
+                      is one — a watch never offered to the trade has
+                      nothing to say here, and a dash on every card would
+                      be three cards in four saying nothing.
+                    */}
+                    {!sold && canSeeRevenue && watch.tradePriceGbp !== null && (
+                      <span className="flex items-baseline gap-1 text-caption text-content-primary">
+                        <span className="text-micro text-content-secondary">Trade</span>
+                        {money(watch.tradePriceGbp)}
+                      </span>
+                    )}
                     {/* Sold rows show what they made, live ones what they ask. */}
                     {sold
                       ? canSeeRevenue && watch.soldAmountGbp !== null && (

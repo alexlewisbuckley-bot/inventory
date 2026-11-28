@@ -168,7 +168,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             tabIndex={-1}
             // Bottom padding below lg clears the bottom bar, so the last row
             // of any list is never hidden under the navigation.
-            className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-7 pb-24 outline-none lg:px-8 lg:pb-7"
+            //
+            // Sixteen pixels of gutter on a phone rather than twenty, which
+            // is what the bar above it has always used: the two disagreed,
+            // so a full-bleed element written to reach the edge — the sticky
+            // filter bar — stopped four pixels short of it on both sides.
+            // Sixteen also gives a form field sixteen more pixels to be
+            // read in, and on a 390-wide screen that is not nothing.
+            className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-5 pb-24 outline-none sm:px-5 sm:py-7 lg:px-8 lg:pb-7"
           >
             {children}
           </main>

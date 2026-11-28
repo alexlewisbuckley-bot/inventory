@@ -270,6 +270,42 @@ describe('the controls above the stock list', () => {
     expect(shell).toMatch(/z-30/)
   })
 
+  it('says only "Search" in a box 240 pixels wide', () => {
+    /*
+     * Alex: "Change search placeholder to fit within search panel just
+     * replace with search." The descriptive line the wide screen's box
+     * carries — "Search by stock number, model, reference or serial…" —
+     * arrived on a phone as "Search by stock n", which lists nothing and
+     * reads like a sentence somebody cut off.
+     *
+     * The full line stays as the box's accessible name, so a screen reader
+     * still hears what can be searched.
+     */
+    expect(controls).toMatch(/placeholder="Search"/)
+    expect(controls).toMatch(/<span className="sr-only">\{search\}<\/span>/)
+  })
+
+  it('colours the Filters button in the brand, not in a shade of the page', () => {
+    /*
+     * Alex: "Replace filter color from grey so it's more visible / sleek
+     * and inline with brand."
+     *
+     * It was `navy-700`, the deep ink of the light palette — but that token
+     * inverts to #D9D3C8 in dark mode, so the one control meant to stand
+     * out when filters are on came out a flat beige slab, lighter than the
+     * page behind it and louder than the Add item button beside it. Sage is
+     * the accent the rest of the product acts in, and it reads as "on" at
+     * both themes because it is a colour rather than a shade of the
+     * background.
+     */
+    expect(controls).toMatch(/border-teal-500 bg-teal-500 text-content-on-accent/)
+    expect(controls).not.toMatch(/bg-navy-700/)
+
+    // The same pair the primary button uses, so the two agree on screen.
+    const button = read('src/components/ui/Button.tsx')
+    expect(button).toMatch(/primary: 'bg-teal-500 text-content-on-accent/)
+  })
+
   it('makes the figures a strip to swipe rather than a screen to scroll', () => {
     // Six cards stacked ran to 560 pixels and put the stock below the fold.
     const card = read('src/components/ui/Card.tsx')
@@ -363,5 +399,77 @@ describe('a page heading on a phone', () => {
     expect(button).toMatch(/md: 'h-11 px-4 text-\[12px\] gap-2 sm:px-6'/)
     expect(button).toMatch(/sm: 'h-8 px-3 .*sm:px-3\.5'/)
     expect(button).toMatch(/lg: 'h-12 px-5 .*sm:px-8'/)
+  })
+})
+
+/**
+ * The trade price, on a phone.
+ *
+ * Alex: "You also can't see trade pricing on mobile view - this is info you
+ * need very quickly at a glance."
+ *
+ * It was a column of the desktop stock table and nothing else: not on the
+ * phone's card, not on the gallery card, not in the drawer's Financials
+ * panel, not on the record page's own summary. So the one figure somebody
+ * standing in front of another dealer needs was the one figure a phone could
+ * not reach, while the figures a dealer does not quote were on every screen.
+ */
+describe('what another dealer pays', () => {
+  it('is on the phone card, in the order the table puts it in', () => {
+    const list = read('src/components/inventory/InventoryList.tsx')
+    const card = list.slice(list.indexOf('function MobileRow'), list.indexOf('function Figure'))
+    expect(card).toMatch(/label="Cost"/)
+    expect(card).toMatch(/label="Trade"/)
+    expect(card.indexOf('label="Cost"')).toBeLessThan(card.indexOf('label="Trade"'))
+    expect(card.indexOf('label="Trade"')).toBeLessThan(card.indexOf("sold ? 'Sold for' : 'Retail'"))
+    // The figure itself, not just the word.
+    expect(card).toMatch(/money\(watch\.tradePriceGbp\)/)
+    // A watch never offered to the trade says so rather than showing a zero.
+    expect(card).toMatch(/watch\.tradePriceGbp !== null/)
+  })
+
+  it('keeps four figures two to a line, not four across', () => {
+    /*
+     * Four across was tried first and measured: 75 pixels a figure, and this
+     * business prices in six and seven, so "AED 620,000" broke after the
+     * currency on three cards in five. Two across gives 156, which holds an
+     * eight-figure price whole, and the label beside the figure rather than
+     * above it keeps the card the height it was with three.
+     */
+    const list = read('src/components/inventory/InventoryList.tsx')
+    const card = list.slice(list.indexOf('function MobileRow'), list.indexOf('function Figure'))
+    expect(card).toMatch(/<dl className="mt-2\.5 grid grid-cols-2 /)
+    expect(card).not.toMatch(/grid-cols-4/)
+    // Beside, not above: one flex row per figure.
+    const cell = list.slice(list.indexOf('function Figure'))
+    expect(cell).toMatch(/flex min-w-0 items-baseline/)
+  })
+
+  it('is on the gallery card too, labelled, and only when there is one', () => {
+    /*
+     * Cost over asking price is a pair anyone reads from position and weight
+     * alone; a third unlabelled number between them would be a guess. And a
+     * dash on every card would be three cards in four saying nothing.
+     */
+    const gallery = read('src/components/inventory/InventoryGallery.tsx')
+    expect(gallery).toMatch(/!sold && canSeeRevenue && watch\.tradePriceGbp !== null/)
+    expect(gallery).toMatch(/>Trade</)
+  })
+
+  it('is in the drawer and on the record, between cost and retail', () => {
+    const drawer = read('src/components/inventory/WatchDrawerClient.tsx')
+    const panel = drawer.slice(drawer.indexOf('aria-label="Financials"'))
+    expect(panel).toMatch(/label="Trade price"/)
+    expect(panel.indexOf('label="Purchase price"')).toBeLessThan(panel.indexOf('label="Trade price"'))
+    expect(panel.indexOf('label="Trade price"')).toBeLessThan(panel.indexOf('label="Retail price"'))
+
+    const record = read('src/app/(app)/inventory/[id]/page.tsx')
+    const summary = record.slice(record.indexOf('<StatGrid label="Financial summary"'))
+    expect(summary).toMatch(/label="Trade price"/)
+    expect(summary).toMatch(/Not offered to the trade/)
+    // Behind the same permission as the asking price: both are what we sell
+    // for, and neither is the cost side.
+    const tradeCard = summary.slice(summary.indexOf('label="Trade price"') - 200, summary.indexOf('label="Trade price"'))
+    expect(tradeCard).toMatch(/can\(user\.role, 'revenue:read'\)/)
   })
 })
