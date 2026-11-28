@@ -147,7 +147,20 @@ export function FindBar({ facets, total }: { facets: StockFacetData; total: numb
   }, [currency, rates])
 
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-2">
+    /*
+      One line to swipe on a phone, the wrapped block from sm up.
+
+      Six pills — Brand, Model, Dial, Metal, Budget, For — wrapped onto
+      three rows and took 136 pixels under the view chips' two hundred, so
+      a panel opened to narrow a list was most of a screen of controls
+      before the list came back into view. Side by side they are one row of
+      40 pixels.
+    */
+    <div className={cn(
+      '-mx-3 mb-5 flex items-center gap-2 overflow-x-auto px-3 pb-1',
+      '[&>*]:shrink-0 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]',
+      'sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0',
+    )}>
       <Pick
         id="brand" label="Brand" open={open} setOpen={setOpen}
         summary={summarise(facets.brands, chosen('brandId'), 'brand')}
@@ -319,7 +332,35 @@ function Pick({ id, label, summary, open, setOpen, children }: {
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-[300px] rounded-lg border border-line-subtle bg-surface-raised p-3 shadow-lg">
+        /*
+          A sheet at the bottom of a phone; the anchored panel from sm up.
+          Alex: "Filtering is still broken on mobile and very clunky."
+
+          Broken literally. The panel is 300 pixels wide and was pinned to
+          the left edge of its own pill — and the Dial pill starts 116
+          pixels in, so the panel ended at 416 on a 390-wide screen. Nothing
+          in the staff shell clipped it, so the whole page grew wider than
+          the phone and slid sideways: the header, the gutters, the stock
+          behind it, all of it moved, and the first thing you had to do
+          after opening a filter was scroll the page back.
+
+          Pinned to the viewport instead, it cannot be pushed off the edge
+          by whatever pill it belongs to, and it opens where a thumb already
+          is rather than halfway up the screen. 70vh with its own scroll,
+          because forty dial colours is longer than a phone — and clear of
+          the bottom navigation, off the same `--bottom-bar` the selection
+          bar and the form's save bar stand on, so a sheet never covers the
+          way out of the page it is filtering.
+        */
+        <div
+          className={cn(
+            'fixed inset-x-3 bottom-[calc(var(--bottom-bar)+env(safe-area-inset-bottom)+0.75rem)]',
+            'z-50 max-h-[60vh] overflow-y-auto rounded-lg',
+            'border border-line-subtle bg-surface-raised p-3 shadow-lg',
+            'sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-[calc(100%+6px)]',
+            'sm:z-30 sm:max-h-none sm:w-[300px] sm:overflow-visible',
+          )}
+        >
           {children}
         </div>
       )}

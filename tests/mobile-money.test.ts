@@ -547,3 +547,90 @@ describe('a watch as a card', () => {
     expect(priceLine).toMatch(/Trade \{money\(watch\.tradePriceGbp\)\}/)
   })
 })
+
+/**
+ * Narrowing a list on a phone.
+ *
+ * Alex: "Filtering is still broken on mobile and very clunky."
+ *
+ * Broken literally, and measurably clunky: the panel was 462 pixels of
+ * controls before the stock came back into view, and opening one of them
+ * dragged the whole application sideways.
+ */
+describe('the filter panel on a phone', () => {
+  const find = read('src/components/inventory/FindBar.tsx')
+  const views = read('src/components/ui/DataList/ViewBar.tsx')
+  const shell = read('src/app/(app)/layout.tsx')
+
+  it('opens a facet as a sheet, not a panel hanging off the right edge', () => {
+    /*
+     * The panel is 300 wide and was pinned to the left edge of its own
+     * pill. The Dial pill starts 116 pixels in, so the panel ended at 416
+     * on a 390-wide screen — and nothing clipped it, so the page grew
+     * wider than the phone and slid sideways, header and all.
+     *
+     * Pinned to the viewport it cannot be pushed off the edge by whichever
+     * pill it belongs to.
+     */
+    expect(find).toMatch(/'fixed inset-x-3 bottom-\[calc\(var\(--bottom-bar\)/)
+    expect(find).toMatch(/max-h-\[60vh\] overflow-y-auto/)
+    // And the wide screen keeps the anchored panel it had.
+    expect(find).toMatch(/sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-\[calc\(100%\+6px\)\]/)
+    expect(find).toMatch(/sm:w-\[300px\]/)
+  })
+
+  it('stands on the same bottom bar as everything else that floats', () => {
+    // A sheet that covers the navigation is a sheet you cannot leave.
+    for (const path of [
+      'src/components/inventory/FindBar.tsx',
+      'src/components/inventory/WatchForm.tsx',
+      'src/components/inventory/BulkActionBar.tsx',
+    ]) {
+      expect(read(path)).toContain('var(--bottom-bar)')
+    }
+  })
+
+  it('clips sideways overflow in both shells, not just the partner one', () => {
+    /*
+     * The backstop existed and was on the wrong shell. Anything wider than
+     * the screen makes a phone widen the whole page to fit it, and every
+     * gutter goes with it — which is how one filter panel moved the entire
+     * application sideways.
+     */
+    // The two shell containers by name, not a count of the word: it appears
+    // in the comment above each one, so counting it would pass on prose.
+    expect(shell).toContain('flex min-h-screen flex-col overflow-x-clip bg-surface-subtle')
+    expect(shell).toContain('flex min-h-screen overflow-x-clip bg-surface-subtle')
+  })
+
+  it('puts the facets on one line to swipe', () => {
+    /*
+     * Six facet pills wrapped onto three rows at 136 pixels. Side by side
+     * they are 44. A pill keeps its own width in the scroller: a flex
+     * child's default is to be squeezed, which would turn six words into
+     * six columns of one letter.
+     */
+    expect(find).toMatch(/-mx-3 mb-\d flex .*overflow-x-auto px-3 pb-1/)
+    expect(find).toMatch(/sm:mx-0 sm:flex-wrap sm:overflow-visible/)
+    expect(find).toMatch(/\[&>\*\]:shrink-0/)
+  })
+
+  it('does not show the views on a phone at all', () => {
+    /*
+     * Alex: "Put the views on a slider so not taking up so much space or
+     * hide them I've never used them before."
+     *
+     * A slider first, which took eleven chips from five wrapped rows to
+     * one line of 40 pixels. The second half of that sentence is the
+     * better answer: forty pixels of a control nobody here has ever used
+     * is still forty pixels, on the screen with the fewest to spare.
+     *
+     * Hidden, not unmounted — a saved view applied from a desk still
+     * governs the list when the same URL is opened on a phone. What goes
+     * away is the row of buttons, not the feature.
+     */
+    expect(views).toMatch(/className="mb-4 hidden flex-wrap items-center gap-1\.5 sm:flex"/)
+    // Still there from sm up, where a tablet and a laptop have the room.
+    expect(views).not.toMatch(/sm:hidden/)
+  })
+})

@@ -158,7 +158,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {/* Above the shell, so the bell, the rail and whatever page is open all
           see the same count and the same arrival. */}
       <LiveNotifications initialUnread={Number(unread[0]?.value ?? 0)}>
-      <div className="flex min-h-screen bg-surface-subtle">
+      {/* `overflow-x-clip` is the backstop, not the fix — the same one the
+          partner shell has had, and this one never did. On a phone anything
+          wider than the screen makes the browser widen the whole page to
+          fit it, and every gutter, the header and the bottom bar go with
+          it. That is how one 300-pixel filter panel moved the entire
+          application sideways. Clip rather than hidden, so the sticky bars
+          still stick. */}
+      <div className="flex min-h-screen overflow-x-clip bg-surface-subtle">
         <AppSidebar role={user.role as Role} counts={counts} />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar user={user} unreadCount={Number(unread[0]?.value ?? 0)} counts={counts} />

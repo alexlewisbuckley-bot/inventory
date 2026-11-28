@@ -131,7 +131,29 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
   const open = saved.find((view) => view.id === menuFor)
 
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="Views">
+    /*
+      Not on a phone at all.
+
+      Alex: "Put the views on a slider so not taking up so much space or
+      hide them I've never used them before."
+
+      They were a slider first, which took the eleven chips from five
+      wrapped rows down to one line of 40 pixels. The second half of that
+      sentence is the better answer: forty pixels of a control nobody here
+      has ever used is still forty pixels, and on the screen with the least
+      of them. Hidden below sm, where the filters that do get used have the
+      room instead; unchanged from sm up, where a tablet and a laptop have
+      space for both and somebody else may well use them.
+
+      Hidden rather than unmounted, so a saved view applied from a desk
+      still governs the list when the same URL is opened on a phone — what
+      goes away is the row of buttons, not the feature.
+    */
+    <div
+      className="mb-4 hidden flex-wrap items-center gap-1.5 sm:flex"
+      role="group"
+      aria-label="Views"
+    >
       {builtIn.map((view) => (
         <button
           key={view.id}
@@ -145,12 +167,12 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
         </button>
       ))}
 
-      {saved.length > 0 && <span className="mx-1 h-5 w-px bg-line-subtle" aria-hidden />}
+      {saved.length > 0 && <span className="mx-1 h-5 w-px shrink-0 bg-line-subtle" aria-hidden />}
 
       {saved.map((view) => {
         const active = isActive(view.query)
         return (
-          <span key={view.id} className="inline-flex items-center">
+          <span key={view.id} className="inline-flex shrink-0 items-center">
             <button
               type="button"
               onClick={() => apply(view.query)}
@@ -182,6 +204,7 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
         <Button
           variant="ghost"
           size="sm"
+          className="shrink-0"
           icon={<Plus className="h-4 w-4" />}
           onClick={() => setSaving(true)}
           disabled={pending}
@@ -257,7 +280,9 @@ export function ViewBar({ object, builtIn, saved, canSave = true }: {
 
 function chipClass(active: boolean): string {
   return cn(
-    'inline-flex h-9 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
+    // `shrink-0` so a long view name keeps its width in the wrapped row
+    // rather than being squeezed narrower than the words inside it.
+    'inline-flex h-9 shrink-0 items-center rounded-sm px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors',
     active
       ? 'bg-navy-700 text-content-on-brand'
       : 'text-content-secondary hover:bg-surface-subtle hover:text-content-primary',
